@@ -4995,6 +4995,35 @@ class YoRo_Parser_Test_Suite {
 				},
 			],
 			[
+				'name'          => 'Execute memory clear removes pending confirmation state',
+				'rest_callback' => [ 'YoRo_REST_API', 'get_memory' ],
+				'rest_method'   => 'GET',
+				'setup'         => function() {
+					YoRo_Conversation_Memory::set_pending_confirmation(
+						get_current_user_id(),
+						[
+							'token'    => 'memory-clear-test-token',
+							'command'  => 'Update order status',
+							'action'   => 'orders.update_status',
+							'required' => true,
+						]
+					);
+
+					YoRo_Conversation_Memory::clear_pending_confirmation( get_current_user_id() );
+
+					return [];
+				},
+				'cleanup'       => function() {
+					YoRo_Conversation_Memory::clear_pending_confirmation( get_current_user_id() );
+				},
+				'expect'        => [
+					'result.success'                                       => true,
+					'result.runtime_context.pending_confirmation.required' => false,
+					'result.runtime_context.pending_confirmation.action'   => '',
+					'result.runtime_context.pending_confirmation.token'    => '',
+				],
+			],
+			[
 				'name'          => 'Execute morning briefing suppresses outside morning window',
 				'rest_callback' => [ 'YoRo_REST_API', 'get_morning_briefing' ],
 				'rest_method'   => 'GET',

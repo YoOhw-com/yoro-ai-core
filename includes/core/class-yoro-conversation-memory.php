@@ -768,9 +768,9 @@ class YoRo_Conversation_Memory {
 		}
 
 		if ( array_key_exists( 'pending_confirmation', $data ) ) {
-			$state['pending_confirmation'] = is_array( $data['pending_confirmation'] )
+			$state['pending_confirmation'] = ! empty( $data['pending_confirmation'] ) && is_array( $data['pending_confirmation'] )
 				? array_merge( $state['pending_confirmation'], $data['pending_confirmation'] )
-				: [];
+				: self::pending_confirmation_defaults();
 		}
 
 		self::apply_legacy_update( $state, $data );
