@@ -62,11 +62,13 @@ Expected behavior:
 ## Next Work
 
 - Expand action metadata for all high-value actions.
-- Extend deterministic router fixtures from parser and pipeline tests into preview, execute, and undo groups.
+- Extend deterministic router fixtures from parser, pipeline, and preview tests into execute and undo groups.
 - Keep a small live AI smoke suite for prompt/catalog quality checks.
 
 ## Test Fixture Status
 
 - Parser group: deterministic AI router fixtures pass 52/52.
 - Pipeline group: deterministic AI router fixtures pass 29/29.
+- Preview group: deterministic AI router fixtures pass 13/13.
 - Pipeline fixtures include recursive `recommended_sequence` command overrides so follow-up tests do not call live AI.
+- Preview fixtures run under a test admin user in WP-CLI so action preview permission checks match the admin UI.

@@ -896,7 +896,10 @@ class YoRo_Parser_Engine {
 			return YoRo_Entity_Validator::validate( $resolved_result );
 		}
 
-		if ( preg_match( '/\b(?:hold|on hold)\b/i', $text_for_match ) ) {
+		if (
+			preg_match( '/\b(?:hold|on hold)\b/i', $text_for_match ) &&
+			! preg_match( '/\b(?:add\s+(?:a\s+)?)?note\b/i', $text_for_match )
+		) {
 			$parsed = [
 				'success'            => true,
 				'matched'            => true,
@@ -918,7 +921,10 @@ class YoRo_Parser_Engine {
 			return YoRo_Entity_Validator::validate( $resolved_result );
 		}
 
-		if ( preg_match( '/\b(?:add\s+(?:a\s+)?)?note\b/i', $text_for_match ) ) {
+		if (
+			preg_match( '/\b(?:add\s+(?:a\s+)?)?note\b/i', $text_for_match ) &&
+			! preg_match( '/\b(?:hold|on hold)\b/i', $text_for_match )
+		) {
 			$note = '';
 
 			if ( preg_match( '/:\s*(.+)$/', $command, $matches ) ) {

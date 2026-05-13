@@ -16,6 +16,7 @@
 - Git-tracked migration notes in `docs/AI_ROUTER_MIGRATION.md`.
 - Debug-only AI command router mock filter and parser test fixtures.
 - Deterministic AI router fixtures for parser and pipeline test groups.
+- Deterministic AI router fixtures for preview test group.
 
 ### Removed From Runtime
 - Legacy AI intent fallback route.
@@ -32,3 +33,4 @@
 - Live AI smoke checks route key commands through `ai_router`.
 - Parser test group passes 52/52 using deterministic AI router fixtures.
 - Pipeline test group passes 29/29 using deterministic AI router fixtures.
+- Preview test group passes 13/13 using deterministic AI router fixtures.

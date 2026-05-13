@@ -123,7 +123,18 @@ class YoRo_Parser_Test_Suite {
 				continue;
 			}
 
-			$map[ self::router_fixture_key( $test['command'] ) ] = self::build_router_fixture_decision_for_case( $test );
+			$key = self::router_fixture_key( $test['command'] );
+			$fixture = self::build_router_fixture_decision_for_case( $test );
+
+			if (
+				isset( $map[ $key ] ) &&
+				self::router_fixture_has_params( $map[ $key ] ) &&
+				! self::router_fixture_has_params( $fixture )
+			) {
+				continue;
+			}
+
+			$map[ $key ] = $fixture;
 		}
 
 		foreach ( self::router_fixture_command_overrides() as $command => $fixture ) {
@@ -137,6 +148,10 @@ class YoRo_Parser_Test_Suite {
 		return strtolower( trim( (string) $command ) );
 	}
 
+	private static function router_fixture_has_params( $fixture ) {
+		return is_array( $fixture ) && ! empty( $fixture['params'] ) && is_array( $fixture['params'] );
+	}
+
 	private static function build_router_fixture_decision_for_case( $test ) {
 		if ( self::should_router_fixture_fallback_to_rules( $test ) ) {
 			return new WP_Error(
@@ -145,8 +160,21 @@ class YoRo_Parser_Test_Suite {
 			);
 		}
 
+		$expectations = isset( $test['expect'] ) && is_array( $test['expect'] )
+			? $test['expect']
+			: [];
 		$action = isset( $test['expected_action'] ) ? sanitize_text_field( $test['expected_action'] ) : '';
+
+		if ( '' === $action && ! empty( $expectations['parsed.action'] ) ) {
+			$action = sanitize_text_field( $expectations['parsed.action'] );
+		}
+
+		if ( '' === $action && ! empty( $expectations['action'] ) ) {
+			$action = sanitize_text_field( $expectations['action'] );
+		}
+
 		$params = self::extract_router_fixture_params( $test['expect'] ?? [] );
+		$params = self::enrich_router_fixture_params_from_context( $action, $params, $test['context'] ?? [] );
 		$stage = sanitize_key( $test['expect_stage'] ?? '' );
 
 		if ( empty( $action ) || ( 'clarify' === $stage && ! empty( $test['expect_unmatched'] ) ) ) {
@@ -178,6 +206,11 @@ class YoRo_Parser_Test_Suite {
 		$expectations = isset( $test['expect'] ) && is_array( $test['expect'] )
 			? $test['expect']
 			: [];
+		$expected_action = sanitize_text_field( $test['expected_action'] ?? ( $expectations['parsed.action'] ?? ( $expectations['action'] ?? '' ) ) );
+
+		if ( 0 === strpos( $expected_action, 'multi.' ) ) {
+			return true;
+		}
 
 		foreach ( $expectations as $path => $expected ) {
 			$path = (string) $path;
@@ -186,12 +219,32 @@ class YoRo_Parser_Test_Suite {
 				return true;
 			}
 
-			if ( 'parsed.action' === $path ) {
+			if ( 'parsed.action' === $path && ( ! empty( $test['expect_unmatched'] ) || 'clarify' === sanitize_key( $test['expect_stage'] ?? '' ) ) ) {
 				return true;
 			}
 		}
 
 		return false;
+	}
+
+	private static function enrich_router_fixture_params_from_context( $action, $params, $context ) {
+		if ( ! is_array( $params ) ) {
+			$params = [];
+		}
+
+		if ( 'orders.send_customer_email' !== $action || empty( $context['current_workflow'] ) || ! is_array( $context['current_workflow'] ) ) {
+			return $params;
+		}
+
+		$workflow = $context['current_workflow'];
+
+		foreach ( [ 'order_id', 'subject', 'body', 'draft_id' ] as $key ) {
+			if ( isset( $workflow[ $key ] ) && ! isset( $params[ $key ] ) ) {
+				$params[ $key ] = $workflow[ $key ];
+			}
+		}
+
+		return $params;
 	}
 
 	private static function router_fixture_command_overrides() {
@@ -376,12 +429,40 @@ class YoRo_Parser_Test_Suite {
 
 	public static function run_preview_tests() {
 		$results = [];
+		$cases   = self::preview_cases();
+		$previous_user_id = get_current_user_id();
 
-		foreach ( self::preview_cases() as $test ) {
-			$results[] = self::run_preview_case( $test );
+		self::enable_router_fixtures( array_merge( self::parser_cases(), self::pipeline_cases(), $cases ) );
+		self::set_test_admin_user();
+
+		try {
+			foreach ( $cases as $test ) {
+				$results[] = self::run_preview_case( $test );
+			}
+		} finally {
+			self::disable_router_fixtures();
+			wp_set_current_user( $previous_user_id );
 		}
 
 		return $results;
+	}
+
+	private static function set_test_admin_user() {
+		if ( current_user_can( 'manage_woocommerce' ) ) {
+			return;
+		}
+
+		$users = get_users(
+			[
+				'role'   => 'administrator',
+				'number' => 1,
+				'fields' => 'ID',
+			]
+		);
+
+		if ( ! empty( $users[0] ) ) {
+			wp_set_current_user( absint( $users[0] ) );
+		}
 	}
 
 	public static function run_execute_tests() {
@@ -700,25 +781,30 @@ class YoRo_Parser_Test_Suite {
 
 	private static function run_preview_case( $test ) {
 		$context = self::normalize_context( $test['context'] ?? [] );
+		YoRo_Conversation_Memory::clear_workflow( get_current_user_id() );
 
-		$parsed = self::run_full_pipeline(
-			$test['command'],
-			$context
-		);
+		try {
+			$parsed = self::run_full_pipeline(
+				$test['command'],
+				$context
+			);
 
-		$plan = null;
-		$result = null;
+			$plan = null;
+			$result = null;
 
-		if ( is_array( $parsed ) && ! empty( $parsed['success'] ) && ! empty( $parsed['matched'] ) && ! empty( $parsed['action'] ) ) {
-			$plan = YoRo_Action_Planner::build_plan( $parsed );
+			if ( is_array( $parsed ) && ! empty( $parsed['success'] ) && ! empty( $parsed['matched'] ) && ! empty( $parsed['action'] ) ) {
+				$plan = YoRo_Action_Planner::build_plan( $parsed );
 
-			if ( ! is_wp_error( $plan ) ) {
-				$result = YoRo_Plan_Executor::execute(
-					$plan,
-					false,
-					true
-				);
+				if ( ! is_wp_error( $plan ) ) {
+					$result = YoRo_Plan_Executor::execute(
+						$plan,
+						false,
+						true
+					);
+				}
 			}
+		} finally {
+			YoRo_Conversation_Memory::clear_workflow( get_current_user_id() );
 		}
 
 		$actual = [
