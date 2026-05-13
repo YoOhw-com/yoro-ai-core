@@ -375,6 +375,16 @@ class YoRo_Parser_Test_Suite {
 				[ 'instruction' ],
 				'Please provide the instruction for the email body you want to compose for order #6848.'
 			),
+			'Add a note to order 6864'                   => self::base_router_fixture_decision(
+				'clarify',
+				'orders.add_note',
+				[
+					'order_ids' => [ 6864 ],
+				],
+				0.86,
+				[ 'note' ],
+				'Please provide the note text you want to add to order 6864.'
+			),
 			'Show pending orders'                         => self::base_router_fixture_decision(
 				'task_request',
 				'orders.search',
@@ -1368,6 +1378,47 @@ class YoRo_Parser_Test_Suite {
 				'expect'          => [
 					'params.order_id'    => 6848,
 					'params.instruction' => 'About shipping delay',
+				],
+			],
+			[
+				'domain'         => 'write_followup',
+				'name'           => 'Add note clarification stores target order workflow',
+				'command'        => 'Add a note to order 6864',
+				'expected_stage' => 'clarify',
+				'expected_source' => 'ai_router',
+				'context'        => [
+					'current_order_id' => 6848,
+				],
+				'expect'         => [
+					'current_workflow.type'         => 'generic',
+					'current_workflow.step'         => 'collect_missing_params',
+					'current_workflow.action'       => 'orders.add_note',
+					'current_workflow.order_id'     => 6864,
+					'current_workflow.params.order_ids.0' => 6864,
+				],
+			],
+			[
+				'domain'          => 'write_followup',
+				'name'            => 'Short note text continues pending add note workflow',
+				'command'         => 'VIP customer',
+				'expected_action' => 'orders.add_note',
+				'context'         => [
+					'current_order_id' => 6848,
+					'current_workflow' => [
+						'type'     => 'generic',
+						'action'   => 'orders.add_note',
+						'step'     => 'collect_missing_params',
+						'order_id' => 6864,
+						'params'   => [
+							'order_ids' => [ 6864 ],
+						],
+						'missing'  => [ 'note' ],
+					],
+				],
+				'expect'          => [
+					'params.order_ids.0' => 6864,
+					'params.order_id'    => 6864,
+					'params.note'        => 'VIP customer',
 				],
 			],
 

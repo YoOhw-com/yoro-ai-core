@@ -376,7 +376,7 @@ class YoRo_Parser_Engine {
 		$suggestions = isset( $decision['suggestions'] ) && is_array( $decision['suggestions'] )
 			? $decision['suggestions']
 			: [];
-		$current_workflow = self::build_pending_email_instruction_workflow_from_decision(
+		$current_workflow = self::build_pending_missing_params_workflow_from_decision(
 			$command,
 			$decision
 		);
@@ -405,39 +405,110 @@ class YoRo_Parser_Engine {
 		return $response;
 	}
 
-	private static function build_pending_email_instruction_workflow_from_decision( $command, $decision ) {
+	private static function build_pending_missing_params_workflow_from_decision( $command, $decision ) {
 		$decision = is_array( $decision ) ? $decision : [];
 		$action = sanitize_text_field( $decision['action'] ?? '' );
+		$missing = isset( $decision['missing'] ) && is_array( $decision['missing'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $decision['missing'] ) ) )
+			: [];
 
-		if ( 'orders.compose_customer_email' !== $action ) {
+		if ( '' === $action || empty( $missing ) ) {
 			return [];
 		}
 
 		$params = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
-		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
+		$workflow_type = 'generic';
+		$workflow_params = [];
+		$order_id = 0;
 
-		if ( ! $order_id && ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
-			$order_id = absint( reset( $params['order_ids'] ) );
+		switch ( $action ) {
+			case 'orders.compose_customer_email':
+				$order_id = self::extract_pending_workflow_order_id( $params );
+
+				if ( ! $order_id || ! in_array( 'instruction', $missing, true ) ) {
+					return [];
+				}
+
+				$workflow_type = 'customer_email';
+				$workflow_params = [
+					'order_id' => $order_id,
+				];
+				break;
+
+			case 'orders.add_note':
+				$order_ids = self::extract_pending_workflow_order_ids( $params );
+
+				if ( empty( $order_ids ) || ! in_array( 'note', $missing, true ) ) {
+					return [];
+				}
+
+				$order_id = absint( reset( $order_ids ) );
+				$workflow_params = [
+					'order_ids' => $order_ids,
+				];
+				break;
+
+			case 'orders.update_status':
+				$order_ids = self::extract_pending_workflow_order_ids( $params );
+
+				if ( empty( $order_ids ) || ! in_array( 'status', $missing, true ) ) {
+					return [];
+				}
+
+				$order_id = absint( reset( $order_ids ) );
+				$workflow_params = [
+					'order_ids' => $order_ids,
+				];
+				break;
+
+			default:
+				return [];
 		}
 
-		if ( ! $order_id ) {
+		if ( empty( $workflow_params ) ) {
 			return [];
 		}
 
 		return [
 			'id'           => 'wf_' . wp_generate_uuid4(),
-			'type'         => 'customer_email',
-			'action'       => 'orders.compose_customer_email',
+			'type'         => $workflow_type,
+			'action'       => $action,
 			'step'         => 'collect_missing_params',
 			'order_id'     => $order_id,
-			'params'       => [
-				'order_id' => $order_id,
-			],
-			'missing'      => [ 'instruction' ],
+			'params'       => $workflow_params,
+			'missing'      => $missing,
 			'last_command' => sanitize_textarea_field( $command ),
 			'created_at'   => current_time( 'mysql' ),
 			'updated_at'   => current_time( 'mysql' ),
 		];
+	}
+
+	private static function extract_pending_workflow_order_id( $params ) {
+		$params = is_array( $params ) ? $params : [];
+
+		if ( ! empty( $params['order_id'] ) ) {
+			return absint( $params['order_id'] );
+		}
+
+		if ( ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
+			return absint( reset( $params['order_ids'] ) );
+		}
+
+		return 0;
+	}
+
+	private static function extract_pending_workflow_order_ids( $params ) {
+		$params = is_array( $params ) ? $params : [];
+
+		if ( ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
+			return array_values( array_filter( array_map( 'absint', $params['order_ids'] ) ) );
+		}
+
+		if ( ! empty( $params['order_id'] ) ) {
+			return [ absint( $params['order_id'] ) ];
+		}
+
+		return [];
 	}
 
 	private static function build_ai_command_router_assistant_response( $command, $normalized, $parser_rule, $summary, $followup = '', $suggestions = [], $extra_result = [], $confidence = 1.0 ) {
