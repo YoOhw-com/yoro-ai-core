@@ -46,17 +46,10 @@ class YoRo_REST_Run_Handler {
 			: [];
 		$pending_confirmation = YoRo_Conversation_Memory::get_pending_confirmation( $user_id );
 
-		if (
-			isset( $client_context['current_workflow'] ) &&
-			empty( $client_context['current_workflow'] ) &&
-			! empty( $server_memory['current_workflow'] )
-		) {
-			unset( $client_context['current_workflow'] );
-		}
-
-		$merged_context = array_merge(
+		$merged_context = self::merge_runtime_context(
 			$server_memory,
-			$client_context
+			$client_context,
+			$confirm
 		);
 
 		if (
@@ -461,5 +454,53 @@ class YoRo_REST_Run_Handler {
 		);
 
 		return rest_ensure_response( $response );
+	}
+
+	private static function merge_runtime_context( $server_memory, $client_context, $confirm ) {
+		$server_memory  = is_array( $server_memory ) ? $server_memory : [];
+		$client_context = is_array( $client_context ) ? $client_context : [];
+
+		if (
+			isset( $client_context['current_workflow'] ) &&
+			empty( $client_context['current_workflow'] ) &&
+			! empty( $server_memory['current_workflow'] )
+		) {
+			unset( $client_context['current_workflow'] );
+		}
+
+		$merged_context = array_merge(
+			$server_memory,
+			$client_context
+		);
+
+		$server_workflow = isset( $server_memory['current_workflow'] ) && is_array( $server_memory['current_workflow'] )
+			? $server_memory['current_workflow']
+			: [];
+
+		if ( ! $confirm && self::is_authoritative_pending_workflow( $server_workflow ) ) {
+			$merged_context['current_workflow'] = $server_workflow;
+		}
+
+		return $merged_context;
+	}
+
+	private static function is_authoritative_pending_workflow( $workflow ) {
+		if ( empty( $workflow ) || ! is_array( $workflow ) ) {
+			return false;
+		}
+
+		if ( 'collect_missing_params' !== sanitize_key( $workflow['step'] ?? '' ) ) {
+			return false;
+		}
+
+		if ( empty( $workflow['action'] ) ) {
+			return false;
+		}
+
+		$missing = isset( $workflow['missing'] ) && is_array( $workflow['missing'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $workflow['missing'] ) ) )
+			: [];
+
+		return ! empty( $missing );
 	}
 }

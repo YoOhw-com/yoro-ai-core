@@ -1421,6 +1421,30 @@ class YoRo_Parser_Test_Suite {
 					'params.note'        => 'VIP customer',
 				],
 			],
+			[
+				'domain'          => 'write_followup',
+				'name'            => 'Short status text continues pending update status workflow',
+				'command'         => 'Completed',
+				'expected_action' => 'orders.update_status',
+				'context'         => [
+					'current_order_id' => 6848,
+					'current_workflow' => [
+						'type'     => 'generic',
+						'action'   => 'orders.update_status',
+						'step'     => 'collect_missing_params',
+						'order_id' => 6864,
+						'params'   => [
+							'order_ids' => [ 6864 ],
+						],
+						'missing'  => [ 'status' ],
+					],
+				],
+				'expect'          => [
+					'params.order_ids.0' => 6864,
+					'params.order_id'    => 6864,
+					'params.status'      => 'completed',
+				],
+			],
 
 			// ===== ORDER SEARCH =====
 			[

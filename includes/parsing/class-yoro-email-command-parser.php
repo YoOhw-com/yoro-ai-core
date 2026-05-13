@@ -56,6 +56,7 @@ class YoRo_Email_Command_Parser {
 				'orders.add_note',
 				'orders.update_status',
 				'orders.compose_customer_email',
+				'email_templates.save',
 			],
 			true
 		);
