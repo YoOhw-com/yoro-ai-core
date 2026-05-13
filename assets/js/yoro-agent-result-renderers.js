@@ -591,39 +591,50 @@
 			)
 			: '';
 
-		if (firstOrderId) {
+		const firstOrderIdNum = parseInt(firstOrderId, 10);
+
+		if (firstOrderIdNum > 0) {
 			suggestions.push({
 				label: 'Open order details',
-				command: 'Show order ' + firstOrderId + ' details'
+				action: 'orders.get_details',
+				params: {
+					order_id: firstOrderIdNum,
+					order_ids: [firstOrderIdNum]
+				}
 			});
 		}
 
 		if (action === 'store.get_daily_briefing' || action === 'store.get_morning_briefing') {
 			suggestions.push({
 				label: 'Open attention queue',
-				command: 'Show operations attention queue'
+				action: 'operations.get_attention_queue',
+				params: {}
 			});
 			suggestions.push({
 				label: 'Open fulfillment queue',
-				command: 'Show fulfillment queue'
+				action: 'operations.get_fulfillment_queue',
+				params: {}
 			});
 			suggestions.push({
 				label: 'Open inventory queue',
-				command: 'Show inventory queue'
+				action: 'products.get_inventory_queue',
+				params: {}
 			});
 		}
 
 		if (action === 'orders.hold' || action === 'orders.update_status' || action === 'orders.add_note' || action === 'orders.bulk_update_status_with_note') {
 			suggestions.push({
 				label: 'Open operations queue',
-				command: 'Show operations attention queue'
+				action: 'operations.get_attention_queue',
+				params: {}
 			});
 		}
 
 		if (action === 'orders.email_customer_template') {
 			suggestions.push({
 				label: 'Open customer service queue',
-				command: 'Show customer service queue'
+				action: 'customers.get_service_queue',
+				params: {}
 			});
 		}
 
@@ -668,7 +679,7 @@
 
 	function renderNextStepsSection(items, h, title) {
 		const steps = Array.isArray(items) ? items.filter(function(item) {
-			return item && item.command;
+			return item && item.action;
 		}) : [];
 
 		if (!steps.length) {
@@ -679,8 +690,12 @@
 		html += '<strong>' + h.escapeHtml(title || 'What to do next') + '</strong>';
 		html += '<div class="yoro-suggestion-list">';
 		steps.slice(0, 3).forEach(function(item) {
-			html += '<button class="button button-small yoro-suggestion-btn" data-command="' + h.escapeHtml(item.command) + '">';
-			html += h.escapeHtml(item.label || item.command);
+			html += '<button class="button button-small yoro-suggestion-btn"';
+			html += ' data-action="' + h.escapeHtml(item.action) + '"';
+			html += ' data-params="' + h.escapeHtml(JSON.stringify(item.params || {})) + '"';
+			html += ' data-confirm="0" data-preview="0"';
+			html += '>';
+			html += h.escapeHtml(item.label || item.action);
 			html += '</button>';
 		});
 		html += '</div>';
@@ -1544,7 +1559,13 @@
 	}
 
 	function renderSuggestions(suggestions, h) {
-		if (!Array.isArray(suggestions) || !suggestions.length) {
+		suggestions = Array.isArray(suggestions)
+			? suggestions.filter(function(item) {
+				return item && item.action;
+			})
+			: [];
+
+		if (!suggestions.length) {
 			return '';
 		}
 
@@ -1555,15 +1576,10 @@
 
 		suggestions.forEach(function (item) {
 			html += '<button class="button button-small yoro-suggestion-btn"';
-
-			if (item.action) {
-				html += ' data-action="' + h.escapeHtml(item.action) + '"';
-				html += ' data-params="' + h.escapeHtml(JSON.stringify(item.params || {})) + '"';
-				html += ' data-confirm="' + (item.confirm ? '1' : '0') + '"';
-				html += ' data-preview="' + (item.preview ? '1' : '0') + '"';
-			} else {
-				html += ' data-command="' + h.escapeHtml(item.value || item.command || '') + '"';
-			}
+			html += ' data-action="' + h.escapeHtml(item.action) + '"';
+			html += ' data-params="' + h.escapeHtml(JSON.stringify(item.params || {})) + '"';
+			html += ' data-confirm="' + (item.confirm ? '1' : '0') + '"';
+			html += ' data-preview="' + (item.preview ? '1' : '0') + '"';
 
 			if (item.requires_input) {
 				html += ' data-requires-input="1"';

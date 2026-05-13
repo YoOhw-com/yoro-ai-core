@@ -13,7 +13,6 @@
 			addAgentMessage: helpers.addAgentMessage,
 			addLoadingMessage: helpers.addLoadingMessage,
 			updateConversationState: helpers.updateConversationState,
-			runCommandFromText: helpers.runCommandFromText,
 			openModal: helpers.openModal,
 			openNoteModal: helpers.openNoteModal,
 			openStatusModal: helpers.openStatusModal,
@@ -71,6 +70,175 @@
 				return handleOrderClick(event, h);
 			}
 		};
+	}
+
+	function getDirectActionForCommand(command) {
+		const text = String(command || '').trim();
+		const normalized = text.toLowerCase();
+
+		if (!text) {
+			return null;
+		}
+
+		let match = text.match(/\border\s*#?\s*(\d+)\b/i) || text.match(/\border\s+(\d+)\s+details?\b/i);
+
+		if (match && /\b(show|view|open|details?)\b/i.test(text)) {
+			const orderId = parseInt(match[1], 10);
+
+			if (orderId > 0) {
+				return {
+					action: 'orders.get_details',
+					params: {
+						order_id: orderId,
+						order_ids: [orderId]
+					}
+				};
+			}
+		}
+
+		match = text.match(/preview\s+shipping\s+delay\s+email\s+for\s+order\s*#?\s*(\d+)/i);
+
+		if (match) {
+			const orderId = parseInt(match[1], 10);
+
+			if (orderId > 0) {
+				return {
+					action: 'orders.email_customer_preview',
+					params: {
+						order_id: orderId,
+						template: 'shipping_delay'
+					}
+				};
+			}
+		}
+
+		match = text.match(/load\s+email\s+drafts\s+for\s+order\s*#?\s*(\d+)/i);
+
+		if (match) {
+			const orderId = parseInt(match[1], 10);
+
+			if (orderId > 0) {
+				return {
+					action: 'orders.get_customer_email_drafts',
+					params: {
+						order_id: orderId
+					}
+				};
+			}
+		}
+
+		match = text.match(/write\s+email\s+for\s+order\s*#?\s*(\d+)(?:\s+about:\s*(.+))?/i);
+
+		if (match) {
+			const orderId = parseInt(match[1], 10);
+			const instruction = String(match[2] || 'Write a concise customer follow-up.').trim();
+
+			if (orderId > 0) {
+				return {
+					action: 'orders.compose_customer_email',
+					params: {
+						order_id: orderId,
+						instruction: instruction
+					}
+				};
+			}
+		}
+
+		if (/show\s+(pending|processing|on-hold|completed|cancelled|refunded|failed)\s+orders/i.test(normalized)) {
+			const status = normalized.match(/show\s+(pending|processing|on-hold|completed|cancelled|refunded|failed)\s+orders/i)[1];
+
+			return {
+				action: 'orders.search',
+				params: {
+					status: [status],
+					limit: 10
+				}
+			};
+		}
+
+		const directMap = {
+			'show latest 5 orders': { action: 'orders.search', params: { limit: 5 } },
+			'show operations attention queue': { action: 'operations.get_attention_queue', params: {} },
+			'show fulfillment queue': { action: 'operations.get_fulfillment_queue', params: {} },
+			'show customer service queue': { action: 'customers.get_service_queue', params: {} },
+			'show inventory queue': { action: 'products.get_inventory_queue', params: {} },
+			'show morning briefing': { action: 'store.get_morning_briefing', params: {} },
+			'continue with the first recommendation': null,
+			'continue previous workflow': null,
+			'continue the plan': null,
+			'do the next recommendation': null
+		};
+
+		if (Object.prototype.hasOwnProperty.call(directMap, normalized)) {
+			return directMap[normalized];
+		}
+
+		if (/show operations summary/i.test(normalized)) {
+			return {
+				action: 'operations.get_summary',
+				params: {
+					window: normalized.indexOf('week') !== -1 ? 'last_7_days' : 'today'
+				}
+			};
+		}
+
+		if (/show business summary/i.test(normalized)) {
+			return {
+				action: 'store.get_business_summary',
+				params: {
+					window: normalized.indexOf('week') !== -1 ? 'last_7_days' : 'today'
+				}
+			};
+		}
+
+		return null;
+	}
+
+	function renderDirectActionButton(label, command, h, className) {
+		const direct = getDirectActionForCommand(command);
+		const classes = className || 'button button-small';
+
+		if (!direct || !direct.action) {
+			return '';
+		}
+
+		let html = '<button type="button" class="' + h.escapeHtml(classes + ' yoro-suggestion-btn') + '"';
+
+		html += ' data-action="' + h.escapeHtml(direct.action) + '"';
+		html += ' data-params="' + h.escapeHtml(JSON.stringify(direct.params || {})) + '"';
+		html += ' data-confirm="0" data-preview="0"';
+
+		html += '>' + h.escapeHtml(label || command || 'Open') + '</button>';
+
+		return html;
+	}
+
+	function executeOrderUiAction(h, action, params, preview) {
+		if (!action || !h.executeActionDirect) {
+			return;
+		}
+
+		const loading = h.addLoadingMessage ? h.addLoadingMessage() : null;
+
+		h.executeActionDirect(action, params || {}, false, !!preview, 'order_ui')
+			.then(function(data) {
+				if (loading) {
+					loading.remove();
+				}
+
+				h.addAgentMessage(data);
+				h.updateConversationState(data, 'direct:' + action);
+			})
+			.catch(function(error) {
+				if (loading) {
+					loading.remove();
+				}
+
+				h.addAgentMessage({
+					success: false,
+					error: error
+				});
+			});
 	}
 
 	function renderOrderDetailsResult(data, h) {
@@ -711,9 +879,9 @@
 		html += '<div class="yoro-suggestions">';
 		html += '<strong>Suggested next checks</strong>';
 		html += '<div class="yoro-suggestion-list">';
-		html += '<button class="button button-small yoro-suggestion-btn" data-command="Show pending orders">Pending orders</button>';
-		html += '<button class="button button-small yoro-suggestion-btn" data-command="Show processing orders">Processing orders</button>';
-		html += '<button class="button button-small yoro-suggestion-btn" data-command="Show on-hold orders">On-hold orders</button>';
+		html += renderDirectActionButton('Pending orders', 'Show pending orders', h);
+		html += renderDirectActionButton('Processing orders', 'Show processing orders', h);
+		html += renderDirectActionButton('On-hold orders', 'Show on-hold orders', h);
 		html += '</div>';
 		html += '</div>';
 
@@ -1141,9 +1309,8 @@
 		html += '</div>';
 		html += '<div class="yoro-suggestion-list">';
 		if (firstAction.command) {
-			html += '<button class="button button-primary yoro-suggestion-btn" data-command="' + h.escapeHtml(firstAction.command) + '">' + h.escapeHtml(firstAction.label || firstAction.command) + '</button>';
+			html += renderDirectActionButton(firstAction.label || firstAction.command, firstAction.command, h, 'button button-primary');
 		}
-		html += '<button class="button button-small yoro-suggestion-btn" data-command="Continue with the first recommendation">Continue with the first recommendation</button>';
 		if (dismissible) {
 			html += '<button class="button button-small yoro-dismiss-morning-briefing">Dismiss for today</button>';
 		}
@@ -1180,9 +1347,7 @@
 			}
 			if (queue.command) {
 				html += '<div class="yoro-suggestion-list">';
-				html += '<button class="button button-small yoro-suggestion-btn" data-command="' + h.escapeHtml(queue.command) + '">';
-				html += h.escapeHtml(queue.commandLabel || 'Open queue');
-				html += '</button>';
+				html += renderDirectActionButton(queue.commandLabel || 'Open queue', queue.command, h);
 				html += '</div>';
 			}
 			html += '</div>';
@@ -1414,9 +1579,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			html += '<p>' + h.escapeHtml(item.reason || '') + '</p>';
 			if (showActions && item.command) {
 				html += '<div class="yoro-suggestion-list">';
-				html += '<button class="button button-small yoro-suggestion-btn" data-command="' + h.escapeHtml(item.command) + '">';
-				html += h.escapeHtml(item.label || item.command);
-				html += '</button>';
+				html += renderDirectActionButton(item.label || item.command, item.command, h);
 				html += '</div>';
 			}
 			html += '</div>';
@@ -1441,9 +1604,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				return;
 			}
 
-			html += '<button class="button button-small yoro-suggestion-btn" data-command="' + h.escapeHtml(item.command) + '">';
-			html += h.escapeHtml(item.label || item.command);
-			html += '</button>';
+			html += renderDirectActionButton(item.label || item.command, item.command, h);
 		});
 
 		html += '</div>';
@@ -1496,9 +1657,12 @@ function renderQueueWorkbenchIntro(config, h) {
 			html += h.escapeHtml(action.label || action.href);
 			html += '</a>';
 		} else {
-			html += '<button class="button ' + (index === 0 ? 'button-primary' : 'button-small') + ' yoro-suggestion-btn" data-command="' + h.escapeHtml(action.command) + '">';
-			html += h.escapeHtml(action.label || action.command);
-			html += '</button>';
+			html += renderDirectActionButton(
+				action.label || action.command,
+				action.command,
+				h,
+				'button ' + (index === 0 ? 'button-primary' : 'button-small')
+			);
 		}
 	});
 		html += '</div>';
@@ -1525,9 +1689,12 @@ function renderQueueWorkbenchIntro(config, h) {
 			if (!action || !action.command) {
 				return;
 			}
-			html += '<button class="button ' + (index === 0 ? 'button-primary' : 'button-small') + ' yoro-suggestion-btn" data-command="' + h.escapeHtml(action.command) + '">';
-			html += h.escapeHtml(action.label || action.command);
-			html += '</button>';
+			html += renderDirectActionButton(
+				action.label || action.command,
+				action.command,
+				h,
+				'button ' + (index === 0 ? 'button-primary' : 'button-small')
+			);
 		});
 		html += '</div>';
 		html += '</div>';
@@ -1711,9 +1878,7 @@ function renderQueueWorkbenchIntro(config, h) {
 						html += h.escapeHtml(action.label || action.href);
 						html += '</a>';
 					} else {
-						html += '<button class="button button-small yoro-suggestion-btn" data-command="' + h.escapeHtml(action.command) + '">';
-						html += h.escapeHtml(action.label || action.command);
-						html += '</button>';
+						html += renderDirectActionButton(action.label || action.command, action.command, h);
 					}
 				});
 				html += '</div>';
@@ -1874,8 +2039,6 @@ function renderQueueWorkbenchIntro(config, h) {
 				html += '<td class="yoro-row-actions">';
 				if (product.edit_url) {
 					html += '<a class="button button-small" href="' + h.escapeHtml(product.edit_url) + '" target="_blank" rel="noopener noreferrer">Open product</a>';
-				} else {
-					html += '<button type="button" class="button button-small yoro-suggestion-btn" data-command="Prepare next inventory review">Prepare review</button>';
 				}
 				html += '</td>';
 				html += '</tr>';
@@ -1964,7 +2127,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				row += '<td><strong>' + h2.escapeHtml(caseMeta || (order.status || 'Case')) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(customerMeta || queue.description || '') + '</div></td>';
 				row += '<td>' + h2.escapeHtml(order.age_hours || 0) + 'h</td>';
 				row += '<td class="yoro-row-actions">';
-				row += '<button type="button" class="button button-small yoro-suggestion-btn" data-command="' + h2.escapeHtml(primaryCommand) + '">' + h2.escapeHtml(primaryLabel) + '</button> ';
+				row += renderDirectActionButton(primaryLabel, primaryCommand, h2) + ' ';
 				if (primaryCommand !== detailsCommand) {
 					row += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h2.escapeHtml(order.id) + '">Details</button> ';
 				}
@@ -2056,7 +2219,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				row += '<td><strong>' + h2.escapeHtml(caseMeta || (order.status || 'Case')) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(order.fulfillment_reason || queue.description || '') + '</div></td>';
 				row += '<td>' + h2.escapeHtml(order.age_hours || 0) + 'h</td>';
 				row += '<td class="yoro-row-actions">';
-				row += '<button type="button" class="button button-small yoro-suggestion-btn" data-command="' + h2.escapeHtml(primaryCommand) + '">' + h2.escapeHtml(primaryLabel) + '</button> ';
+				row += renderDirectActionButton(primaryLabel, primaryCommand, h2) + ' ';
 				row += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h2.escapeHtml(order.id) + '">Details</button> ';
 				row += '</td>';
 				row += '</tr>';
@@ -2404,7 +2567,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				row += '<td><strong>' + h2.escapeHtml(caseMeta) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(order.followup_reason || '') + '</div></td>';
 				row += '<td>' + h2.escapeHtml(order.age_hours || 0) + 'h</td>';
 				row += '<td class="yoro-row-actions">';
-				row += '<button type="button" class="button button-small yoro-suggestion-btn" data-command="' + h2.escapeHtml(rowActionCommand) + '">' + h2.escapeHtml(rowActionLabel) + '</button> ';
+				row += renderDirectActionButton(rowActionLabel, rowActionCommand, h2) + ' ';
 				row += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h2.escapeHtml(order.id) + '">Details</button> ';
 				row += '</td>';
 				row += '</tr>';
@@ -2953,7 +3116,9 @@ function renderQueueWorkbenchIntro(config, h) {
 				return true;
 			}
 
-			h.runCommandFromText('Hold orders ' + ids.join(', '), false, false);
+			executeOrderUiAction(h, 'orders.hold', {
+				order_ids: ids
+			}, false);
 			return true;
 		}
 
@@ -2961,7 +3126,10 @@ function renderQueueWorkbenchIntro(config, h) {
 			const orderId = target.getAttribute('data-order-id');
 
 			if (orderId) {
-				h.runCommandFromText('Hold order ' + orderId, false, true);
+				executeOrderUiAction(h, 'orders.hold', {
+					order_id: parseInt(orderId, 10),
+					order_ids: [parseInt(orderId, 10)]
+				}, true);
 			}
 
 			return true;
@@ -2971,7 +3139,10 @@ function renderQueueWorkbenchIntro(config, h) {
 			const orderId = target.getAttribute('data-order-id');
 
 			if (orderId) {
-				h.runCommandFromText('Hold order ' + orderId, false, false);
+				executeOrderUiAction(h, 'orders.hold', {
+					order_id: parseInt(orderId, 10),
+					order_ids: [parseInt(orderId, 10)]
+				}, false);
 			}
 
 			return true;
@@ -2982,7 +3153,10 @@ function renderQueueWorkbenchIntro(config, h) {
 
 			if (orderId) {
 				h.setCurrentOrderId(orderId);
-				h.runCommandFromText('Show order ' + orderId + ' details', false, false);
+				executeOrderUiAction(h, 'orders.get_details', {
+					order_id: parseInt(orderId, 10),
+					order_ids: [parseInt(orderId, 10)]
+				}, false);
 			}
 
 			return true;
@@ -2998,7 +3172,11 @@ function renderQueueWorkbenchIntro(config, h) {
 			h.setCurrentOrderId(orderId);
 
 			h.openNoteModal(function(note) {
-				h.runCommandFromText('Add note to order ' + orderId + ': ' + note, false, false);
+				executeOrderUiAction(h, 'orders.add_note', {
+					order_id: parseInt(orderId, 10),
+					order_ids: [parseInt(orderId, 10)],
+					note: note
+				}, false);
 			});
 
 			return true;
@@ -3014,7 +3192,11 @@ function renderQueueWorkbenchIntro(config, h) {
 			h.setCurrentOrderId(orderId);
 
 			h.openStatusModal(function(status) {
-				h.runCommandFromText('Change order ' + orderId + ' to ' + status, false, false);
+				executeOrderUiAction(h, 'orders.update_status', {
+					order_id: parseInt(orderId, 10),
+					order_ids: [parseInt(orderId, 10)],
+					status: status
+				}, false);
 			});
 
 			return true;
@@ -3031,7 +3213,9 @@ function renderQueueWorkbenchIntro(config, h) {
 				return true;
 			}
 
-			h.runCommandFromText('Show details for orders ' + ids.join(', '), false, false);
+			executeOrderUiAction(h, 'orders.get_details', {
+				order_ids: ids
+			}, false);
 			return true;
 		}
 
@@ -3047,7 +3231,10 @@ function renderQueueWorkbenchIntro(config, h) {
 			}
 
 			h.openNoteModal(function(note) {
-				h.runCommandFromText('Add note to orders ' + ids.join(', ') + ': ' + note, false, false);
+				executeOrderUiAction(h, 'orders.add_note', {
+					order_ids: ids,
+					note: note
+				}, false);
 			});
 
 			return true;
@@ -3065,7 +3252,10 @@ function renderQueueWorkbenchIntro(config, h) {
 			}
 
 			h.openStatusModal(function(status) {
-				h.runCommandFromText('Change orders ' + ids.join(', ') + ' to ' + status, false, false);
+				executeOrderUiAction(h, 'orders.update_status', {
+					order_ids: ids,
+					status: status
+				}, false);
 			});
 
 			return true;
@@ -3083,11 +3273,11 @@ function renderQueueWorkbenchIntro(config, h) {
 			}
 
 			h.openStatusNoteModal(function(status, note) {
-				h.runCommandFromText(
-					'Change orders ' + ids.join(', ') + ' to ' + status + ' and add note: ' + note,
-					false,
-					false
-				);
+				executeOrderUiAction(h, 'orders.bulk_update_status_with_note', {
+					order_ids: ids,
+					status: status,
+					note: note
+				}, false);
 			});
 
 			return true;
@@ -3134,74 +3324,83 @@ function renderQueueWorkbenchIntro(config, h) {
 					}
 
 					if (action === 'hold') {
-						h.runCommandFromText('Hold order ' + orderId, false, false);
+						executeOrderUiAction(h, 'orders.hold', {
+							order_id: parseInt(orderId, 10),
+							order_ids: [parseInt(orderId, 10)]
+						}, false);
 					}
 
 					if (action === 'note') {
 						h.openNoteModal(function(note) {
-							h.runCommandFromText('Add note to order ' + orderId + ': ' + note, false, false);
+							executeOrderUiAction(h, 'orders.add_note', {
+								order_id: parseInt(orderId, 10),
+								order_ids: [parseInt(orderId, 10)],
+								note: note
+							}, false);
 						});
 					}
 
 					if (action === 'status') {
 						h.openStatusModal(function(status) {
-							h.runCommandFromText('Change order ' + orderId + ' to ' + status, false, false);
+							executeOrderUiAction(h, 'orders.update_status', {
+								order_id: parseInt(orderId, 10),
+								order_ids: [parseInt(orderId, 10)],
+								status: status
+							}, false);
 						});
 					}
 
 					if (action === 'identity') {
-						h.runCommandFromText('Find orders by identity for order ' + orderId, false, false);
+						executeOrderUiAction(h, 'orders.find_by_identity', {
+							order_id: parseInt(orderId, 10)
+						}, false);
 					}
 
 					if (action === 'refund_preview') {
-						h.runCommandFromText('Preview refund for order ' + orderId, false, false);
+						executeOrderUiAction(h, 'orders.refund_preview', {
+							order_id: parseInt(orderId, 10)
+						}, false);
 					}
 
 					if (action === 'email_verification') {
-						h.runCommandFromText('Preview verification email for order ' + orderId, false, false);
+						executeOrderUiAction(h, 'orders.email_customer_preview', {
+							order_id: parseInt(orderId, 10),
+							template: 'needs_verification'
+						}, false);
 					}
 
 					if (action === 'email_payment') {
-						h.runCommandFromText('Preview payment mismatch email for order ' + orderId, false, false);
+						executeOrderUiAction(h, 'orders.email_customer_preview', {
+							order_id: parseInt(orderId, 10),
+							template: 'payment_mismatch'
+						}, false);
 					}
 
 					if (action === 'email_shipping_delay') {
-						h.runCommandFromText('Preview shipping delay email for order ' + orderId, false, false);
+						executeOrderUiAction(h, 'orders.email_customer_preview', {
+							order_id: parseInt(orderId, 10),
+							template: 'shipping_delay'
+						}, false);
 					}
 
 					if (action === 'send_email_verification') {
-						h.runCommandFromText('Send verification email for order ' + orderId, false, false);
+						executeOrderUiAction(h, 'orders.email_customer_template', {
+							order_id: parseInt(orderId, 10),
+							template: 'needs_verification'
+						}, false);
 					}
 
 					if (action === 'send_email_payment') {
-						h.runCommandFromText('Send payment mismatch email for order ' + orderId, false, false);
+						executeOrderUiAction(h, 'orders.email_customer_template', {
+							order_id: parseInt(orderId, 10),
+							template: 'payment_mismatch'
+						}, false);
 					}
 
 					if (action === 'load_email_drafts') {
-						const loading = h.addLoadingMessage();
-
-						h.executeActionDirect(
-							'orders.get_customer_email_drafts',
-							{
-								order_id: parseInt(orderId, 10)
-							},
-							false,
-							false
-						)
-							.then(function(data) {
-								loading.remove();
-
-								h.addAgentMessage(data);
-								h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
-							})
-							.catch(function(error) {
-								loading.remove();
-
-								h.addAgentMessage({
-									success: false,
-									error: error
-								});
-							});
+						executeOrderUiAction(h, 'orders.get_customer_email_drafts', {
+							order_id: parseInt(orderId, 10)
+						}, false);
 					}
 				};
 			});

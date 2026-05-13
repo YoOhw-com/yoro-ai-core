@@ -56,11 +56,16 @@
 		if (next.length) {
 			html += '<div class="yoro-suggestion-list">';
 			next.slice(0, 3).forEach(function (item) {
-				if (!item || !item.command) {
+				if (!item || !item.action) {
 					return;
 				}
-				html += '<button class="button button-small yoro-suggestion-btn" data-command="' + h.escapeHtml(item.command) + '">';
-				html += h.escapeHtml(item.label || item.command);
+				html += '<button class="button button-small yoro-suggestion-btn"';
+				html += ' data-action="' + h.escapeHtml(item.action) + '"';
+				html += ' data-params="' + h.escapeHtml(JSON.stringify(item.params || {})) + '"';
+				html += ' data-confirm="' + (item.confirm ? '1' : '0') + '"';
+				html += ' data-preview="' + (item.preview ? '1' : '0') + '"';
+				html += '>';
+				html += h.escapeHtml(item.label || item.action);
 				html += '</button>';
 			});
 			html += '</div>';

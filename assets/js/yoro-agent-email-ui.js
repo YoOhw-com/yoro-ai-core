@@ -228,7 +228,6 @@
 
 			emailSuggestions.forEach(function(s) {
 				const type = s.type || '';
-				const command = s.value || s.command || '';
 				const action = s.action || '';
 
 				if (action && type !== 'use_template') {
@@ -239,20 +238,6 @@
 					html += ' data-preview="' + (s.preview ? '1' : '0') + '"';
 					html += '>';
 					html += h.escapeHtml(s.label || action);
-					html += '</button>';
-					return;
-				}
-
-				if (command && type !== 'use_template') {
-					html += '<button type="button" class="button yoro-suggestion-btn"';
-					html += ' data-command="' + h.escapeHtml(command) + '"';
-
-					if (s.requires_input) {
-						html += ' data-requires-input="1"';
-					}
-
-					html += '>';
-					html += h.escapeHtml(s.label || command);
 					html += '</button>';
 					return;
 				}
