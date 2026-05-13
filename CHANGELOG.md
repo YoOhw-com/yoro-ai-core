@@ -18,6 +18,7 @@
 - Deterministic AI router fixtures for parser and pipeline test groups.
 - Deterministic AI router fixtures for preview test group.
 - Deterministic AI router fixtures for execute test group.
+- Deterministic AI router fixtures for undo test group.
 
 ### Removed From Runtime
 - Legacy AI intent fallback route.
@@ -36,3 +37,4 @@
 - Pipeline test group passes 29/29 using deterministic AI router fixtures.
 - Preview test group passes 13/13 using deterministic AI router fixtures.
 - Execute test group passes 40/40 using deterministic AI router fixtures.
+- Undo test group passes 3/3 using deterministic AI router fixtures.

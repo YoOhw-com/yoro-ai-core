@@ -92,7 +92,13 @@ class YoRo_Parser_Test_Suite {
 
 		$key = self::router_fixture_key( $command );
 
-		return self::$router_fixture_map[ $key ] ?? $decision;
+		if ( isset( self::$router_fixture_map[ $key ] ) ) {
+			return self::$router_fixture_map[ $key ];
+		}
+
+		$dynamic_fixture = self::build_dynamic_router_fixture_decision( $command );
+
+		return null !== $dynamic_fixture ? $dynamic_fixture : $decision;
 	}
 
 	private static function enable_router_fixtures( $cases = null ) {
@@ -146,6 +152,62 @@ class YoRo_Parser_Test_Suite {
 
 	private static function router_fixture_key( $command ) {
 		return strtolower( trim( (string) $command ) );
+	}
+
+	private static function build_dynamic_router_fixture_decision( $command ) {
+		$command = trim( (string) $command );
+
+		if ( '' === $command ) {
+			return null;
+		}
+
+		if (
+			preg_match( '/\bhold\s+order\s+#?\d+\b/i', $command ) &&
+			preg_match( '/\b(?:add\s+(?:a\s+)?)?note\b/i', $command )
+		) {
+			return new WP_Error(
+				'yoro_ai_missing_api_key',
+				__( 'AI router fixture intentionally falls back to deterministic rules for multi-step order tests.', 'yoro-agent-core' )
+			);
+		}
+
+		if ( preg_match( '/\bmark\s+order\s+#?(\d+)\s+as\s+([a-z0-9_-]+)/i', $command, $matches ) ) {
+			$order_id = absint( $matches[1] ?? 0 );
+			$status = sanitize_key( $matches[2] ?? '' );
+
+			if ( $order_id && '' !== $status ) {
+				return self::base_router_fixture_decision(
+					'task_request',
+					'orders.update_status',
+					[
+						'order_id'  => $order_id,
+						'order_ids' => [ $order_id ],
+						'status'    => $status,
+					],
+					0.95
+				);
+			}
+		}
+
+		if ( preg_match( '/\badd\s+note\s+to\s+order\s+#?(\d+)\s*:?\s*(.+)$/i', $command, $matches ) ) {
+			$order_id = absint( $matches[1] ?? 0 );
+			$note = sanitize_textarea_field( trim( $matches[2] ?? '' ) );
+
+			if ( $order_id && '' !== $note ) {
+				return self::base_router_fixture_decision(
+					'task_request',
+					'orders.add_note',
+					[
+						'order_id'  => $order_id,
+						'order_ids' => [ $order_id ],
+						'note'      => $note,
+					],
+					0.95
+				);
+			}
+		}
+
+		return null;
 	}
 
 	private static function router_fixture_has_params( $fixture ) {
@@ -510,9 +572,19 @@ class YoRo_Parser_Test_Suite {
 
 	public static function run_undo_tests() {
 		$results = [];
+		$cases   = self::undo_cases();
+		$previous_user_id = get_current_user_id();
 
-		foreach ( self::undo_cases() as $test ) {
-			$results[] = self::run_undo_case( $test );
+		self::enable_router_fixtures( array_merge( self::parser_cases(), self::pipeline_cases(), self::preview_cases(), self::execution_cases(), $cases ) );
+		self::set_test_admin_user();
+
+		try {
+			foreach ( $cases as $test ) {
+				$results[] = self::run_undo_case( $test );
+			}
+		} finally {
+			self::disable_router_fixtures();
+			wp_set_current_user( $previous_user_id );
 		}
 
 		return $results;
@@ -928,6 +1000,7 @@ class YoRo_Parser_Test_Suite {
 		$assertions = [];
 
 		try {
+			YoRo_Conversation_Memory::clear_workflow( get_current_user_id() );
 			$fixture = self::run_case_setup( $test );
 
 			if ( is_wp_error( $fixture ) ) {
