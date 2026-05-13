@@ -144,6 +144,11 @@ class YoRo_REST_Run_Handler {
 
 		$confidence = isset( $parsed['confidence'] ) ? (float) $parsed['confidence'] : 1.0;
 		$source     = $parsed['parser_source'] ?? 'rule';
+		$action      = $parsed['action'] ?? '';
+		$action_def  = class_exists( 'YoRo_Action_Registry' ) && $action
+			? YoRo_Action_Registry::get( $action )
+			: null;
+		$is_write_action = is_array( $action_def ) && ! empty( $action_def['write_action'] );
 
 		if ( 'ai_router' === $source && ! $preview && ! $confirm ) {
 			if ( $confidence < 0.6 ) {
@@ -173,12 +178,11 @@ class YoRo_REST_Run_Handler {
 			$preview_threshold = (float) get_option( 'yoro_ai_preview_threshold', 0.8 );
 			$preview_threshold = max( 0, min( $preview_threshold, 1 ) );
 
-			if ( $confidence < $preview_threshold ) {
+			if ( $is_write_action && $confidence < $preview_threshold ) {
 				$preview = true;
 			}
 		}
 
-		$action = $parsed['action'] ?? '';
 		$params = $parsed['params'] ?? [];
 
 		if ( ! class_exists( 'YoRo_Action_Planner' ) ) {

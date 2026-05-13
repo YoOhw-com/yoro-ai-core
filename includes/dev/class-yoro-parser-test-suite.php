@@ -356,6 +356,15 @@ class YoRo_Parser_Test_Suite {
 					'summary' => 'User asked for identity information; no WooCommerce task.',
 				]
 			),
+			'Can you give me a brief today?'             => self::base_router_fixture_decision(
+				'task_request',
+				'store.get_daily_briefing',
+				[
+					'window' => 'today',
+					'limit'  => 1,
+				],
+				0.72
+			),
 			'Show pending orders'                         => self::base_router_fixture_decision(
 				'task_request',
 				'orders.search',
@@ -1298,6 +1307,22 @@ class YoRo_Parser_Test_Suite {
 				'expect'          => [
 					'response_only'  => true,
 					'result.summary' => 'I don’t know who you are from this chat alone. I can use store context when you ask about orders, customers, or operations.',
+				],
+			],
+			[
+				'domain'          => 'briefing',
+				'name'            => 'Daily briefing ignores active order context',
+				'command'         => 'Can you give me a brief today?',
+				'expected_action' => 'store.get_daily_briefing',
+				'expected_source' => 'ai_router',
+				'context'         => [
+					'current_order_id' => 6848,
+				],
+				'expect'          => [
+					'params.window'    => 'today',
+					'params.limit'     => 1,
+					'params.order_id'  => null,
+					'params.order_ids' => null,
 				],
 			],
 

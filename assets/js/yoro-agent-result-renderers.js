@@ -571,14 +571,45 @@
 
 	function buildNextStepSuggestions(action, result, params) {
 		const suggestions = [];
-		const firstOrderId = Array.isArray(params.order_ids) && params.order_ids.length
-			? params.order_ids[0]
-			: (params.order_id || result.order_id || '');
+		const orderScopedActions = [
+			'orders.get_details',
+			'orders.hold',
+			'orders.update_status',
+			'orders.add_note',
+			'orders.bulk_update_status_with_note',
+			'orders.email_customer_template',
+			'orders.send_customer_email',
+			'orders.render_customer_email_preview',
+			'orders.save_customer_email_draft'
+		];
+		const isOrderScopedAction = orderScopedActions.indexOf(String(action || '')) !== -1;
+		const firstOrderId = isOrderScopedAction
+			? (
+				Array.isArray(params.order_ids) && params.order_ids.length
+					? params.order_ids[0]
+					: (params.order_id || result.order_id || '')
+			)
+			: '';
 
 		if (firstOrderId) {
 			suggestions.push({
 				label: 'Open order details',
 				command: 'Show order ' + firstOrderId + ' details'
+			});
+		}
+
+		if (action === 'store.get_daily_briefing' || action === 'store.get_morning_briefing') {
+			suggestions.push({
+				label: 'Open attention queue',
+				command: 'Show operations attention queue'
+			});
+			suggestions.push({
+				label: 'Open fulfillment queue',
+				command: 'Show fulfillment queue'
+			});
+			suggestions.push({
+				label: 'Open inventory queue',
+				command: 'Show inventory queue'
 			});
 		}
 

@@ -31,7 +31,10 @@ class YoRo_Entity_Resolver {
 				'operations.get_attention_queue',
 				'operations.get_fulfillment_queue',
 				'products.get_inventory_queue',
+				'store.get_business_summary',
+				'store.get_daily_briefing',
 				'store.get_insights',
+				'store.get_morning_briefing',
 			],
 			true
 		);
@@ -44,6 +47,13 @@ class YoRo_Entity_Resolver {
 					'last_referenced_order_id' => 0,
 					'resolved_order_ids'       => [],
 				]
+			);
+
+			unset(
+				$params['order_id'],
+				$params['order_ids'],
+				$entities['order_id'],
+				$entities['order_ids']
 			);
 		}
 
