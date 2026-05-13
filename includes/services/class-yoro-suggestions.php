@@ -84,122 +84,39 @@ class YoRo_Suggestions {
 		switch ( $top_topic ) {
 			case 'operations_attention':
 				return [
-					[
-						'type'  => 'command',
-						'label' => __( 'Open attention queue', 'yoro-agent-core' ),
-						'value' => 'Show operations attention queue',
-					],
-					[
-						'type'  => 'command',
-						'label' => __( 'Check fulfillment pressure', 'yoro-agent-core' ),
-						'value' => 'Show fulfillment queue',
-					],
-					[
-						'type'  => 'command',
-						'label' => __( 'Check customer follow-up', 'yoro-agent-core' ),
-						'value' => 'Show customer service queue',
-					],
-					[
-						'type'  => 'command',
-						'label' => __( 'Review operations summary', 'yoro-agent-core' ),
-						'value' => 'Show operations summary for today',
-					],
+					self::action_suggestion( __( 'Open attention queue', 'yoro-agent-core' ), 'operations.get_attention_queue' ),
+					self::action_suggestion( __( 'Check fulfillment pressure', 'yoro-agent-core' ), 'operations.get_fulfillment_queue' ),
+					self::action_suggestion( __( 'Check customer follow-up', 'yoro-agent-core' ), 'customers.get_service_queue' ),
+					self::action_suggestion( __( 'Review operations summary', 'yoro-agent-core' ), 'operations.get_summary', [ 'window' => 'today' ] ),
 				];
 
 			case 'fulfillment':
 				return [
-					[
-						'type'  => 'command',
-						'label' => __( 'Open fulfillment queue', 'yoro-agent-core' ),
-						'value' => 'Show fulfillment queue',
-					],
-					[
-						'type'  => 'command',
-						'label' => __( 'Check missing tracking', 'yoro-agent-core' ),
-						'value' => 'What looks stuck in shipping?',
-					],
-					[
-						'type'  => 'command',
-						'label' => __( 'Check attention queue', 'yoro-agent-core' ),
-						'value' => 'Show operations attention queue',
-					],
-					[
-						'type'  => 'command',
-						'label' => __( 'Check customer follow-up', 'yoro-agent-core' ),
-						'value' => 'Show customer service queue',
-					],
+					self::action_suggestion( __( 'Open fulfillment queue', 'yoro-agent-core' ), 'operations.get_fulfillment_queue' ),
+					self::action_suggestion( __( 'Check attention queue', 'yoro-agent-core' ), 'operations.get_attention_queue' ),
+					self::action_suggestion( __( 'Check customer follow-up', 'yoro-agent-core' ), 'customers.get_service_queue' ),
 				];
 
 			case 'customer_service':
 				return [
-					[
-						'type'  => 'command',
-						'label' => __( 'Open customer follow-up', 'yoro-agent-core' ),
-						'value' => 'Show customer service queue',
-					],
-					[
-						'type'  => 'command',
-						'label' => __( 'Who needs a reply first?', 'yoro-agent-core' ),
-						'value' => 'Who should we answer first today?',
-					],
-					[
-						'type'  => 'command',
-						'label' => __( 'Check attention queue', 'yoro-agent-core' ),
-						'value' => 'Show operations attention queue',
-					],
-					[
-						'type'  => 'command',
-						'label' => __( 'Check fulfillment queue', 'yoro-agent-core' ),
-						'value' => 'Show fulfillment queue',
-					],
+					self::action_suggestion( __( 'Open customer follow-up', 'yoro-agent-core' ), 'customers.get_service_queue' ),
+					self::action_suggestion( __( 'Check attention queue', 'yoro-agent-core' ), 'operations.get_attention_queue' ),
+					self::action_suggestion( __( 'Check fulfillment queue', 'yoro-agent-core' ), 'operations.get_fulfillment_queue' ),
 				];
 
 			case 'inventory':
 				return [
-					[
-						'type'  => 'command',
-						'label' => __( 'Open inventory queue', 'yoro-agent-core' ),
-						'value' => 'Show inventory queue',
-					],
-					[
-						'type'  => 'command',
-						'label' => __( 'Focus on restock priorities', 'yoro-agent-core' ),
-						'value' => 'What should we restock first?',
-					],
-					[
-						'type'  => 'command',
-						'label' => __( 'Check attention queue', 'yoro-agent-core' ),
-						'value' => 'Show operations attention queue',
-					],
-					[
-						'type'  => 'command',
-						'label' => __( 'Check fulfillment queue', 'yoro-agent-core' ),
-						'value' => 'Show fulfillment queue',
-					],
+					self::action_suggestion( __( 'Open inventory queue', 'yoro-agent-core' ), 'products.get_inventory_queue' ),
+					self::action_suggestion( __( 'Check attention queue', 'yoro-agent-core' ), 'operations.get_attention_queue' ),
+					self::action_suggestion( __( 'Check fulfillment queue', 'yoro-agent-core' ), 'operations.get_fulfillment_queue' ),
 				];
 		}
 
 		return [
-			[
-				'type'  => 'command',
-				'label' => __( 'Open attention queue', 'yoro-agent-core' ),
-				'value' => 'Show operations attention queue',
-			],
-			[
-				'type'  => 'command',
-				'label' => __( 'Open fulfillment queue', 'yoro-agent-core' ),
-				'value' => 'Show fulfillment queue',
-			],
-			[
-				'type'  => 'command',
-				'label' => __( 'Open customer follow-up', 'yoro-agent-core' ),
-				'value' => 'Show customer service queue',
-			],
-			[
-				'type'  => 'command',
-				'label' => __( 'Open inventory queue', 'yoro-agent-core' ),
-				'value' => 'Show inventory queue',
-			],
+			self::action_suggestion( __( 'Open attention queue', 'yoro-agent-core' ), 'operations.get_attention_queue' ),
+			self::action_suggestion( __( 'Open fulfillment queue', 'yoro-agent-core' ), 'operations.get_fulfillment_queue' ),
+			self::action_suggestion( __( 'Open customer follow-up', 'yoro-agent-core' ), 'customers.get_service_queue' ),
+			self::action_suggestion( __( 'Open inventory queue', 'yoro-agent-core' ), 'products.get_inventory_queue' ),
 		];
 	}
 
@@ -212,11 +129,7 @@ class YoRo_Suggestions {
 			if ( ! empty( $order_ids ) ) {
 				$id = absint( reset( $order_ids ) );
 
-				$suggestions[] = [
-					'type'  => 'command',
-					'label' => __( 'View order', 'yoro-agent-core' ),
-					'value' => 'Show order #' . $id,
-				];
+				$suggestions[] = self::open_order_suggestion( __( 'Open order details', 'yoro-agent-core' ), $id );
 			}
 		}
 
@@ -229,11 +142,7 @@ class YoRo_Suggestions {
 			if ( ! empty( $order_ids ) ) {
 				$id = absint( reset( $order_ids ) );
 
-				$suggestions[] = [
-					'type'  => 'command',
-					'label' => __( 'View emailed order', 'yoro-agent-core' ),
-					'value' => 'Show order #' . $id,
-				];
+				$suggestions[] = self::open_order_suggestion( __( 'Open emailed order', 'yoro-agent-core' ), $id );
 			}
 		}
 
@@ -262,23 +171,14 @@ class YoRo_Suggestions {
 		$suggestions = [];
 
 		if ( $order_id > 0 ) {
-			$suggestions[] = [
-				'type'  => 'command',
-				'label' => sprintf( __( 'Show order #%d details', 'yoro-agent-core' ), $order_id ),
-				'value' => 'Show order details for this order',
-			];
+			$suggestions[] = self::open_order_suggestion(
+				sprintf( __( 'Open order #%d details', 'yoro-agent-core' ), $order_id ),
+				$order_id
+			);
 		}
 
-		$suggestions[] = [
-			'type'  => 'command',
-			'label' => __( 'Show morning briefing', 'yoro-agent-core' ),
-			'value' => 'Show morning briefing',
-		];
-		$suggestions[] = [
-			'type'  => 'command',
-			'label' => __( 'Show operations attention queue', 'yoro-agent-core' ),
-			'value' => 'Show operations attention queue',
-		];
+		$suggestions[] = self::action_suggestion( __( 'Open morning briefing', 'yoro-agent-core' ), 'store.get_morning_briefing' );
+		$suggestions[] = self::action_suggestion( __( 'Open operations attention queue', 'yoro-agent-core' ), 'operations.get_attention_queue' );
 
 		return $suggestions;
 	}
@@ -337,17 +237,7 @@ class YoRo_Suggestions {
 		}
 
 		$suggestions = [
-			[
-				'type'  => 'command',
-				'label' => 'View first order',
-				'value' => 'Show details of the first one',
-			],
-			[
-				'type'  => 'command',
-				'label' => 'Add note to first order',
-				'value' => 'Add note to the first one: ',
-				'requires_input' => true,
-			],
+			self::open_order_suggestion( __( 'Open first order', 'yoro-agent-core' ), $id ),
 		];
 
 		if ( 'on-hold' !== $status ) {
@@ -395,17 +285,7 @@ class YoRo_Suggestions {
 		}
 
 		$suggestions = [
-			[
-				'type'  => 'command',
-				'label' => 'Write customer email',
-				'value' => 'Write email for this order asking for confirmation',
-			],
-			[
-				'type'  => 'command',
-				'label' => 'Add note',
-				'value' => 'Add note to this order: ',
-				'requires_input' => true,
-			],
+			self::open_order_suggestion( __( 'Open order details', 'yoro-agent-core' ), $id ),
 		];
 
 		if ( 'on-hold' !== $status ) {
@@ -452,22 +332,7 @@ class YoRo_Suggestions {
 		$id = reset( $processed );
 
 		return [
-			[
-				'type'  => 'command',
-				'label' => 'View updated order',
-				'value' => 'Show order #' . $id,
-			],
-			[
-				'type'  => 'command',
-				'label' => 'Add internal note',
-				'value' => 'Add note to order #' . $id . ': ',
-				'requires_input' => true,
-			],
-			[
-				'type'  => 'command',
-				'label' => 'Write customer email',
-				'value' => 'Write email for order #' . $id . ' explaining the status update',
-			],
+			self::open_order_suggestion( __( 'Open updated order', 'yoro-agent-core' ), $id ),
 		];
 	}
 
@@ -487,16 +352,7 @@ class YoRo_Suggestions {
 		$id = reset( $order_ids );
 
 		return [
-			[
-				'type'  => 'command',
-				'label' => 'View order',
-				'value' => 'Show order #' . $id,
-			],
-			[
-				'type'  => 'command',
-				'label' => 'Write customer email',
-				'value' => 'Email this customer about the note',
-			],
+			self::open_order_suggestion( __( 'Open order details', 'yoro-agent-core' ), $id ),
 		];
 	}
 
@@ -728,21 +584,100 @@ class YoRo_Suggestions {
 		$normalized = [];
 
 		foreach ( $suggestions as $suggestion ) {
-			if ( empty( $suggestion['label'] ) || empty( $suggestion['value'] ) ) {
+			if ( empty( $suggestion['label'] ) ) {
 				continue;
 			}
 
-			$key = sanitize_key( $suggestion['label'] . '_' . $suggestion['value'] );
+			$type = sanitize_key( $suggestion['type'] ?? 'action' );
+
+			if ( ! in_array( $type, [ 'action', 'direct_action' ], true ) ) {
+				continue;
+			}
+
+			$action = sanitize_text_field( $suggestion['action'] ?? $suggestion['value'] ?? '' );
+
+			if ( '' === $action || ! class_exists( 'YoRo_Action_Registry' ) || ! YoRo_Action_Registry::get( $action ) ) {
+				continue;
+			}
+
+			$params = isset( $suggestion['params'] ) && is_array( $suggestion['params'] )
+				? $suggestion['params']
+				: [];
+			$key = sanitize_key( $suggestion['label'] . '_' . $action . '_' . wp_json_encode( $params ) );
 
 			$normalized[ $key ] = [
-				'type'           => $suggestion['type'] ?? 'command',
+				'type'           => 'action',
 				'label'          => sanitize_text_field( $suggestion['label'] ),
-				'value'          => sanitize_text_field( $suggestion['value'] ),
-				'requires_input' => ! empty( $suggestion['requires_input'] ),
+				'value'          => $action,
+				'action'         => $action,
+				'params'         => self::sanitize_action_params( $params ),
+				'confirm'        => ! empty( $suggestion['confirm'] ),
+				'preview'        => ! empty( $suggestion['preview'] ),
 			];
 		}
 
 		return array_slice( array_values( $normalized ), 0, 6 );
+	}
+
+	private static function action_suggestion( $label, $action, $params = [], $confirm = false, $preview = false ) {
+		return [
+			'type'    => 'action',
+			'label'   => sanitize_text_field( $label ),
+			'value'   => sanitize_text_field( $action ),
+			'action'  => sanitize_text_field( $action ),
+			'params'  => is_array( $params ) ? $params : [],
+			'confirm' => ! empty( $confirm ),
+			'preview' => ! empty( $preview ),
+		];
+	}
+
+	private static function open_order_suggestion( $label, $order_id ) {
+		$order_id = absint( $order_id );
+
+		if ( ! $order_id ) {
+			return [];
+		}
+
+		return self::action_suggestion(
+			$label,
+			'orders.get_details',
+			[
+				'order_id'  => $order_id,
+				'order_ids' => [ $order_id ],
+			]
+		);
+	}
+
+	private static function sanitize_action_params( $params ) {
+		if ( ! is_array( $params ) ) {
+			return [];
+		}
+
+		$sanitized = [];
+
+		foreach ( $params as $key => $value ) {
+			$key = sanitize_key( $key );
+
+			if ( '' === $key ) {
+				continue;
+			}
+
+			if ( is_array( $value ) ) {
+				$sanitized[ $key ] = array_values(
+					array_map(
+						function( $item ) {
+							return is_numeric( $item ) ? absint( $item ) : sanitize_text_field( (string) $item );
+						},
+						$value
+					)
+				);
+				continue;
+			}
+
+			$sanitized[ $key ] = is_numeric( $value ) ? absint( $value ) : sanitize_text_field( (string) $value );
+		}
+
+		return $sanitized;
 	}
 
 	private static function normalize_ai_command( $command ) {

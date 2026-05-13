@@ -1556,7 +1556,14 @@
 		suggestions.forEach(function (item) {
 			html += '<button class="button button-small yoro-suggestion-btn"';
 
-			html += ' data-command="' + h.escapeHtml(item.value) + '"';
+			if (item.action) {
+				html += ' data-action="' + h.escapeHtml(item.action) + '"';
+				html += ' data-params="' + h.escapeHtml(JSON.stringify(item.params || {})) + '"';
+				html += ' data-confirm="' + (item.confirm ? '1' : '0') + '"';
+				html += ' data-preview="' + (item.preview ? '1' : '0') + '"';
+			} else {
+				html += ' data-command="' + h.escapeHtml(item.value || item.command || '') + '"';
+			}
 
 			if (item.requires_input) {
 				html += ' data-requires-input="1"';

@@ -229,6 +229,19 @@
 			emailSuggestions.forEach(function(s) {
 				const type = s.type || '';
 				const command = s.value || s.command || '';
+				const action = s.action || '';
+
+				if (action && type !== 'use_template') {
+					html += '<button type="button" class="button yoro-suggestion-btn"';
+					html += ' data-action="' + h.escapeHtml(action) + '"';
+					html += ' data-params="' + h.escapeHtml(JSON.stringify(s.params || {})) + '"';
+					html += ' data-confirm="' + (s.confirm ? '1' : '0') + '"';
+					html += ' data-preview="' + (s.preview ? '1' : '0') + '"';
+					html += '>';
+					html += h.escapeHtml(s.label || action);
+					html += '</button>';
+					return;
+				}
 
 				if (command && type !== 'use_template') {
 					html += '<button type="button" class="button yoro-suggestion-btn"';

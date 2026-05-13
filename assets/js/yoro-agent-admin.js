@@ -1567,6 +1567,109 @@
 			});
 		}
 
+		function mapSuggestionCommandToDirectAction(command) {
+			const text = String(command || '').trim();
+			const normalized = text.toLowerCase();
+
+			if (!text) {
+				return null;
+			}
+
+			let match = text.match(/\border\s*#?\s*(\d+)\b/i);
+
+			if (match && /\b(show|view|open|details?)\b/i.test(text)) {
+				const orderId = parseInt(match[1], 10);
+
+				if (orderId > 0) {
+					return {
+						action: 'orders.get_details',
+						params: {
+							order_id: orderId,
+							order_ids: [orderId]
+						}
+					};
+				}
+			}
+
+			if (/details?\s+(?:of\s+)?(?:the\s+)?first\s+one/i.test(normalized)) {
+				const firstOrder = Array.isArray(conversationState.last_order_ids)
+					? parseInt(conversationState.last_order_ids[0] || 0, 10)
+					: 0;
+
+				if (firstOrder > 0) {
+					return {
+						action: 'orders.get_details',
+						params: {
+							order_id: firstOrder,
+							order_ids: [firstOrder]
+						}
+					};
+				}
+			}
+
+			if (/show\s+(pending|processing|on-hold|completed|cancelled|refunded|failed)\s+orders/i.test(normalized)) {
+				const status = normalized.match(/show\s+(pending|processing|on-hold|completed|cancelled|refunded|failed)\s+orders/i)[1];
+
+				return {
+					action: 'orders.search',
+					params: {
+						status: [status],
+						limit: 10
+					}
+				};
+			}
+
+			const directMap = {
+				'show operations attention queue': { action: 'operations.get_attention_queue', params: {} },
+				'open attention queue': { action: 'operations.get_attention_queue', params: {} },
+				'show fulfillment queue': { action: 'operations.get_fulfillment_queue', params: {} },
+				'open fulfillment queue': { action: 'operations.get_fulfillment_queue', params: {} },
+				'show customer service queue': { action: 'customers.get_service_queue', params: {} },
+				'open customer follow-up': { action: 'customers.get_service_queue', params: {} },
+				'show inventory queue': { action: 'products.get_inventory_queue', params: {} },
+				'open inventory queue': { action: 'products.get_inventory_queue', params: {} },
+				'show morning briefing': { action: 'store.get_morning_briefing', params: {} },
+				'show store insights': { action: 'store.get_insights', params: {} }
+			};
+
+			if (directMap[normalized]) {
+				return directMap[normalized];
+			}
+
+			if (/show operations summary/i.test(normalized)) {
+				return {
+					action: 'operations.get_summary',
+					params: {
+						window: normalized.indexOf('week') !== -1 ? 'last_7_days' : 'today'
+					}
+				};
+			}
+
+			return null;
+		}
+
+		function executeSuggestionAction(action, params, confirm, preview) {
+			const loading = addLoadingMessage();
+			setLoading(true);
+
+			executeActionDirect(action, params || {}, confirm || false, preview || false, 'suggestion')
+				.then(function(data) {
+					loading.remove();
+					addAgentMessage(data);
+					updateConversationState(data, action);
+				})
+				.catch(function(error) {
+					loading.remove();
+					addAgentMessage({
+						success: false,
+						error: error || YoRoAgentAdmin.i18n.error
+					});
+				})
+				.finally(function() {
+					setLoading(false);
+				});
+		}
+
 		function setCurrentOrderId(orderId) {
 			orderId = parseInt(orderId || 0, 10);
 
@@ -1800,10 +1903,36 @@
 				event.preventDefault();
 				event.stopPropagation();
 
+				const directAction = suggestionBtn.getAttribute('data-action') || '';
+				const directParamsRaw = suggestionBtn.getAttribute('data-params') || '';
+				const directConfirm = suggestionBtn.getAttribute('data-confirm') === '1';
+				const directPreview = suggestionBtn.getAttribute('data-preview') === '1';
 				const command = suggestionBtn.getAttribute('data-command') || '';
 				const requiresInput = suggestionBtn.getAttribute('data-requires-input') === '1';
 
+				if (directAction) {
+					let directParams = {};
+
+					if (directParamsRaw) {
+						try {
+							directParams = JSON.parse(directParamsRaw);
+						} catch (error) {
+							directParams = {};
+						}
+					}
+
+					executeSuggestionAction(directAction, directParams, directConfirm, directPreview);
+					return;
+				}
+
 				if (!command) {
+					return;
+				}
+
+				const directFromCommand = mapSuggestionCommandToDirectAction(command);
+
+				if (directFromCommand && directFromCommand.action) {
+					executeSuggestionAction(directFromCommand.action, directFromCommand.params || {}, false, false);
 					return;
 				}
 
