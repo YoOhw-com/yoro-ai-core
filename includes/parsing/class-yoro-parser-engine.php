@@ -308,7 +308,7 @@ class YoRo_Parser_Engine {
 			'matched'            => true,
 			'action'             => $action,
 			'params'             => isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [],
-			'parser_rule'        => 'ai.command_router.v1',
+			'parser_rule'        => 'ai.command_router.v2',
 			'parser_source'      => 'ai_router',
 			'confidence'         => $confidence,
 			'original_command'   => $command,

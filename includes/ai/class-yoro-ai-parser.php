@@ -11,7 +11,7 @@ class YoRo_AI_Parser {
 	const PROMPT_VERSION_SUGGESTIONS = 'suggestions.v1';
 	const PROMPT_VERSION_EMAIL = 'email.v1';
 	const PROMPT_VERSION_CONVERSATION = 'conversation.v3';
-	const PROMPT_VERSION_COMMAND_ROUTER = 'command_router.v1';
+	const PROMPT_VERSION_COMMAND_ROUTER = 'command_router.v2';
 
 	public static function parse( $command ) {
 		$provider = self::get_provider();

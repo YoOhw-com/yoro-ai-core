@@ -44,7 +44,7 @@ class YoRo_AI_Command_Router {
 			return $decision;
 		}
 
-		$decision['parser_rule'] = 'ai.command_router.v1';
+		$decision['parser_rule'] = 'ai.command_router.v2';
 		$decision['parser_source'] = 'ai_router';
 		$decision['original_command'] = $command;
 		$decision['meta'] = class_exists( 'YoRo_AI_Parser' ) && method_exists( 'YoRo_AI_Parser', 'build_meta' )
