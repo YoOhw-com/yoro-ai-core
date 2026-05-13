@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+vendor/
+*.log
+*.tmp
+*.cache
+.phpunit.result.cache
+coverage/
+dist/
+build/
