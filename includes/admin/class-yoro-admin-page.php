@@ -155,8 +155,9 @@ class YoRo_Admin_Page {
 				'orderStatuses' => $order_statuses,
 				'i18n'          => [
 					'emptyCommand' => __( 'Please enter a command.', 'yoro-agent-core' ),
-					'running'      => __( 'Running...', 'yoro-agent-core' ),
-					'confirmRun'   => __( 'This action requires confirmation. Run it now?', 'yoro-agent-core' ),
+					'running'      => __( 'Thinking...', 'yoro-agent-core' ),
+					'askYoRo'      => __( 'Ask YoRo', 'yoro-agent-core' ),
+					'confirmRun'   => __( 'This store-changing action requires your confirmation. Run it now?', 'yoro-agent-core' ),
 					'error'        => __( 'Something went wrong.', 'yoro-agent-core' ),
 				],
 			]
@@ -166,12 +167,27 @@ class YoRo_Admin_Page {
 	public static function render_page() {
 		?>
 		<div class="yoro-chat-shell">
+			<div class="yoro-agent-statusbar" aria-label="<?php esc_attr_e( 'YoRo AI command workflow', 'yoro-agent-core' ); ?>">
+				<div class="yoro-agent-status-item">
+					<span><?php esc_html_e( 'AI routing', 'yoro-agent-core' ); ?></span>
+					<strong><?php esc_html_e( 'Natural language to action', 'yoro-agent-core' ); ?></strong>
+				</div>
+				<div class="yoro-agent-status-item">
+					<span><?php esc_html_e( 'Safety', 'yoro-agent-core' ); ?></span>
+					<strong><?php esc_html_e( 'Preview and confirm writes', 'yoro-agent-core' ); ?></strong>
+				</div>
+				<div class="yoro-agent-status-item">
+					<span><?php esc_html_e( 'Context', 'yoro-agent-core' ); ?></span>
+					<strong><?php esc_html_e( 'Understands active store work', 'yoro-agent-core' ); ?></strong>
+				</div>
+			</div>
+
 			<div id="yoro-chat-thread" class="yoro-chat-thread">
 				<div class="yoro-chat-message yoro-chat-message-agent">
 					<div class="yoro-chat-avatar">Y</div>
 					<div class="yoro-chat-bubble">
 						<strong><?php esc_html_e( 'YoRo', 'yoro-agent-core' ); ?></strong>
-						<p><?php esc_html_e( 'How can I help manage your store today?', 'yoro-agent-core' ); ?></p>
+						<p><?php esc_html_e( 'Tell me what you want in natural language. I will map it to a store action, preview sensitive changes, and ask before changing store data.', 'yoro-agent-core' ); ?></p>
 					</div>
 				</div>
 			</div>
@@ -181,16 +197,16 @@ class YoRo_Admin_Page {
 					id="yoro-agent-command"
 					class="yoro-chat-input"
 					rows="2"
-					placeholder="<?php esc_attr_e( 'Ask YoRo, e.g. Show me the latest 5 completed orders', 'yoro-agent-core' ); ?>"
+					placeholder="<?php esc_attr_e( 'Ask naturally, e.g. Show me the latest 5 orders, or Prepare the next fulfillment follow-up', 'yoro-agent-core' ); ?>"
 				></textarea>
 
 				<div class="yoro-chat-actions">
 					<button type="button" class="button button-primary" id="yoro-agent-run">
-						<?php esc_html_e( 'Send', 'yoro-agent-core' ); ?>
+						<?php esc_html_e( 'Ask YoRo', 'yoro-agent-core' ); ?>
 					</button>
 
 					<button type="button" class="button" id="yoro-agent-preview">
-						<?php esc_html_e( 'Preview', 'yoro-agent-core' ); ?>
+						<?php esc_html_e( 'Preview Plan', 'yoro-agent-core' ); ?>
 					</button>
 
 					<button type="button" class="button" id="yoro-agent-clear">
@@ -198,20 +214,23 @@ class YoRo_Admin_Page {
 					</button>
 
 					<button type="button" class="button" id="yoro-agent-load-context">
-						<?php esc_html_e( 'Load Context', 'yoro-agent-core' ); ?>
+						<?php esc_html_e( 'Store Context', 'yoro-agent-core' ); ?>
 					</button>
 				</div>
 
 				<div class="yoro-agent-examples">
 					<strong><?php esc_html_e( 'Try:', 'yoro-agent-core' ); ?></strong>
-					<button type="button" class="button-link yoro-agent-example" data-command="Search pending orders">
-						<?php esc_html_e( 'Search pending orders', 'yoro-agent-core' ); ?>
+					<button type="button" class="button-link yoro-agent-example" data-command="Show me the latest 5 orders">
+						<?php esc_html_e( 'Show latest 5 orders', 'yoro-agent-core' ); ?>
 					</button>
-					<button type="button" class="button-link yoro-agent-example" data-command="Show me the latest 5 completed orders">
-						<?php esc_html_e( 'Latest completed orders', 'yoro-agent-core' ); ?>
+					<button type="button" class="button-link yoro-agent-example" data-command="How is the store doing this week?">
+						<?php esc_html_e( 'Store performance this week', 'yoro-agent-core' ); ?>
 					</button>
-					<button type="button" class="button-link yoro-agent-example" data-command="Hold order 123">
-						<?php esc_html_e( 'Hold order 123', 'yoro-agent-core' ); ?>
+					<button type="button" class="button-link yoro-agent-example" data-command="Prepare the next fulfillment follow-up">
+						<?php esc_html_e( 'Prepare fulfillment follow-up', 'yoro-agent-core' ); ?>
+					</button>
+					<button type="button" class="button-link yoro-agent-example" data-command="Update order 123 to on hold with note: Customer needs verification">
+						<?php esc_html_e( 'Update order with note', 'yoro-agent-core' ); ?>
 					</button>
 				</div>
 			</div>
@@ -327,7 +346,7 @@ class YoRo_Admin_Page {
 						</div>
 						<div class="yoro-ai-trace-row">
 							<span><strong><?php esc_html_e( 'Action:', 'yoro-agent-core' ); ?></strong> <code><?php echo esc_html( $log['action'] ?: '—' ); ?></code></span>
-							<span><strong><?php esc_html_e( 'Source:', 'yoro-agent-core' ); ?></strong> <code><?php echo esc_html( $log['parser_source'] ?: '—' ); ?></code></span>
+							<span><strong><?php esc_html_e( 'Router source:', 'yoro-agent-core' ); ?></strong> <code><?php echo esc_html( $log['parser_source'] ?: '—' ); ?></code></span>
 							<span><strong><?php esc_html_e( 'Log Trace:', 'yoro-agent-core' ); ?></strong> <code><?php echo esc_html( $log['trace_id'] ?: '—' ); ?></code></span>
 						</div>
 					</div>
@@ -547,7 +566,7 @@ class YoRo_Admin_Page {
 				<strong><?php echo esc_html( number_format_i18n( absint( $summary['avg_duration_ms'] ?? 0 ) ) ); ?>ms</strong>
 			</div>
 			<div class="yoro-telemetry-list">
-				<span><?php esc_html_e( 'Parser sources', 'yoro-agent-core' ); ?></span>
+				<span><?php esc_html_e( 'Router sources', 'yoro-agent-core' ); ?></span>
 				<?php self::render_compact_counts( $summary['parser_sources'] ?? [] ); ?>
 			</div>
 			<div class="yoro-telemetry-list">
@@ -979,7 +998,7 @@ class YoRo_Admin_Page {
 
 					<table class="form-table" role="presentation">
 						<tr>
-							<th scope="row"><label for="yoro_ai_parser_provider"><?php esc_html_e( 'Parser provider', 'yoro-agent-core' ); ?></label></th>
+							<th scope="row"><label for="yoro_ai_parser_provider"><?php esc_html_e( 'AI routing provider', 'yoro-agent-core' ); ?></label></th>
 							<td>
 								<select name="yoro_ai_parser_provider" id="yoro_ai_parser_provider">
 									<option value="<?php echo esc_attr( YORO_AI_PROVIDER_OPENAI_DIRECT ); ?>" <?php selected( $provider, YORO_AI_PROVIDER_OPENAI_DIRECT ); ?>>
@@ -1118,11 +1137,11 @@ class YoRo_Admin_Page {
 
 					<table class="form-table" role="presentation">
 						<tr>
-							<th scope="row"><?php esc_html_e( 'Cloud parser', 'yoro-agent-core' ); ?></th>
+							<th scope="row"><?php esc_html_e( 'Cloud command router', 'yoro-agent-core' ); ?></th>
 							<td>
 								<label>
 									<input type="checkbox" name="yoro_cloud_parser_enabled" value="yes" <?php checked( $cloud_parser_enabled, 'yes' ); ?> />
-									<?php esc_html_e( 'Enable YoRo Cloud parser when provider is set to YoRo Cloud.', 'yoro-agent-core' ); ?>
+									<?php esc_html_e( 'Enable YoRo Cloud command routing when provider is set to YoRo Cloud.', 'yoro-agent-core' ); ?>
 								</label>
 							</td>
 						</tr>
@@ -1147,7 +1166,7 @@ class YoRo_Admin_Page {
 								<td>
 									<label>
 										<input type="checkbox" name="yoro_cloud_endpoint_ready" value="yes" <?php checked( $cloud_endpoint_ready, 'yes' ); ?> />
-										<?php esc_html_e( 'Developer only. Enable only when the YoRo Cloud parser endpoint is actually available.', 'yoro-agent-core' ); ?>
+										<?php esc_html_e( 'Developer only. Enable only when the YoRo Cloud command routing endpoint is actually available.', 'yoro-agent-core' ); ?>
 									</label>
 								</td>
 							</tr>
@@ -1164,10 +1183,10 @@ class YoRo_Admin_Page {
 
 					<p>
 						<button type="button" class="button button-primary" id="yoro-run-parser-tests">
-							Run Parser Tests
+							Run Router Tests
 						</button>
 						<button type="button" class="button" id="yoro-build-real-query-pack">
-							Build Real-Query Pack
+							Build Command Pack
 						</button>
 					</p>
 

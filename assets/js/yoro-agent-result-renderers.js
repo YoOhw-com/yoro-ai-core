@@ -689,7 +689,7 @@
 		let html = '<div class="yoro-preview-result">';
 
 		html += '<div class="yoro-result-notice yoro-result-preview">';
-		html += '<strong>Preview</strong>';
+		html += '<strong>AI action preview</strong>';
 
 		if (action === 'orders.add_note') {
 			const ids = Array.isArray(effectiveParams.order_ids) ? effectiveParams.order_ids : [];
@@ -698,7 +698,7 @@
 			const ids = Array.isArray(effectiveParams.order_ids) ? effectiveParams.order_ids : [];
 			html += '<p>' + h.escapeHtml('Update status for ' + ids.length + ' order' + (ids.length === 1 ? '.' : 's.')) + '</p>';
 		} else {
-			html += '<p>' + h.escapeHtml(preview.description || preview.summary || 'I will run the action below.') + '</p>';
+			html += '<p>' + h.escapeHtml(preview.description || preview.summary || 'I mapped your command to the action below. No store data has changed yet.') + '</p>';
 		}
 
 		html += '</div>';
@@ -706,9 +706,9 @@
 		html += renderAdminCopilotBoundary(data, h);
 
 		html += '<div class="yoro-result-meta">';
-		html += '<span><strong>Action:</strong> ' + h.escapeHtml(action) + '</span>';
+		html += '<span><strong>Mapped action:</strong> ' + h.escapeHtml(action) + '</span>';
 		html += '<span><strong>Risk:</strong> ' + h.escapeHtml(preview.risk_level || '') + '</span>';
-		html += '<span><strong>Requires confirmation:</strong> ' + h.escapeHtml(preview.requires_confirmation ? 'Yes' : 'No') + '</span>';
+		html += '<span><strong>Needs approval:</strong> ' + h.escapeHtml(preview.requires_confirmation ? 'Yes' : 'No') + '</span>';
 		html += '</div>';
 
 		const riskReasons = data.risk && Array.isArray(data.risk.reasons)
@@ -959,8 +959,8 @@
 		let html = '<div class="yoro-confirmation-result">';
 
 		html += '<div class="yoro-result-notice yoro-result-confirm">';
-		html += '<strong>Review before I continue</strong>';
-		html += '<p>' + h.escapeHtml(data.message || result.message || 'This action requires confirmation before running.') + '</p>';
+		html += '<strong>Confirm store change</strong>';
+		html += '<p>' + h.escapeHtml(data.message || result.message || 'YoRo will only change store data after you approve this action.') + '</p>';
 		html += '</div>';
 
 		html += '<div class="yoro-confirmation-body">';
@@ -1099,7 +1099,7 @@
 		let html = '<div class="yoro-confirmation-result">';
 
 		html += '<div class="yoro-result-notice yoro-result-confirm">';
-		html += '<strong>Review before I continue</strong>';
+		html += '<strong>Confirm store change</strong>';
 		html += '<p>' + h.escapeHtml(data.message || result.confirmation_scope || 'Review this fulfillment follow-up before saving the draft.') + '</p>';
 		html += '</div>';
 
@@ -1161,7 +1161,7 @@
 		let html = '<div class="yoro-confirmation-result">';
 
 		html += '<div class="yoro-result-notice yoro-result-confirm">';
-		html += '<strong>Review before I continue</strong>';
+		html += '<strong>Confirm store change</strong>';
 		html += '<p>' + h.escapeHtml(data.message || result.confirmation_scope || 'Review this customer follow-up before saving the draft.') + '</p>';
 		html += '</div>';
 
@@ -1387,7 +1387,7 @@
 		html += '<strong>' + h.escapeHtml(successCopy.title || 'Completed') + '</strong>';
 
 		if (parsed.parser_rule) {
-			html += '<span class="yoro-result-subtle">Parser: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
+			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
 		html += '<p>' + h.escapeHtml(successCopy.message || result.summary || 'I completed that action.') + '</p>';
@@ -1567,11 +1567,11 @@
 		}
 
 		if (parsed.parser_source) {
-			traceItems.push('<span><strong>Source:</strong> ' + h.escapeHtml(parsed.parser_source) + '</span>');
+			traceItems.push('<span><strong>Router source:</strong> ' + h.escapeHtml(parsed.parser_source) + '</span>');
 		}
 
 		if (parsed.parser_rule) {
-			traceItems.push('<span><strong>Rule:</strong> ' + h.escapeHtml(parsed.parser_rule) + '</span>');
+			traceItems.push('<span><strong>Decision route:</strong> ' + h.escapeHtml(parsed.parser_rule) + '</span>');
 		}
 
 		if (typeof parsed.confidence !== 'undefined') {

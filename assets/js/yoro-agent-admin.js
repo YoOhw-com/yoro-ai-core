@@ -76,7 +76,7 @@
 		function runParserTests() {
 			parserTestButton.disabled = true;
 			parserTestButton.textContent = 'Running...';
-			parserTestResults.innerHTML = '<div class="yoro-parser-test-loading">Running parser benchmark...</div>';
+			parserTestResults.innerHTML = '<div class="yoro-parser-test-loading">Running AI command router tests...</div>';
 
 			requestJson(YoRoAgentAdmin.parserTestUrl, {
 				method: 'GET'
@@ -89,14 +89,14 @@
 				})
 				.finally(function () {
 					parserTestButton.disabled = false;
-					parserTestButton.textContent = 'Run Parser Tests';
+					parserTestButton.textContent = 'Run Router Tests';
 				});
 		}
 
 		function renderParserTestError(error) {
 			const message = (error && error.message)
 				|| (error && error.data && error.data.message)
-				|| 'Parser benchmark failed.';
+				|| 'AI command router test failed.';
 
 			return '<div class="notice notice-error inline"><p>' + escapeHtml(message) + '</p></div>';
 		}
@@ -117,13 +117,13 @@
 
 			let html = '<div class="yoro-parser-test-panel">';
 			html += '<div class="yoro-parser-test-head">';
-			html += '<h3>Parser Benchmark</h3>';
-			html += '<p>Current regression and evaluation snapshot for YoRo parsing quality.</p>';
+			html += '<h3>AI Command Router Benchmark</h3>';
+			html += '<p>Current regression and evaluation snapshot for command understanding, routing, preview, execution, and undo behavior.</p>';
 			html += '<div class="yoro-parser-test-toolbar">';
 			html += '<button type="button" class="button button-secondary yoro-parser-copy-json" data-copy-payload="' + optimizedPayload + '">Copy debug JSON</button>';
 			html += '<button type="button" class="button button-secondary yoro-parser-copy-hardening" data-copy-payload="' + hardeningPayload + '">Copy hardening failures</button>';
 			html += '<button type="button" class="button button-secondary yoro-parser-copy-execute" data-copy-payload="' + executePayload + '">Copy execute failures</button>';
-			html += '<span class="yoro-parser-test-toolbar-note">Debug JSON: summary, evaluation meta, failed evaluation cases. Hardening copy: hardening summary and failed hardening cases only. Execute copy: execute summary and failed execute cases only.</span>';
+			html += '<span class="yoro-parser-test-toolbar-note">Debug JSON: summary, evaluation meta, failed evaluation cases. Hardening copy: safety summary and failed hardening cases only. Execute copy: execute summary and failed execute cases only.</span>';
 			html += '</div>';
 			html += '</div>';
 
@@ -163,8 +163,8 @@
 
 				if (topSources.length) {
 					html += '<div class="yoro-parser-test-section">';
-					html += '<h4>Sources</h4>';
-					html += '<table class="widefat striped yoro-parser-test-table"><thead><tr><th>Source</th><th>Total</th><th>Passed</th><th>Failed</th></tr></thead><tbody>';
+					html += '<h4>Router sources</h4>';
+					html += '<table class="widefat striped yoro-parser-test-table"><thead><tr><th>Router source</th><th>Total</th><th>Passed</th><th>Failed</th></tr></thead><tbody>';
 					topSources.forEach(function (key) {
 						const row = bySource[key] || {};
 						html += '<tr><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(row.total || 0) + '</td><td>' + escapeHtml(row.passed || 0) + '</td><td>' + escapeHtml(row.failed || 0) + '</td></tr>';
@@ -186,7 +186,7 @@
 		function buildRealQueryPack() {
 			realQueryPackButton.disabled = true;
 			realQueryPackButton.textContent = 'Building...';
-			realQueryPackResults.innerHTML = '<div class="yoro-parser-test-loading">Building real-query evaluation pack...</div>';
+			realQueryPackResults.innerHTML = '<div class="yoro-parser-test-loading">Building command evaluation pack...</div>';
 
 			requestJson(YoRoAgentAdmin.realQueryPackUrl, {
 				method: 'GET'
@@ -199,7 +199,7 @@
 				})
 				.finally(function () {
 					realQueryPackButton.disabled = false;
-					realQueryPackButton.textContent = 'Build Real-Query Pack';
+					realQueryPackButton.textContent = 'Build Command Pack';
 				});
 		}
 
@@ -220,11 +220,11 @@
 
 			let html = '<div class="yoro-parser-test-panel">';
 			html += '<div class="yoro-parser-test-head">';
-			html += '<h3>Real-Query Evaluation Pack</h3>';
-			html += '<p>Recent deduplicated user commands harvested from YoRo history for benchmark expansion.</p>';
+			html += '<h3>Real Command Evaluation Pack</h3>';
+			html += '<p>Recent deduplicated user commands harvested from YoRo history for router benchmark expansion.</p>';
 			html += '<div class="yoro-parser-test-toolbar">';
-			html += '<button type="button" class="button button-secondary yoro-real-pack-copy-json" data-copy-payload="' + optimizedPayload + '">Copy real-query JSON</button>';
-			html += '<span class="yoro-parser-test-toolbar-note">Includes deduped commands, source mix, intent mix, and suggested test cases.</span>';
+			html += '<button type="button" class="button button-secondary yoro-real-pack-copy-json" data-copy-payload="' + optimizedPayload + '">Copy command JSON</button>';
+			html += '<span class="yoro-parser-test-toolbar-note">Includes deduped commands, router source mix, intent mix, and suggested test cases.</span>';
 			html += '</div>';
 			html += '</div>';
 
@@ -232,19 +232,19 @@
 			html += renderMetricCard('Samples scanned', data && data.sample_size ? data.sample_size : 0, '');
 			html += renderMetricCard('Deduped queries', data && data.deduped_size ? data.deduped_size : 0, '');
 			html += renderMetricCard('Top intents', Object.keys(byIntent).length, '');
-			html += renderMetricCard('Top sources', Object.keys(bySource).length, '');
+			html += renderMetricCard('Top router sources', Object.keys(bySource).length, '');
 			html += '</div>';
 
 			html += '<div class="yoro-parser-test-grid">';
 			html += renderCompactCountTable('Intent mix', byIntent, 'Intent');
-			html += renderCompactCountTable('Source mix', bySource, 'Source');
+			html += renderCompactCountTable('Router source mix', bySource, 'Router source');
 			html += renderCompactCountTable('Status mix', byStatus, 'Status');
 			html += '</div>';
 
 			if (topQueries.length) {
 				html += '<div class="yoro-parser-test-section">';
 				html += '<h4>Recent deduped commands</h4>';
-				html += '<table class="widefat striped yoro-parser-test-table"><thead><tr><th>Command</th><th>Intent</th><th>Action</th><th>Source</th><th>Status</th></tr></thead><tbody>';
+				html += '<table class="widefat striped yoro-parser-test-table"><thead><tr><th>Command</th><th>Intent</th><th>Action</th><th>Router source</th><th>Status</th></tr></thead><tbody>';
 				topQueries.slice(0, 15).forEach(function (row) {
 					html += '<tr>';
 					html += '<td><code>' + escapeHtml(row.command || '') + '</code></td>';
@@ -747,7 +747,7 @@
 				previewButton.disabled = isLoading;
 			}
 
-			runButton.textContent = isLoading ? YoRoAgentAdmin.i18n.running : 'Send';
+			runButton.textContent = isLoading ? YoRoAgentAdmin.i18n.running : (YoRoAgentAdmin.i18n.askYoRo || 'Ask YoRo');
 		}
 
 		function requestJson(url, options) {
@@ -1815,7 +1815,7 @@
 						commandField.setSelectionRange(command.length, command.length);
 					}
 
-					showCommandGhostHint('Type the note after the colon, then press Send.');
+					showCommandGhostHint('Type the note after the colon, then ask YoRo.');
 					return;
 				}
 

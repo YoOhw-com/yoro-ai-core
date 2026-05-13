@@ -270,7 +270,7 @@ class YoRo_History_Table extends WP_List_Table {
 			</select>
 
 			<select name="filter_parser_source">
-				<option value=""><?php esc_html_e( 'All parser sources', 'yoro-agent-core' ); ?></option>
+				<option value=""><?php esc_html_e( 'All router sources', 'yoro-agent-core' ); ?></option>
 				<option value="rule" <?php selected( $parser_source, 'rule' ); ?>>Rule</option>
 				<option value="ai_router" <?php selected( $parser_source, 'ai_router' ); ?>>AI router</option>
 				<option value="guard" <?php selected( $parser_source, 'guard' ); ?>>Guard</option>

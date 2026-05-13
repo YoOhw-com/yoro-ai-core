@@ -212,7 +212,7 @@
 
 		if (requiresConfirmation) {
 			return {
-				label: 'Review before I continue',
+				label: 'Confirm store change',
 				message: 'I prepared ' + actionCount + ' step' + (actionCount === 1 ? '' : 's') + ' and I will wait before changing store data.',
 				next_actions: [
 					{ label: 'Confirm', command: 'Confirm' },
@@ -288,7 +288,7 @@
 		html += '<div class="yoro-result-notice yoro-result-preview">';
 
 		if (requiresConfirmation) {
-			html += '<strong>Review before I continue</strong>';
+			html += '<strong>Confirm store change</strong>';
 			html += '<p>This flow will change store data after you confirm it.</p>';
 		} else {
 			html += '<strong>Preview ready</strong>';

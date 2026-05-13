@@ -33,6 +33,44 @@ body.toplevel_page_yoro-agent #wpbody-content {
 	flex-direction: column;
 }
 
+.yoro-agent-statusbar {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 0;
+	border-bottom: 1px solid #dcdcde;
+	background: #fff;
+}
+
+.yoro-agent-status-item {
+	padding: 12px 16px;
+	border-right: 1px solid #dcdcde;
+	min-width: 0;
+}
+
+.yoro-agent-status-item:last-child {
+	border-right: 0;
+}
+
+.yoro-agent-status-item span,
+.yoro-agent-status-item strong {
+	display: block;
+	overflow-wrap: anywhere;
+}
+
+.yoro-agent-status-item span {
+	margin-bottom: 3px;
+	color: #646970;
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0;
+}
+
+.yoro-agent-status-item strong {
+	color: #1d2327;
+	font-size: 13px;
+	line-height: 1.35;
+}
+
 .yoro-chat-thread {
 	flex: 1;
 	height: auto;
@@ -131,6 +169,31 @@ body.toplevel_page_yoro-agent #wpbody-content {
 	text-decoration: none;
 }
 
+@media (max-width: 782px) {
+	.yoro-agent-statusbar {
+		grid-template-columns: 1fr;
+	}
+
+	.yoro-agent-status-item {
+		border-right: 0;
+		border-bottom: 1px solid #dcdcde;
+		padding: 10px 14px;
+	}
+
+	.yoro-agent-status-item:last-child {
+		border-bottom: 0;
+	}
+
+	.yoro-chat-actions {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.yoro-chat-actions .button {
+		width: 100%;
+		text-align: center;
+	}
+}
 
 .yoro-typing {
 	display: flex;

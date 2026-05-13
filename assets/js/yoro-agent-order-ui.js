@@ -82,7 +82,7 @@
 		html += '<strong>' + h.escapeHtml(result.summary || ('Order details: ' + orders.length)) + '</strong>';
 
 		if (parsed.parser_rule) {
-			html += '<span class="yoro-result-subtle">Parser: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
+			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
 		html += '</div>';
@@ -298,7 +298,7 @@
 		html += '<span class="yoro-result-subtle">' + h.escapeHtml(contextMeta.subtle) + '</span>';
 
 		if (parsed.parser_rule) {
-			html += '<span class="yoro-result-subtle">Parser: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
+			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
 		if (typeof parsed.confidence !== 'undefined' && action === 'orders.find_by_identity') {
@@ -505,7 +505,7 @@
 		html += '<strong>' + h.escapeHtml(result.summary || ('Found ' + orders.length + ' orders for this customer.')) + '</strong>';
 
 		if (parsed.parser_rule) {
-			html += '<span class="yoro-result-subtle">Parser: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
+			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
 		html += '</div>';
@@ -616,7 +616,7 @@
 		html += '<strong>' + h.escapeHtml(result.summary || 'Operations summary') + '</strong>';
 
 		if (parsed.parser_rule) {
-			html += '<span class="yoro-result-subtle">Parser: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
+			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
 		if (windowInfo.label) {
@@ -754,7 +754,7 @@
 		html += '<span class="yoro-result-subtle">Read-only executive summary. No store data is changed.</span>';
 
 		if (parsed.parser_rule) {
-			html += '<span class="yoro-result-subtle">Parser: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
+			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
 		if (windowInfo.label) {
@@ -1342,7 +1342,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			html += '<span class="yoro-result-subtle">' + h.escapeHtml(config.subtle) + '</span>';
 		}
 		if (config.parserRule) {
-			html += '<span class="yoro-result-subtle">Parser: ' + h.escapeHtml(config.parserRule) + '</span>';
+			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(config.parserRule) + '</span>';
 		}
 		html += '</div>';
 
@@ -2183,7 +2183,7 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += '<span class="yoro-result-subtle">Use this grouped snapshot when you want a deeper read across orders, customers, and products.</span>';
 
 		if (parsed.parser_rule) {
-			html += '<span class="yoro-result-subtle">Parser: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
+			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
 		if (windowInfo.label) {
