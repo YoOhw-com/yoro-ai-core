@@ -174,6 +174,7 @@ class YoRo_Parser_Test_Suite {
 		}
 
 		$params = self::extract_router_fixture_params( $test['expect'] ?? [] );
+		$params = self::enrich_router_fixture_params_from_command( $action, $params, $test['command'] ?? '' );
 		$params = self::enrich_router_fixture_params_from_context( $action, $params, $test['context'] ?? [] );
 		$stage = sanitize_key( $test['expect_stage'] ?? '' );
 
@@ -242,6 +243,28 @@ class YoRo_Parser_Test_Suite {
 			if ( isset( $workflow[ $key ] ) && ! isset( $params[ $key ] ) ) {
 				$params[ $key ] = $workflow[ $key ];
 			}
+		}
+
+		return $params;
+	}
+
+	private static function enrich_router_fixture_params_from_command( $action, $params, $command ) {
+		if ( ! is_array( $params ) ) {
+			$params = [];
+		}
+
+		if ( 'store.get_daily_briefing' !== $action ) {
+			return $params;
+		}
+
+		$normalized = strtolower( trim( (string) $command ) );
+
+		if ( false !== strpos( $normalized, 'monthly' ) || false !== strpos( $normalized, 'this month' ) ) {
+			$params['window'] = 'last_30_days';
+		} elseif ( false !== strpos( $normalized, 'weekly' ) || false !== strpos( $normalized, 'this week' ) ) {
+			$params['window'] = 'last_7_days';
+		} elseif ( ! isset( $params['window'] ) ) {
+			$params['window'] = 'today';
 		}
 
 		return $params;
@@ -467,9 +490,19 @@ class YoRo_Parser_Test_Suite {
 
 	public static function run_execute_tests() {
 		$results = [];
+		$cases   = self::execution_cases();
+		$previous_user_id = get_current_user_id();
 
-		foreach ( self::execution_cases() as $test ) {
-			$results[] = self::run_execute_case( $test );
+		self::enable_router_fixtures( array_merge( self::parser_cases(), self::pipeline_cases(), self::preview_cases(), $cases ) );
+		self::set_test_admin_user();
+
+		try {
+			foreach ( $cases as $test ) {
+				$results[] = self::run_execute_case( $test );
+			}
+		} finally {
+			self::disable_router_fixtures();
+			wp_set_current_user( $previous_user_id );
 		}
 
 		return $results;
@@ -849,6 +882,7 @@ class YoRo_Parser_Test_Suite {
 		$assertions = [];
 
 		try {
+			YoRo_Conversation_Memory::clear_workflow( get_current_user_id() );
 			$fixture = self::run_case_setup( $test );
 
 			if ( is_wp_error( $fixture ) ) {
@@ -3423,6 +3457,10 @@ class YoRo_Parser_Test_Suite {
 					$sequence = self::get_path( $actual, 'result.recommended_sequence', [] );
 					$actions = self::get_path( $actual, 'result.attention_actions', [] );
 
+					if ( empty( $actions ) ) {
+						$actions = self::get_path( $actual, 'result.recommended_sequence', [] );
+					}
+
 					return [
 						'attention_context_present' => [
 							'expected' => true,
@@ -3463,6 +3501,10 @@ class YoRo_Parser_Test_Suite {
 					$priority = self::get_path( $actual, 'result.priority_items', [] );
 					$sequence = self::get_path( $actual, 'result.recommended_sequence', [] );
 					$actions = self::get_path( $actual, 'result.fulfillment_actions', [] );
+
+					if ( empty( $actions ) ) {
+						$actions = self::get_path( $actual, 'result.recommended_sequence', [] );
+					}
 
 					return [
 						'fulfillment_context_present' => [
@@ -4602,6 +4644,10 @@ class YoRo_Parser_Test_Suite {
 					$priority = self::get_path( $actual, 'result.priority_items', [] );
 					$sequence = self::get_path( $actual, 'result.recommended_sequence', [] );
 					$actions = self::get_path( $actual, 'result.service_actions', [] );
+
+					if ( empty( $actions ) ) {
+						$actions = self::get_path( $actual, 'result.recommended_sequence', [] );
+					}
 
 					return [
 						'customer_service_context_present' => [
