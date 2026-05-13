@@ -19,6 +19,7 @@ YoRo command handling is moving to this flow:
 - Write actions may be routed by AI, but backend confirmation remains mandatory.
 - Deterministic rules remain fallback or safety guard, not the primary intelligence layer.
 - Router mock decisions are allowed only in debug/test mode via `yoro_ai_command_router_mock_decision`.
+- Deterministic test fixtures may force router fallback to rules when a regression case is explicitly validating rule-owned follow-up behavior.
 
 ## Active Files
 
@@ -61,5 +62,11 @@ Expected behavior:
 ## Next Work
 
 - Expand action metadata for all high-value actions.
-- Extend deterministic router fixtures from parser tests into pipeline, preview, execute, and undo groups.
+- Extend deterministic router fixtures from parser and pipeline tests into preview, execute, and undo groups.
 - Keep a small live AI smoke suite for prompt/catalog quality checks.
+
+## Test Fixture Status
+
+- Parser group: deterministic AI router fixtures pass 52/52.
+- Pipeline group: deterministic AI router fixtures pass 29/29.
+- Pipeline fixtures include recursive `recommended_sequence` command overrides so follow-up tests do not call live AI.

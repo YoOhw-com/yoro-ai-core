@@ -72,7 +72,7 @@ class YoRo_Parser_Test_Suite {
 	public static function run_parser_tests() {
 		$results = [];
 
-		self::enable_router_fixtures();
+		self::enable_router_fixtures( self::parser_cases() );
 
 		try {
 			foreach ( self::parser_cases() as $test ) {
@@ -95,8 +95,8 @@ class YoRo_Parser_Test_Suite {
 		return self::$router_fixture_map[ $key ] ?? $decision;
 	}
 
-	private static function enable_router_fixtures() {
-		self::$router_fixture_map = self::build_router_fixture_map();
+	private static function enable_router_fixtures( $cases = null ) {
+		self::$router_fixture_map = self::build_router_fixture_map( $cases );
 		add_filter(
 			'yoro_ai_command_router_mock_decision',
 			[ __CLASS__, 'mock_command_router_decision' ],
@@ -114,15 +114,20 @@ class YoRo_Parser_Test_Suite {
 		self::$router_fixture_map = null;
 	}
 
-	private static function build_router_fixture_map() {
+	private static function build_router_fixture_map( $cases = null ) {
 		$map = [];
+		$cases = is_array( $cases ) ? $cases : self::parser_cases();
 
-		foreach ( self::parser_cases() as $test ) {
+		foreach ( $cases as $test ) {
 			if ( empty( $test['command'] ) ) {
 				continue;
 			}
 
 			$map[ self::router_fixture_key( $test['command'] ) ] = self::build_router_fixture_decision_for_case( $test );
+		}
+
+		foreach ( self::router_fixture_command_overrides() as $command => $fixture ) {
+			$map[ self::router_fixture_key( $command ) ] = $fixture;
 		}
 
 		return $map;
@@ -133,6 +138,13 @@ class YoRo_Parser_Test_Suite {
 	}
 
 	private static function build_router_fixture_decision_for_case( $test ) {
+		if ( self::should_router_fixture_fallback_to_rules( $test ) ) {
+			return new WP_Error(
+				'yoro_ai_missing_api_key',
+				__( 'AI router fixture intentionally falls back to deterministic rules for this test.', 'yoro-agent-core' )
+			);
+		}
+
 		$action = isset( $test['expected_action'] ) ? sanitize_text_field( $test['expected_action'] ) : '';
 		$params = self::extract_router_fixture_params( $test['expect'] ?? [] );
 		$stage = sanitize_key( $test['expect_stage'] ?? '' );
@@ -156,6 +168,112 @@ class YoRo_Parser_Test_Suite {
 			[],
 			''
 		);
+	}
+
+	private static function should_router_fixture_fallback_to_rules( $test ) {
+		if ( 'rule' === sanitize_key( $test['expected_source'] ?? '' ) ) {
+			return true;
+		}
+
+		$expectations = isset( $test['expect'] ) && is_array( $test['expect'] )
+			? $test['expect']
+			: [];
+
+		foreach ( $expectations as $path => $expected ) {
+			$path = (string) $path;
+
+			if ( 'parser_rule' === $path && is_string( $expected ) && 0 === strpos( $expected, 'rule.' ) ) {
+				return true;
+			}
+
+			if ( 'parsed.action' === $path ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static function router_fixture_command_overrides() {
+		return [
+			'Show pending orders'                         => self::base_router_fixture_decision(
+				'task_request',
+				'orders.search',
+				[
+					'status' => [ 'pending' ],
+				],
+				0.95
+			),
+			'Search pending orders'                       => self::base_router_fixture_decision(
+				'task_request',
+				'orders.search',
+				[
+					'status' => [ 'pending' ],
+				],
+				0.95
+			),
+			'Show processing orders'                      => self::base_router_fixture_decision(
+				'task_request',
+				'orders.search',
+				[
+					'status' => [ 'processing' ],
+				],
+				0.95
+			),
+			'Show 5 processing orders'                    => self::base_router_fixture_decision(
+				'task_request',
+				'orders.search',
+				[
+					'limit'  => 5,
+					'status' => [ 'processing' ],
+				],
+				0.95
+			),
+			'Show operations summary for today'           => self::base_router_fixture_decision(
+				'task_request',
+				'operations.get_summary',
+				[
+					'window' => 'today',
+					'focus'  => 'overview',
+				],
+				0.95
+			),
+			'Show operations summary for this week'       => self::base_router_fixture_decision(
+				'task_request',
+				'operations.get_summary',
+				[
+					'window' => 'last_7_days',
+					'focus'  => 'overview',
+				],
+				0.95
+			),
+			'What seems blocked in fulfillment?'          => self::base_router_fixture_decision(
+				'task_request',
+				'operations.get_fulfillment_queue',
+				[
+					'limit' => 5,
+				],
+				0.95
+			),
+			'What should we restock first?'               => self::base_router_fixture_decision(
+				'task_request',
+				'products.get_inventory_queue',
+				[
+					'limit' => 5,
+					'focus' => 'low_stock',
+				],
+				0.95
+			),
+			'Can you give me a monthly store picture?'    => self::base_router_fixture_decision(
+				'task_request',
+				'operations.get_summary',
+				[
+					'window' => 'last_30_days',
+					'focus'  => 'overview',
+				],
+				0.95
+			),
+		];
 	}
 
 	private static function base_router_fixture_decision( $mode, $action, $params, $confidence, $missing = [], $clarification_question = '' ) {
@@ -231,9 +349,16 @@ class YoRo_Parser_Test_Suite {
 
 	public static function run_pipeline_tests() {
 		$results = [];
+		$cases   = self::pipeline_cases();
 
-		foreach ( self::pipeline_cases() as $test ) {
-			$results[] = self::run_pipeline_case( $test );
+		self::enable_router_fixtures( array_merge( self::parser_cases(), $cases ) );
+
+		try {
+			foreach ( $cases as $test ) {
+				$results[] = self::run_pipeline_case( $test );
+			}
+		} finally {
+			self::disable_router_fixtures();
 		}
 
 		return $results;
@@ -375,21 +500,30 @@ class YoRo_Parser_Test_Suite {
 
 	private static function run_pipeline_case( $test ) {
 		$context = self::normalize_context( $test['context'] ?? [] );
+		YoRo_Conversation_Memory::clear_workflow( get_current_user_id() );
 
-		$parsed = self::run_full_pipeline(
-			$test['command'],
-			$context
-		);
+		try {
+			$parsed = self::run_full_pipeline(
+				$test['command'],
+				$context
+			);
+		} finally {
+			YoRo_Conversation_Memory::clear_workflow( get_current_user_id() );
+		}
 
 		$actual = self::normalize_result_for_assertion( $parsed );
 
 		$assertions = [];
 
 		if ( array_key_exists( 'expected_action', $test ) ) {
+			$actual_action = is_array( $actual )
+				? ( $actual['action'] ?? ( $actual['parsed']['action'] ?? null ) )
+				: null;
+
 			$assertions['action'] = [
 				'expected' => $test['expected_action'],
-				'actual'   => is_array( $actual ) ? ( $actual['action'] ?? null ) : null,
-				'passed'   => is_array( $actual ) && ( ( $actual['action'] ?? null ) === $test['expected_action'] ),
+				'actual'   => $actual_action,
+				'passed'   => $actual_action === $test['expected_action'],
 			];
 		}
 

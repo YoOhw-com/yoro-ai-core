@@ -1094,14 +1094,16 @@ class YoRo_Followup_Command_Parser {
 		if (
 			false !== strpos( $normalized, 'top priority' ) ||
 			false !== strpos( $normalized, 'main priority' ) ||
-			false !== strpos( $normalized, 'first view' )
+			false !== strpos( $normalized, 'first view' ) ||
+			false !== strpos( $normalized, 'first one' )
 		) {
 			return 0;
 		}
 
 		if (
 			false !== strpos( $normalized, 'second view' ) ||
-			false !== strpos( $normalized, 'next view' )
+			false !== strpos( $normalized, 'next view' ) ||
+			false !== strpos( $normalized, 'second one' )
 		) {
 			return isset( $drilldowns[1] ) ? 1 : null;
 		}
@@ -1124,6 +1126,19 @@ class YoRo_Followup_Command_Parser {
 	}
 
 	private static function resolve_briefing_recommendation_index( $normalized, $sequence, $current_index = -1 ) {
+		if (
+			false !== strpos( $normalized, 'continue the plan' ) ||
+			false !== strpos( $normalized, 'continue plan' )
+		) {
+			if ( $current_index < 0 ) {
+				return isset( $sequence[0] ) ? 0 : null;
+			}
+
+			$next_index = $current_index + 1;
+
+			return isset( $sequence[ $next_index ] ) ? $next_index : null;
+		}
+
 		if (
 			false !== strpos( $normalized, 'do the next recommendation' ) ||
 			false !== strpos( $normalized, 'run the next recommendation' ) ||
@@ -1169,8 +1184,11 @@ class YoRo_Followup_Command_Parser {
 			false !== strpos( $normalized, 'top priority' ) ||
 			false !== strpos( $normalized, 'main priority' ) ||
 			false !== strpos( $normalized, 'first view' ) ||
+			false !== strpos( $normalized, 'first one' ) ||
 			false !== strpos( $normalized, 'second view' ) ||
+			false !== strpos( $normalized, 'second one' ) ||
 			false !== strpos( $normalized, 'third view' ) ||
+			false !== strpos( $normalized, 'third one' ) ||
 			false !== strpos( $normalized, 'next view' ) ||
 			false !== strpos( $normalized, 'that view' ) ||
 			false !== strpos( $normalized, 'current view' )
@@ -1181,7 +1199,9 @@ class YoRo_Followup_Command_Parser {
 		return (
 			false !== strpos( $normalized, 'recommendation' ) ||
 			false !== strpos( $normalized, 'recommended action' ) ||
-			false !== strpos( $normalized, 'that recommendation' )
+			false !== strpos( $normalized, 'that recommendation' ) ||
+			false !== strpos( $normalized, 'continue the plan' ) ||
+			false !== strpos( $normalized, 'continue plan' )
 		);
 	}
 

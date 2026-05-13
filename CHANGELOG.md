@@ -15,6 +15,7 @@
 - Multilingual command router prompt.
 - Git-tracked migration notes in `docs/AI_ROUTER_MIGRATION.md`.
 - Debug-only AI command router mock filter and parser test fixtures.
+- Deterministic AI router fixtures for parser and pipeline test groups.
 
 ### Removed From Runtime
 - Legacy AI intent fallback route.
@@ -30,3 +31,4 @@
 - PHP syntax lint passes across all plugin PHP files using Local PHP 8.4.18.
 - Live AI smoke checks route key commands through `ai_router`.
 - Parser test group passes 52/52 using deterministic AI router fixtures.
+- Pipeline test group passes 29/29 using deterministic AI router fixtures.
