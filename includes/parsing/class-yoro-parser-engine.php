@@ -287,8 +287,7 @@ class YoRo_Parser_Engine {
 			);
 		}
 
-		$threshold = (float) get_option( 'yoro_ai_confidence_threshold', 0.75 );
-		$threshold = max( 0, min( $threshold, 1 ) );
+		$threshold = self::get_ai_command_router_confidence_threshold( $decision );
 
 		if ( $confidence < $threshold ) {
 			return self::build_ai_command_router_clarification_response(
@@ -430,6 +429,19 @@ class YoRo_Parser_Engine {
 			'ambiguities'           => isset( $decision['ambiguities'] ) && is_array( $decision['ambiguities'] ) ? array_values( array_map( 'sanitize_text_field', $decision['ambiguities'] ) ) : [],
 			'clarification_question' => sanitize_text_field( $decision['clarification_question'] ?? '' ),
 		];
+	}
+
+	private static function get_ai_command_router_confidence_threshold( $decision ) {
+		if (
+			! empty( $decision['action_catalog_item'] ) &&
+			is_array( $decision['action_catalog_item'] ) &&
+			empty( $decision['action_catalog_item']['write_action'] ) &&
+			empty( $decision['action_catalog_item']['requires_confirmation'] )
+		) {
+			return YoRo_AI_Parser::get_read_only_confidence_threshold();
+		}
+
+		return YoRo_AI_Parser::get_confidence_threshold();
 	}
 
 	private static function correct_ai_update_status_with_note_to_bulk_action( $result ) {
