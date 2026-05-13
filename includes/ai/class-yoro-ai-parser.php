@@ -7,7 +7,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_AI_Parser {
 
 	const PROMPT_VERSION_PARSE = 'parse.v1';
-	const PROMPT_VERSION_INTENT = 'intent.v1';
 	const PROMPT_VERSION_WORKFLOW = 'workflow.v1';
 	const PROMPT_VERSION_SUGGESTIONS = 'suggestions.v1';
 	const PROMPT_VERSION_EMAIL = 'email.v1';
@@ -22,16 +21,6 @@ class YoRo_AI_Parser {
 		}
 
 		return self::parse_with_openai_direct( $command );
-	}
-
-	public static function parse_intent( $command, $client_context = [] ) {
-		$provider = self::get_provider();
-
-		if ( YORO_AI_PROVIDER_YORO_CLOUD === $provider ) {
-			return self::parse_intent_with_yoro_cloud( $command, $client_context );
-		}
-
-		return self::parse_intent_with_openai_direct( $command, $client_context );
 	}
 
 	public static function parse_freeform( $prompt ) {
@@ -142,8 +131,6 @@ class YoRo_AI_Parser {
 
 	private static function get_prompt_version_for_feature( $feature ) {
 		switch ( sanitize_key( $feature ) ) {
-			case 'intent':
-				return self::PROMPT_VERSION_INTENT;
 			case 'workflow_plan':
 				return self::PROMPT_VERSION_WORKFLOW;
 			case 'suggestions':
@@ -194,16 +181,6 @@ class YoRo_AI_Parser {
 			$command,
 			$actions
 		);
-		$retrieved_examples = class_exists( 'YoRo_Example_Retriever' )
-			? YoRo_Example_Retriever::get_examples_for_command( $command, 5 )
-			: [];
-		$route_candidates = class_exists( 'YoRo_Example_Retriever' )
-			? YoRo_Example_Retriever::get_route_candidates( $command, 5 )
-			: [
-				'intents' => [],
-				'actions' => [],
-			];
-
 		$trace_id = self::generate_trace_id();
 		$meta = self::build_meta(
 			'parse',
@@ -215,8 +192,8 @@ class YoRo_AI_Parser {
 		$body = YoRo_AI_Parse_Prompt::build(
 			$command,
 			$available_actions,
-			$retrieved_examples,
-			$route_candidates,
+			[],
+			[ 'intents' => [], 'actions' => [] ],
 			self::get_available_order_statuses_for_ai()
 		);
 		$output_text = YoRo_AI_Provider_Resolver::get_client()->parse_action( $body );
@@ -241,8 +218,6 @@ class YoRo_AI_Parser {
 				'message'          => $parsed['reason'] ?? __( 'Command not recognized.', 'yoro-agent-core' ),
 				'parser'           => 'ai',
 				'meta'             => $meta,
-				'retrieved_examples' => $retrieved_examples,
-				'route_candidates' => $route_candidates,
 				'original_command' => $command,
 			];
 		}
@@ -346,117 +321,6 @@ class YoRo_AI_Parser {
 			'confidence'       => $confidence,
 			'reason'           => $parsed['reason'] ?? '',
 			'meta'             => $meta,
-			'retrieved_examples' => $retrieved_examples,
-			'route_candidates' => $route_candidates,
-			'original_command' => $command,
-		];
-	}
-
-	private static function parse_intent_with_openai_direct( $command, $client_context = [] ) {
-		if ( ! YoRo_AI_Settings::get_openai_api_key() ) {
-			return new WP_Error(
-				'yoro_ai_missing_api_key',
-				__( 'OpenAI API key is missing.', 'yoro-agent-core' )
-			);
-		}
-
-		$retrieved_examples = class_exists( 'YoRo_Example_Retriever' )
-			? YoRo_Example_Retriever::get_examples_for_command( $command, 5 )
-			: [];
-		$route_candidates = class_exists( 'YoRo_Example_Retriever' )
-			? YoRo_Example_Retriever::get_route_candidates( $command, 5 )
-			: [
-				'intents' => [],
-				'actions' => [],
-			];
-
-		$trace_id = self::generate_trace_id();
-		$meta = self::build_meta(
-			'intent',
-			[
-				'trace_id'       => $trace_id,
-				'prompt_version' => self::PROMPT_VERSION_INTENT,
-			]
-		);
-		$body = YoRo_AI_Intent_Prompt::build(
-			$command,
-			self::prepare_intent_context( $client_context ),
-			$retrieved_examples,
-			$route_candidates,
-			self::get_available_order_statuses_for_ai()
-		);
-		$output_text = YoRo_AI_Provider_Resolver::get_client()->parse_intent( $body );
-
-		if ( is_wp_error( $output_text ) ) {
-			return $output_text;
-		}
-
-		$parsed = YoRo_AI_Intent_Result_Normalizer::decode( $output_text );
-
-		if ( ! is_array( $parsed ) ) {
-			return new WP_Error(
-				'yoro_ai_intent_invalid_json',
-				__( 'AI intent parser returned invalid JSON.', 'yoro-agent-core' )
-			);
-		}
-
-		if ( empty( $parsed['matched'] ) ) {
-			return [
-				'success'          => false,
-				'matched'          => false,
-				'message'          => $parsed['reason'] ?? __( 'Command not recognized.', 'yoro-agent-core' ),
-				'parser_source'    => 'ai_intent',
-				'meta'             => $meta,
-				'retrieved_examples' => $retrieved_examples,
-				'route_candidates' => $route_candidates,
-				'original_command' => $command,
-			];
-		}
-
-		$intent = sanitize_key( $parsed['intent'] );
-
-		$params = isset( $parsed['params'] ) && is_array( $parsed['params'] )
-			? self::clean_intent_params( $parsed['params'] )
-			: [];
-
-		$confidence = isset( $parsed['confidence'] ) ? (float) $parsed['confidence'] : 0;
-
-		YoRo_Logger::log(
-			[
-				'type'       => 'ai_intent_parse',
-				'user_id'    => get_current_user_id(),
-				'command'    => $command,
-				'action'     => '',
-				'params'     => $params,
-				'trace_id'   => $trace_id,
-				'model'      => YoRo_AI_Settings::get_openai_model(),
-				'confidence' => $confidence,
-				'provider'   => self::get_provider(),
-				'status'     => 'success',
-				'result'     => [
-					'intent' => $intent,
-					'reason' => $parsed['reason'] ?? '',
-				],
-			]
-		);
-
-		return [
-			'success'          => true,
-			'matched'          => true,
-			'action'           => '',
-			'intent'           => [
-				'name'       => $intent,
-				'confidence' => $confidence,
-				'source'     => 'ai_intent',
-			],
-			'params'           => $params,
-			'parser_rule'      => 'ai.intent.structured_output',
-			'parser_source'    => 'ai_intent',
-			'confidence'       => $confidence,
-			'meta'             => $meta,
-			'retrieved_examples' => $retrieved_examples,
-			'route_candidates' => $route_candidates,
-			'reason'           => $parsed['reason'] ?? '',
 			'original_command' => $command,
 		];
 	}
@@ -669,25 +533,6 @@ class YoRo_AI_Parser {
 			)
 		);
 	}
-
-	private static function parse_intent_with_yoro_cloud( $command, $client_context = [] ) {
-		$client = YoRo_AI_Provider_Resolver::get_client();
-
-		if ( ! $client instanceof YoRo_Cloud_Client ) {
-			return self::parse_intent_with_openai_direct( $command, $client_context );
-		}
-
-		return $client->parse_intent(
-			YoRo_AI_Intent_Prompt::build(
-				$command,
-				self::prepare_intent_context( $client_context ),
-				[],
-				[ 'intents' => [], 'actions' => [] ],
-				self::get_available_order_statuses_for_ai()
-			)
-		);
-	}
-
 
 	private static function clean_params_for_action( $action, $params ) {
 		switch ( $action ) {
@@ -930,68 +775,6 @@ class YoRo_AI_Parser {
 			default:
 				return [];
 		}
-	}
-
-	private static function prepare_intent_context( $client_context ) {
-		if ( ! is_array( $client_context ) ) {
-			return [];
-		}
-
-		return [
-			'current_order_id'         => isset( $client_context['current_order_id'] ) ? absint( $client_context['current_order_id'] ) : 0,
-			'last_referenced_order_id' => isset( $client_context['last_referenced_order_id'] ) ? absint( $client_context['last_referenced_order_id'] ) : 0,
-			'last_order_ids'           => isset( $client_context['last_order_ids'] ) && is_array( $client_context['last_order_ids'] )
-				? array_values( array_filter( array_map( 'absint', $client_context['last_order_ids'] ) ) )
-				: [],
-			'last_result_type'         => isset( $client_context['last_result_type'] ) ? sanitize_key( $client_context['last_result_type'] ) : '',
-			'last_entity_graph'        => isset( $client_context['last_entity_graph'] ) && is_array( $client_context['last_entity_graph'] )
-				? $client_context['last_entity_graph']
-				: [],
-		];
-	}
-
-	private static function clean_intent_params( $params ) {
-		$clean = [];
-
-		if ( ! empty( $params['order_id'] ) ) {
-			$clean['order_id'] = absint( $params['order_id'] );
-		}
-
-		if ( ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
-			$clean['order_ids'] = array_values(
-				array_filter(
-					array_unique(
-						array_map( 'absint', $params['order_ids'] )
-					)
-				)
-			);
-		}
-
-		if ( ! empty( $params['status'] ) ) {
-			$clean['status'] = sanitize_key( $params['status'] );
-		}
-
-		if ( ! empty( $params['note'] ) ) {
-			$clean['note'] = sanitize_textarea_field( $params['note'] );
-		}
-
-		if ( ! empty( $params['instruction'] ) ) {
-			$clean['instruction'] = sanitize_textarea_field( $params['instruction'] );
-		}
-
-		if ( ! empty( $params['limit'] ) ) {
-			$clean['limit'] = min( max( absint( $params['limit'] ), 1 ), 50 );
-		}
-
-		if ( ! empty( $params['email'] ) ) {
-			$clean['email'] = sanitize_email( $params['email'] );
-		}
-
-		if ( ! empty( $params['phone'] ) ) {
-			$clean['phone'] = sanitize_text_field( $params['phone'] );
-		}
-
-		return $clean;
 	}
 
 	public static function get_confidence_threshold() {

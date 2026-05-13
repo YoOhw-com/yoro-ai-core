@@ -20,6 +20,11 @@
 - Legacy AI workflow fallback route.
 - Retrieval-candidate and semantic-intent parser routes.
 
+### Removed
+- Legacy AI intent parser wrapper, prompt, and result normalizer.
+- Legacy route example retriever.
+- Legacy semantic intent router.
+
 ### Verified
 - PHP syntax lint passes across all plugin PHP files using Local PHP 8.4.18.
 - Live AI smoke checks route key commands through `ai_router`.

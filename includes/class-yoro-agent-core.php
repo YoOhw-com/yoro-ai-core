@@ -45,14 +45,12 @@ class YoRo_Agent_Core {
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/clients/class-yoro-cloud-client.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/normalizers/class-yoro-command-decision-normalizer.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-parse-prompt.php';
-		require_once YORO_AGENT_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-intent-prompt.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-workflow-prompt.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-email-prompt.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-suggestions-prompt.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-conversation-prompt.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-command-router-prompt.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-parse-result-normalizer.php';
-		require_once YORO_AGENT_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-intent-result-normalizer.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-workflow-result-normalizer.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-email-result-normalizer.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/class-yoro-ai-parser.php';

@@ -36,7 +36,7 @@ YoRo command handling is moving to this flow:
 - Retrieval candidate router.
 - Semantic intent router.
 
-Legacy files may remain in the tree until dependency checks confirm they are no longer referenced by non-routing features.
+Legacy AI intent parser, example retriever, and semantic intent router files have been removed after dependency checks. Workflow planner files remain because multi-step workflows may still use them in a future phase.
 
 ## Live Smoke Commands
 
@@ -62,4 +62,4 @@ Expected behavior:
 - Expand action metadata for all high-value actions.
 - Replace broad parser suite live AI calls with deterministic router fixtures.
 - Keep a small live AI smoke suite for prompt/catalog quality checks.
-- Remove physically unused legacy classes after dependency scan and runtime smoke pass.
+- Add deterministic router fixtures for parser regression tests.
