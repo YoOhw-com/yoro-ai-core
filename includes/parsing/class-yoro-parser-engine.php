@@ -18,6 +18,10 @@ class YoRo_Parser_Engine {
 
 		$normalized = self::normalize( $command );
 
+		if ( class_exists( 'YoRo_Memory_Context_Resolver' ) ) {
+			$client_context = YoRo_Memory_Context_Resolver::resolve( $command, $client_context );
+		}
+
 		$priority_workflow_continue = YoRo_Email_Command_Parser::parse_priority_workflow_continue(
 			$command,
 			$normalized,

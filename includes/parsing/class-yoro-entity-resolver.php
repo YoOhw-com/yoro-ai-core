@@ -145,6 +145,26 @@ class YoRo_Entity_Resolver {
 
 		if (
 			empty( $order_ids ) &&
+			! empty( $client_context['resolved_reference'] ) &&
+			is_array( $client_context['resolved_reference'] ) &&
+			'order' === sanitize_key( $client_context['resolved_reference']['target_type'] ?? '' ) &&
+			! empty( $client_context['resolved_reference']['target_ids'] ) &&
+			is_array( $client_context['resolved_reference']['target_ids'] ) &&
+			(float) ( $client_context['resolved_reference']['confidence'] ?? 0 ) >= 0.7
+		) {
+			$order_ids = $client_context['resolved_reference']['target_ids'];
+		}
+
+		if (
+			empty( $order_ids ) &&
+			! empty( $client_context['resolved_order_ids'] ) &&
+			is_array( $client_context['resolved_order_ids'] )
+		) {
+			$order_ids = $client_context['resolved_order_ids'];
+		}
+
+		if (
+			empty( $order_ids ) &&
 			! empty( $client_context['current_order_id'] )
 		) {
 			$order_ids = [ $client_context['current_order_id'] ];

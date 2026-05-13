@@ -385,6 +385,14 @@ class YoRo_Parser_Test_Suite {
 				[ 'note' ],
 				'Please provide the note text you want to add to order 6864.'
 			),
+			'Add note to this order: Check address'      => self::base_router_fixture_decision(
+				'task_request',
+				'orders.add_note',
+				[
+					'note' => 'Check address',
+				],
+				0.86
+			),
 			'Show pending orders'                         => self::base_router_fixture_decision(
 				'task_request',
 				'orders.search',
@@ -1443,6 +1451,25 @@ class YoRo_Parser_Test_Suite {
 					'params.order_ids.0' => 6864,
 					'params.order_id'    => 6864,
 					'params.status'      => 'completed',
+				],
+			],
+			[
+				'domain'          => 'memory_reference',
+				'name'            => 'Contextual order reference prefers entity focus over current order',
+				'command'         => 'Add note to this order: Check address',
+				'expected_action' => 'orders.add_note',
+				'context'         => [
+					'current_order_id'         => 6848,
+					'last_referenced_order_id' => 6848,
+					'entity_focus'             => [
+						'type' => 'order',
+						'id'   => 6864,
+					],
+				],
+				'expect'          => [
+					'params.order_ids.0' => 6864,
+					'params.order_id'    => 6864,
+					'params.note'        => 'Check address',
 				],
 			],
 

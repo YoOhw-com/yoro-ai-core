@@ -32,6 +32,7 @@ class YoRo_Agent_Core {
 		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-db.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-rate-limiter.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-conversation-memory.php';
+		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-memory-context-resolver.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-context-provider.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-order-helper.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-capability-registry.php';

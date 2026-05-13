@@ -52,6 +52,10 @@ class YoRo_REST_Run_Handler {
 			$confirm
 		);
 
+		if ( class_exists( 'YoRo_Memory_Context_Resolver' ) ) {
+			$merged_context = YoRo_Memory_Context_Resolver::resolve( $command, $merged_context );
+		}
+
 		if (
 			! $confirm &&
 			! empty( $merged_context['current_workflow'] ) &&
