@@ -101,12 +101,21 @@ class YoRo_REST_Run_Handler {
 		}
 
 		if ( empty( $parsed['success'] ) || empty( $parsed['matched'] ) ) {
+			if (
+				! empty( $parsed['current_workflow'] ) &&
+				is_array( $parsed['current_workflow'] ) &&
+				class_exists( 'YoRo_Conversation_Memory' )
+			) {
+				YoRo_Conversation_Memory::set_workflow( $user_id, $parsed['current_workflow'] );
+			}
+
 			return rest_ensure_response(
 				[
 					'success' => false,
 					'stage'   => $parsed['stage'] ?? 'parse',
 					'trace_id' => $trace_id,
 					'parsed'  => $parsed,
+					'current_workflow' => $parsed['current_workflow'] ?? [],
 				]
 			);
 		}

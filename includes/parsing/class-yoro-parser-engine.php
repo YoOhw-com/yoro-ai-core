@@ -376,8 +376,12 @@ class YoRo_Parser_Engine {
 		$suggestions = isset( $decision['suggestions'] ) && is_array( $decision['suggestions'] )
 			? $decision['suggestions']
 			: [];
+		$current_workflow = self::build_pending_email_instruction_workflow_from_decision(
+			$command,
+			$decision
+		);
 
-		return [
+		$response = [
 			'success'            => false,
 			'matched'            => false,
 			'stage'              => 'clarify',
@@ -392,6 +396,47 @@ class YoRo_Parser_Engine {
 			'summary'            => sanitize_text_field( $decision['summary'] ?? '' ),
 			'reasoning_summary'  => sanitize_text_field( $decision['reasoning_summary'] ?? '' ),
 			'command_decision'   => self::compact_ai_command_decision_for_result( $decision ),
+		];
+
+		if ( ! empty( $current_workflow ) ) {
+			$response['current_workflow'] = $current_workflow;
+		}
+
+		return $response;
+	}
+
+	private static function build_pending_email_instruction_workflow_from_decision( $command, $decision ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$action = sanitize_text_field( $decision['action'] ?? '' );
+
+		if ( 'orders.compose_customer_email' !== $action ) {
+			return [];
+		}
+
+		$params = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
+
+		if ( ! $order_id && ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
+			$order_id = absint( reset( $params['order_ids'] ) );
+		}
+
+		if ( ! $order_id ) {
+			return [];
+		}
+
+		return [
+			'id'           => 'wf_' . wp_generate_uuid4(),
+			'type'         => 'customer_email',
+			'action'       => 'orders.compose_customer_email',
+			'step'         => 'collect_missing_params',
+			'order_id'     => $order_id,
+			'params'       => [
+				'order_id' => $order_id,
+			],
+			'missing'      => [ 'instruction' ],
+			'last_command' => sanitize_textarea_field( $command ),
+			'created_at'   => current_time( 'mysql' ),
+			'updated_at'   => current_time( 'mysql' ),
 		];
 	}
 
@@ -1600,6 +1645,7 @@ class YoRo_Parser_Engine {
 
 		$workflow_type = sanitize_key( $workflow['type'] ?? '' );
 		$workflow_order_id = absint( $workflow['order_id'] ?? 0 );
+		$workflow_step = sanitize_key( $workflow['step'] ?? '' );
 		$workflow_subject = sanitize_text_field( $workflow['subject'] ?? '' );
 		$workflow_body = sanitize_textarea_field( $workflow['body'] ?? '' );
 		$workflow_draft_id = sanitize_key( $workflow['draft_id'] ?? '' );
@@ -1620,6 +1666,24 @@ class YoRo_Parser_Engine {
 					'instruction' => sanitize_textarea_field( $command ),
 				],
 				'confidence' => $action_confidence >= 0.6 ? 0.93 : 0.90,
+			];
+		}
+
+		if (
+			'customer_email' === $workflow_type &&
+			in_array( $workflow_step, [ 'awaiting_instruction', 'collect_missing_params' ], true ) &&
+			$workflow_order_id > 0 &&
+			( 'awaiting_instruction' === $workflow_step || in_array( 'instruction', (array) ( $workflow['missing'] ?? [] ), true ) ) &&
+			'' !== trim( $command ) &&
+			! preg_match( '/\b(?:show|open|view|list|find|search|details?)\b/i', $normalized )
+		) {
+			return [
+				'action' => 'orders.compose_customer_email',
+				'params' => [
+					'order_id' => $workflow_order_id,
+					'instruction' => sanitize_textarea_field( $command ),
+				],
+				'confidence' => $action_confidence >= 0.6 ? 0.94 : 0.91,
 			];
 		}
 

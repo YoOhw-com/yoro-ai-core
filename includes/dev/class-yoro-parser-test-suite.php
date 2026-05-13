@@ -365,6 +365,16 @@ class YoRo_Parser_Test_Suite {
 				],
 				0.72
 			),
+			'Write an email for order 6848'              => self::base_router_fixture_decision(
+				'clarify',
+				'orders.compose_customer_email',
+				[
+					'order_id' => 6848,
+				],
+				0.82,
+				[ 'instruction' ],
+				'Please provide the instruction for the email body you want to compose for order #6848.'
+			),
 			'Show pending orders'                         => self::base_router_fixture_decision(
 				'task_request',
 				'orders.search',
@@ -1323,6 +1333,41 @@ class YoRo_Parser_Test_Suite {
 					'params.limit'     => 1,
 					'params.order_id'  => null,
 					'params.order_ids' => null,
+				],
+			],
+			[
+				'domain'         => 'email_followup',
+				'name'           => 'Email compose clarification stores pending instruction workflow',
+				'command'        => 'Write an email for order 6848',
+				'expected_stage' => 'clarify',
+				'expected_source' => 'ai_router',
+				'expect'         => [
+					'current_workflow.type'     => 'customer_email',
+					'current_workflow.step'     => 'collect_missing_params',
+					'current_workflow.action'   => 'orders.compose_customer_email',
+					'current_workflow.order_id' => 6848,
+				],
+			],
+			[
+				'domain'          => 'email_followup',
+				'name'            => 'Short email topic continues pending compose workflow',
+				'command'         => 'About shipping delay',
+				'expected_action' => 'orders.compose_customer_email',
+				'context'         => [
+					'current_workflow' => [
+						'type'     => 'customer_email',
+						'action'   => 'orders.compose_customer_email',
+						'step'     => 'collect_missing_params',
+						'order_id' => 6848,
+						'params'   => [
+							'order_id' => 6848,
+						],
+						'missing'  => [ 'instruction' ],
+					],
+				],
+				'expect'          => [
+					'params.order_id'    => 6848,
+					'params.instruction' => 'About shipping delay',
 				],
 			],
 

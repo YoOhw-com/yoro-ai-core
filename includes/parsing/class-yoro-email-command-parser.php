@@ -55,6 +55,7 @@ class YoRo_Email_Command_Parser {
 			[
 				'orders.add_note',
 				'orders.update_status',
+				'orders.compose_customer_email',
 			],
 			true
 		);
@@ -1079,6 +1080,10 @@ class YoRo_Email_Command_Parser {
 
 		if ( 'orders.update_status' === $action ) {
 			return __( 'What status should I update to?', 'yoro-agent-core' );
+		}
+
+		if ( 'orders.compose_customer_email' === $action ) {
+			return __( 'What should the customer email be about?', 'yoro-agent-core' );
 		}
 
 		return sprintf(
