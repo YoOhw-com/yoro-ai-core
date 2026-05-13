@@ -6,6 +6,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Parser_Test_Suite {
 
+	private static $router_fixture_map = null;
+
 	public static function run() {
 		$group_runs = [
 			'parser'   => self::run_parser_tests(),
@@ -70,11 +72,161 @@ class YoRo_Parser_Test_Suite {
 	public static function run_parser_tests() {
 		$results = [];
 
-		foreach ( self::parser_cases() as $test ) {
-			$results[] = self::run_parser_case( $test );
+		self::enable_router_fixtures();
+
+		try {
+			foreach ( self::parser_cases() as $test ) {
+				$results[] = self::run_parser_case( $test );
+			}
+		} finally {
+			self::disable_router_fixtures();
 		}
 
 		return $results;
+	}
+
+	public static function mock_command_router_decision( $decision, $command, $context ) {
+		if ( null === self::$router_fixture_map ) {
+			self::$router_fixture_map = self::build_router_fixture_map();
+		}
+
+		$key = self::router_fixture_key( $command );
+
+		return self::$router_fixture_map[ $key ] ?? $decision;
+	}
+
+	private static function enable_router_fixtures() {
+		self::$router_fixture_map = self::build_router_fixture_map();
+		add_filter(
+			'yoro_ai_command_router_mock_decision',
+			[ __CLASS__, 'mock_command_router_decision' ],
+			10,
+			3
+		);
+	}
+
+	private static function disable_router_fixtures() {
+		remove_filter(
+			'yoro_ai_command_router_mock_decision',
+			[ __CLASS__, 'mock_command_router_decision' ],
+			10
+		);
+		self::$router_fixture_map = null;
+	}
+
+	private static function build_router_fixture_map() {
+		$map = [];
+
+		foreach ( self::parser_cases() as $test ) {
+			if ( empty( $test['command'] ) ) {
+				continue;
+			}
+
+			$map[ self::router_fixture_key( $test['command'] ) ] = self::build_router_fixture_decision_for_case( $test );
+		}
+
+		return $map;
+	}
+
+	private static function router_fixture_key( $command ) {
+		return strtolower( trim( (string) $command ) );
+	}
+
+	private static function build_router_fixture_decision_for_case( $test ) {
+		$action = isset( $test['expected_action'] ) ? sanitize_text_field( $test['expected_action'] ) : '';
+		$params = self::extract_router_fixture_params( $test['expect'] ?? [] );
+		$stage = sanitize_key( $test['expect_stage'] ?? '' );
+
+		if ( empty( $action ) || ( 'clarify' === $stage && ! empty( $test['expect_unmatched'] ) ) ) {
+			return self::base_router_fixture_decision(
+				'clarify',
+				'',
+				[],
+				0.9,
+				[ 'details' ],
+				__( 'I need a little more detail before I can run that action.', 'yoro-agent-core' )
+			);
+		}
+
+		return self::base_router_fixture_decision(
+			'task_request',
+			$action,
+			$params,
+			0.95,
+			[],
+			''
+		);
+	}
+
+	private static function base_router_fixture_decision( $mode, $action, $params, $confidence, $missing = [], $clarification_question = '' ) {
+		return [
+			'mode'                   => $mode,
+			'language'               => 'en',
+			'action'                 => $action,
+			'params'                 => is_array( $params ) ? $params : [],
+			'confidence'             => (float) $confidence,
+			'missing'                => is_array( $missing ) ? $missing : [],
+			'ambiguities'            => [],
+			'evidence'               => [
+				'matched_terms'       => [],
+				'referenced_context'  => [],
+				'notes'               => 'Parser test fixture.',
+			],
+			'clarification_question' => $clarification_question,
+			'summary'                => 'Parser test fixture decision.',
+			'reasoning_summary'      => 'Deterministic fixture for parser regression tests.',
+			'suggestions'            => [],
+		];
+	}
+
+	private static function extract_router_fixture_params( $expectations ) {
+		$params = [];
+
+		if ( ! is_array( $expectations ) ) {
+			return $params;
+		}
+
+		foreach ( $expectations as $path => $value ) {
+			$path = (string) $path;
+
+			if ( 0 !== strpos( $path, 'params.' ) ) {
+				continue;
+			}
+
+			self::set_router_fixture_param_path(
+				$params,
+				substr( $path, 7 ),
+				$value
+			);
+		}
+
+		return $params;
+	}
+
+	private static function set_router_fixture_param_path( &$params, $path, $value ) {
+		$parts = array_values( array_filter( explode( '.', (string) $path ), 'strlen' ) );
+
+		if ( empty( $parts ) ) {
+			return;
+		}
+
+		$cursor =& $params;
+
+		foreach ( $parts as $index => $part ) {
+			$is_last = ( count( $parts ) - 1 ) === $index;
+			$key = ctype_digit( $part ) ? (int) $part : sanitize_key( $part );
+
+			if ( $is_last ) {
+				$cursor[ $key ] = $value;
+				return;
+			}
+
+			if ( ! isset( $cursor[ $key ] ) || ! is_array( $cursor[ $key ] ) ) {
+				$cursor[ $key ] = [];
+			}
+
+			$cursor =& $cursor[ $key ];
+		}
 	}
 
 	public static function run_pipeline_tests() {
@@ -166,10 +318,14 @@ class YoRo_Parser_Test_Suite {
 		$assertions = [];
 
 		if ( array_key_exists( 'expected_action', $test ) ) {
+			$actual_action = is_array( $actual )
+				? ( $actual['action'] ?? ( $actual['parsed']['action'] ?? null ) )
+				: null;
+
 			$assertions['action'] = [
 				'expected' => $test['expected_action'],
-				'actual'   => is_array( $actual ) ? ( $actual['action'] ?? null ) : null,
-				'passed'   => is_array( $actual ) && ( ( $actual['action'] ?? null ) === $test['expected_action'] ),
+				'actual'   => $actual_action,
+				'passed'   => is_array( $actual ) && ( $actual_action === $test['expected_action'] ),
 			];
 		}
 
