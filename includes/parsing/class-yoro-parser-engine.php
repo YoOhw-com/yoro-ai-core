@@ -417,10 +417,16 @@ class YoRo_Parser_Engine {
 			: [];
 
 		if ( '' === $action || empty( $missing ) ) {
-			return [];
+			$params = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+			$missing = self::infer_missing_params_for_pending_workflow( $action, $params, $missing );
+
+			if ( '' === $action || empty( $missing ) ) {
+				return [];
+			}
 		}
 
 		$params = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+		$missing = self::infer_missing_params_for_pending_workflow( $action, $params, $missing );
 		$workflow_type = 'generic';
 		$workflow_params = [];
 		$order_id = 0;
@@ -485,6 +491,46 @@ class YoRo_Parser_Engine {
 			'created_at'   => current_time( 'mysql' ),
 			'updated_at'   => current_time( 'mysql' ),
 		];
+	}
+
+	private static function infer_missing_params_for_pending_workflow( $action, $params, $missing ) {
+		$action = sanitize_text_field( $action );
+		$params = is_array( $params ) ? $params : [];
+		$missing = is_array( $missing )
+			? array_values( array_filter( array_map( 'sanitize_key', $missing ) ) )
+			: [];
+
+		if ( 'orders.compose_customer_email' === $action ) {
+			$missing = array_diff( $missing, [ 'body', 'email_body', 'message', 'topic' ] );
+
+			if ( empty( $params['instruction'] ) ) {
+				$missing[] = 'instruction';
+			}
+		}
+
+		if ( 'orders.add_note' === $action ) {
+			$missing = array_diff( $missing, [ 'note_text', 'text', 'content', 'message' ] );
+
+			if ( empty( $params['note'] ) ) {
+				$missing[] = 'note';
+			}
+		}
+
+		if ( 'orders.update_status' === $action ) {
+			$missing = array_diff( $missing, [ 'order_status', 'new_status' ] );
+
+			if ( empty( $params['status'] ) ) {
+				$missing[] = 'status';
+			}
+		}
+
+		return array_values(
+			array_unique(
+				array_filter(
+					array_map( 'sanitize_key', $missing )
+				)
+			)
+		);
 	}
 
 	private static function extract_pending_workflow_order_id( $params ) {

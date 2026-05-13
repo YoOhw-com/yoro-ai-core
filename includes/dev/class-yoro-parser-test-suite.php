@@ -375,6 +375,16 @@ class YoRo_Parser_Test_Suite {
 				[ 'instruction' ],
 				'Please provide the instruction for the email body you want to compose for order #6848.'
 			),
+			'Write an email for order 6865'              => self::base_router_fixture_decision(
+				'clarify',
+				'orders.compose_customer_email',
+				[
+					'order_id' => 6865,
+				],
+				0.82,
+				[ 'email_body' ],
+				'What should the customer email be about?'
+			),
 			'Add a note to order 6864'                   => self::base_router_fixture_decision(
 				'clarify',
 				'orders.add_note',
@@ -384,6 +394,26 @@ class YoRo_Parser_Test_Suite {
 				0.86,
 				[ 'note' ],
 				'Please provide the note text you want to add to order 6864.'
+			),
+			'Add a note to order 6865'                   => self::base_router_fixture_decision(
+				'clarify',
+				'orders.add_note',
+				[
+					'order_ids' => [ 6865 ],
+				],
+				0.86,
+				[ 'note_text' ],
+				'What note would you like to add to order 6865?'
+			),
+			'Update order 6865 status'                   => self::base_router_fixture_decision(
+				'clarify',
+				'orders.update_status',
+				[
+					'order_ids' => [ 6865 ],
+				],
+				0.86,
+				[ 'order_status' ],
+				'What status should I update order 6865 to?'
 			),
 			'Add note to this order: Check address'      => self::base_router_fixture_decision(
 				'task_request',
@@ -1367,6 +1397,20 @@ class YoRo_Parser_Test_Suite {
 				],
 			],
 			[
+				'domain'         => 'email_followup',
+				'name'           => 'Email compose clarification normalizes AI missing alias',
+				'command'        => 'Write an email for order 6865',
+				'expected_stage' => 'clarify',
+				'expected_source' => 'ai_router',
+				'expect'         => [
+					'current_workflow.type'      => 'customer_email',
+					'current_workflow.step'      => 'collect_missing_params',
+					'current_workflow.action'    => 'orders.compose_customer_email',
+					'current_workflow.order_id'  => 6865,
+					'current_workflow.missing.0' => 'instruction',
+				],
+			],
+			[
 				'domain'          => 'email_followup',
 				'name'            => 'Short email topic continues pending compose workflow',
 				'command'         => 'About shipping delay',
@@ -1403,6 +1447,24 @@ class YoRo_Parser_Test_Suite {
 					'current_workflow.action'       => 'orders.add_note',
 					'current_workflow.order_id'     => 6864,
 					'current_workflow.params.order_ids.0' => 6864,
+				],
+			],
+			[
+				'domain'         => 'write_followup',
+				'name'           => 'Add note clarification normalizes AI missing alias',
+				'command'        => 'Add a note to order 6865',
+				'expected_stage' => 'clarify',
+				'expected_source' => 'ai_router',
+				'context'        => [
+					'current_order_id' => 6848,
+				],
+				'expect'         => [
+					'current_workflow.type'         => 'generic',
+					'current_workflow.step'         => 'collect_missing_params',
+					'current_workflow.action'       => 'orders.add_note',
+					'current_workflow.order_id'     => 6865,
+					'current_workflow.params.order_ids.0' => 6865,
+					'current_workflow.missing.0'    => 'note',
 				],
 			],
 			[
@@ -1451,6 +1513,24 @@ class YoRo_Parser_Test_Suite {
 					'params.order_ids.0' => 6864,
 					'params.order_id'    => 6864,
 					'params.status'      => 'completed',
+				],
+			],
+			[
+				'domain'         => 'write_followup',
+				'name'           => 'Update status clarification normalizes AI missing alias',
+				'command'        => 'Update order 6865 status',
+				'expected_stage' => 'clarify',
+				'expected_source' => 'ai_router',
+				'context'        => [
+					'current_order_id' => 6848,
+				],
+				'expect'         => [
+					'current_workflow.type'         => 'generic',
+					'current_workflow.step'         => 'collect_missing_params',
+					'current_workflow.action'       => 'orders.update_status',
+					'current_workflow.order_id'     => 6865,
+					'current_workflow.params.order_ids.0' => 6865,
+					'current_workflow.missing.0'    => 'status',
 				],
 			],
 			[
