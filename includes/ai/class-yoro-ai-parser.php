@@ -472,7 +472,9 @@ class YoRo_AI_Parser {
 			return '';
 		}
 
+		$had_classifier_intro = (bool) preg_match( '/^Chat mode activated(?:\s+for\s+casual\s+conversation)?\.?\s*/i', $text );
 		$patterns = [
+			'/^Chat mode activated(?:\s+for\s+casual\s+conversation)?\.?\s*/i' => '',
 			'/^User asked\b[:\s-]*/i'                => 'You asked ',
 			'/^The user asked\b[:\s-]*/i'            => 'You asked ',
 			'/^User requests\b[:\s-]*/i'             => 'You asked me to ',
@@ -487,7 +489,21 @@ class YoRo_AI_Parser {
 			$text = preg_replace( $pattern, $replacement, $text );
 		}
 
-		return sanitize_text_field( trim( $text ) );
+		$text = trim( preg_replace( '/\s+/', ' ', $text ) );
+
+		if ( preg_match( '/\bidentity information\b|\bno WooCommerce task\b/i', $text ) ) {
+			return __( 'I don’t know who you are from this chat alone. I can use store context when you ask about orders, customers, or operations.', 'yoro-agent-core' );
+		}
+
+		if ( preg_match( '/\bcasual conversation\b|\bchat mode\b|\bclassifier\b/i', $text ) ) {
+			return '';
+		}
+
+		if ( $had_classifier_intro && preg_match( '/^I can help with WooCommerce store operations\.?$/i', $text ) ) {
+			return __( 'Hi. I can help with WooCommerce store operations.', 'yoro-agent-core' );
+		}
+
+		return sanitize_text_field( $text );
 	}
 
 	private static function parse_workflow_plan_openai( $prompt ) {

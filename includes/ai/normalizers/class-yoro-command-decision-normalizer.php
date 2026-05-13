@@ -189,12 +189,69 @@ class YoRo_Command_Decision_Normalizer {
 			'missing'                => self::normalize_string_list( $decision['missing'] ?? [] ),
 			'ambiguities'            => self::normalize_string_list( $decision['ambiguities'] ?? [] ),
 			'evidence'               => isset( $decision['evidence'] ) && is_array( $decision['evidence'] ) ? $decision['evidence'] : [],
-			'clarification_question' => sanitize_text_field( $decision['clarification_question'] ?? '' ),
-			'summary'                => sanitize_text_field( $decision['summary'] ?? '' ),
-			'reasoning_summary'      => sanitize_text_field( $decision['reasoning_summary'] ?? '' ),
+			'clarification_question' => self::normalize_response_copy( $decision['clarification_question'] ?? '', $mode ),
+			'summary'                => self::normalize_response_copy( $decision['summary'] ?? '', $mode ),
+			'reasoning_summary'      => self::normalize_response_copy( $decision['reasoning_summary'] ?? '', $mode ),
 			'suggestions'            => self::normalize_suggestions( $decision['suggestions'] ?? [] ),
 			'action_catalog_item'    => $catalog_item ?: [],
 		];
+	}
+
+	private static function normalize_response_copy( $text, $mode = '' ) {
+		$text = sanitize_text_field( (string) $text );
+
+		if ( '' === $text ) {
+			return '';
+		}
+
+		$had_classifier_intro = (bool) preg_match( '/^Chat mode activated(?:\s+for\s+casual\s+conversation)?\.?\s*/i', $text );
+		$patterns = [
+			'/^Chat mode activated(?:\s+for\s+casual\s+conversation)?\.?\s*/i' => '',
+			'/^User asked\b[:\s-]*/i'                => 'You asked ',
+			'/^The user asked\b[:\s-]*/i'            => 'You asked ',
+			'/^User asks\b[:\s-]*/i'                 => 'You asked ',
+			'/^The user asks\b[:\s-]*/i'             => 'You asked ',
+			'/^User requested\b[:\s-]*/i'            => 'You asked me to ',
+			'/^The user requested\b[:\s-]*/i'        => 'You asked me to ',
+			'/^User requests\b[:\s-]*/i'             => 'You asked me to ',
+			'/^The user requests\b[:\s-]*/i'         => 'You asked me to ',
+			'/^User is asking\b[:\s-]*/i'            => 'You asked ',
+			'/^The user is asking\b[:\s-]*/i'        => 'You asked ',
+			'/\bthe user\b/i'                        => 'you',
+			'/\bUser\b/'                             => 'You',
+		];
+
+		foreach ( $patterns as $pattern => $replacement ) {
+			$text = preg_replace( $pattern, $replacement, $text );
+		}
+
+		$text = trim( preg_replace( '/\s+/', ' ', $text ) );
+
+		if ( 'chat_only' === $mode && preg_match( '/\bidentity information\b|\bno WooCommerce task\b/i', $text ) ) {
+			return __( 'I don’t know who you are from this chat alone. I can use store context when you ask about orders, customers, or operations.', 'yoro-agent-core' );
+		}
+
+		if ( in_array( $mode, [ 'chat_only', 'out_of_scope' ], true ) && preg_match( '/\bcasual conversation\b|\bchat mode\b|\bclassifier\b/i', $text ) ) {
+			$text = '';
+		}
+
+		if ( 'chat_only' === $mode && $had_classifier_intro && preg_match( '/^I can help with WooCommerce store operations\.?$/i', $text ) ) {
+			return __( 'Hi. I can help with WooCommerce store operations.', 'yoro-agent-core' );
+		}
+
+		if ( '' === $text ) {
+			if ( 'chat_only' === $mode ) {
+				return __( 'Hi. I can help with WooCommerce store operations.', 'yoro-agent-core' );
+			}
+
+			if ( 'out_of_scope' === $mode ) {
+				return __( 'I’m focused on WooCommerce store operations, so I can’t help with that topic here.', 'yoro-agent-core' );
+			}
+
+			return '';
+		}
+
+		return sanitize_text_field( $text );
 	}
 
 	private static function find_catalog_item( $action, $catalog ) {

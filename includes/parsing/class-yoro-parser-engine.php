@@ -396,6 +396,10 @@ class YoRo_Parser_Engine {
 	}
 
 	private static function build_ai_command_router_assistant_response( $command, $normalized, $parser_rule, $summary, $followup = '', $suggestions = [], $extra_result = [], $confidence = 1.0 ) {
+		$topic    = is_array( $extra_result ) ? sanitize_key( $extra_result['conversation_topic'] ?? '' ) : '';
+		$summary  = self::normalize_assistant_response_copy( $summary, $topic );
+		$followup = self::normalize_assistant_response_copy( $followup, $topic );
+
 		$result = array_merge(
 			[
 				'display_type'       => 'assistant_message',
@@ -5527,6 +5531,10 @@ class YoRo_Parser_Engine {
 	}
 
 	private static function build_assistant_message_response( $command, $normalized, $parser_rule, $summary, $followup = '', $suggestions = [], $extra_result = [] ) {
+		$topic    = is_array( $extra_result ) ? sanitize_key( $extra_result['conversation_topic'] ?? '' ) : '';
+		$summary  = self::normalize_assistant_response_copy( $summary, $topic );
+		$followup = self::normalize_assistant_response_copy( $followup, $topic );
+
 		$result = array_merge(
 			[
 				'display_type'       => 'assistant_message',
@@ -5549,6 +5557,61 @@ class YoRo_Parser_Engine {
 			'normalized_command' => $normalized,
 			'result'             => $result,
 		];
+	}
+
+	private static function normalize_assistant_response_copy( $text, $topic = '' ) {
+		$text = sanitize_text_field( (string) $text );
+
+		if ( '' === $text ) {
+			return '';
+		}
+
+		$had_classifier_intro = (bool) preg_match( '/^Chat mode activated(?:\s+for\s+casual\s+conversation)?\.?\s*/i', $text );
+		$patterns = [
+			'/^Chat mode activated(?:\s+for\s+casual\s+conversation)?\.?\s*/i' => '',
+			'/^User asked\b[:\s-]*/i'                => 'You asked ',
+			'/^The user asked\b[:\s-]*/i'            => 'You asked ',
+			'/^User asks\b[:\s-]*/i'                 => 'You asked ',
+			'/^The user asks\b[:\s-]*/i'             => 'You asked ',
+			'/^User requested\b[:\s-]*/i'            => 'You asked me to ',
+			'/^The user requested\b[:\s-]*/i'        => 'You asked me to ',
+			'/^User requests\b[:\s-]*/i'             => 'You asked me to ',
+			'/^The user requests\b[:\s-]*/i'         => 'You asked me to ',
+			'/^User is asking\b[:\s-]*/i'            => 'You asked ',
+			'/^The user is asking\b[:\s-]*/i'        => 'You asked ',
+			'/\bthe user\b/i'                        => 'you',
+			'/\bUser\b/'                             => 'You',
+		];
+
+		foreach ( $patterns as $pattern => $replacement ) {
+			$text = preg_replace( $pattern, $replacement, $text );
+		}
+
+		$text = trim( preg_replace( '/\s+/', ' ', $text ) );
+
+		if ( 'chat_only' === $topic && preg_match( '/\bidentity information\b|\bno WooCommerce task\b/i', $text ) ) {
+			return __( 'I don’t know who you are from this chat alone. I can use store context when you ask about orders, customers, or operations.', 'yoro-agent-core' );
+		}
+
+		if ( in_array( $topic, [ 'chat_only', 'out_of_scope_general', 'out_of_scope' ], true ) && preg_match( '/\bcasual conversation\b|\bchat mode\b|\bclassifier\b/i', $text ) ) {
+			$text = '';
+		}
+
+		if ( 'chat_only' === $topic && $had_classifier_intro && preg_match( '/^I can help with WooCommerce store operations\.?$/i', $text ) ) {
+			return __( 'Hi. I can help with WooCommerce store operations.', 'yoro-agent-core' );
+		}
+
+		if ( '' === $text ) {
+			if ( 'chat_only' === $topic ) {
+				return __( 'Hi. I can help with WooCommerce store operations.', 'yoro-agent-core' );
+			}
+
+			if ( in_array( $topic, [ 'out_of_scope_general', 'out_of_scope' ], true ) ) {
+				return __( 'I’m focused on WooCommerce store operations, so I can’t help with that topic here.', 'yoro-agent-core' );
+			}
+		}
+
+		return sanitize_text_field( $text );
 	}
 
 	private static function clarification_response( $command, $normalized, $message ) {

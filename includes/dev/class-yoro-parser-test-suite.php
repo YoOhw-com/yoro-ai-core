@@ -334,6 +334,28 @@ class YoRo_Parser_Test_Suite {
 
 	private static function router_fixture_command_overrides() {
 		return [
+			'Hello'                                       => array_merge(
+				self::base_router_fixture_decision(
+					'chat_only',
+					'',
+					[],
+					0.95
+				),
+				[
+					'summary' => 'Chat mode activated for casual conversation. I can help with WooCommerce store operations.',
+				]
+			),
+			'Do you know who am I?'                      => array_merge(
+				self::base_router_fixture_decision(
+					'chat_only',
+					'',
+					[],
+					0.95
+				),
+				[
+					'summary' => 'User asked for identity information; no WooCommerce task.',
+				]
+			),
 			'Show pending orders'                         => self::base_router_fixture_decision(
 				'task_request',
 				'orders.search',
@@ -1256,6 +1278,28 @@ class YoRo_Parser_Test_Suite {
 
 	private static function parser_cases() {
 		$cases = [
+
+			// ===== CASUAL CHAT / OUT-OF-SCOPE COPY =====
+			[
+				'domain'          => 'casual_chat',
+				'name'            => 'Greeting returns natural assistant copy',
+				'command'         => 'Hello',
+				'expected_source' => 'ai_router',
+				'expect'          => [
+					'response_only'  => true,
+					'result.summary' => 'Hi. I can help with WooCommerce store operations.',
+				],
+			],
+			[
+				'domain'          => 'casual_chat',
+				'name'            => 'Identity question does not expose classifier wording',
+				'command'         => 'Do you know who am I?',
+				'expected_source' => 'ai_router',
+				'expect'          => [
+					'response_only'  => true,
+					'result.summary' => 'I don’t know who you are from this chat alone. I can use store context when you ask about orders, customers, or operations.',
+				],
+			],
 
 			// ===== ORDER SEARCH =====
 			[
