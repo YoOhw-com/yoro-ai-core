@@ -1075,7 +1075,7 @@
 			wrapper.className = 'yoro-chat-message ' + (isUser ? 'yoro-chat-message-user' : 'yoro-chat-message-agent');
 
 			wrapper.innerHTML = `
-				<div class="yoro-chat-avatar">${isUser ? 'U' : 'Y'}</div>
+				<div class="yoro-chat-avatar" aria-hidden="true">${isUser ? 'U' : ''}</div>
 				<div class="yoro-chat-bubble">
 					${html}
 				</div>

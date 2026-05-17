@@ -272,7 +272,7 @@ class YoRo_Admin_Page {
 
 			<div id="yoro-chat-thread" class="yoro-chat-thread">
 				<div class="yoro-chat-message yoro-chat-message-agent" data-yoro-initial-greeting="1">
-					<div class="yoro-chat-avatar">Y</div>
+					<div class="yoro-chat-avatar" aria-hidden="true"></div>
 					<div class="yoro-chat-bubble">
 						<strong><?php esc_html_e( 'YoRo', 'yoro-agent-core' ); ?></strong>
 						<p><?php echo esc_html( $intro_text ); ?></p>

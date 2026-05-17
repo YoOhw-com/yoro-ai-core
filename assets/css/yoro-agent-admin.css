@@ -256,6 +256,12 @@ body.toplevel_page_yoro-agent #wpbody-content {
 	flex: 0 0 34px;
 }
 
+.yoro-chat-message-agent .yoro-chat-avatar {
+	background: #050505 url("../images/yoro-chat-avatar.png") center / cover no-repeat;
+	color: transparent;
+	font-size: 0;
+}
+
 .yoro-chat-message-user .yoro-chat-avatar {
 	background: #2271b1;
 }
