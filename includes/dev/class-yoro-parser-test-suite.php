@@ -6998,6 +6998,64 @@ class YoRo_Parser_Test_Suite {
 				},
 			],
 			[
+				'name'   => 'Execute operations summary resolves calendar this week window',
+				'action' => 'operations.get_summary',
+				'params' => [
+					'window' => 'this_week',
+					'focus'  => 'overview',
+				],
+				'expect' => [
+					'result.success'    => true,
+					'result.action'     => 'operations.get_summary',
+					'result.window.key' => 'this_week',
+				],
+				'assert' => function( $actual ) {
+					$expected_window = YoRo_Date_Helper::resolve_window( 'this_week' );
+
+					return [
+						'operations_window_uses_wp_start_of_week' => [
+							'expected' => $expected_window['start'] ?? '',
+							'actual'   => self::get_path( $actual, 'result.window.start', '' ),
+							'passed'   => ( $expected_window['start'] ?? '' ) === self::get_path( $actual, 'result.window.start', '' ),
+						],
+						'operations_window_uses_wp_timezone' => [
+							'expected' => wp_timezone_string(),
+							'actual'   => self::get_path( $actual, 'result.window.timezone', '' ),
+							'passed'   => wp_timezone_string() === self::get_path( $actual, 'result.window.timezone', '' ),
+						],
+					];
+				},
+			],
+			[
+				'name'   => 'Execute business summary resolves calendar this week window',
+				'action' => 'store.get_business_summary',
+				'params' => [
+					'window' => 'this_week',
+					'focus'  => 'overview',
+				],
+				'expect' => [
+					'result.success'    => true,
+					'result.action'     => 'store.get_business_summary',
+					'result.window.key' => 'this_week',
+				],
+				'assert' => function( $actual ) {
+					$expected_window = YoRo_Date_Helper::resolve_window( 'this_week' );
+
+					return [
+						'business_window_uses_wp_start_of_week' => [
+							'expected' => $expected_window['start'] ?? '',
+							'actual'   => self::get_path( $actual, 'result.window.start', '' ),
+							'passed'   => ( $expected_window['start'] ?? '' ) === self::get_path( $actual, 'result.window.start', '' ),
+						],
+						'business_window_uses_wp_timezone' => [
+							'expected' => wp_timezone_string(),
+							'actual'   => self::get_path( $actual, 'result.window.timezone', '' ),
+							'passed'   => wp_timezone_string() === self::get_path( $actual, 'result.window.timezone', '' ),
+						],
+					];
+				},
+			],
+			[
 				'name'          => 'REST run low confidence AI confirmation returns pending token',
 				'command'       => 'Maybe open order 123 for a quick look',
 				'rest_method'   => 'POST',

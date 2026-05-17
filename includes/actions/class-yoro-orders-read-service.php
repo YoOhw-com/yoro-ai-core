@@ -1313,61 +1313,19 @@ class YoRo_Orders_Read_Service {
 	}
 
 	private static function normalize_operations_window_key( $window ) {
-		$window = sanitize_key( (string) $window );
+		$window_key = YoRo_Date_Helper::normalize_window_key( $window );
 
-		$allowed = [
-			'today',
-			'yesterday',
-			'last_7_days',
-			'last_30_days',
-		];
-
-		return in_array( $window, $allowed, true ) ? $window : 'today';
+		return '' !== $window_key ? $window_key : 'today';
 	}
 
 	private static function get_operations_window( $window_key ) {
-		$now   = current_datetime();
-		$start = clone $now;
-		$end   = clone $now;
-		$label = __( 'Today', 'yoro-agent-core' );
+		$window = YoRo_Date_Helper::resolve_window( $window_key );
 
-		switch ( $window_key ) {
-			case 'yesterday':
-				$start = $start->modify( '-1 day' )->setTime( 0, 0, 0 );
-				$end = clone $start;
-				$end = $end->setTime( 23, 59, 59 );
-				$label = __( 'Yesterday', 'yoro-agent-core' );
-				break;
-
-			case 'last_7_days':
-				$start = $start->modify( '-6 days' )->setTime( 0, 0, 0 );
-				$end   = $end->setTime( 23, 59, 59 );
-				$label = __( 'Last 7 days', 'yoro-agent-core' );
-				break;
-
-			case 'last_30_days':
-				$start = $start->modify( '-29 days' )->setTime( 0, 0, 0 );
-				$end   = $end->setTime( 23, 59, 59 );
-				$label = __( 'Last 30 days', 'yoro-agent-core' );
-				break;
-
-			case 'today':
-			default:
-				$start = $start->setTime( 0, 0, 0 );
-				$end   = $end->setTime( 23, 59, 59 );
-				$label = __( 'Today', 'yoro-agent-core' );
-				break;
+		if ( empty( $window ) ) {
+			$window = YoRo_Date_Helper::resolve_window( 'today' );
 		}
 
-		return [
-			'key'      => $window_key,
-			'label'    => $label,
-			'start'    => $start->format( 'Y-m-d H:i:s' ),
-			'end'      => $end->format( 'Y-m-d H:i:s' ),
-			'start_ts' => (int) $start->getTimestamp(),
-			'end_ts'   => (int) $end->getTimestamp(),
-			'query'    => $start->format( 'Y-m-d H:i:s' ) . '...' . $end->format( 'Y-m-d H:i:s' ),
-		];
+		return $window;
 	}
 
 	private static function build_relative_cutoff( $modifier ) {

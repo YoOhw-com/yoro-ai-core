@@ -234,12 +234,14 @@ class YoRo_Store_Briefing_Service {
 			'skipped'      => [],
 			'errors'       => [],
 			'window'       => [
-				'key'      => $window_key,
-				'label'    => $window['label'],
-				'start'    => $window['start'],
-				'end'      => $window['end'],
-				'start_ts' => isset( $window['start_ts'] ) ? (int) $window['start_ts'] : 0,
-				'end_ts'   => isset( $window['end_ts'] ) ? (int) $window['end_ts'] : 0,
+				'key'            => $window_key,
+				'label'          => $window['label'],
+				'start'          => $window['start'],
+				'end'            => $window['end'],
+				'start_ts'       => isset( $window['start_ts'] ) ? (int) $window['start_ts'] : 0,
+				'end_ts'         => isset( $window['end_ts'] ) ? (int) $window['end_ts'] : 0,
+				'timezone'       => sanitize_text_field( $window['timezone'] ?? '' ),
+				'week_starts_on' => isset( $window['week_starts_on'] ) ? absint( $window['week_starts_on'] ) : absint( get_option( 'start_of_week', 1 ) ),
 			],
 			'focus'                => $focus,
 			'business_metrics'     => $business_metrics,
@@ -408,12 +410,14 @@ class YoRo_Store_Briefing_Service {
 			'skipped'      => [],
 			'errors'       => [],
 			'window'       => [
-				'key'      => $window_key,
-				'label'    => $window['label'],
-				'start'    => $window['start'],
-				'end'      => $window['end'],
-				'start_ts' => isset( $window['start_ts'] ) ? (int) $window['start_ts'] : 0,
-				'end_ts'   => isset( $window['end_ts'] ) ? (int) $window['end_ts'] : 0,
+				'key'            => $window_key,
+				'label'          => $window['label'],
+				'start'          => $window['start'],
+				'end'            => $window['end'],
+				'start_ts'       => isset( $window['start_ts'] ) ? (int) $window['start_ts'] : 0,
+				'end_ts'         => isset( $window['end_ts'] ) ? (int) $window['end_ts'] : 0,
+				'timezone'       => sanitize_text_field( $window['timezone'] ?? '' ),
+				'week_starts_on' => isset( $window['week_starts_on'] ) ? absint( $window['week_starts_on'] ) : absint( get_option( 'start_of_week', 1 ) ),
 			],
 			'sections'               => $sections,
 			'briefing_context'       => $briefing_context,
@@ -552,20 +556,24 @@ class YoRo_Store_Briefing_Service {
 			'time_window_label'   => __( 'Yesterday and this morning', 'yoro-agent-core' ),
 			'headline'            => $headline,
 			'yesterday_window'    => [
-				'key'      => $yesterday_window_key,
-				'label'    => sanitize_text_field( $yesterday_window['label'] ?? __( 'Yesterday', 'yoro-agent-core' ) ),
-				'start'    => sanitize_text_field( $yesterday_window['start'] ?? '' ),
-				'end'      => sanitize_text_field( $yesterday_window['end'] ?? '' ),
-				'start_ts' => isset( $yesterday_window['start_ts'] ) ? (int) $yesterday_window['start_ts'] : 0,
-				'end_ts'   => isset( $yesterday_window['end_ts'] ) ? (int) $yesterday_window['end_ts'] : 0,
+				'key'            => $yesterday_window_key,
+				'label'          => sanitize_text_field( $yesterday_window['label'] ?? __( 'Yesterday', 'yoro-agent-core' ) ),
+				'start'          => sanitize_text_field( $yesterday_window['start'] ?? '' ),
+				'end'            => sanitize_text_field( $yesterday_window['end'] ?? '' ),
+				'start_ts'       => isset( $yesterday_window['start_ts'] ) ? (int) $yesterday_window['start_ts'] : 0,
+				'end_ts'         => isset( $yesterday_window['end_ts'] ) ? (int) $yesterday_window['end_ts'] : 0,
+				'timezone'       => sanitize_text_field( $yesterday_window['timezone'] ?? '' ),
+				'week_starts_on' => isset( $yesterday_window['week_starts_on'] ) ? absint( $yesterday_window['week_starts_on'] ) : absint( get_option( 'start_of_week', 1 ) ),
 			],
 			'live_window'         => [
-				'key'      => $window_key,
-				'label'    => sanitize_text_field( $today_window['label'] ?? __( 'Today', 'yoro-agent-core' ) ),
-				'start'    => sanitize_text_field( $today_window['start'] ?? '' ),
-				'end'      => sanitize_text_field( $today_window['end'] ?? '' ),
-				'start_ts' => isset( $today_window['start_ts'] ) ? (int) $today_window['start_ts'] : 0,
-				'end_ts'   => isset( $today_window['end_ts'] ) ? (int) $today_window['end_ts'] : 0,
+				'key'            => $window_key,
+				'label'          => sanitize_text_field( $today_window['label'] ?? __( 'Today', 'yoro-agent-core' ) ),
+				'start'          => sanitize_text_field( $today_window['start'] ?? '' ),
+				'end'            => sanitize_text_field( $today_window['end'] ?? '' ),
+				'start_ts'       => isset( $today_window['start_ts'] ) ? (int) $today_window['start_ts'] : 0,
+				'end_ts'         => isset( $today_window['end_ts'] ) ? (int) $today_window['end_ts'] : 0,
+				'timezone'       => sanitize_text_field( $today_window['timezone'] ?? '' ),
+				'week_starts_on' => isset( $today_window['week_starts_on'] ) ? absint( $today_window['week_starts_on'] ) : absint( get_option( 'start_of_week', 1 ) ),
 			],
 			'yesterday_snapshot'       => $yesterday_snapshot,
 			'live_pressure'            => $live_pressure,
@@ -592,8 +600,12 @@ class YoRo_Store_Briefing_Service {
 
 	private static function get_briefing_label_for_window( $window_key, $window ) {
 		switch ( sanitize_key( $window_key ) ) {
+			case 'this_week':
+			case 'last_week':
 			case 'last_7_days':
 				return __( 'Weekly briefing', 'yoro-agent-core' );
+			case 'this_month':
+			case 'last_month':
 			case 'last_30_days':
 				return __( 'Monthly briefing', 'yoro-agent-core' );
 			default:
@@ -603,10 +615,18 @@ class YoRo_Store_Briefing_Service {
 
 	private static function get_briefing_window_phrase( $window_key ) {
 		switch ( sanitize_key( $window_key ) ) {
-			case 'last_7_days':
+			case 'this_week':
 				return 'this week';
-			case 'last_30_days':
+			case 'last_week':
+				return 'last week';
+			case 'last_7_days':
+				return 'last 7 days';
+			case 'this_month':
 				return 'this month';
+			case 'last_month':
+				return 'last month';
+			case 'last_30_days':
+				return 'last 30 days';
 			case 'yesterday':
 				return 'yesterday';
 			default:
@@ -949,8 +969,12 @@ class YoRo_Store_Briefing_Service {
 
 	private static function get_operations_summary_label_for_window( $window_key ) {
 		switch ( sanitize_key( $window_key ) ) {
+			case 'this_week':
+			case 'last_week':
 			case 'last_7_days':
 				return __( 'Review weekly operations summary', 'yoro-agent-core' );
+			case 'this_month':
+			case 'last_month':
 			case 'last_30_days':
 				return __( 'Review monthly operations summary', 'yoro-agent-core' );
 			default:

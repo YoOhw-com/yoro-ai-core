@@ -262,6 +262,7 @@ If the person asks for the current state of the store as a whole in any language
 If the wording mixes a time window with briefing-style language but does not explicitly request summary, overview, or insights, prefer store briefing.
 For read-only briefing, queue, summary, or insights actions, keep params minimal and avoid adding optional filters unless the command explicitly names them.
 For order-search relative date wording, set params.date_window to a canonical key such as today, yesterday, this_week, last_week, last_7_days, this_month, last_month, or last_30_days. Do not guess date_from/date_to for relative windows; backend resolves them from WordPress timezone and week-start settings.
+For reporting params.window, distinguish calendar windows from rolling windows: "this week" maps to this_week, "last week" maps to last_week, "this month" maps to this_month, and "last 7 days" maps to last_7_days.
 Use these queue distinctions consistently:
 - urgency or manual-review load maps to operations attention.
 - shipping blockers or waiting-to-ship load maps to fulfillment review.

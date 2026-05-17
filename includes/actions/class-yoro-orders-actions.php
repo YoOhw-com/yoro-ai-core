@@ -122,7 +122,7 @@ class YoRo_Orders_Actions {
 				],
 				'required_params'     => [],
 				'param_hints'         => [
-					'window' => __( 'Normalize relative windows such as today, this week, or this month into store reporting windows.', 'yoro-agent-core' ),
+					'window' => __( 'Use canonical reporting windows such as today, yesterday, this_week, last_week, last_7_days, this_month, last_month, or last_30_days.', 'yoro-agent-core' ),
 					'focus'  => __( 'Use overview when the person wants a general operations summary.', 'yoro-agent-core' ),
 				],
 				'clarification_hints' => [],
@@ -273,7 +273,7 @@ class YoRo_Orders_Actions {
 				],
 				'required_params'     => [],
 				'param_hints'         => [
-					'window' => __( 'Use a short current window such as today unless the person explicitly asks for a different period.', 'yoro-agent-core' ),
+					'window' => __( 'Use a short current window such as today unless the person explicitly asks for a different period. Calendar windows are resolved from WordPress timezone and week-start settings.', 'yoro-agent-core' ),
 					'yesterday_window' => __( 'Use a prior-day comparison window for morning briefings.', 'yoro-agent-core' ),
 				],
 				'clarification_hints' => [],
@@ -314,7 +314,7 @@ class YoRo_Orders_Actions {
 				],
 				'required_params'     => [],
 				'param_hints'         => [
-					'window' => __( 'Normalize windows like today, this week, or this month into supported reporting windows.', 'yoro-agent-core' ),
+					'window' => __( 'Use canonical reporting windows such as today, yesterday, this_week, last_week, last_7_days, this_month, last_month, or last_30_days.', 'yoro-agent-core' ),
 					'limit'  => __( 'Keep the result compact for briefing requests.', 'yoro-agent-core' ),
 				],
 				'clarification_hints' => [],
@@ -360,7 +360,7 @@ class YoRo_Orders_Actions {
 				],
 				'required_params'     => [],
 				'param_hints'         => [
-					'window' => __( 'Normalize relative reporting windows like this week or this month.', 'yoro-agent-core' ),
+					'window' => __( 'Use calendar windows like this_week or this_month when the person says this week or this month; use rolling windows like last_7_days only when they ask for the last/past N days.', 'yoro-agent-core' ),
 					'focus'  => __( 'Use overview unless the person explicitly narrows to one business dimension.', 'yoro-agent-core' ),
 				],
 				'clarification_hints' => [],
@@ -400,7 +400,7 @@ class YoRo_Orders_Actions {
 				],
 				'required_params'     => [],
 				'param_hints'         => [
-					'window' => __( 'Normalize relative reporting windows like this week or this month.', 'yoro-agent-core' ),
+					'window' => __( 'Use calendar windows like this_week or this_month when the person says this week or this month; use rolling windows like last_7_days only when they ask for the last/past N days.', 'yoro-agent-core' ),
 					'limit'  => __( 'Keep insight lists compact unless the person asks for more.', 'yoro-agent-core' ),
 				],
 				'clarification_hints' => [],
