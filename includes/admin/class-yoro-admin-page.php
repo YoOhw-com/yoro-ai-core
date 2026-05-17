@@ -63,15 +63,20 @@ class YoRo_Admin_Page {
 		return 'data:image/svg+xml;base64,' . base64_encode( $svg );
 	}
 
-	public static function enqueue_assets( $hook ) {
-		$allowed_hooks = [
+	private static function get_admin_screen_ids() {
+		return [
 			'toplevel_page_' . self::MENU_SLUG,
 			'yoro-agent_page_yoro-agent-history',
 			'yoro-agent_page_yoro-agent-settings',
 			'yoro-agent_page_yoro-agent-policies',
+			'yoro-ai_page_yoro-agent-history',
+			'yoro-ai_page_yoro-agent-settings',
+			'yoro-ai_page_yoro-agent-policies',
 		];
+	}
 
-		if ( ! in_array( $hook, $allowed_hooks, true ) ) {
+	public static function enqueue_assets( $hook ) {
+		if ( ! in_array( $hook, self::get_admin_screen_ids(), true ) ) {
 			return;
 		}
 
@@ -2478,13 +2483,7 @@ class YoRo_Admin_Page {
 		}
 
 		// YoRo AI submenus: personalized footer.
-		$yoro_screens = [
-			'yoro-agent_page_yoro-agent-history',
-			'yoro-agent_page_yoro-agent-policies',
-			'yoro-agent_page_yoro-agent-settings',
-		];
-
-		if ( in_array( $screen->id, $yoro_screens, true ) ) {
+		if ( in_array( $screen->id, self::get_admin_screen_ids(), true ) && 'toplevel_page_' . self::MENU_SLUG !== $screen->id ) {
 			return sprintf(
 				esc_html__( 'Powered by %s — built for smarter WooCommerce store management.', 'yoro-agent-core' ),
 				'<a href="https://yoohw.com" target="_blank"><strong>YoOhw Studio</strong></a>'
@@ -2507,13 +2506,7 @@ class YoRo_Admin_Page {
 		}
 
 		// YoRo AI submenus: personalized version text.
-		$yoro_screens = [
-			'yoro-agent_page_yoro-agent-history',
-			'yoro-agent_page_yoro-agent-policies',
-			'yoro-agent_page_yoro-agent-settings',
-		];
-
-		if ( in_array( $screen->id, $yoro_screens, true ) ) {
+		if ( in_array( $screen->id, self::get_admin_screen_ids(), true ) && 'toplevel_page_' . self::MENU_SLUG !== $screen->id ) {
 			return sprintf(
 				esc_html__( 'YoRo Agent Core v%s', 'yoro-agent-core' ),
 				esc_html( YORO_AGENT_CORE_VERSION )
