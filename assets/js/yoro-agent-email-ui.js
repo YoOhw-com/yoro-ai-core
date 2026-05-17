@@ -6,6 +6,7 @@
 
 		return {
 			escapeHtml: helpers.escapeHtml,
+			formatDateTime: helpers.formatDateTime,
 			runCommandFromText: helpers.runCommandFromText,
 			renderDebugJson: helpers.renderDebugJson,
 			getResultSuggestions: helpers.getResultSuggestions,
@@ -36,6 +37,14 @@
 				return handleEmailClick(event, h);
 			}
 		};
+	}
+
+	function formatDateTime(value, timestamp, h) {
+		if (typeof h.formatDateTime === 'function') {
+			return h.formatDateTime(timestamp, value);
+		}
+
+		return String(value || '');
 	}
 
 	function formatEditableEmailBody(body, h) {
@@ -374,7 +383,7 @@
 				html += '<div class="yoro-email-template-item">';
 				html += '<div class="yoro-email-draft-head">';
 				html += '<strong>' + h.escapeHtml(template.name || '') + '</strong>';
-				html += '<span class="yoro-result-subtle">' + h.escapeHtml(template.updated_at || template.created_at || '') + '</span>';
+				html += '<span class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(template.updated_at || template.created_at, template.updated_at_ts || template.created_at_ts, h)) + '</span>';
 				html += '</div>';
 
 				html += '<p><strong>Subject:</strong> ' + h.escapeHtml(template.subject || '') + '</p>';
@@ -444,7 +453,7 @@
 				html += '<div class="yoro-email-draft-item">';
 				html += '<div class="yoro-email-draft-head">';
 				html += '<strong>' + h.escapeHtml(draft.subject || '') + '</strong>';
-				html += '<span class="yoro-result-subtle">' + h.escapeHtml(draft.created_at || '') + '</span>';
+				html += '<span class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(draft.created_at, draft.created_at_ts, h)) + '</span>';
 				html += '</div>';
 
 				html += '<pre class="yoro-email-draft-body">' + h.escapeHtml(draft.body || '') + '</pre>';
@@ -1142,7 +1151,7 @@
 		}
 
 		if (target.classList.contains('yoro-cancel-workflow')) {
-			h.runCommandFromText('Cancel workflow', false, false);
+			h.runCommandFromText('Cancel workflow', false);
 			return true;
 		}
 

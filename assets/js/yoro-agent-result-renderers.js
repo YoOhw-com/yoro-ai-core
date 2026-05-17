@@ -6,6 +6,7 @@
 
 		return {
 			escapeHtml: helpers.escapeHtml,
+			formatDateTime: helpers.formatDateTime,
 			shouldShowDebugJson: helpers.shouldShowDebugJson,
 			getResultSuggestions: helpers.getResultSuggestions,
 			renderWorkflowPreview: helpers.renderWorkflowPreview,
@@ -49,165 +50,188 @@
 	}
 
 	function renderResult(data, h) {
+		function finish(html) {
+			const markup = typeof html === 'string' ? html : '';
+			const trimmed = markup.trim();
+
+			if (!trimmed) {
+				return markup;
+			}
+
+			if (trimmed.indexOf('class="yoro-result-debug"') !== -1) {
+				return markup;
+			}
+
+			if (trimmed.indexOf('<pre class="yoro-json-output"') === 0) {
+				if (h.shouldShowDebugJson && h.shouldShowDebugJson()) {
+					return '<details class="yoro-result-debug"><summary>Raw JSON</summary>' + markup + '</details>';
+				}
+
+				return markup;
+			}
+
+			return markup + renderDebugJson(data, h);
+		}
+
 		if (!data) {
 			return '';
 		}
 
 		if (data.stage === 'confirm' && data.confirm_required) {
-			return renderConfirmation(data, h);
+			return finish(renderConfirmation(data, h));
 		}
 
 		if (!data.success) {
 			if (data.stage === 'clarify') {
-				return renderClarification(data, h);
+				return finish(renderClarification(data, h));
 			}
 
-			return renderError(data, h);
+			return finish(renderError(data, h));
 		}
 
 		if (data.stage === 'preview' && data.preview) {
-			return renderPreview(data, h);
+			return finish(renderPreview(data, h));
 		}
 
 		const result = data.result || {};
 		const displayType = result.display_type || '';
 
 		if (displayType === 'orders_list') {
-			return typeof h.renderOrdersResult === 'function'
+			return finish(typeof h.renderOrdersResult === 'function'
 				? h.renderOrdersResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'customer_summary') {
-			return typeof h.renderCustomerSummaryResult === 'function'
+			return finish(typeof h.renderCustomerSummaryResult === 'function'
 				? h.renderCustomerSummaryResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'order_details') {
-			return typeof h.renderOrderDetailsResult === 'function'
+			return finish(typeof h.renderOrderDetailsResult === 'function'
 				? h.renderOrderDetailsResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'operations_summary') {
-			return typeof h.renderOperationsSummaryResult === 'function'
+			return finish(typeof h.renderOperationsSummaryResult === 'function'
 				? h.renderOperationsSummaryResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'business_summary') {
-			return typeof h.renderBusinessSummaryResult === 'function'
+			return finish(typeof h.renderBusinessSummaryResult === 'function'
 				? h.renderBusinessSummaryResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'morning_briefing') {
-			return typeof h.renderMorningBriefingResult === 'function'
+			return finish(typeof h.renderMorningBriefingResult === 'function'
 				? h.renderMorningBriefingResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'daily_briefing') {
-			return typeof h.renderDailyBriefingResult === 'function'
+			return finish(typeof h.renderDailyBriefingResult === 'function'
 				? h.renderDailyBriefingResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'operations_attention_queue') {
-			return typeof h.renderOperationsAttentionQueueResult === 'function'
+			return finish(typeof h.renderOperationsAttentionQueueResult === 'function'
 				? h.renderOperationsAttentionQueueResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'fulfillment_queue') {
-			return typeof h.renderFulfillmentQueueResult === 'function'
+			return finish(typeof h.renderFulfillmentQueueResult === 'function'
 				? h.renderFulfillmentQueueResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'inventory_queue') {
-			return typeof h.renderInventoryQueueResult === 'function'
+			return finish(typeof h.renderInventoryQueueResult === 'function'
 				? h.renderInventoryQueueResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'store_insights') {
-			return typeof h.renderStoreInsightsResult === 'function'
+			return finish(typeof h.renderStoreInsightsResult === 'function'
 				? h.renderStoreInsightsResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'customer_service_queue') {
-			return typeof h.renderCustomerServiceQueueResult === 'function'
+			return finish(typeof h.renderCustomerServiceQueueResult === 'function'
 				? h.renderCustomerServiceQueueResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'customer_email_preview') {
-			return typeof h.renderCustomerEmailPreviewResult === 'function'
+			return finish(typeof h.renderCustomerEmailPreviewResult === 'function'
 				? h.renderCustomerEmailPreviewResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'fulfillment_followup_workflow_preview') {
-			return renderFulfillmentFollowupWorkflowPreview(data, h);
+			return finish(renderFulfillmentFollowupWorkflowPreview(data, h));
 		}
 
 		if (displayType === 'customer_followup_workflow_preview') {
-			return renderCustomerFollowupWorkflowPreview(data, h);
+			return finish(renderCustomerFollowupWorkflowPreview(data, h));
 		}
 
 		if (displayType === 'operations_attention_workflow_preview') {
-			return renderOperationsAttentionWorkflowPreview(data, h);
+			return finish(renderOperationsAttentionWorkflowPreview(data, h));
 		}
 
 		if (displayType === 'inventory_pressure_workflow_preview') {
-			return renderInventoryPressureWorkflowPreview(data, h);
+			return finish(renderInventoryPressureWorkflowPreview(data, h));
 		}
 
 		if (displayType === 'business_summary_workflow_preview') {
-			return renderBusinessSummaryWorkflowPreview(data, h);
+			return finish(renderBusinessSummaryWorkflowPreview(data, h));
 		}
 
 		if (displayType === 'refund_preview') {
-			return typeof h.renderRefundPreviewResult === 'function'
+			return finish(typeof h.renderRefundPreviewResult === 'function'
 				? h.renderRefundPreviewResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'email_templates_list') {
-			return typeof h.renderEmailTemplatesResult === 'function'
+			return finish(typeof h.renderEmailTemplatesResult === 'function'
 				? h.renderEmailTemplatesResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'customer_email_drafts') {
-			return typeof h.renderCustomerEmailDraftsResult === 'function'
+			return finish(typeof h.renderCustomerEmailDraftsResult === 'function'
 				? h.renderCustomerEmailDraftsResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'assistant_message') {
-			return renderAssistantMessageResult(data, h);
+			return finish(renderAssistantMessageResult(data, h));
 		}
 
 		if (displayType === 'multi_action') {
-			return typeof h.renderMultiActionResult === 'function'
+			return finish(typeof h.renderMultiActionResult === 'function'
 				? h.renderMultiActionResult(data)
-				: renderJson(data, h);
+				: renderJson(data, h));
 		}
 
 		if (displayType === 'confirmation') {
-			return renderConfirmation(data, h);
+			return finish(renderConfirmation(data, h));
 		}
 
 		if (displayType === 'error') {
-			return renderError(data, h);
+			return finish(renderError(data, h));
 		}
 
 		if (data.context) {
-			return renderContext(data, h);
+			return finish(renderContext(data, h));
 		}
 
 		if (
@@ -219,7 +243,7 @@
 				data.stage === 'undo'
 			)
 		) {
-			return renderUndoResult(data, h);
+			return finish(renderUndoResult(data, h));
 		}
 
 		if (data.stage === 'done' && data.parsed && data.parsed.action) {
@@ -227,7 +251,7 @@
 
 			html += renderSuggestions(h.getResultSuggestions(data), h);
 
-			return html;
+			return finish(html);
 		}
 
 		return renderJson(data, h);
@@ -246,7 +270,7 @@
 			'Request failed.';
 
 		let html = '<div class="yoro-result-notice yoro-result-error">';
-		html += '<strong>YoRo could not complete this request</strong>';
+		html += '<strong>I could not complete this request</strong>';
 		html += '<p>' + h.escapeHtml(message) + '</p>';
 
 		if (data.parsed && data.parsed.suggestion) {
@@ -284,6 +308,347 @@
 		return html;
 	}
 
+	function toWorkflowStatusLabel(status) {
+		status = String(status || '').replace(/_/g, ' ').trim();
+
+		if (!status) {
+			return 'Unknown';
+		}
+
+		return status.charAt(0).toUpperCase() + status.slice(1);
+	}
+
+	function getWorkflowBranchMeta(workflow) {
+		workflow = workflow && typeof workflow === 'object' ? workflow : {};
+
+		const definitionId = workflow.definition_id || workflow.type || '';
+		const branch = workflow.branch && typeof workflow.branch === 'object' ? workflow.branch : {};
+		const deliveryMode = branch.delivery_mode || '';
+		const emailDeliveryMode = branch.email_delivery_mode || '';
+
+		if (definitionId === 'write_email_for_order') {
+			if (deliveryMode === 'save_draft') {
+				return { label: 'Save as draft', outcome: 'Draft will be saved on the order' };
+			}
+			if (deliveryMode === 'send') {
+				return { label: 'Send email', outcome: 'Email will be sent to the customer' };
+			}
+			return { label: 'Preview email', outcome: 'Email draft will stay in review state' };
+		}
+
+		if (definitionId === 'verify_customer_before_fulfillment') {
+			if (emailDeliveryMode === 'save_draft') {
+				return { label: 'Save verification draft', outcome: 'Verification email draft will be saved after the hold and note' };
+			}
+			if (emailDeliveryMode === 'send') {
+				return { label: 'Send verification email', outcome: 'Verification email will be sent after the hold and note' };
+			}
+			return { label: 'Preview verification email', outcome: 'Verification email will stay in review state after the hold and note' };
+		}
+
+		if (definitionId === 'refund_review') {
+			if (deliveryMode === 'save_draft') {
+				return { label: 'Save refund follow-up draft', outcome: 'Refund follow-up draft will be saved after review' };
+			}
+			if (deliveryMode === 'send') {
+				return { label: 'Send refund follow-up email', outcome: 'Refund follow-up email will be sent after review' };
+			}
+			return { label: 'Review only', outcome: 'No follow-up email will be sent yet' };
+		}
+
+		return { label: '', outcome: '' };
+	}
+
+	function getWorkflowFromData(data) {
+		const result = data && data.result ? data.result : {};
+		const plan = data && data.plan ? data.plan : {};
+
+		if (result.workflow && typeof result.workflow === 'object') {
+			return result.workflow;
+		}
+
+		if (plan.workflow && typeof plan.workflow === 'object') {
+			return plan.workflow;
+		}
+
+		return {};
+	}
+
+	function renderWorkflowStatePanel(workflow, h) {
+		workflow = workflow && typeof workflow === 'object' ? workflow : {};
+
+		const steps = Array.isArray(workflow.steps) ? workflow.steps : [];
+		const status = workflow.status || workflow.step || '';
+		const currentStepId = workflow.current_step_id || '';
+		const definitionId = workflow.definition_id || workflow.type || '';
+
+		if (!status && !currentStepId && !definitionId && !steps.length) {
+			return '';
+		}
+
+		let html = '<div class="yoro-workflow-state-panel">';
+		html += '<div class="yoro-workflow-state-panel-header">';
+		html += '<strong>Workflow state</strong>';
+		html += '<span class="yoro-workflow-state-badge">' + h.escapeHtml(toWorkflowStatusLabel(status || 'unknown')) + '</span>';
+		html += '</div>';
+
+		html += '<div class="yoro-workflow-state-meta">';
+
+		if (definitionId) {
+			html += '<span><strong>Workflow:</strong> ' + h.escapeHtml(definitionId) + '</span>';
+		}
+
+		if (currentStepId) {
+			html += '<span><strong>Current step:</strong> ' + h.escapeHtml(currentStepId) + '</span>';
+		}
+
+		if (typeof workflow.current_step_index === 'number' && workflow.current_step_index >= 0) {
+			html += '<span><strong>Step index:</strong> ' + h.escapeHtml(workflow.current_step_index + 1) + '</span>';
+		}
+
+		const branchMeta = getWorkflowBranchMeta(workflow);
+
+		if (branchMeta.label) {
+			html += '<span><strong>Branch:</strong> ' + h.escapeHtml(branchMeta.label) + '</span>';
+		}
+
+		html += '</div>';
+
+		if (branchMeta.outcome) {
+			html += '<p class="yoro-workflow-state-branch-outcome">' + h.escapeHtml(branchMeta.outcome) + '</p>';
+		}
+
+		if (steps.length) {
+			html += '<div class="yoro-workflow-timeline">';
+
+			steps.forEach(function(step, index) {
+				step = step || {};
+				const stepStatus = step.status || 'pending';
+				const isCurrent = currentStepId && step.id === currentStepId;
+
+				html += '<div class="yoro-workflow-timeline-step yoro-workflow-timeline-step-' + h.escapeHtml(stepStatus) + (isCurrent ? ' is-current' : '') + '">';
+				html += '<div class="yoro-workflow-timeline-step-main">';
+				html += '<span class="yoro-workflow-timeline-step-index">' + h.escapeHtml(index + 1) + '</span>';
+				html += '<span class="yoro-workflow-timeline-step-label">' + h.escapeHtml(step.label || step.id || step.action || ('Step ' + (index + 1))) + '</span>';
+				html += '<span class="yoro-workflow-timeline-step-status">' + h.escapeHtml(toWorkflowStatusLabel(stepStatus)) + '</span>';
+				html += '</div>';
+				html += '<div class="yoro-workflow-timeline-step-meta">';
+
+				if (step.id) {
+					html += '<span>ID: ' + h.escapeHtml(step.id) + '</span>';
+				}
+
+				if (step.action) {
+					html += '<span>Action: ' + h.escapeHtml(step.action) + '</span>';
+				}
+
+				html += '</div>';
+				html += '</div>';
+			});
+
+			html += '</div>';
+		}
+
+		html += '</div>';
+		return html;
+	}
+
+	function formatWorkflowTimestamp(value, timestamp, h) {
+		if (typeof h.formatDateTime === 'function') {
+			return h.formatDateTime(timestamp, value);
+		}
+
+		return String(value || '');
+	}
+
+	function isWorkflowStatusActive(status) {
+		return ['collect_missing_params', 'preview_ready', 'ready_to_execute', 'executing'].indexOf(String(status || '')) !== -1;
+	}
+
+	function buildWorkflowHistoryItems(workflowContext) {
+		const context = workflowContext && typeof workflowContext === 'object' ? workflowContext : {};
+		const items = [];
+		const seen = {};
+		const current = context.current_workflow && typeof context.current_workflow === 'object' ? context.current_workflow : {};
+		const history = Array.isArray(context.workflow_history) ? context.workflow_history : [];
+
+		if (current.id) {
+			items.push({
+				id: current.id,
+				source: 'current',
+				label: current.label || current.definition_id || current.type || 'Workflow',
+				definition_id: current.definition_id || current.type || '',
+				status: current.status || current.step || '',
+				current_step_id: current.current_step_id || '',
+				current_step_index: typeof current.current_step_index === 'number' ? current.current_step_index : -1,
+				updated_at: current.updated_at || '',
+				updated_at_ts: current.updated_at_ts || 0
+			});
+			seen[current.id] = true;
+		}
+
+		history.forEach(function(entry) {
+			entry = entry && typeof entry === 'object' ? entry : {};
+
+			if (!entry.id || seen[entry.id]) {
+				return;
+			}
+
+			items.push({
+				id: entry.id,
+				source: 'history',
+				label: entry.label || entry.definition_id || entry.type || 'Workflow',
+				definition_id: entry.definition_id || entry.type || '',
+				status: entry.status || '',
+				current_step_id: entry.current_step_id || '',
+				current_step_index: typeof entry.current_step_index === 'number' ? entry.current_step_index : -1,
+				updated_at: entry.updated_at || '',
+				updated_at_ts: entry.updated_at_ts || 0
+			});
+			seen[entry.id] = true;
+		});
+
+		return items;
+	}
+
+	function renderWorkflowHistoryPanel(workflowContext, h) {
+		const context = workflowContext && typeof workflowContext === 'object' ? workflowContext : {};
+		const current = context.current_workflow && typeof context.current_workflow === 'object' ? context.current_workflow : {};
+		const lastResult = context.last_workflow_result && typeof context.last_workflow_result === 'object'
+			? context.last_workflow_result
+			: {};
+		const items = buildWorkflowHistoryItems(context);
+		const hasCurrent = !!current.id;
+		const hasLastResult = !!lastResult.id;
+		const counts = {
+			all: items.length,
+			active: 0,
+			failed: 0,
+			executed: 0,
+			cancelled: 0
+		};
+
+		items.forEach(function(item) {
+			const status = String(item.status || '');
+
+			if (isWorkflowStatusActive(status)) {
+				counts.active += 1;
+			}
+
+			if (status === 'failed') {
+				counts.failed += 1;
+			}
+
+			if (status === 'executed') {
+				counts.executed += 1;
+			}
+
+			if (status === 'cancelled') {
+				counts.cancelled += 1;
+			}
+		});
+
+		let html = '<div class="yoro-context-card yoro-context-card-full yoro-workflow-history-panel">';
+		html += '<div class="yoro-workflow-history-header">';
+		html += '<div>';
+		html += '<h3>Workflows</h3>';
+		html += '<p class="yoro-result-subtle">Current workflow, recent outcomes, and quick recovery actions.</p>';
+		html += '</div>';
+		html += '<div class="yoro-workflow-history-actions">';
+
+		if (context.can_continue) {
+			html += '<button type="button" class="button button-small yoro-insert-command" data-command="Continue previous workflow">Continue</button>';
+		}
+
+		if (context.can_retry_failed_step) {
+			html += '<button type="button" class="button button-small yoro-insert-command" data-command="Retry failed step">Retry failed step</button>';
+		}
+
+		html += '</div>';
+		html += '</div>';
+
+		html += '<div class="yoro-workflow-history-filters">';
+		html += '<button type="button" class="button button-small yoro-workflow-filter-btn is-active" data-status-filter="all">All (' + h.escapeHtml(counts.all) + ')</button>';
+		html += '<button type="button" class="button button-small yoro-workflow-filter-btn" data-status-filter="active">Active (' + h.escapeHtml(counts.active) + ')</button>';
+		html += '<button type="button" class="button button-small yoro-workflow-filter-btn" data-status-filter="failed">Failed (' + h.escapeHtml(counts.failed) + ')</button>';
+		html += '<button type="button" class="button button-small yoro-workflow-filter-btn" data-status-filter="executed">Executed (' + h.escapeHtml(counts.executed) + ')</button>';
+		html += '<button type="button" class="button button-small yoro-workflow-filter-btn" data-status-filter="cancelled">Cancelled (' + h.escapeHtml(counts.cancelled) + ')</button>';
+		html += '</div>';
+
+		if (items.length) {
+			html += '<div class="yoro-workflow-history-list">';
+
+			items.forEach(function(item) {
+				const status = String(item.status || '');
+				const isCurrent = item.source === 'current';
+				const showRetry = status === 'failed' && context.can_retry_failed_step;
+				const showContinue = isCurrent && context.can_continue;
+
+				html += '<div class="yoro-workflow-history-item' + (isCurrent ? ' is-current' : '') + '" data-workflow-status="' + h.escapeHtml(status) + '">';
+				html += '<div class="yoro-workflow-history-item-main">';
+				html += '<div class="yoro-workflow-history-item-title">';
+				html += '<strong>' + h.escapeHtml(item.label || 'Workflow') + '</strong>';
+				html += '<span class="yoro-workflow-state-badge">' + h.escapeHtml(toWorkflowStatusLabel(status || 'unknown')) + '</span>';
+				html += '</div>';
+				html += '<div class="yoro-workflow-history-item-meta">';
+
+				if (item.definition_id) {
+					html += '<span><strong>ID:</strong> ' + h.escapeHtml(item.definition_id) + '</span>';
+				}
+
+				if (item.current_step_id) {
+					html += '<span><strong>Step:</strong> ' + h.escapeHtml(item.current_step_id) + '</span>';
+				}
+
+				if (typeof item.current_step_index === 'number' && item.current_step_index >= 0) {
+					html += '<span><strong>Index:</strong> ' + h.escapeHtml(item.current_step_index + 1) + '</span>';
+				}
+
+				if (item.updated_at || item.updated_at_ts) {
+					html += '<span><strong>Updated:</strong> ' + h.escapeHtml(formatWorkflowTimestamp(item.updated_at, item.updated_at_ts, h)) + '</span>';
+				}
+
+				html += '</div>';
+				html += '</div>';
+				html += '<div class="yoro-workflow-history-item-actions">';
+
+				if (showContinue) {
+					html += '<button type="button" class="button button-small yoro-insert-command" data-command="Continue previous workflow">Continue</button>';
+				}
+
+				if (showRetry) {
+					html += '<button type="button" class="button button-small yoro-insert-command" data-command="Retry failed step">Retry</button>';
+				}
+
+				html += '</div>';
+				html += '</div>';
+			});
+
+			html += '</div>';
+			html += '<p class="yoro-workflow-history-empty" hidden>No workflows match this filter.</p>';
+		} else {
+			html += '<p class="yoro-result-subtle">No workflow history yet.</p>';
+		}
+
+		if (hasCurrent) {
+			html += '<div class="yoro-workflow-history-detail">';
+			html += '<strong>Current workflow</strong>';
+			html += renderWorkflowStatePanel(current, h);
+			html += '</div>';
+		}
+
+		if (hasLastResult && (!hasCurrent || lastResult.id !== current.id)) {
+			html += '<div class="yoro-workflow-history-detail">';
+			html += '<strong>Last completed workflow</strong>';
+			html += renderWorkflowStatePanel(lastResult, h);
+			html += '</div>';
+		}
+
+		html += '</div>';
+
+		return html;
+	}
+
 	function renderFulfillmentFollowupWorkflowPreview(data, h) {
 		const result = data.result || {};
 		const selectedItem = result.selected_item || {};
@@ -301,6 +666,7 @@
 
 		html += '<div class="yoro-workflow-preview-body">';
 		html += renderAdminCopilotBoundary(data, h);
+		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
 		html += '<div class="yoro-result-section">';
 		html += '<strong>What I am focusing on</strong>';
 		html += '<div class="yoro-result-meta">';
@@ -370,6 +736,7 @@
 		html += '</div>';
 		html += '<p class="yoro-workflow-preview-summary">' + h.escapeHtml(result.message || '') + '</p>';
 		html += renderAdminCopilotBoundary(data, h);
+		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
 
 		html += '<div class="yoro-workflow-preview-grid">';
 		html += '<div><strong>Order</strong><div>#' + h.escapeHtml(selectedItem.order_number || selectedItem.order_id || '') + '</div></div>';
@@ -423,6 +790,7 @@
 			html += '<p class="yoro-card-summary">' + h.escapeHtml(result.summary) + '</p>';
 		}
 		html += renderAdminCopilotBoundary(data, h);
+		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
 
 		html += '<div class="yoro-result-meta">';
 		html += '<span><strong>Order:</strong> #' + h.escapeHtml(selectedItem.order_number || selectedItem.order_id || '') + '</span>';
@@ -473,6 +841,7 @@
 		if (result.summary) {
 			html += '<p class="yoro-card-summary">' + h.escapeHtml(result.summary) + '</p>';
 		}
+		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
 
 		html += '<div class="yoro-result-meta">';
 		html += '<span><strong>Product:</strong> ' + h.escapeHtml(selectedItem.name || '—') + '</span>';
@@ -528,6 +897,7 @@
 		if (result.summary) {
 			html += '<p class="yoro-card-summary">' + h.escapeHtml(result.summary) + '</p>';
 		}
+		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
 
 		html += '<div class="yoro-result-meta">';
 		html += '<span><strong>Signal:</strong> ' + h.escapeHtml(selectedItem.title || '—') + '</span>';
@@ -757,15 +1127,6 @@
 		html += '<span><strong>Needs approval:</strong> ' + h.escapeHtml(preview.requires_confirmation ? 'Yes' : 'No') + '</span>';
 		html += '</div>';
 
-		const riskReasons = data.risk && Array.isArray(data.risk.reasons)
-			? data.risk.reasons
-			: [];
-
-		const policyReasons = data.policy && Array.isArray(data.policy.reasons)
-			? data.policy.reasons
-			: [];
-
-		const reasons = riskReasons.concat(policyReasons);
 		const changeLines = [];
 
 		if (action === 'orders.add_note') {
@@ -876,6 +1237,10 @@
 			html += '<p><strong>Read:</strong> ' + h.escapeHtml(context.actions.read || 0) + '</p>';
 			html += '<p><strong>Write:</strong> ' + h.escapeHtml(context.actions.write || 0) + '</p>';
 			html += '</div>';
+		}
+
+		if (context.workflow) {
+			html += renderWorkflowHistoryPanel(context.workflow, h);
 		}
 
 		html += '</div>';
@@ -993,6 +1358,8 @@
 		const actionStateToken = data.action_state_token || data.pending_action_token || '';
 		const useDirectConfirm = (plan.type || '') !== 'sequence' && action !== 'multi.query_and_apply';
 		const confirmationMeta = buildConfirmationMeta(action, params, plan);
+		const workflow = getWorkflowFromData(data);
+		const branchMeta = getWorkflowBranchMeta(workflow);
 
 		if ((result.display_type || '') === 'fulfillment_followup_workflow_preview') {
 			return renderFulfillmentFollowupWorkflowConfirmation(data, h);
@@ -1007,21 +1374,26 @@
 		html += '<div class="yoro-result-notice yoro-result-confirm">';
 		html += '<strong>Confirm store change</strong>';
 		html += '<p>' + h.escapeHtml(data.message || result.message || 'YoRo will only change store data after you approve this action.') + '</p>';
+		if (branchMeta.outcome) {
+			html += '<p>' + h.escapeHtml(branchMeta.outcome) + '</p>';
+		}
 		html += '</div>';
 
 		html += '<div class="yoro-confirmation-body">';
 		html += renderAdminCopilotBoundary(data, h);
+		html += renderWorkflowCompositionNotice(workflow, h);
+		html += renderWorkflowStatePanel(workflow, h);
 
 		html += '<div class="yoro-result-meta">';
 		html += '<span><strong>Action:</strong> ' + h.escapeHtml(action) + '</span>';
 
-		if (confirmationMeta.scopeLabel) {
+		if (action !== 'assistant.submit_developer_request' && confirmationMeta.scopeLabel) {
 			html += '<span><strong>Orders:</strong> ' + h.escapeHtml(confirmationMeta.scopeLabel) + '</span>';
-		} else if (Array.isArray(params.order_ids) && params.order_ids.length) {
+		} else if (action !== 'assistant.submit_developer_request' && Array.isArray(params.order_ids) && params.order_ids.length) {
 			html += '<span><strong>Orders:</strong> #' + params.order_ids.map(function(id) {
 				return h.escapeHtml(id);
 			}).join(', #') + '</span>';
-		} else if (params.order_id) {
+		} else if (action !== 'assistant.submit_developer_request' && params.order_id) {
 			html += '<span><strong>Order:</strong> #' + h.escapeHtml(params.order_id) + '</span>';
 		}
 
@@ -1029,6 +1401,10 @@
 			html += '<span><strong>Target status:</strong> ' + h.escapeHtml(confirmationMeta.targetStatus) + '</span>';
 		} else if (params.status) {
 			html += '<span><strong>Target status:</strong> ' + h.escapeHtml(params.status) + '</span>';
+		}
+
+		if (branchMeta.label) {
+			html += '<span><strong>Branch:</strong> ' + h.escapeHtml(branchMeta.label) + '</span>';
 		}
 
 		html += '</div>';
@@ -1078,8 +1454,19 @@
 			}
 		}
 
+		if (workflow.definition_id === 'write_email_for_order' && branchMeta.outcome) {
+			changeLines.push(branchMeta.outcome);
+		}
+
+		if (workflow.definition_id === 'verify_customer_before_fulfillment' && branchMeta.outcome) {
+			changeLines.push(branchMeta.outcome);
+		}
+
+		if (workflow.definition_id === 'refund_review' && branchMeta.outcome) {
+			changeLines.push(branchMeta.outcome);
+		}
+
 		html += renderWhatChangesSection('What will change after confirmation', changeLines, h);
-		html += renderWhySection('Why confirmation is needed', reasons, h);
 
 		html += '<div class="yoro-confirm-actions">';
 		if (useDirectConfirm) {
@@ -1094,6 +1481,41 @@
 		html += '</div>';
 
 		html += renderDebugJson(data, h);
+
+		return html;
+	}
+
+	function renderWorkflowCompositionNotice(workflow, h) {
+		workflow = workflow || {};
+
+		const artifacts = workflow.artifacts && typeof workflow.artifacts === 'object' ? workflow.artifacts : {};
+		const composition = artifacts.composition && typeof artifacts.composition === 'object' ? artifacts.composition : {};
+		const unavailable = Array.isArray(composition.unavailable_requests) ? composition.unavailable_requests : [];
+
+		if (!unavailable.length) {
+			return '';
+		}
+
+		let html = '<div class="yoro-result-notice yoro-result-preview">';
+		html += '<strong>Some requested actions are not available yet</strong>';
+		html += '<ul>';
+
+		unavailable.forEach(function(item) {
+			if (!item) {
+				return;
+			}
+
+			html += '<li>' + h.escapeHtml(item.label || item.key || 'Unavailable action');
+
+			if (item.message) {
+				html += ' — ' + h.escapeHtml(item.message);
+			}
+
+			html += '</li>';
+		});
+
+		html += '</ul>';
+		html += '</div>';
 
 		return html;
 	}
@@ -1140,8 +1562,6 @@
 		const queueSource = result.queue_source || {};
 		const proposedAction = result.proposed_action || {};
 		const draftSummary = result.draft_summary || {};
-		const riskReasons = Array.isArray(result.risk_reasons) ? result.risk_reasons : [];
-
 		let html = '<div class="yoro-confirmation-result">';
 
 		html += '<div class="yoro-result-notice yoro-result-confirm">';
@@ -1151,6 +1571,7 @@
 
 		html += '<div class="yoro-confirmation-body">';
 		html += renderAdminCopilotBoundary(data, h);
+		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
 		html += '<div class="yoro-result-meta">';
 		html += '<span><strong>Flow:</strong> Fulfillment follow-up</span>';
 		html += '<span><strong>Order:</strong> #' + h.escapeHtml(selectedItem.order_number || selectedItem.order_id || '') + '</span>';
@@ -1171,19 +1592,6 @@
 		html += '<p><strong>Body preview:</strong> ' + h.escapeHtml(draftSummary.body_preview || '') + '</p>';
 		html += '</div>';
 
-		if (riskReasons.length) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>Why confirmation is needed</strong>';
-			html += '<ul>';
-
-			riskReasons.forEach(function(reason) {
-				html += '<li>' + h.escapeHtml(reason) + '</li>';
-			});
-
-			html += '</ul>';
-			html += '</div>';
-		}
-
 		html += `
 		<div class="yoro-confirm-actions">
 			<button class="button button-primary yoro-confirm-run">Confirm</button>
@@ -1202,8 +1610,6 @@
 		const queueSource = result.queue_source || {};
 		const proposedAction = result.proposed_action || {};
 		const draftSummary = result.draft_summary || {};
-		const riskReasons = Array.isArray(result.risk_reasons) ? result.risk_reasons : [];
-
 		let html = '<div class="yoro-confirmation-result">';
 
 		html += '<div class="yoro-result-notice yoro-result-confirm">';
@@ -1213,6 +1619,7 @@
 
 		html += '<div class="yoro-confirmation-body">';
 		html += renderAdminCopilotBoundary(data, h);
+		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
 		html += '<div class="yoro-result-meta">';
 		html += '<span><strong>Flow:</strong> Customer follow-up</span>';
 		html += '<span><strong>Order:</strong> #' + h.escapeHtml(selectedItem.order_number || selectedItem.order_id || '') + '</span>';
@@ -1233,19 +1640,6 @@
 		html += '<p><strong>Body preview:</strong> ' + h.escapeHtml(draftSummary.body_preview || '') + '</p>';
 		html += '</div>';
 
-		if (riskReasons.length) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>Why confirmation is needed</strong>';
-			html += '<ul>';
-
-			riskReasons.forEach(function(reason) {
-				html += '<li>' + h.escapeHtml(reason) + '</li>';
-			});
-
-			html += '</ul>';
-			html += '</div>';
-		}
-
 		html += `
 		<div class="yoro-confirm-actions">
 			<button class="button button-primary yoro-confirm-run">Confirm</button>
@@ -1262,12 +1656,29 @@
 		const parsed = data.parsed || {};
 		const message = parsed.message || data.message || 'I need a little more detail.';
 		const suggestion = parsed.suggestion || data.suggestion || '';
+		const options = Array.isArray(parsed.options) ? parsed.options : [];
 
 		let html = '<div class="yoro-assistant-message-result yoro-clarification-message-result">';
 		html += '<p>' + h.escapeHtml(message) + '</p>';
 
 		if (suggestion) {
 			html += '<p class="yoro-result-subtle">Best guess: ' + h.escapeHtml(suggestion) + '</p>';
+		}
+
+		if (options.length) {
+			html += '<div class="yoro-clarify-options">';
+
+			options.forEach(function (option) {
+				const command = option && option.command ? String(option.command) : '';
+				const label = option && option.label ? String(option.label) : command || 'Use this';
+				const cancelClass = command === 'workflow.cancel' ? ' yoro-clarify-option-cancel' : '';
+
+				html += '<button type="button" class="button yoro-clarify-option' + cancelClass + '" data-command="' + h.escapeHtml(command) + '">';
+				html += h.escapeHtml(label);
+				html += '</button>';
+			});
+
+			html += '</div>';
 		}
 
 		html += '</div>';
@@ -1496,9 +1907,6 @@
 			if (request.request_text) {
 				changeLines.push('Requested capability: ' + request.request_text);
 			}
-			if (request.context_order_id) {
-				changeLines.push('Order context: #' + request.context_order_id);
-			}
 			if (request.submitted_to) {
 				changeLines.push('Sent to: ' + request.submitted_to);
 			}
@@ -1561,7 +1969,7 @@
 	function renderSuggestions(suggestions, h) {
 		suggestions = Array.isArray(suggestions)
 			? suggestions.filter(function(item) {
-				return item && item.action;
+				return item && (item.action || item.command || item.value);
 			})
 			: [];
 
@@ -1576,10 +1984,16 @@
 
 		suggestions.forEach(function (item) {
 			html += '<button class="button button-small yoro-suggestion-btn"';
-			html += ' data-action="' + h.escapeHtml(item.action) + '"';
-			html += ' data-params="' + h.escapeHtml(JSON.stringify(item.params || {})) + '"';
-			html += ' data-confirm="' + (item.confirm ? '1' : '0') + '"';
-			html += ' data-preview="' + (item.preview ? '1' : '0') + '"';
+			if (item.action) {
+				html += ' data-action="' + h.escapeHtml(item.action) + '"';
+				html += ' data-params="' + h.escapeHtml(JSON.stringify(item.params || {})) + '"';
+				html += ' data-confirm="' + (item.confirm ? '1' : '0') + '"';
+				html += ' data-preview="' + (item.preview ? '1' : '0') + '"';
+			}
+
+			if (item.command || item.value) {
+				html += ' data-command="' + h.escapeHtml(item.command || item.value) + '"';
+			}
 
 			if (item.requires_input) {
 				html += ' data-requires-input="1"';

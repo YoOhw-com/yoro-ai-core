@@ -18,10 +18,134 @@
 			.replace(/'/g, '&#039;');
 	}
 
+	function getBrowserDateTimeFormatter() {
+		const config = window.YoRoAgentAdmin || {};
+		const dateFormat = String(config.dateFormat || 'Y-m-d');
+		const timeFormat = String(config.timeFormat || 'H:i');
+		const combinedFormat = [dateFormat, timeFormat].filter(Boolean).join(' ').trim() || 'Y-m-d H:i';
+		const formatterCache = {};
+
+		function getFormatter(cacheKey, options) {
+			if (!formatterCache[cacheKey]) {
+				formatterCache[cacheKey] = new Intl.DateTimeFormat(undefined, options);
+			}
+
+			return formatterCache[cacheKey];
+		}
+
+		function getPart(cacheKey, options, type, date) {
+			const parts = getFormatter(cacheKey, options).formatToParts(date);
+			const part = parts.find(function(item) {
+				return item.type === type;
+			});
+
+			return part ? String(part.value || '') : '';
+		}
+
+		function getDayPeriod(date, uppercase) {
+			const value = getPart('dayPeriod', {
+				hour: 'numeric',
+				hour12: true
+			}, 'dayPeriod', date);
+
+			return uppercase ? value.toUpperCase() : value.toLowerCase();
+		}
+
+		function getOrdinalSuffix(date) {
+			const day = date.getDate();
+
+			if (day >= 11 && day <= 13) {
+				return 'th';
+			}
+
+			switch (day % 10) {
+				case 1:
+					return 'st';
+				case 2:
+					return 'nd';
+				case 3:
+					return 'rd';
+				default:
+					return 'th';
+			}
+		}
+
+		function formatToken(token, date) {
+			switch (token) {
+				case 'd':
+					return getPart('day-2d', { day: '2-digit' }, 'day', date);
+				case 'j':
+					return getPart('day-n', { day: 'numeric' }, 'day', date);
+				case 'm':
+					return getPart('month-2d', { month: '2-digit' }, 'month', date);
+				case 'n':
+					return getPart('month-n', { month: 'numeric' }, 'month', date);
+				case 'F':
+					return getPart('month-long', { month: 'long' }, 'month', date);
+				case 'M':
+					return getPart('month-short', { month: 'short' }, 'month', date);
+				case 'Y':
+					return getPart('year-4d', { year: 'numeric' }, 'year', date);
+				case 'y':
+					return getPart('year-2d', { year: '2-digit' }, 'year', date);
+				case 'H':
+					return getPart('hour-24-2d', { hour: '2-digit', hour12: false }, 'hour', date);
+				case 'G':
+					return getPart('hour-24-n', { hour: 'numeric', hour12: false }, 'hour', date);
+				case 'h':
+					return getPart('hour-12-2d', { hour: '2-digit', hour12: true }, 'hour', date);
+				case 'g':
+					return getPart('hour-12-n', { hour: 'numeric', hour12: true }, 'hour', date);
+				case 'i':
+					return getPart('minute-2d', { minute: '2-digit' }, 'minute', date);
+				case 's':
+					return getPart('second-2d', { second: '2-digit' }, 'second', date);
+				case 'a':
+					return getDayPeriod(date, false);
+				case 'A':
+					return getDayPeriod(date, true);
+				case 'D':
+					return getPart('weekday-short', { weekday: 'short' }, 'weekday', date);
+				case 'l':
+					return getPart('weekday-long', { weekday: 'long' }, 'weekday', date);
+				case 'S':
+					return getOrdinalSuffix(date);
+				default:
+					return token;
+			}
+		}
+
+		return {
+			format: function(date) {
+				let output = '';
+				let escaped = false;
+
+				for (let i = 0; i < combinedFormat.length; i += 1) {
+					const char = combinedFormat.charAt(i);
+
+					if (escaped) {
+						output += char;
+						escaped = false;
+						continue;
+					}
+
+					if (char === '\\') {
+						escaped = true;
+						continue;
+					}
+
+					output += formatToken(char, date);
+				}
+
+				return output;
+			}
+		};
+	}
+
 	ready(function () {
+		const browserDateTimeFormatter = getBrowserDateTimeFormatter();
 		const commandField = document.getElementById('yoro-agent-command');
 		const runButton = document.getElementById('yoro-agent-run');
-		const previewButton = document.getElementById('yoro-agent-preview');
 		const clearButton = document.getElementById('yoro-agent-clear');
 		const contextButton = document.getElementById('yoro-agent-load-context');
 		const chatThread = document.getElementById('yoro-chat-thread');
@@ -30,12 +154,314 @@
 		const parserTestResults = document.getElementById('yoro-parser-test-results');
 		const realQueryPackButton = document.getElementById('yoro-build-real-query-pack');
 		const realQueryPackResults = document.getElementById('yoro-real-query-pack-results');
+		const quickActionsRoot = document.querySelector('[data-yoro-quick-actions]');
+		const quickActionsPanel = quickActionsRoot ? quickActionsRoot.querySelector('[data-yoro-quick-panel]') : null;
+		const quickActionsToggle = quickActionsRoot ? quickActionsRoot.querySelector('[data-yoro-quick-toggle]') : null;
+		const quickSearchField = quickActionsRoot ? quickActionsRoot.querySelector('[data-yoro-quick-search]') : null;
+		const quickSearchResults = quickActionsRoot ? quickActionsRoot.querySelector('[data-yoro-quick-results]') : null;
 
 		registerHistoryHandlers();
 		registerDeveloperTools();
 
 		if (!commandField || !runButton || !chatThread) {
 			return;
+		}
+
+		function parseQuickActionParams(raw) {
+			if (!raw) {
+				return {};
+			}
+
+			try {
+				return JSON.parse(raw);
+			} catch (error) {
+				return {};
+			}
+		}
+
+		function getQuickSearchIntent(query) {
+			const raw = String(query || '').trim();
+			const normalized = raw.toLowerCase();
+
+			if (!raw) {
+				return null;
+			}
+
+			if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
+				return {
+					label: 'Find customer orders',
+					description: 'Search WooCommerce orders for ' + raw + '.',
+					action: 'orders.find_by_customer',
+					params: {
+						email: raw,
+						limit: 10
+					}
+				};
+			}
+
+			const digitsOnly = raw.replace(/\D+/g, '');
+			const digitCount = raw.replace(/\D+/g, '').length;
+			const phoneLike = /^[+()\-\s\d]{7,}$/.test(raw);
+			const hasPhoneFormatting = /[+()\-\s]/.test(raw);
+			const explicitOrderMatch = raw.match(/(?:^|\b)(?:order\s*#?\s*|#)(\d{3,})(?:\b|$)/i);
+			const plainNumericOrderMatch = /^\d{3,7}$/.test(raw) ? raw.match(/^(\d{3,7})$/) : null;
+
+			if (explicitOrderMatch) {
+				const orderId = parseInt(explicitOrderMatch[1], 10);
+
+				if (orderId > 0) {
+					return {
+						label: 'Open order #' + orderId,
+						description: 'Open the full order details view directly.',
+						action: 'orders.get_details',
+						params: {
+							order_id: orderId,
+							order_ids: [orderId]
+						}
+					};
+				}
+			}
+
+			if (phoneLike && (hasPhoneFormatting || digitCount >= 8 || normalized.indexOf('phone') !== -1)) {
+				return {
+					label: 'Find customer orders',
+					description: 'Search WooCommerce orders for phone ' + raw + '.',
+					action: 'orders.find_by_customer',
+					params: {
+						phone: digitsOnly,
+						limit: 10
+					},
+					intentType: 'phone_search'
+				};
+			}
+
+			if (plainNumericOrderMatch) {
+				const orderId = parseInt(plainNumericOrderMatch[1], 10);
+
+				if (orderId > 0) {
+					return {
+						label: 'Open order #' + orderId,
+						description: 'Open the full order details view directly.',
+						action: 'orders.get_details',
+						params: {
+							order_id: orderId,
+							order_ids: [orderId]
+						},
+						intentType: 'order_lookup',
+						fallbackAction: 'orders.find_by_customer',
+						fallbackParams: {
+							phone: digitsOnly,
+							limit: 10
+						}
+					};
+				}
+			}
+
+			if (phoneLike && digitCount >= 7) {
+				return {
+					label: 'Find customer orders',
+					description: 'Search WooCommerce orders for phone ' + raw + '.',
+					action: 'orders.find_by_customer',
+					params: {
+						phone: digitsOnly,
+						limit: 10
+					},
+					intentType: 'phone_search'
+				};
+			}
+
+			return null;
+		}
+
+		function getResponseErrorCode(data) {
+			if (!data || typeof data !== 'object') {
+				return '';
+			}
+
+			if (data.result && data.result.error && data.result.error.code) {
+				return String(data.result.error.code || '');
+			}
+
+			if (data.error && data.error.code) {
+				return String(data.error.code || '');
+			}
+
+			return '';
+		}
+
+		function renderQuickSearchState(query) {
+			if (!quickSearchResults) {
+				return;
+			}
+
+			const intent = getQuickSearchIntent(query);
+
+			if (!String(query || '').trim()) {
+				quickSearchResults.innerHTML = '<p class="yoro-chat-quick-hint">Search by order number, customer email, or phone number.</p>';
+				return;
+			}
+
+			if (!intent) {
+				quickSearchResults.innerHTML = '<p class="yoro-chat-quick-hint">Try an order number like <code>6864</code>, an email like <code>john@example.com</code>, or a phone number.</p>';
+				return;
+			}
+
+			if (intent.intentType === 'order_lookup' && intent.fallbackAction) {
+				quickSearchResults.innerHTML = ''
+					+ '<div class="yoro-chat-quick-search-card yoro-chat-quick-search-card-ambiguous">'
+					+   '<div class="yoro-chat-quick-search-copy">'
+					+     '<p class="yoro-chat-quick-search-label">' + escapeHtml(intent.label) + '</p>'
+					+     '<p class="yoro-chat-quick-search-meta">This looks like an order ID, but it could also be part of a customer phone number.</p>'
+					+   '</div>'
+					+   '<div class="yoro-chat-quick-search-actions">'
+					+     '<button type="button" class="button button-primary yoro-chat-quick-search-button"'
+					+       ' data-yoro-quick-run="1"'
+					+       ' data-action="' + escapeHtml(intent.action) + '"'
+					+       ' data-params="' + escapeHtml(JSON.stringify(intent.params || {})) + '"'
+					+       ' data-fallback-action="' + escapeHtml(intent.fallbackAction) + '"'
+					+       ' data-fallback-params="' + escapeHtml(JSON.stringify(intent.fallbackParams || {})) + '">Open order</button>'
+					+     '<button type="button" class="button yoro-chat-quick-search-button-secondary"'
+					+       ' data-yoro-quick-run="1"'
+					+       ' data-action="' + escapeHtml(intent.fallbackAction) + '"'
+					+       ' data-params="' + escapeHtml(JSON.stringify(intent.fallbackParams || {})) + '">Search phones</button>'
+					+   '</div>'
+					+ '</div>';
+				return;
+			}
+
+			quickSearchResults.innerHTML = ''
+				+ '<div class="yoro-chat-quick-search-card">'
+				+   '<div class="yoro-chat-quick-search-copy">'
+				+     '<p class="yoro-chat-quick-search-label">' + escapeHtml(intent.label) + '</p>'
+				+     '<p class="yoro-chat-quick-search-meta">' + escapeHtml(intent.description) + '</p>'
+				+   '</div>'
+				+   '<button type="button" class="button button-primary yoro-chat-quick-search-button"'
+				+     ' data-yoro-quick-run="1"'
+				+     ' data-action="' + escapeHtml(intent.action) + '"'
+				+     ' data-params="' + escapeHtml(JSON.stringify(intent.params || {})) + '">Open</button>'
+				+ '</div>';
+		}
+
+		function setQuickActionsOpen(isOpen) {
+			if (!quickActionsPanel || !quickActionsToggle) {
+				return;
+			}
+
+			quickActionsPanel.hidden = !isOpen;
+			quickActionsToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+
+			if (isOpen && quickSearchField) {
+				renderQuickSearchState(quickSearchField.value);
+				window.setTimeout(function() {
+					quickSearchField.focus();
+					quickSearchField.select();
+				}, 20);
+			}
+		}
+
+		function runQuickAction(action, params, options) {
+			if (!action) {
+				return;
+			}
+
+			setQuickActionsOpen(false);
+			options = options && typeof options === 'object' ? options : {};
+
+			const loading = addLoadingMessage();
+			setLoading(true);
+
+			executeActionDirect(action, params || {}, false, false, 'quick-actions')
+				.then(function(data) {
+					const errorCode = getResponseErrorCode(data);
+					const fallbackAction = options.fallbackAction || '';
+					const fallbackParams = options.fallbackParams || {};
+
+					if (
+						fallbackAction &&
+						errorCode === 'order_not_found'
+					) {
+						return executeActionDirect(fallbackAction, fallbackParams, false, false, 'quick-actions')
+							.then(function(fallbackData) {
+								loading.remove();
+								addAgentMessage(fallbackData);
+								updateConversationState(fallbackData, fallbackAction);
+								return null;
+							})
+							.catch(function(error) {
+								loading.remove();
+								addAgentMessage({
+									success: false,
+									error: error || YoRoAgentAdmin.i18n.error
+								});
+								return null;
+							});
+					}
+
+					loading.remove();
+					addAgentMessage(data);
+					updateConversationState(data, action);
+					return null;
+				})
+				.catch(function(error) {
+					loading.remove();
+					addAgentMessage({
+						success: false,
+						error: error || YoRoAgentAdmin.i18n.error
+					});
+				})
+				.finally(function() {
+					setLoading(false);
+				});
+		}
+
+		function formatDateTimeForChat(timestamp, fallback) {
+			const numeric = Number(timestamp || 0);
+
+			if (!Number.isFinite(numeric) || numeric <= 0) {
+				return String(fallback || '');
+			}
+
+			try {
+				return browserDateTimeFormatter.format(new Date(numeric * 1000));
+			} catch (error) {
+				return String(fallback || '');
+			}
+		}
+
+		function applyWorkflowHistoryFilter(button) {
+			const panel = button && button.closest ? button.closest('.yoro-workflow-history-panel') : null;
+
+			if (!panel) {
+				return;
+			}
+
+			const filter = button.getAttribute('data-status-filter') || 'all';
+			const items = panel.querySelectorAll('.yoro-workflow-history-item');
+			const emptyState = panel.querySelector('.yoro-workflow-history-empty');
+			let visibleCount = 0;
+
+			panel.querySelectorAll('.yoro-workflow-filter-btn').forEach(function(filterButton) {
+				filterButton.classList.toggle('is-active', filterButton === button);
+			});
+
+			items.forEach(function(item) {
+				const status = item.getAttribute('data-workflow-status') || '';
+				const isActiveStatus = ['collect_missing_params', 'preview_ready', 'ready_to_execute', 'executing'].indexOf(status) !== -1;
+				const isVisible = filter === 'all'
+					? true
+					: (filter === 'active' ? isActiveStatus : status === filter);
+
+				item.hidden = !isVisible;
+				item.classList.toggle('is-hidden', !isVisible);
+
+				if (isVisible) {
+					visibleCount += 1;
+				}
+			});
+
+			if (emptyState) {
+				emptyState.hidden = visibleCount > 0;
+			}
 		}
 
 		function registerDeveloperTools() {
@@ -428,10 +854,46 @@
 			return html;
 		}
 
+		let isComposerComposing = false;
+		let submitAfterCompositionEnd = false;
+
+		function submitComposerCommand() {
+			if (isComposerComposing) {
+				submitAfterCompositionEnd = true;
+				return;
+			}
+
+			runCommand(false);
+		}
+
 		commandField.addEventListener('input', function () {
 			if (commandField.value.trim() === '') {
 				clearCommandGhostHint();
 			}
+
+			syncRunButtonState();
+		});
+
+		commandField.addEventListener('compositionstart', function () {
+			isComposerComposing = true;
+		});
+
+		commandField.addEventListener('compositionend', function () {
+			window.requestAnimationFrame(function () {
+				isComposerComposing = false;
+
+				if (!submitAfterCompositionEnd) {
+					return;
+				}
+
+				submitAfterCompositionEnd = false;
+				submitComposerCommand();
+			});
+		});
+
+		commandField.addEventListener('blur', function () {
+			isComposerComposing = false;
+			submitAfterCompositionEnd = false;
 		});
 
 		const ghostHint = document.createElement('div');
@@ -457,19 +919,23 @@
 		`;
 		document.body.appendChild(modal);
 
-		function openModal(title, bodyHtml, onConfirm) {
+		function openModal(title, bodyHtml, onConfirm, options) {
 			const titleEl = modal.querySelector('.yoro-modal-title');
 			const bodyEl = modal.querySelector('.yoro-modal-body');
+			const actionsEl = modal.querySelector('.yoro-modal-actions');
 			const confirmBtn = modal.querySelector('.yoro-modal-confirm');
+			const modalOptions = options || {};
 
 			titleEl.textContent = title;
 			bodyEl.innerHTML = bodyHtml;
+			actionsEl.style.display = modalOptions.hideActions ? 'none' : '';
 
 			modal.classList.remove('hidden');
 
 			function close() {
 				modal.classList.add('hidden');
 				confirmBtn.onclick = null;
+				actionsEl.style.display = '';
 			}
 
 			modal.querySelector('.yoro-modal-cancel').onclick = close;
@@ -630,6 +1096,69 @@
 			addMessage('user', '<p>' + escapeHtml(command) + '</p>');
 		}
 
+		function replaceInitialGreetingForMorningBriefing() {
+			const messages = chatThread.querySelectorAll('.yoro-chat-message');
+
+			if (messages.length !== 1) {
+				return;
+			}
+
+			const firstMessage = messages[0];
+
+			if (!firstMessage.classList.contains('yoro-chat-message-agent')) {
+				return;
+			}
+
+			const bubble = firstMessage.querySelector('.yoro-chat-bubble');
+
+			if (!bubble) {
+				return;
+			}
+
+			const intro = (window.YoRoAgentAdmin && YoRoAgentAdmin.i18n && YoRoAgentAdmin.i18n.morningBriefingIntro)
+				? String(YoRoAgentAdmin.i18n.morningBriefingIntro)
+				: 'Good morning, here’s your store briefing for today.';
+
+			bubble.innerHTML = '<strong>YoRo</strong><p>' + escapeHtml(intro) + '</p>';
+		}
+
+		function swapInitialGreetingForMorningBriefing() {
+			const greetingMessage = chatThread.querySelector('.yoro-chat-message-agent[data-yoro-initial-greeting="1"]');
+
+			if (!greetingMessage) {
+				return false;
+			}
+
+			greetingMessage.remove();
+			return replaceInitialGreetingForMorningBriefingMessage();
+		}
+
+		function replaceInitialGreetingForMorningBriefingMessage() {
+			const intro = (window.YoRoAgentAdmin && YoRoAgentAdmin.i18n && YoRoAgentAdmin.i18n.morningBriefingIntro)
+				? String(YoRoAgentAdmin.i18n.morningBriefingIntro)
+				: 'Good morning, here’s your store briefing for today.';
+
+			return addMessage('agent', '<strong>YoRo</strong><p>' + escapeHtml(intro) + '</p>');
+		}
+
+		function shouldUseMorningBriefingGreeting(data) {
+			const result = data && data.result ? data.result : {};
+
+			if (!result || result.display_type !== 'morning_briefing') {
+				return false;
+			}
+
+			if (data && data.skip_morning_greeting) {
+				return false;
+			}
+
+			if (data && data.proactive === true) {
+				return true;
+			}
+
+			return !!(result.meta && result.meta.proactive);
+		}
+
 		let resultUI = null;
 
 		function hideSupersededAgentMessages(wrapper, data) {
@@ -691,14 +1220,30 @@
 		}
 
 		function addAgentMessage(data) {
+			let morningGreetingWrapper = null;
+
+			if (shouldUseMorningBriefingGreeting(data)) {
+				morningGreetingWrapper = swapInitialGreetingForMorningBriefing();
+			}
+
 			const wrapper = addMessage(
 				'agent',
 				resultUI
 					? resultUI.renderResult(data)
 					: renderJsonFallback(data)
 			);
+			const result = data && data.result ? data.result : {};
+			const displayType = String(result.display_type || '');
+
+			if (displayType) {
+				wrapper.setAttribute('data-yoro-display-type', displayType);
+			}
 
 			hideSupersededAgentMessages(wrapper, data);
+
+			if (morningGreetingWrapper) {
+				scrollMessageToTop(morningGreetingWrapper);
+			}
 		}
 
 		function addLoadingMessage() {
@@ -708,10 +1253,83 @@
 			);
 		}
 
+		function hideConfirmationActions(target) {
+			const actions = target && typeof target.closest === 'function'
+				? target.closest('.yoro-confirm-actions')
+				: null;
+
+			if (actions) {
+				actions.style.display = 'none';
+			}
+		}
+
+		function hideClarifyOptions(target) {
+			const actions = target && typeof target.closest === 'function'
+				? target.closest('.yoro-clarify-options')
+				: null;
+
+			if (actions) {
+				actions.style.display = 'none';
+			}
+		}
+
+		function hideUndoAction(target) {
+			if (!target) {
+				return null;
+			}
+
+			const actions = typeof target.closest === 'function'
+				? target.closest('.yoro-result-actions, .yoro-confirm-actions')
+				: null;
+
+			if (actions) {
+				actions.style.display = 'none';
+				return {
+					element: actions,
+					display: ''
+				};
+			}
+
+			const previousDisplay = target.style.display;
+			target.style.display = 'none';
+
+			return {
+				element: target,
+				display: previousDisplay
+			};
+		}
+
+		function restoreHiddenAction(hiddenAction) {
+			if (!hiddenAction || !hiddenAction.element) {
+				return;
+			}
+
+			hiddenAction.element.style.display = hiddenAction.display;
+		}
+
 		function getResultSuggestions(data) {
 			const result = data && data.result ? data.result : {};
 			const parsed = data && data.parsed ? data.parsed : {};
 			const action = result.action || parsed.action || '';
+
+			function filterUnsupportedRequestSuggestions(items) {
+				if (
+					!(
+						result &&
+						result.conversation_topic === 'unsupported_request' &&
+						result.developer_handoff_offer
+					)
+				) {
+					return items;
+				}
+
+				return items.filter(function(item) {
+					const action = String((item && item.action) || '').trim().toLowerCase();
+					const value = String((item && (item.command || item.value || item.label)) || '').trim().toLowerCase();
+					return action === 'assistant.submit_developer_request' || value === 'yes, send this to developers' || value === 'send to developers';
+				}).slice(0, 1);
+			}
+
 			if (result.display_type === 'single_action') {
 				return [];
 			}
@@ -726,25 +1344,25 @@
 			}
 
 			if (Array.isArray(result.suggestions)) {
-				return result.suggestions;
+				return filterUnsupportedRequestSuggestions(result.suggestions);
 			}
 
 			if (Array.isArray(data.suggestions)) {
-				return data.suggestions;
+				return filterUnsupportedRequestSuggestions(data.suggestions);
 			}
 
 			return [];
 		}
 
+		function syncRunButtonState() {
+			runButton.disabled = isSending || commandField.value.trim() === '';
+		}
+
 		function setLoading(isLoading) {
-			runButton.disabled = isLoading;
+			syncRunButtonState();
 
 			if (contextButton) {
 				contextButton.disabled = isLoading;
-			}
-
-			if (previewButton) {
-				previewButton.disabled = isLoading;
 			}
 
 			runButton.textContent = isLoading ? YoRoAgentAdmin.i18n.running : (YoRoAgentAdmin.i18n.askYoRo || 'Ask YoRo');
@@ -838,6 +1456,14 @@
 				requestParams.set('reset_state', '1');
 			}
 
+			if (window.Intl && Intl.DateTimeFormat) {
+				const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+
+				if (browserTimeZone) {
+					requestParams.set('browser_timezone', browserTimeZone);
+				}
+			}
+
 			const url = requestParams.toString()
 				? (YoRoAgentAdmin.morningBriefingUrl + '?' + requestParams.toString())
 				: YoRoAgentAdmin.morningBriefingUrl;
@@ -848,6 +1474,8 @@
 				if (!data || !data.success || !data.should_show) {
 					return data;
 				}
+
+				swapInitialGreetingForMorningBriefing();
 
 				addAgentMessage(data);
 				updateConversationState(data, 'Morning briefing');
@@ -864,9 +1492,19 @@
 				return Promise.resolve();
 			}
 
+			const payload = {};
+
+			if (window.Intl && Intl.DateTimeFormat) {
+				const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+
+				if (browserTimeZone) {
+					payload.browser_timezone = browserTimeZone;
+				}
+			}
+
 			return requestJson(YoRoAgentAdmin.morningBriefingDismissUrl, {
 				method: 'POST',
-				body: JSON.stringify({})
+				body: JSON.stringify(payload)
 			}).then(function (data) {
 				if (data && data.success) {
 					conversationState.morning_briefing_state = Object.assign({}, conversationState.morning_briefing_state || {}, {
@@ -1338,12 +1976,12 @@
 
 		let isSending = false;
 
-		function runCommand(confirm, preview) {
+		function runCommand(confirm, onConfirmSuccess, commandOverride) {
 			if (isSending) {
 				return;
 			}
 
-			const command = commandField.value.trim();
+			const command = String(typeof commandOverride === 'string' ? commandOverride : commandField.value).trim();
 			clearCommandGhostHint();
 
 			if (!command) {
@@ -1363,11 +2001,8 @@
 
 			if (!confirm) {
 				addUserMessage(command);
-
-				// Clear composer immediately after the message is sent.
-				if (!preview) {
-					commandField.value = '';
-				}
+				commandField.value = '';
+				syncRunButtonState();
 			}
 
 			const loading = addLoadingMessage();
@@ -1379,7 +2014,6 @@
 				body: JSON.stringify({
 					command: command,
 					confirm: confirm || false,
-					preview: preview || false,
 					workflow_state_token: confirm ? (conversationState.pending_plan_token || '') : '',
 					client_context: conversationState
 				})
@@ -1396,6 +2030,9 @@
 
 				if (data && data.stage === 'done') {
 					conversationState.pending_plan_token = '';
+					if (confirm && typeof onConfirmSuccess === 'function') {
+						onConfirmSuccess(data);
+					}
 				}
 			})
 			.catch(function (error) {
@@ -1407,8 +2044,8 @@
 				});
 			})
 			.finally(function () {
-				setLoading(false);
 				isSending = false;
+				setLoading(false);
 			});
 		}
 
@@ -1423,9 +2060,13 @@
 		}
 
 		function openNoteModal(callback) {
+			openTextModal('Add internal note', 'Enter note...', callback);
+		}
+
+		function openTextModal(title, placeholder, callback) {
 			openModal(
-				'Add internal note',
-				'<textarea class="yoro-modal-textarea" placeholder="Enter note..." rows="4"></textarea>',
+				title,
+				'<textarea class="yoro-modal-textarea" placeholder="' + escapeHtml(placeholder || '') + '" rows="4"></textarea>',
 				function () {
 					const value = modal.querySelector('.yoro-modal-textarea').value.trim();
 					if (value && typeof callback === 'function') {
@@ -1505,9 +2146,10 @@
 			);
 		}
 
-		function runCommandFromText(command, confirm, preview) {
+		function runCommandFromText(command, confirm) {
 			commandField.value = command;
-			runCommand(confirm || false, preview || false);
+			syncRunButtonState();
+			runCommand(confirm || false);
 		}
 
 		function getCurrentOrderId() {
@@ -1573,6 +2215,13 @@
 
 			if (!text) {
 				return null;
+			}
+
+			if (normalized === 'workflow.cancel') {
+				return {
+					action: 'workflow.cancel',
+					params: {}
+				};
 			}
 
 			let match = text.match(/\border\s*#?\s*(\d+)\b/i);
@@ -1701,27 +2350,52 @@
 				: renderJsonFallback(data);
 		}
 
+		if (quickActionsToggle && quickActionsPanel) {
+			quickActionsToggle.addEventListener('click', function () {
+				setQuickActionsOpen(quickActionsPanel.hidden);
+			});
+		}
+
+		if (quickSearchField) {
+			quickSearchField.addEventListener('input', function () {
+				renderQuickSearchState(quickSearchField.value);
+			});
+
+			quickSearchField.addEventListener('keydown', function(event) {
+				if (event.key === 'Enter') {
+					const intent = getQuickSearchIntent(quickSearchField.value);
+
+					if (intent && intent.action) {
+						event.preventDefault();
+						runQuickAction(intent.action, intent.params || {}, {
+							fallbackAction: intent.fallbackAction || '',
+							fallbackParams: intent.fallbackParams || {}
+						});
+					}
+				}
+			});
+		}
+
 		runButton.addEventListener('click', function () {
-			runCommand(false, false);
+			submitComposerCommand();
 		});
 
 		commandField.addEventListener('keydown', function (event) {
 			if (event.key === 'Enter' && !event.shiftKey) {
-
 				if (event.repeat) {
 					return;
 				}
-				
+
+				if (isComposerComposing || event.isComposing || event.keyCode === 229 || event.which === 229) {
+					event.preventDefault();
+					submitAfterCompositionEnd = true;
+					return;
+				}
+
 				event.preventDefault();
-				runCommand(false, false);
+				submitComposerCommand();
 			}
 		});
-
-		if (previewButton) {
-			previewButton.addEventListener('click', function () {
-				runCommand(false, true);
-			});
-		}
 
 		if (contextButton) {
 			contextButton.addEventListener('click', function () {
@@ -1736,6 +2410,7 @@
 				'<strong>YoRo</strong><p>Chat cleared. How can I help manage your store?</p>'
 			);
 			commandField.value = '';
+			syncRunButtonState();
 				conversationState = {
 					surface: '',
 					admin_copilot: null,
@@ -1767,6 +2442,7 @@
 		const emailUI = window.YoRoEmailUI
 			? window.YoRoEmailUI.init({
 				escapeHtml: escapeHtml,
+				formatDateTime: formatDateTimeForChat,
 				renderDebugJson: renderDebugJsonProxy,
 				getResultSuggestions: getResultSuggestions,
 				resolveOrderId: resolveOrderId,
@@ -1783,6 +2459,7 @@
 		const orderUI = window.YoRoOrderUI
 			? window.YoRoOrderUI.init({
 				escapeHtml: escapeHtml,
+				formatDateTime: formatDateTimeForChat,
 				renderDebugJson: renderDebugJsonProxy,
 				renderSuggestions: renderSuggestionsProxy,
 				getResultSuggestions: getResultSuggestions,
@@ -1794,6 +2471,7 @@
 				updateConversationState: updateConversationState,
 				runCommandFromText: runCommandFromText,
 				openModal: openModal,
+				openTextModal: openTextModal,
 				openNoteModal: openNoteModal,
 				openStatusModal: openStatusModal,
 				openStatusNoteModal: openStatusNoteModal,
@@ -1806,6 +2484,7 @@
 		resultUI = window.YoRoResultRenderers
 			? window.YoRoResultRenderers.init({
 				escapeHtml: escapeHtml,
+				formatDateTime: formatDateTimeForChat,
 				shouldShowDebugJson: shouldShowDebugJson,
 				getResultSuggestions: getResultSuggestions,
 				renderWorkflowPreview: window.YoRoWorkflowRenderers
@@ -1893,12 +2572,20 @@
 			const undoLast = target.closest('.yoro-undo-last');
 			const insertCommand = target.closest('.yoro-insert-command');
 			const dismissMorningBriefingBtn = target.closest('.yoro-dismiss-morning-briefing');
+			const workflowFilterBtn = target.closest('.yoro-workflow-filter-btn');
 
 			/*
 			* Handle core chat buttons first.
 			* This prevents nested elements inside buttons from being missed
 			* and avoids email/order UI handlers swallowing suggestion clicks.
 			*/
+			if (workflowFilterBtn) {
+				event.preventDefault();
+				event.stopPropagation();
+				applyWorkflowHistoryFilter(workflowFilterBtn);
+				return;
+			}
+
 			if (suggestionBtn) {
 				event.preventDefault();
 				event.stopPropagation();
@@ -1948,7 +2635,7 @@
 					return;
 				}
 
-				runCommandFromText(command, false, false);
+				runCommandFromText(command, false);
 				return;
 			}
 
@@ -1958,8 +2645,43 @@
 				const command = clarifyOption.getAttribute('data-command') || '';
 
 				if (command) {
+					const directFromCommand = mapSuggestionCommandToDirectAction(command);
+
+					if (directFromCommand && directFromCommand.action) {
+						const loading = addLoadingMessage();
+						setLoading(true);
+
+						executeActionDirect(directFromCommand.action, directFromCommand.params || {}, false, false, 'clarify-option')
+							.then(function(data) {
+								loading.remove();
+								addAgentMessage(data);
+								updateConversationState(data, directFromCommand.action);
+
+								if (
+									directFromCommand.action === 'workflow.cancel' &&
+									data &&
+									data.success &&
+									data.result &&
+									data.result.action === 'workflow.cancel'
+								) {
+									hideClarifyOptions(clarifyOption);
+								}
+							})
+							.catch(function(error) {
+								loading.remove();
+								addAgentMessage({
+									success: false,
+									error: error || YoRoAgentAdmin.i18n.error
+								});
+							})
+							.finally(function() {
+								setLoading(false);
+							});
+						return;
+					}
+
 					commandField.value = command;
-					runCommand(false, false);
+					runCommand(false);
 				}
 
 				return;
@@ -1989,6 +2711,7 @@
 
 					executeActionDirect(directAction, directParams, true, false, '', directActionStateToken)
 						.then(function(data) {
+							hideConfirmationActions(confirmRun);
 							addAgentMessage(data);
 							updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || directAction));
 						})
@@ -2005,8 +2728,9 @@
 				const command = conversationState.pending_confirm_command || commandField.value.trim();
 
 				if (command) {
-					commandField.value = command;
-					runCommand(true, false);
+					runCommand(true, function() {
+						hideConfirmationActions(confirmRun);
+					}, command);
 					conversationState.pending_confirm_command = '';
 				}
 
@@ -2015,6 +2739,7 @@
 
 			if (confirmCancel) {
 				event.preventDefault();
+				hideConfirmationActions(confirmCancel);
 
 				conversationState.pending_confirm_command = '';
 				conversationState.pending_plan_token = '';
@@ -2025,10 +2750,12 @@
 
 			if (undoLast) {
 				event.preventDefault();
+				const hiddenUndoAction = hideUndoAction(undoLast);
 
 				const logId = undoLast.getAttribute('data-log-id') || '';
 
 				if (!logId) {
+					restoreHiddenAction(hiddenUndoAction);
 					addAgentMessage({
 						success: false,
 						message: 'Undo log ID is missing.'
@@ -2046,6 +2773,7 @@
 						});
 					})
 					.catch(function (error) {
+						restoreHiddenAction(hiddenUndoAction);
 						addAgentMessage({
 							success: false,
 							error: error
@@ -2059,6 +2787,7 @@
 				event.preventDefault();
 
 				commandField.value = insertCommand.getAttribute('data-command') || '';
+				syncRunButtonState();
 				commandField.focus();
 
 				return;
@@ -2093,12 +2822,52 @@
 			}
 		});
 
+		document.addEventListener('click', function(event) {
+			const quickPreset = event.target.closest('.yoro-chat-quick-preset');
+			const quickSearchRun = event.target.closest('[data-yoro-quick-run="1"]');
+
+			if (quickPreset) {
+				const action = quickPreset.getAttribute('data-yoro-quick-action') || '';
+				const params = parseQuickActionParams(quickPreset.getAttribute('data-yoro-quick-params') || '');
+				runQuickAction(action, params);
+				return;
+			}
+
+			if (quickSearchRun) {
+				const action = quickSearchRun.getAttribute('data-action') || '';
+				const params = parseQuickActionParams(quickSearchRun.getAttribute('data-params') || '');
+				runQuickAction(action, params, {
+					fallbackAction: quickSearchRun.getAttribute('data-fallback-action') || '',
+					fallbackParams: parseQuickActionParams(quickSearchRun.getAttribute('data-fallback-params') || '')
+				});
+				return;
+			}
+
+			if (
+				quickActionsRoot &&
+				quickActionsPanel &&
+				!quickActionsPanel.hidden &&
+				!quickActionsRoot.contains(event.target)
+			) {
+				setQuickActionsOpen(false);
+			}
+		});
+
+		document.addEventListener('keydown', function(event) {
+			if (event.key === 'Escape' && quickActionsPanel && !quickActionsPanel.hidden) {
+				setQuickActionsOpen(false);
+			}
+		});
+
 		exampleButtons.forEach(function (button) {
 			button.addEventListener('click', function () {
 				commandField.value = button.getAttribute('data-command') || '';
+				syncRunButtonState();
 				commandField.focus();
 			});
 		});
+
+		syncRunButtonState();
 
 		loadServerMemory()
 			.then(function () {

@@ -6,6 +6,7 @@
 
 		return {
 			escapeHtml: helpers.escapeHtml,
+			formatDateTime: helpers.formatDateTime,
 			renderDebugJson: helpers.renderDebugJson,
 			renderSuggestions: helpers.renderSuggestions,
 			getResultSuggestions: helpers.getResultSuggestions,
@@ -14,6 +15,7 @@
 			addLoadingMessage: helpers.addLoadingMessage,
 			updateConversationState: helpers.updateConversationState,
 			openModal: helpers.openModal,
+			openTextModal: helpers.openTextModal,
 			openNoteModal: helpers.openNoteModal,
 			openStatusModal: helpers.openStatusModal,
 			openStatusNoteModal: helpers.openStatusNoteModal,
@@ -70,6 +72,27 @@
 				return handleOrderClick(event, h);
 			}
 		};
+	}
+
+	function formatDateTime(value, timestamp, h) {
+		if (typeof h.formatDateTime === 'function') {
+			return h.formatDateTime(timestamp, value);
+		}
+
+		return String(value || '');
+	}
+
+	function formatWindowRange(windowInfo, h) {
+		windowInfo = windowInfo || {};
+
+		const start = formatDateTime(windowInfo.start, windowInfo.start_ts, h);
+		const end = formatDateTime(windowInfo.end, windowInfo.end_ts, h);
+
+		if (start && end) {
+			return start + ' → ' + end;
+		}
+
+		return start || end || '';
 	}
 
 	function getDirectActionForCommand(command) {
@@ -257,7 +280,7 @@
 
 		html += renderSupportFlowPanel(result, h);
 
-		html += '<div class="yoro-order-detail-grid">';
+		html += '<div class="yoro-order-detail-grid' + (orders.length > 1 ? ' yoro-order-detail-grid-stacked' : '') + '">';
 
 		orders.forEach(function(order) {
 			const customerName = order.customer_name || [
@@ -295,7 +318,7 @@
 			html += '<div class="yoro-order-detail-header">';
 			html += '<div>';
 			html += '<strong class="yoro-order-detail-title">Order #' + h.escapeHtml(order.number || order.id) + '</strong>';
-			html += '<div class="yoro-result-subtle">' + h.escapeHtml(order.date_created || '') + ' · ' + h.escapeHtml((order.age_hours || 0) + 'h old') + '</div>';
+			html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + ' · ' + h.escapeHtml((order.age_hours || 0) + 'h old') + '</div>';
 			html += '</div>';
 			html += '<span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span>';
 			html += '</div>';
@@ -327,7 +350,7 @@
 			html += '<div class="yoro-order-detail-kv"><span>Payment</span><strong>' + h.escapeHtml(order.payment_method_title || order.payment_method || '—') + '</strong></div>';
 			html += '<div class="yoro-order-detail-kv"><span>Transaction</span><strong>' + h.escapeHtml(order.transaction_id || '—') + '</strong></div>';
 			html += '<div class="yoro-order-detail-kv"><span>Shipping method</span><strong>' + h.escapeHtml(order.shipping_method || (order.requires_shipping ? 'Missing' : 'Not needed')) + '</strong></div>';
-			html += '<div class="yoro-order-detail-kv"><span>Paid</span><strong>' + h.escapeHtml(order.date_paid || '—') + '</strong></div>';
+			html += '<div class="yoro-order-detail-kv"><span>Paid</span><strong>' + h.escapeHtml(formatDateTime(order.date_paid, order.date_paid_ts, h) || '—') + '</strong></div>';
 			html += '</div>';
 
 			html += '<div class="yoro-order-detail-surface">';
@@ -377,7 +400,12 @@
 				if (notes.length) {
 					html += '<ul class="yoro-order-detail-list">';
 					notes.forEach(function(note) {
-						const noteMeta = [note.date || '', note.customer ? 'Customer note' : 'Internal note'].filter(Boolean).join(' · ');
+						const noteMeta = [
+							formatDateTime(note.date, note.date_ts, h) || '',
+							note.customer ? 'Customer note' : 'Internal note',
+							note.author || '',
+							note.via_yoro ? 'via YoRo' : ''
+						].filter(Boolean).join(' · ');
 						html += '<li><strong>' + h.escapeHtml(noteMeta || 'Note') + '</strong><div class="yoro-result-subtle">' + h.escapeHtml(note.content || '') + '</div></li>';
 					});
 					html += '</ul>';
@@ -388,13 +416,17 @@
 			if (order.date_paid || order.date_completed) {
 				html += '<div class="yoro-order-detail-section yoro-order-detail-section-spacious">';
 				html += '<h4>Milestones</h4>';
-				html += '<p><strong>Paid:</strong> ' + h.escapeHtml(order.date_paid || '—') + '</p>';
-				html += '<p><strong>Completed:</strong> ' + h.escapeHtml(order.date_completed || '—') + '</p>';
+				html += '<p><strong>Paid:</strong> ' + h.escapeHtml(formatDateTime(order.date_paid, order.date_paid_ts, h) || '—') + '</p>';
+				html += '<p><strong>Completed:</strong> ' + h.escapeHtml(formatDateTime(order.date_completed, order.date_completed_ts, h) || '—') + '</p>';
 				html += '</div>';
 			}
 
 			html += '<div class="yoro-order-detail-actions">';
-			html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '">Actions</button> ';
+			html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '" data-action-scope="detail" data-has-email-drafts="' + (order.has_email_drafts ? '1' : '0') + '" data-draft-count="' + h.escapeHtml(order.draft_count || 0) + '">Actions</button>';
+			html += '<button type="button" class="button button-small yoro-row-run-hold" data-order-id="' + h.escapeHtml(order.id) + '">Hold</button>';
+			html += '<button type="button" class="button button-small yoro-row-update-status" data-order-id="' + h.escapeHtml(order.id) + '">Change status</button>';
+			html += '<button type="button" class="button button-small yoro-row-add-note" data-order-id="' + h.escapeHtml(order.id) + '">Add note</button>';
+			html += '<button type="button" class="button button-small yoro-row-write-email" data-order-id="' + h.escapeHtml(order.id) + '">Write email</button>';
 
 			if (order.edit_url) {
 				html += '<a class="button button-small" href="' + h.escapeHtml(order.edit_url) + '" target="_blank" rel="noopener noreferrer">Open order</a>';
@@ -494,11 +526,11 @@
 		html += '</div>';
 
 		html += '<div class="yoro-bulk-actions">';
-		html += '<button type="button" class="button yoro-run-hold">Hold Selected</button>';
-		html += '<button type="button" class="button yoro-bulk-details">Details Selected</button>';
-		html += '<button type="button" class="button yoro-bulk-add-note">Add Note Selected</button>';
-		html += '<button type="button" class="button yoro-bulk-update-status">Update Status Selected</button>';
-		html += '<button type="button" class="button yoro-bulk-status-note">Status + Note Selected</button>';
+		html += '<button type="button" class="button yoro-run-hold">Hold</button>';
+		html += '<button type="button" class="button yoro-bulk-details">View details</button>';
+		html += '<button type="button" class="button yoro-bulk-add-note">Add note</button>';
+		html += '<button type="button" class="button yoro-bulk-update-status">Update status</button>';
+		html += '<button type="button" class="button yoro-bulk-status-note">Status + Note</button>';
 		html += '</div>';
 
 		html += '<table class="yoro-orders-table">';
@@ -525,10 +557,10 @@
 			html += '<td><strong>' + h.escapeHtml(customerLabel) + '</strong><div class="yoro-result-subtle">' + h.escapeHtml(order.billing_email || order.billing_phone || '—') + '</div></td>';
 			html += '<td><span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span><div class="yoro-result-subtle">' + h.escapeHtml(caseLabel) + '</div></td>';
 			html += '<td>' + h.escapeHtml(order.total || '') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
-			html += '<td>' + h.escapeHtml(String(parseInt(order.age_hours || 0, 10) || 0) + 'h') + '<div class="yoro-result-subtle">' + h.escapeHtml(order.date_created || '') + '</div></td>';
+			html += '<td>' + h.escapeHtml(String(parseInt(order.age_hours || 0, 10) || 0) + 'h') + '<div class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</div></td>';
 			html += '<td class="yoro-row-actions">';
 			html += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h.escapeHtml(order.id) + '">' + h.escapeHtml(nextActionLabel) + '</button> ';
-			html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '">Actions</button> ';
+			html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '" data-action-scope="row" data-has-email-drafts="' + (order.has_email_drafts ? '1' : '0') + '" data-draft-count="' + h.escapeHtml(order.draft_count || 0) + '">Actions</button> ';
 
 			if (order.edit_url) {
 				html += '<a class="button button-small" href="' + h.escapeHtml(order.edit_url) + '" target="_blank" rel="noopener noreferrer">Open</a>';
@@ -690,8 +722,8 @@
 		html += '<div class="yoro-order-detail-metrics">';
 		html += '<div><span>Total spent</span><strong>' + h.escapeHtml(result.total_spent || '0.00') + ' ' + h.escapeHtml(result.currency || '') + '</strong></div>';
 		html += '<div><span>Orders</span><strong>' + h.escapeHtml(result.count || orders.length) + '</strong></div>';
-		html += '<div><span>First order</span><strong>' + h.escapeHtml(result.first_order_date || '—') + '</strong></div>';
-		html += '<div><span>Last order</span><strong>' + h.escapeHtml(result.last_order_date || '—') + '</strong></div>';
+		html += '<div><span>First order</span><strong>' + h.escapeHtml(formatDateTime(result.first_order_date, result.first_order_date_ts, h) || '—') + '</strong></div>';
+		html += '<div><span>Last order</span><strong>' + h.escapeHtml(formatDateTime(result.last_order_date, result.last_order_date_ts, h) || '—') + '</strong></div>';
 		html += '</div>';
 
 		html += '<div class="yoro-order-detail-section">';
@@ -732,7 +764,7 @@
 				html += '<td><span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span></td>';
 				html += '<td>' + h.escapeHtml(order.total || '') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
 				html += '<td>' + h.escapeHtml(order.payment_method || '—') + '</td>';
-				html += '<td>' + h.escapeHtml(order.date_created || '—') + '</td>';
+				html += '<td>' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h) || '—') + '</td>';
 				html += '<td class="yoro-row-actions">';
 				html += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h.escapeHtml(order.id) + '">Details</button> ';
 				if (order.edit_url) {
@@ -797,7 +829,7 @@
 		html += '<div class="yoro-order-detail-header">';
 		html += '<div>';
 		html += '<strong class="yoro-order-detail-title">Store operations</strong>';
-		html += '<div class="yoro-result-subtle">' + h.escapeHtml(windowInfo.start || '') + ' → ' + h.escapeHtml(windowInfo.end || '') + '</div>';
+		html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatWindowRange(windowInfo, h)) + '</div>';
 		html += '</div>';
 		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(result.focus || 'overview') + '</span>';
 		html += '</div>';
@@ -859,10 +891,10 @@
 				html += '<td><span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span></td>';
 				html += '<td>' + h.escapeHtml(order.total || '') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
 				html += '<td>' + h.escapeHtml(order.billing_email || '') + '</td>';
-				html += '<td>' + h.escapeHtml(order.date_created || '') + '</td>';
+				html += '<td>' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</td>';
 				html += '<td class="yoro-row-actions">';
 				html += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h.escapeHtml(order.id) + '">Details</button> ';
-				html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '">Actions</button> ';
+				html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '" data-action-scope="row" data-has-email-drafts="' + (order.has_email_drafts ? '1' : '0') + '" data-draft-count="' + h.escapeHtml(order.draft_count || 0) + '">Actions</button> ';
 
 				if (order.edit_url) {
 					html += '<a class="button button-small" href="' + h.escapeHtml(order.edit_url) + '" target="_blank" rel="noopener noreferrer">Open</a>';
@@ -935,7 +967,7 @@
 		html += '<div class="yoro-order-detail-header">';
 		html += '<div>';
 		html += '<strong class="yoro-order-detail-title">Business overview</strong>';
-		html += '<div class="yoro-result-subtle">' + h.escapeHtml(windowInfo.start || '') + ' → ' + h.escapeHtml(windowInfo.end || '') + '</div>';
+		html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatWindowRange(windowInfo, h)) + '</div>';
 		html += '</div>';
 		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(result.focus || 'overview') + '</span>';
 		html += '</div>';
@@ -1037,7 +1069,7 @@
 				html += '<td><span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span></td>';
 				html += '<td>' + h.escapeHtml(order.total || '') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
 				html += '<td>' + h.escapeHtml(order.billing_email || '') + '</td>';
-				html += '<td>' + h.escapeHtml(order.date_created || '') + '</td>';
+				html += '<td>' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</td>';
 				html += '</tr>';
 			});
 			html += '</tbody></table>';
@@ -1092,7 +1124,7 @@
 		html += '<strong class="yoro-order-detail-title">Morning briefing</strong>';
 		html += '<div class="yoro-result-subtle">' + h.escapeHtml(result.time_window_label || 'Yesterday and this morning') + '</div>';
 		html += '</div>';
-		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(result.briefing_date || '') + '</span>';
+		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(formatDateTime(result.briefing_date, result.briefing_date_ts, h)) + '</span>';
 		html += '</div>';
 
 		html += '<div class="yoro-briefing-hero">';
@@ -1393,7 +1425,7 @@
 		html += '<div class="yoro-order-detail-header">';
 		html += '<div>';
 		html += '<strong class="yoro-order-detail-title">' + h.escapeHtml(briefingLabel) + '</strong>';
-			html += '<div class="yoro-result-subtle">' + h.escapeHtml(windowInfo.start || '') + ' → ' + h.escapeHtml(windowInfo.end || '') + '</div>';
+			html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatWindowRange(windowInfo, h)) + '</div>';
 		html += '</div>';
 		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(topTopic.replace(/_/g, ' ')) + '</span>';
 		html += '</div>';
@@ -2359,7 +2391,7 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += '<div class="yoro-order-detail-header">';
 		html += '<div>';
 		html += '<strong class="yoro-order-detail-title">Grouped store snapshot</strong>';
-		html += '<div class="yoro-result-subtle">' + h.escapeHtml(windowInfo.start || '') + ' → ' + h.escapeHtml(windowInfo.end || '') + '</div>';
+		html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatWindowRange(windowInfo, h)) + '</div>';
 		html += '</div>';
 		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(windowInfo.label || (insights.length + ' groups')) + '</span>';
 		html += '</div>';
@@ -2980,7 +3012,7 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += '<div class="yoro-order-detail-header">';
 		html += '<div>';
 		html += '<strong class="yoro-order-detail-title">Order #' + h.escapeHtml(order.number || order.id || '') + '</strong>';
-		html += '<div class="yoro-result-subtle">' + h.escapeHtml(order.date_created || '') + '</div>';
+		html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</div>';
 		html += '</div>';
 		html += '<span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span>';
 		html += '</div>';
@@ -3047,7 +3079,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				html += '<td>#' + h.escapeHtml(refund.id || '') + '</td>';
 				html += '<td>' + h.escapeHtml(refund.amount || '0') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
 				html += '<td>' + h.escapeHtml(refund.reason || '—') + '</td>';
-				html += '<td>' + h.escapeHtml(refund.date || '') + '</td>';
+				html += '<td>' + h.escapeHtml(formatDateTime(refund.date, refund.date_ts, h)) + '</td>';
 				html += '</tr>';
 			});
 
@@ -3056,6 +3088,11 @@ function renderQueueWorkbenchIntro(config, h) {
 		}
 
 		html += '<div class="yoro-order-detail-actions">';
+		html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '" data-action-scope="detail" data-has-email-drafts="' + (order.has_email_drafts ? '1' : '0') + '" data-draft-count="' + h.escapeHtml(order.draft_count || 0) + '">Actions</button>';
+		html += '<button type="button" class="button button-small yoro-row-run-hold" data-order-id="' + h.escapeHtml(order.id) + '">Hold</button>';
+		html += '<button type="button" class="button button-small yoro-row-update-status" data-order-id="' + h.escapeHtml(order.id) + '">Change status</button>';
+		html += '<button type="button" class="button button-small yoro-row-add-note" data-order-id="' + h.escapeHtml(order.id) + '">Add note</button>';
+		html += '<button type="button" class="button button-small yoro-row-write-email" data-order-id="' + h.escapeHtml(order.id) + '">Write email</button>';
 		if (order.edit_url) {
 			html += '<a class="button button-small" href="' + h.escapeHtml(order.edit_url) + '" target="_blank" rel="noopener noreferrer">Open order</a>';
 		}
@@ -3079,6 +3116,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				'.yoro-row-run-hold,' +
 				'.yoro-row-details,' +
 				'.yoro-row-add-note,' +
+				'.yoro-row-write-email,' +
 				'.yoro-row-update-status,' +
 				'.yoro-bulk-details,' +
 				'.yoro-bulk-add-note,' +
@@ -3176,6 +3214,25 @@ function renderQueueWorkbenchIntro(config, h) {
 					order_id: parseInt(orderId, 10),
 					order_ids: [parseInt(orderId, 10)],
 					note: note
+				}, false);
+			});
+
+			return true;
+		}
+
+		if (target.classList.contains('yoro-row-write-email')) {
+			const orderId = target.getAttribute('data-order-id');
+
+			if (!orderId) {
+				return true;
+			}
+
+			h.setCurrentOrderId(orderId);
+
+			h.openTextModal('Write customer email', 'What should the email say?', function(instruction) {
+				executeOrderUiAction(h, 'orders.compose_customer_email', {
+					order_id: parseInt(orderId, 10),
+					instruction: instruction
 				}, false);
 			});
 
@@ -3285,6 +3342,9 @@ function renderQueueWorkbenchIntro(config, h) {
 
 		if (target.classList.contains('yoro-row-action-menu')) {
 			const orderId = target.getAttribute('data-order-id');
+			const actionScope = target.getAttribute('data-action-scope') || 'row';
+			const draftCount = parseInt(target.getAttribute('data-draft-count') || '0', 10) || 0;
+			const hasEmailDrafts = target.getAttribute('data-has-email-drafts') === '1' || draftCount > 0;
 
 			if (!orderId) {
 				return true;
@@ -3292,24 +3352,37 @@ function renderQueueWorkbenchIntro(config, h) {
 
 			h.setCurrentOrderId(orderId);
 
-			h.openModal(
-				'Order #' + orderId + ' actions',
+			const loadEmailDraftsButton = hasEmailDrafts
+				? '<button type="button" class="button yoro-modal-action" data-action="load_email_drafts">Load email drafts</button>'
+				: '';
+
+			const actionButtons = actionScope === 'detail'
+				? `
+				<div class="yoro-modal-action-list">
+					${loadEmailDraftsButton}
+					<button type="button" class="button yoro-modal-action" data-action="identity">Find by identity</button>
+					<button type="button" class="button yoro-modal-action" data-action="refund_preview">Refund preview</button>
+				</div>
 				`
+				: `
 				<div class="yoro-modal-action-list">
 					<button type="button" class="button yoro-modal-action" data-action="hold">Hold</button>
-					<button type="button" class="button yoro-modal-action" data-action="note">Add Note</button>
-					<button type="button" class="button yoro-modal-action" data-action="status">Change Status</button>
-					<button type="button" class="button yoro-modal-action" data-action="identity">Find by Identity</button>
-					<button type="button" class="button yoro-modal-action" data-action="refund_preview">Refund Preview</button>
-					<button type="button" class="button yoro-modal-action" data-action="email_verification">Preview Verification Email</button>
-					<button type="button" class="button yoro-modal-action" data-action="email_payment">Preview Payment Email</button>
-					<button type="button" class="button yoro-modal-action" data-action="email_shipping_delay">Preview Shipping Delay Email</button>
-					<button type="button" class="button yoro-modal-action" data-action="send_email_verification">Send Verification Email</button>
-					<button type="button" class="button yoro-modal-action" data-action="send_email_payment">Send Payment Email</button>
-					<button type="button" class="button yoro-modal-action" data-action="load_email_drafts">Load Email Drafts</button>
+					<button type="button" class="button yoro-modal-action" data-action="status">Change status</button>
+					<button type="button" class="button yoro-modal-action" data-action="note">Add note</button>
+					<button type="button" class="button yoro-modal-action" data-action="write_email">Write email</button>
+					${loadEmailDraftsButton}
+					<button type="button" class="button yoro-modal-action" data-action="identity">Find by identity</button>
+					<button type="button" class="button yoro-modal-action" data-action="refund_preview">Refund preview</button>
 				</div>
-				`,
-				null
+				`;
+
+			h.openModal(
+				'Order #' + orderId + ' actions',
+				actionButtons,
+				null,
+				{
+					hideActions: true
+				}
 			);
 
 			document.querySelectorAll('.yoro-modal-action').forEach(function(btn) {
@@ -3321,6 +3394,12 @@ function renderQueueWorkbenchIntro(config, h) {
 					const modal = btn.closest('.yoro-modal');
 					if (modal) {
 						modal.classList.add('hidden');
+					}
+
+					if (action === 'identity') {
+						executeOrderUiAction(h, 'orders.find_by_identity', {
+							order_id: parseInt(orderId, 10)
+						}, false);
 					}
 
 					if (action === 'hold') {
@@ -3350,50 +3429,18 @@ function renderQueueWorkbenchIntro(config, h) {
 						});
 					}
 
-					if (action === 'identity') {
-						executeOrderUiAction(h, 'orders.find_by_identity', {
-							order_id: parseInt(orderId, 10)
-						}, false);
+					if (action === 'write_email') {
+						h.openTextModal('Write customer email', 'What should the email say?', function(instruction) {
+							executeOrderUiAction(h, 'orders.compose_customer_email', {
+								order_id: parseInt(orderId, 10),
+								instruction: instruction
+							}, false);
+						});
 					}
 
 					if (action === 'refund_preview') {
 						executeOrderUiAction(h, 'orders.refund_preview', {
 							order_id: parseInt(orderId, 10)
-						}, false);
-					}
-
-					if (action === 'email_verification') {
-						executeOrderUiAction(h, 'orders.email_customer_preview', {
-							order_id: parseInt(orderId, 10),
-							template: 'needs_verification'
-						}, false);
-					}
-
-					if (action === 'email_payment') {
-						executeOrderUiAction(h, 'orders.email_customer_preview', {
-							order_id: parseInt(orderId, 10),
-							template: 'payment_mismatch'
-						}, false);
-					}
-
-					if (action === 'email_shipping_delay') {
-						executeOrderUiAction(h, 'orders.email_customer_preview', {
-							order_id: parseInt(orderId, 10),
-							template: 'shipping_delay'
-						}, false);
-					}
-
-					if (action === 'send_email_verification') {
-						executeOrderUiAction(h, 'orders.email_customer_template', {
-							order_id: parseInt(orderId, 10),
-							template: 'needs_verification'
-						}, false);
-					}
-
-					if (action === 'send_email_payment') {
-						executeOrderUiAction(h, 'orders.email_customer_template', {
-							order_id: parseInt(orderId, 10),
-							template: 'payment_mismatch'
 						}, false);
 					}
 

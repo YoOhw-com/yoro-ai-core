@@ -8,6 +8,9 @@
 			escapeHtml: helpers.escapeHtml || function(value) {
 				return String(value === null || value === undefined ? '' : value);
 			},
+			shouldShowDebugJson: helpers.shouldShowDebugJson || function() {
+				return false;
+			},
 			renderDebugJson: helpers.renderDebugJson || function() {
 				return '';
 			},
@@ -70,6 +73,164 @@
 			});
 			html += '</div>';
 		}
+		html += '</div>';
+		return html;
+	}
+
+	function toWorkflowStatusLabel(status) {
+		status = String(status || '').replace(/_/g, ' ').trim();
+
+		if (!status) {
+			return 'Unknown';
+		}
+
+		return status.charAt(0).toUpperCase() + status.slice(1);
+	}
+
+	function getWorkflowBranchMeta(workflow) {
+		workflow = workflow || {};
+
+		const definitionId = workflow.definition_id || workflow.type || '';
+		const branch = workflow.branch && typeof workflow.branch === 'object' ? workflow.branch : {};
+		const deliveryMode = branch.delivery_mode || '';
+		const emailDeliveryMode = branch.email_delivery_mode || '';
+
+		if (definitionId === 'write_email_for_order') {
+			if (deliveryMode === 'save_draft') {
+				return { label: 'Save as draft', successTitle: 'Email draft saved', successMessage: 'I wrote the email and saved the draft on the order.' };
+			}
+			if (deliveryMode === 'send') {
+				return { label: 'Send email', successTitle: 'Email sent', successMessage: 'I wrote the email and sent it to the customer.' };
+			}
+			return { label: 'Preview email', successTitle: 'Email ready for review', successMessage: 'I prepared the email below for review.' };
+		}
+
+		if (definitionId === 'verify_customer_before_fulfillment') {
+			if (emailDeliveryMode === 'save_draft') {
+				return { label: 'Save verification draft', successTitle: 'Verification draft saved', successMessage: 'I held the order, added the verification note, and saved the verification draft.' };
+			}
+			if (emailDeliveryMode === 'send') {
+				return { label: 'Send verification email', successTitle: 'Verification email sent', successMessage: 'I held the order, added the verification note, and sent the verification email.' };
+			}
+			return { label: 'Preview verification email', successTitle: 'Verification workflow completed', successMessage: 'I held the order, added the verification note, and prepared the email for review.' };
+		}
+
+		if (definitionId === 'refund_review') {
+			if (deliveryMode === 'save_draft') {
+				return { label: 'Save refund follow-up draft', successTitle: 'Refund draft saved', successMessage: 'I reviewed the refund and saved the follow-up draft.' };
+			}
+			if (deliveryMode === 'send') {
+				return { label: 'Send refund follow-up email', successTitle: 'Refund email sent', successMessage: 'I reviewed the refund and sent the follow-up email.' };
+			}
+			return { label: 'Review only', successTitle: 'Refund review completed', successMessage: 'I reviewed the refundable amount and order details.' };
+		}
+
+		return { label: '', successTitle: 'Completed', successMessage: 'I finished that workflow.' };
+	}
+
+	function renderWorkflowCompositionNotice(workflow, h) {
+		workflow = workflow || {};
+
+		const artifacts = workflow.artifacts && typeof workflow.artifacts === 'object' ? workflow.artifacts : {};
+		const composition = artifacts.composition && typeof artifacts.composition === 'object' ? artifacts.composition : {};
+		const unavailable = Array.isArray(composition.unavailable_requests) ? composition.unavailable_requests : [];
+
+		if (!unavailable.length) {
+			return '';
+		}
+
+		let html = '<div class="yoro-result-notice yoro-result-preview">';
+		html += '<strong>Some requested actions are not available yet</strong>';
+		html += '<ul>';
+
+		unavailable.forEach(function(item) {
+			if (!item) {
+				return;
+			}
+
+			html += '<li>' + h.escapeHtml(item.label || item.key || 'Unavailable action');
+
+			if (item.message) {
+				html += ' — ' + h.escapeHtml(item.message);
+			}
+
+			html += '</li>';
+		});
+
+		html += '</ul>';
+		html += '</div>';
+
+		return html;
+	}
+
+	function renderWorkflowStatePanel(workflow, h) {
+		workflow = workflow || {};
+
+		const steps = Array.isArray(workflow.steps) ? workflow.steps : [];
+		const status = workflow.status || workflow.step || '';
+		const currentStepId = workflow.current_step_id || '';
+		const definitionId = workflow.definition_id || workflow.type || '';
+
+		if (!status && !currentStepId && !definitionId && !steps.length) {
+			return '';
+		}
+
+		let html = '<div class="yoro-workflow-state-panel">';
+		html += '<div class="yoro-workflow-state-panel-header">';
+		html += '<strong>Workflow state</strong>';
+		html += '<span class="yoro-workflow-state-badge">' + h.escapeHtml(toWorkflowStatusLabel(status || 'unknown')) + '</span>';
+		html += '</div>';
+		html += '<div class="yoro-workflow-state-meta">';
+
+		if (definitionId) {
+			html += '<span><strong>Workflow:</strong> ' + h.escapeHtml(definitionId) + '</span>';
+		}
+
+		if (currentStepId) {
+			html += '<span><strong>Current step:</strong> ' + h.escapeHtml(currentStepId) + '</span>';
+		}
+
+		if (typeof workflow.current_step_index === 'number' && workflow.current_step_index >= 0) {
+			html += '<span><strong>Step index:</strong> ' + h.escapeHtml(workflow.current_step_index + 1) + '</span>';
+		}
+
+		const branchMeta = getWorkflowBranchMeta(workflow);
+
+		if (branchMeta.label) {
+			html += '<span><strong>Branch:</strong> ' + h.escapeHtml(branchMeta.label) + '</span>';
+		}
+
+		html += '</div>';
+
+		if (steps.length) {
+			html += '<div class="yoro-workflow-timeline">';
+			steps.forEach(function(step, index) {
+				step = step || {};
+				const stepStatus = step.status || 'pending';
+				const isCurrent = currentStepId && step.id === currentStepId;
+
+				html += '<div class="yoro-workflow-timeline-step yoro-workflow-timeline-step-' + h.escapeHtml(stepStatus) + (isCurrent ? ' is-current' : '') + '">';
+				html += '<div class="yoro-workflow-timeline-step-main">';
+				html += '<span class="yoro-workflow-timeline-step-index">' + h.escapeHtml(index + 1) + '</span>';
+				html += '<span class="yoro-workflow-timeline-step-label">' + h.escapeHtml(step.label || step.id || step.action || ('Step ' + (index + 1))) + '</span>';
+				html += '<span class="yoro-workflow-timeline-step-status">' + h.escapeHtml(toWorkflowStatusLabel(stepStatus)) + '</span>';
+				html += '</div>';
+				html += '<div class="yoro-workflow-timeline-step-meta">';
+
+				if (step.id) {
+					html += '<span>ID: ' + h.escapeHtml(step.id) + '</span>';
+				}
+
+				if (step.action) {
+					html += '<span>Action: ' + h.escapeHtml(step.action) + '</span>';
+				}
+
+				html += '</div>';
+				html += '</div>';
+			});
+			html += '</div>';
+		}
+
 		html += '</div>';
 		return html;
 	}
@@ -303,6 +464,8 @@
 		html += '</div>';
 
 		html += '<div class="yoro-workflow-preview-body">';
+		html += renderWorkflowCompositionNotice(result.workflow || plan.workflow || {}, h);
+		html += renderWorkflowStatePanel(result.workflow || plan.workflow || {}, h);
 		if (parsed.workflow_label) {
 			html += '<div class="yoro-workflow-title">';
 			html += '<strong>' + h.escapeHtml(parsed.workflow_label) + '</strong>';
@@ -606,6 +769,16 @@
 		return html;
 	}
 
+	function renderWorkflowRawJsonDetails(data, h) {
+		if (!h.shouldShowDebugJson || !h.shouldShowDebugJson()) {
+			return '';
+		}
+
+		return '<details class="yoro-result-debug"><summary>Raw JSON</summary><pre class="yoro-json-output">' +
+			h.escapeHtml(JSON.stringify(data || {}, null, 2)) +
+			'</pre></details>';
+	}
+
 	function renderWorkflowHoldStep(stepResult, item, h) {
 		const ids = stepResult.order_ids || stepResult.processed || [];
 
@@ -641,6 +814,36 @@
 		content += '</ul>';
 
 		return renderWorkflowStepCard('Notes added', content, 'success', h);
+	}
+
+	function renderWorkflowUpdateStatusWithNoteStep(stepResult, item, h) {
+		const ids = stepResult.order_ids || stepResult.processed || [];
+		const statusLabel = stepResult.status_label || stepResult.status || '';
+		const note = stepResult.note || '';
+
+		if (!ids.length) {
+			return '';
+		}
+
+		let content = '<ul>';
+
+		ids.forEach(function(id) {
+			content += '<li>#' + h.escapeHtml(id);
+
+			if (statusLabel) {
+				content += ' → ' + h.escapeHtml(statusLabel);
+			}
+
+			if (note) {
+				content += '<br><span class="yoro-result-subtle">' + h.escapeHtml(note) + '</span>';
+			}
+
+			content += '</li>';
+		});
+
+		content += '</ul>';
+
+		return renderWorkflowStepCard('Status and note updated', content, 'success', h);
 	}
 
 	function renderWorkflowPrivateNoteTemplateStep(stepResult, item, h) {
@@ -805,20 +1008,23 @@
 		const emailPreviewResult = hasPendingEmail
 			? findBestWorkflowEmailPreview(actions)
 			: null;
+		const branchMeta = getWorkflowBranchMeta(result.workflow || {});
 
 		let html = '<div class="yoro-workflow-result">';
 		html += '<div class="yoro-result-notice yoro-result-success">';
-		html += '<strong>' + (hasPendingEmail ? 'Email draft ready for review' : 'Completed') + '</strong>';
+		html += '<strong>' + h.escapeHtml(hasPendingEmail ? branchMeta.successTitle : (branchMeta.successTitle || 'Completed')) + '</strong>';
 
 		if (hasPendingEmail) {
-			html += '<p>I prepared the draft below. Review it before sending.</p>';
+			html += '<p>' + h.escapeHtml(branchMeta.successMessage || 'I prepared the draft below. Review it before sending.') + '</p>';
 		} else {
-			html += '<p>I finished that workflow.</p>';
+			html += '<p>' + h.escapeHtml(branchMeta.successMessage || 'I finished that workflow.') + '</p>';
 		}
 
 		html += '</div>';
 
 		html += '<div class="yoro-workflow-result-body">';
+		html += renderWorkflowCompositionNotice(result.workflow || {}, h);
+		html += renderWorkflowStatePanel(result.workflow || {}, h);
 		if (emailPreviewResult && typeof h.renderCustomerEmailPreviewResult === 'function') {
 			html += '<div class="yoro-workflow-email-preview">';
 			html += h.renderCustomerEmailPreviewResult({
@@ -848,7 +1054,7 @@
 
 				html += renderWorkflowStepCard(
 					action,
-					'<pre class="yoro-json-output">' + h.escapeHtml(JSON.stringify(stepResult, null, 2)) + '</pre>',
+					renderWorkflowRawJsonDetails(stepResult, h),
 					'neutral',
 					h
 				);
@@ -1006,6 +1212,12 @@
 		},
 		'orders.add_note': {
 			result: renderWorkflowAddNoteStep
+		},
+		'orders.update_status': {
+			result: renderWorkflowUpdateStatusWithNoteStep
+		},
+		'orders.bulk_update_status_with_note': {
+			result: renderWorkflowUpdateStatusWithNoteStep
 		},
 		'orders.add_private_note_template': {
 			preview: renderWorkflowPreviewNote,
