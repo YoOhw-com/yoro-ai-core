@@ -830,10 +830,13 @@ class YoRo_Orders_Command_Parser {
 	private static function parse_orders_update_status_missing_status( $command, $normalized, $client_context = [] ) {
 		$text_for_match = strtolower( trim( $command . ' ' . $normalized ) );
 
+		$contextual_order_ids = self::resolve_order_ids_from_context( $normalized, $client_context );
+		$has_contextual_order_reference = ! empty( $contextual_order_ids );
+
 		if (
 			! preg_match( '/\b(change|mark|move|set|update)\b/i', $text_for_match ) ||
 			! preg_match( '/\bstatus\b/i', $text_for_match ) ||
-			! preg_match( '/\border(?:s)?\b/i', $text_for_match )
+			( ! preg_match( '/\border(?:s)?\b/i', $text_for_match ) && ! $has_contextual_order_reference )
 		) {
 			return null;
 		}
@@ -857,7 +860,9 @@ class YoRo_Orders_Command_Parser {
 		$order_ids = self::extract_order_ids( $command );
 
 		if ( empty( $order_ids ) ) {
-			$order_ids = self::resolve_current_order_ids_from_context( $client_context );
+			$order_ids = ! empty( $contextual_order_ids )
+				? $contextual_order_ids
+				: self::resolve_current_order_ids_from_context( $client_context );
 		}
 
 		if ( empty( $order_ids ) ) {
@@ -1087,7 +1092,10 @@ class YoRo_Orders_Command_Parser {
 			return null;
 		}
 
-		if ( ! preg_match( '/\border(?:s)?\b/i', $text_for_match ) ) {
+		$contextual_order_ids = self::resolve_order_ids_from_context( $normalized, $client_context );
+		$has_contextual_order_reference = ! empty( $contextual_order_ids );
+
+		if ( ! preg_match( '/\border(?:s)?\b/i', $text_for_match ) && ! $has_contextual_order_reference ) {
 			return null;
 		}
 
@@ -1097,7 +1105,7 @@ class YoRo_Orders_Command_Parser {
 		);
 
 		$has_status_connector = preg_match(
-			'/\b(as|to|status)\b/i',
+			'/\b(as|to|status|on[- ]hold)\b/i',
 			$text_for_match
 		);
 
@@ -1114,7 +1122,9 @@ class YoRo_Orders_Command_Parser {
 		$order_ids = self::extract_order_ids( $command );
 
 		if ( empty( $order_ids ) ) {
-			$order_ids = self::resolve_current_order_ids_from_context( $client_context );
+			$order_ids = ! empty( $contextual_order_ids )
+				? $contextual_order_ids
+				: self::resolve_current_order_ids_from_context( $client_context );
 		}
 
 		if ( empty( $status ) ) {
@@ -1215,7 +1225,10 @@ class YoRo_Orders_Command_Parser {
 	}
 
 	private static function parse_orders_hold( $command, $normalized, $client_context = [] ) {
-		if ( false === strpos( $normalized, 'hold' ) || false === strpos( $normalized, 'order' ) ) {
+		$contextual_order_ids = self::resolve_order_ids_from_context( $normalized, $client_context );
+		$has_contextual_order_reference = ! empty( $contextual_order_ids );
+
+		if ( false === strpos( $normalized, 'hold' ) || ( false === strpos( $normalized, 'order' ) && ! $has_contextual_order_reference ) ) {
 			return null;
 		}
 
@@ -1238,7 +1251,9 @@ class YoRo_Orders_Command_Parser {
 		$order_ids = self::extract_order_ids( $command );
 
 		if ( empty( $order_ids ) ) {
-			$order_ids = self::resolve_current_order_ids_from_context( $client_context );
+			$order_ids = ! empty( $contextual_order_ids )
+				? $contextual_order_ids
+				: self::resolve_current_order_ids_from_context( $client_context );
 		}
 
 		if ( empty( $order_ids ) ) {

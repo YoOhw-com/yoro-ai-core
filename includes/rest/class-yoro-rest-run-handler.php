@@ -8,6 +8,11 @@ class YoRo_REST_Run_Handler {
 
 	public static function handle( WP_REST_Request $request ) {
 		$request_started_at = microtime( true );
+		$timings            = [];
+
+		if ( class_exists( 'YoRo_AI_Request_Tracker' ) ) {
+			YoRo_AI_Request_Tracker::reset();
+		}
 
 		$rate_limit = YoRo_Rate_Limiter::check( 'run' );
 
@@ -83,14 +88,24 @@ class YoRo_REST_Run_Handler {
 		);
 
 		if ( null !== $stale_response ) {
-			return $stale_response;
+			return self::attach_telemetry_to_response(
+				$stale_response,
+				$trace_id,
+				[],
+				[],
+				[],
+				$request_started_at,
+				$timings
+			);
 		}
 
 		if ( $stored_workflow_state ) {
 			$parsed = $stored_workflow_state['parsed'];
 			$plan   = $stored_workflow_state['plan'];
 		} else {
+			$parse_started_at = microtime( true );
 			$parsed = YoRo_Parser_Engine::parse( $command, $merged_context );
+			$timings['parse_ms'] = self::duration_ms( $parse_started_at );
 		}
 
 		if ( is_wp_error( $parsed ) ) {
@@ -98,6 +113,65 @@ class YoRo_REST_Run_Handler {
 		}
 
 		if ( empty( $parsed['success'] ) || empty( $parsed['matched'] ) ) {
+			if (
+				'ai_router' === sanitize_key( $parsed['parser_source'] ?? '' ) &&
+				'low_confidence' === sanitize_key( $parsed['clarify_reason'] ?? '' ) &&
+				! empty( $parsed['action'] ) &&
+				! $preview &&
+				! $confirm
+			) {
+				$low_confidence_parsed = $parsed;
+				$low_confidence_parsed['success'] = true;
+				$low_confidence_parsed['matched'] = true;
+
+				$plan_started_at = microtime( true );
+				$low_confidence_plan = YoRo_Action_Planner::build_plan( $low_confidence_parsed );
+				$timings['plan_ms'] = self::duration_ms( $plan_started_at );
+
+				if ( ! is_wp_error( $low_confidence_plan ) ) {
+					$workflow_state_token = YoRo_REST_Confirmation_Flow::create_pending_state(
+						$user_id,
+						$command,
+						$low_confidence_parsed,
+						$low_confidence_plan,
+						$low_confidence_parsed['action'],
+						$trace_id
+					);
+
+					YoRo_REST_Run_Log_Helper::log_low_confidence_confirmation(
+						$user_id,
+						$command,
+						$low_confidence_parsed,
+						$trace_id,
+						(float) ( $low_confidence_parsed['confidence'] ?? 0 ),
+						$low_confidence_parsed['parser_source'] ?? 'ai_router'
+					);
+
+					return rest_ensure_response(
+						[
+							'success'              => false,
+							'stage'                => 'confirm',
+							'trace_id'             => $trace_id,
+							'parsed'               => $low_confidence_parsed,
+							'confirm_required'     => true,
+							'message'              => __( 'I am not fully confident about this AI-interpreted command. Please confirm before I continue.', 'yoro-agent-core' ),
+							'confidence'           => (float) ( $low_confidence_parsed['confidence'] ?? 0 ),
+							'parser_source'        => $low_confidence_parsed['parser_source'] ?? 'ai_router',
+							'workflow_state_token' => $workflow_state_token,
+							'pending_plan_token'   => $workflow_state_token,
+							'telemetry'            => self::build_response_telemetry(
+								$trace_id,
+								$low_confidence_parsed,
+								$low_confidence_plan,
+								[],
+								$request_started_at,
+								$timings
+							),
+						]
+					);
+				}
+			}
+
 			if (
 				! empty( $parsed['current_workflow'] ) &&
 				is_array( $parsed['current_workflow'] ) &&
@@ -113,6 +187,14 @@ class YoRo_REST_Run_Handler {
 					'trace_id' => $trace_id,
 					'parsed'  => $parsed,
 					'current_workflow' => $parsed['current_workflow'] ?? [],
+					'telemetry' => self::build_response_telemetry(
+						$trace_id,
+						$parsed,
+						[],
+						[],
+						$request_started_at,
+						$timings
+					),
 				]
 			);
 		}
@@ -135,6 +217,14 @@ class YoRo_REST_Run_Handler {
 					'trace_id' => $trace_id,
 					'parsed'   => $parsed,
 					'result'   => $parsed['result'],
+					'telemetry' => self::build_response_telemetry(
+						$trace_id,
+						$parsed,
+						[],
+						[],
+						$request_started_at,
+						$timings
+					),
 				]
 			);
 		}
@@ -158,6 +248,21 @@ class YoRo_REST_Run_Handler {
 
 		if ( 'ai_router' === $source && ! $preview && ! $confirm ) {
 			if ( $confidence < 0.6 ) {
+				$low_confidence_plan = YoRo_Action_Planner::build_plan( $parsed );
+
+				if ( is_wp_error( $low_confidence_plan ) ) {
+					return $low_confidence_plan;
+				}
+
+				$workflow_state_token = YoRo_REST_Confirmation_Flow::create_pending_state(
+					$user_id,
+					$command,
+					$parsed,
+					$low_confidence_plan,
+					$action,
+					$trace_id
+				);
+
 				YoRo_REST_Run_Log_Helper::log_low_confidence_confirmation(
 					$user_id,
 					$command,
@@ -177,6 +282,16 @@ class YoRo_REST_Run_Handler {
 						'message'          => __( 'I am not fully confident about this AI-interpreted command. Please confirm before I continue.', 'yoro-agent-core' ),
 						'confidence'       => $confidence,
 						'parser_source'    => $source,
+						'workflow_state_token' => $workflow_state_token,
+						'pending_plan_token'   => $workflow_state_token,
+						'telemetry'        => self::build_response_telemetry(
+							$trace_id,
+							$parsed,
+							$low_confidence_plan,
+							[],
+							$request_started_at,
+							$timings
+						),
 					]
 				);
 			}
@@ -199,7 +314,9 @@ class YoRo_REST_Run_Handler {
 		}
 
 		if ( empty( $plan ) ) {
+			$plan_started_at = microtime( true );
 			$plan = YoRo_Action_Planner::build_plan( $parsed );
+			$timings['plan_ms'] = self::duration_ms( $plan_started_at );
 		}
 
 		if ( is_wp_error( $plan ) ) {
@@ -212,6 +329,27 @@ class YoRo_REST_Run_Handler {
 				$plan
 			);
 
+			$semantic_response = YoRo_REST_Response_Helper::maybe_build_semantic_validation_response(
+				$trace_id,
+				$parsed,
+				[],
+				[],
+				[],
+				$plan
+			);
+
+			if ( is_array( $semantic_response ) ) {
+				$semantic_response['telemetry'] = self::build_response_telemetry(
+					$trace_id,
+					$parsed,
+					[],
+					[],
+					$request_started_at,
+					$timings
+				);
+				return rest_ensure_response( $semantic_response );
+			}
+
 			return $plan;
 		}
 
@@ -223,37 +361,44 @@ class YoRo_REST_Run_Handler {
 			'confirm'       => $confirm,
 		];
 
+		$runtime_started_at = microtime( true );
 		$runtime = YoRo_Runtime_Guard::prepare(
 			$plan,
 			$policy_context
 		);
+		$timings['runtime_guard_ms'] = self::duration_ms( $runtime_started_at );
 
 		if ( is_wp_error( $runtime ) ) {
+			$semantic_response = YoRo_REST_Response_Helper::maybe_build_semantic_validation_response(
+				$trace_id,
+				$parsed,
+				$plan,
+				[],
+				[],
+				$runtime
+			);
+
+			if ( is_array( $semantic_response ) ) {
+				$semantic_response['telemetry'] = self::build_response_telemetry(
+					$trace_id,
+					$parsed,
+					$plan,
+					[],
+					$request_started_at,
+					$timings
+				);
+				return rest_ensure_response( $semantic_response );
+			}
+
 			return $runtime;
 		}
-
-		$runtime_log_context = YoRo_REST_Runtime_Log::build_context(
-			$trace_id,
-			$plan,
-			$runtime,
-			[
-				'execution_source' => 'chat',
-				'parser_source'    => $parsed['parser_source'] ?? 'rule',
-				'parser_rule'      => $parsed['parser_rule'] ?? '',
-				'intent_name'      => $parsed['intent']['name'] ?? '',
-				'confidence'       => $parsed['confidence'] ?? null,
-				'ai_meta'          => isset( $parsed['meta'] ) && is_array( $parsed['meta'] ) ? $parsed['meta'] : [],
-				'retrieved_examples' => isset( $parsed['retrieved_examples'] ) && is_array( $parsed['retrieved_examples'] ) ? $parsed['retrieved_examples'] : [],
-				'route_candidates' => isset( $parsed['route_candidates'] ) && is_array( $parsed['route_candidates'] ) ? $parsed['route_candidates'] : [],
-				'request_started_at' => $request_started_at,
-			]
-		);
 
 		$preview = ! empty( $runtime['preview'] );
 		$confirm = ! empty( $runtime['confirm'] );
 
 		$risk   = isset( $runtime['risk'] ) && is_array( $runtime['risk'] ) ? $runtime['risk'] : [];
 		$policy = isset( $runtime['policy'] ) && is_array( $runtime['policy'] ) ? $runtime['policy'] : [];
+		$runtime_log_context = self::build_runtime_log_context( $trace_id, $plan, $runtime, $parsed, $request_started_at, $timings );
 		if ( ! empty( $runtime['requires_confirmation'] ) ) {
 			$confirmation_response = YoRo_Runtime_Guard::build_confirmation_response(
 				$plan,
@@ -273,6 +418,7 @@ class YoRo_REST_Run_Handler {
 			$confirmation_response['trace_id']             = $trace_id;
 			$confirmation_response['workflow_state_token'] = $workflow_state_token;
 			$confirmation_response['pending_plan_token']   = $workflow_state_token;
+			$confirmation_response['telemetry']            = self::build_response_telemetry( $trace_id, $parsed, $plan, $runtime, $request_started_at, $timings );
 			YoRo_REST_Run_Log_Helper::log_runtime_confirmation_required(
 				$user_id,
 				$command,
@@ -286,13 +432,37 @@ class YoRo_REST_Run_Handler {
 			return rest_ensure_response( $confirmation_response );
 		}
 
+		$execute_started_at = microtime( true );
 		$result = YoRo_Plan_Executor::execute( $plan, $confirm, $preview );
+		$timings['execute_ms'] = self::duration_ms( $execute_started_at );
 
 		if ( is_wp_error( $result ) ) {
 			$result = YoRo_REST_Response_Helper::normalize_error_result( $action, $result );
 		}
 
 		if ( is_array( $result ) && empty( $result['success'] ) && empty( $result['requires_confirmation'] ) ) {
+			$semantic_response = YoRo_REST_Response_Helper::maybe_build_semantic_validation_response_from_result(
+				$trace_id,
+				$parsed,
+				$plan,
+				$risk,
+				$policy,
+				$result
+			);
+
+			if ( is_array( $semantic_response ) ) {
+				$semantic_response['telemetry'] = self::build_response_telemetry(
+					$trace_id,
+					$parsed,
+					$plan,
+					$runtime,
+					$request_started_at,
+					$timings
+				);
+				return rest_ensure_response( $semantic_response );
+			}
+
+			$runtime_log_context = self::build_runtime_log_context( $trace_id, $plan, $runtime, $parsed, $request_started_at, $timings );
 			YoRo_REST_Run_Log_Helper::log_error(
 				$user_id,
 				$command,
@@ -318,6 +488,7 @@ class YoRo_REST_Run_Handler {
 					'policy'  => $policy,
 					'result'  => $result,
 					'message' => $result['message'] ?? __( 'Action failed.', 'yoro-agent-core' ),
+					'telemetry' => self::build_response_telemetry( $trace_id, $parsed, $plan, $runtime, $request_started_at, $timings ),
 				]
 			);
 		}
@@ -325,6 +496,7 @@ class YoRo_REST_Run_Handler {
 		if ( $preview ) {
 			YoRo_Conversation_Memory::clear_pending_confirmation( $user_id );
 
+			$runtime_log_context = self::build_runtime_log_context( $trace_id, $plan, $runtime, $parsed, $request_started_at, $timings );
 			YoRo_REST_Run_Log_Helper::log_preview(
 				$user_id,
 				$command,
@@ -358,6 +530,7 @@ class YoRo_REST_Run_Handler {
 					'policy'               => $policy,
 					'preview'              => $result,
 					'result'               => $result,
+					'telemetry'            => self::build_response_telemetry( $trace_id, $parsed, $plan, $runtime, $request_started_at, $timings ),
 				]
 			);
 		}
@@ -402,10 +575,23 @@ class YoRo_REST_Run_Handler {
 					'policy'           => $policy,
 					'message'          => $result['message'] ?? __( 'Confirmation required.', 'yoro-agent-core' ),
 					'result'           => $result,
+					'telemetry'        => self::build_response_telemetry( $trace_id, $parsed, $plan, $runtime, $request_started_at, $timings ),
 				]
 			);
 		}
 
+		$memory_sync_started_at = microtime( true );
+		YoRo_REST_Memory_Sync::maybe_update( $user_id, $command, $parsed, $result, $plan );
+		$timings['memory_sync_ms'] = self::duration_ms( $memory_sync_started_at );
+
+		$suggestions_started_at = microtime( true );
+		$suggestion_payload = YoRo_REST_Suggestions_Helper::enrich( $user_id, $parsed, $result );
+		$result             = $suggestion_payload['result'];
+		$suggestions        = $suggestion_payload['suggestions'];
+		$timings['suggestions_ms'] = self::duration_ms( $suggestions_started_at );
+
+		$runtime_log_context = self::build_runtime_log_context( $trace_id, $plan, $runtime, $parsed, $request_started_at, $timings );
+		$logging_started_at  = microtime( true );
 		$log_id = YoRo_REST_Run_Log_Helper::log_executed(
 			$user_id,
 			$command,
@@ -418,12 +604,7 @@ class YoRo_REST_Run_Handler {
 			$risk,
 			$policy
 		);
-
-		YoRo_REST_Memory_Sync::maybe_update( $user_id, $command, $parsed, $result, $plan );
-
-		$suggestion_payload = YoRo_REST_Suggestions_Helper::enrich( $user_id, $parsed, $result );
-		$result             = $suggestion_payload['result'];
-		$suggestions        = $suggestion_payload['suggestions'];
+		$timings['logging_ms'] = self::duration_ms( $logging_started_at );
 
 		$response = [
 			'success'     => true,
@@ -436,6 +617,7 @@ class YoRo_REST_Run_Handler {
 			'result'      => $result,
 			'log_id'      => $log_id,
 			'suggestions' => $suggestions,
+			'telemetry'   => self::build_response_telemetry( $trace_id, $parsed, $plan, $runtime, $request_started_at, $timings ),
 		];
 
 		$current_workflow = YoRo_Conversation_Memory::get_workflow( $user_id );
@@ -458,6 +640,120 @@ class YoRo_REST_Run_Handler {
 		);
 
 		return rest_ensure_response( $response );
+	}
+
+	private static function build_runtime_log_context( $trace_id, $plan, $runtime, $parsed, $request_started_at, $timings ) {
+		$telemetry = self::build_run_telemetry( $timings, $request_started_at );
+
+		return YoRo_REST_Runtime_Log::build_context(
+			$trace_id,
+			$plan,
+			$runtime,
+			[
+				'execution_source' => 'chat',
+				'parser_source'    => $parsed['parser_source'] ?? 'rule',
+				'parser_rule'      => $parsed['parser_rule'] ?? '',
+				'resolution_path'  => $parsed['resolution_path'] ?? '',
+				'router_mode'      => $parsed['command_decision']['mode'] ?? '',
+				'catalog_action_count' => $parsed['command_decision']['catalog_action_count'] ?? 0,
+				'clarify_reason'   => $parsed['clarify_reason'] ?? '',
+				'fallback_reason'  => $parsed['fallback_reason'] ?? '',
+				'params_trimmed_count' => $parsed['params_trimmed_count'] ?? 0,
+				'intent_name'      => $parsed['intent']['name'] ?? '',
+				'intent_family'    => $parsed['intent_family'] ?? ( $parsed['command_decision']['intent_family'] ?? '' ),
+				'language'         => $parsed['language'] ?? ( $parsed['command_decision']['language'] ?? '' ),
+				'confidence'       => $parsed['confidence'] ?? null,
+				'ai_meta'          => isset( $parsed['meta'] ) && is_array( $parsed['meta'] ) ? $parsed['meta'] : [],
+				'retrieved_examples' => isset( $parsed['retrieved_examples'] ) && is_array( $parsed['retrieved_examples'] ) ? $parsed['retrieved_examples'] : [],
+				'route_candidates' => isset( $parsed['route_candidates'] ) && is_array( $parsed['route_candidates'] ) ? $parsed['route_candidates'] : [],
+				'request_started_at' => $request_started_at,
+				'stage_timings'    => $telemetry['stage_timings'],
+				'ai_requests'      => $telemetry['ai']['requests'],
+				'ai_total_ms'      => $telemetry['ai']['total_ms'],
+			]
+		);
+	}
+
+	private static function build_response_telemetry( $trace_id, $parsed, $plan, $runtime, $request_started_at, $timings ) {
+		$telemetry = self::build_run_telemetry( $timings, $request_started_at );
+		$parsed    = is_array( $parsed ) ? $parsed : [];
+		$plan      = is_array( $plan ) ? $plan : [];
+		$runtime   = is_array( $runtime ) ? $runtime : [];
+
+		return YoRo_REST_Runtime_Log::build_context(
+			$trace_id,
+			$plan,
+			$runtime,
+			[
+				'execution_source' => 'chat',
+				'status'           => ! empty( $parsed['success'] ) && ! empty( $parsed['matched'] ) ? 'parsed' : sanitize_key( $parsed['stage'] ?? 'parse' ),
+				'action'           => sanitize_text_field( $parsed['action'] ?? ( $plan['action'] ?? '' ) ),
+				'parser_source'    => $parsed['parser_source'] ?? 'rule',
+				'parser_rule'      => $parsed['parser_rule'] ?? '',
+				'resolution_path'  => $parsed['resolution_path'] ?? '',
+				'router_mode'      => $parsed['command_decision']['mode'] ?? '',
+				'catalog_action_count' => $parsed['command_decision']['catalog_action_count'] ?? 0,
+				'clarify_reason'   => $parsed['clarify_reason'] ?? '',
+				'fallback_reason'  => $parsed['fallback_reason'] ?? '',
+				'params_trimmed_count' => $parsed['params_trimmed_count'] ?? 0,
+				'intent_name'      => $parsed['intent']['name'] ?? '',
+				'intent_family'    => $parsed['intent_family'] ?? ( $parsed['command_decision']['intent_family'] ?? '' ),
+				'language'         => $parsed['language'] ?? ( $parsed['command_decision']['language'] ?? '' ),
+				'confidence'       => $parsed['confidence'] ?? null,
+				'ai_meta'          => isset( $parsed['meta'] ) && is_array( $parsed['meta'] ) ? $parsed['meta'] : [],
+				'retrieved_examples' => isset( $parsed['retrieved_examples'] ) && is_array( $parsed['retrieved_examples'] ) ? $parsed['retrieved_examples'] : [],
+				'route_candidates' => isset( $parsed['route_candidates'] ) && is_array( $parsed['route_candidates'] ) ? $parsed['route_candidates'] : [],
+				'request_started_at' => $request_started_at,
+				'stage_timings'    => $telemetry['stage_timings'],
+				'ai_requests'      => $telemetry['ai']['requests'],
+				'ai_total_ms'      => $telemetry['ai']['total_ms'],
+			]
+		);
+	}
+
+	private static function attach_telemetry_to_response( $response, $trace_id, $parsed, $plan, $runtime, $request_started_at, $timings ) {
+		$payload = $response instanceof WP_REST_Response ? $response->get_data() : $response;
+
+		if ( ! is_array( $payload ) ) {
+			return $response;
+		}
+
+		$payload['telemetry'] = self::build_response_telemetry(
+			$trace_id,
+			$parsed,
+			$plan,
+			$runtime,
+			$request_started_at,
+			$timings
+		);
+
+		return rest_ensure_response( $payload );
+	}
+
+	private static function build_run_telemetry( $timings, $request_started_at ) {
+		$stage_timings = [];
+
+		foreach ( (array) $timings as $stage => $duration_ms ) {
+			$stage_timings[ sanitize_key( (string) $stage ) ] = max( 0, (int) $duration_ms );
+		}
+
+		$stage_timings['total_ms'] = self::duration_ms( $request_started_at );
+		$ai_summary = class_exists( 'YoRo_AI_Request_Tracker' )
+			? YoRo_AI_Request_Tracker::summary()
+			: [
+				'count'    => 0,
+				'total_ms' => 0,
+				'requests' => [],
+			];
+
+		return [
+			'stage_timings' => $stage_timings,
+			'ai'            => $ai_summary,
+		];
+	}
+
+	private static function duration_ms( $started_at ) {
+		return max( 0, (int) round( ( microtime( true ) - (float) $started_at ) * 1000 ) );
 	}
 
 	private static function merge_runtime_context( $server_memory, $client_context, $confirm ) {

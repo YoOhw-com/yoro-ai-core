@@ -122,11 +122,38 @@ class YoRo_Plan_Risk_Engine {
 			}
 		}
 
+		$semantic_warnings = self::extract_semantic_warnings( $plan );
+
+		if ( ! empty( $semantic_warnings ) ) {
+			$reasons = array_values( array_unique( array_merge( $reasons, $semantic_warnings ) ) );
+		}
+
 		return [
 			'risk_level'            => $risk_level,
 			'requires_confirmation' => $requires_confirmation,
 			'reasons'               => array_values( array_unique( $reasons ) ),
+			'semantic_warnings'     => $semantic_warnings,
 		];
+	}
+
+	private static function extract_semantic_warnings( $plan ) {
+		if (
+			empty( $plan['validation']['semantic']['warnings'] ) ||
+			! is_array( $plan['validation']['semantic']['warnings'] )
+		) {
+			return [];
+		}
+
+		return array_values(
+			array_filter(
+				array_map(
+					static function( $warning ) {
+						return is_array( $warning ) ? sanitize_text_field( $warning['message'] ?? '' ) : '';
+					},
+					$plan['validation']['semantic']['warnings']
+				)
+			)
+		);
 	}
 
 	private static function get_plan_actions( $plan ) {

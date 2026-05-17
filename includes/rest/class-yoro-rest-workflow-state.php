@@ -20,7 +20,7 @@ class YoRo_REST_Workflow_State {
 		set_transient(
 			self::get_transient_key( $user_id, $token ),
 			$payload,
-			10 * MINUTE_IN_SECONDS
+			self::get_ttl()
 		);
 
 		return $token;
@@ -40,7 +40,7 @@ class YoRo_REST_Workflow_State {
 		set_transient(
 			self::get_transient_key( $user_id, $token ),
 			$payload,
-			10 * MINUTE_IN_SECONDS
+			self::get_ttl()
 		);
 
 		return $token;
@@ -118,6 +118,12 @@ class YoRo_REST_Workflow_State {
 
 	private static function get_transient_key( $user_id, $token ) {
 		return 'yoro_workflow_state_' . absint( $user_id ) . '_' . sanitize_key( $token );
+	}
+
+	public static function get_ttl() {
+		$ttl = absint( get_option( 'yoro_workflow_ttl', 10 * MINUTE_IN_SECONDS ) );
+
+		return max( $ttl, 30 );
 	}
 
 	private static function build_action_hash( $action, $params ) {

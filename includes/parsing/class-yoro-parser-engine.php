@@ -6,6 +6,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Parser_Engine {
 
+	const RESOLUTION_PATH_AI_PRIMARY             = 'ai_primary';
+	const RESOLUTION_PATH_DETERMINISTIC_OVERRIDE = 'deterministic_override';
+	const RESOLUTION_PATH_RECOVERY_FALLBACK      = 'recovery_fallback';
+	const RESOLUTION_PATH_SAFETY_GUARD           = 'safety_guard';
+
 	public static function parse( $command, $client_context = [] ) {
 		$command = is_string( $command ) ? trim( $command ) : '';
 
@@ -33,7 +38,11 @@ class YoRo_Parser_Engine {
 				! empty( $priority_workflow_continue['stage'] ) &&
 				'clarify' === $priority_workflow_continue['stage']
 			) {
-				return $priority_workflow_continue;
+				return self::with_resolution_path(
+					$priority_workflow_continue,
+					self::RESOLUTION_PATH_DETERMINISTIC_OVERRIDE,
+					'active_workflow'
+				);
 			}
 
 			$normalized_result = self::normalize_parsed_result(
@@ -46,7 +55,11 @@ class YoRo_Parser_Engine {
 			$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
 			$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
 
-			return YoRo_Entity_Validator::validate( $resolved_result );
+			return self::with_resolution_path(
+				YoRo_Entity_Validator::validate( $resolved_result ),
+				self::RESOLUTION_PATH_DETERMINISTIC_OVERRIDE,
+				'active_workflow'
+			);
 		}
 
 		$phrase_order_ids = YoRo_Entity_Phrase_Resolver::resolve( $command, $client_context );
@@ -55,17 +68,145 @@ class YoRo_Parser_Engine {
 			$client_context['resolved_order_ids'] = $phrase_order_ids;
 		}
 
+		$current_email_delivery = self::maybe_parse_current_email_delivery_before_ai(
+			$command,
+			$normalized,
+			$client_context
+		);
+
+		if ( is_array( $current_email_delivery ) ) {
+			return self::with_resolution_path(
+				$current_email_delivery,
+				self::RESOLUTION_PATH_DETERMINISTIC_OVERRIDE,
+				'current_email_delivery'
+			);
+		}
+
+		$pre_router_refund_guard = self::build_pre_router_explicit_refund_guard_response(
+			$command,
+			$normalized,
+			$client_context
+		);
+
+		if ( is_array( $pre_router_refund_guard ) ) {
+			return self::with_resolution_path(
+				$pre_router_refund_guard,
+				self::RESOLUTION_PATH_DETERMINISTIC_OVERRIDE,
+				'explicit_refund_guard'
+			);
+		}
+
+		$pre_router_verification_guard = self::build_pre_router_explicit_verification_guard_response(
+			$command,
+			$normalized,
+			$client_context
+		);
+
+		if ( is_array( $pre_router_verification_guard ) ) {
+			return self::with_resolution_path(
+				$pre_router_verification_guard,
+				self::RESOLUTION_PATH_DETERMINISTIC_OVERRIDE,
+				'explicit_verification_guard'
+			);
+		}
+
+		$query_action = self::detect_query_action_pattern( $command, $normalized );
+
+		if ( $query_action ) {
+			$normalized_result = self::normalize_parsed_result(
+				$query_action,
+				$command,
+				$normalized,
+				$client_context
+			);
+
+			$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
+			$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
+
+			return self::with_resolution_path(
+				YoRo_Entity_Validator::validate( $resolved_result ),
+				self::RESOLUTION_PATH_RECOVERY_FALLBACK,
+				'query_action_pattern'
+			);
+		}
+
+		$guided_workflow_preview = self::maybe_parse_guided_workflow_preview_before_ai(
+			$command,
+			$normalized,
+			$client_context
+		);
+
+		if ( is_array( $guided_workflow_preview ) ) {
+			return self::with_resolution_path(
+				$guided_workflow_preview,
+				self::RESOLUTION_PATH_DETERMINISTIC_OVERRIDE,
+				'guided_workflow_preview'
+			);
+		}
+
+		$composed_candidate = class_exists( 'YoRo_Action_Composition_Planner' )
+			? YoRo_Action_Composition_Planner::maybe_build_parsed(
+				$command,
+				$normalized,
+				$client_context,
+				[
+					'parser_source' => 'rule',
+				]
+			)
+			: null;
+
+		if ( is_array( $composed_candidate ) ) {
+			$normalized_candidate = self::normalize_parsed_result(
+				$composed_candidate,
+				$command,
+				$normalized,
+				$client_context
+			);
+
+			$resolved_candidate = YoRo_Entity_Resolver::resolve( $normalized_candidate, $client_context );
+			$resolved_candidate = YoRo_Intent_Router::resolve_action( $resolved_candidate );
+
+			return self::with_resolution_path(
+				YoRo_Entity_Validator::validate( $resolved_candidate ),
+				self::RESOLUTION_PATH_RECOVERY_FALLBACK,
+				'pre_router_composition'
+			);
+		}
+
+		$contextual_write_candidate = self::maybe_parse_contextual_order_write_before_ai(
+			$command,
+			$normalized,
+			$client_context
+		);
+
+		if ( is_array( $contextual_write_candidate ) ) {
+			return self::with_resolution_path(
+				$contextual_write_candidate,
+				self::RESOLUTION_PATH_DETERMINISTIC_OVERRIDE,
+				'contextual_order_write'
+			);
+		}
+
 		$ai_router_result = self::parse_with_ai_command_router( $command, $normalized, $client_context );
 
 		if ( is_array( $ai_router_result ) ) {
-			return $ai_router_result;
+			return self::with_resolution_path(
+				$ai_router_result,
+				self::RESOLUTION_PATH_AI_PRIMARY
+			);
 		}
 
 		$conversational = self::parse_conversational_only( $command, $normalized, $client_context );
 
 		if ( is_array( $conversational ) ) {
-			return $conversational;
+			return self::with_resolution_path(
+				$conversational,
+				self::RESOLUTION_PATH_SAFETY_GUARD,
+				'conversation_route'
+			);
 		}
+
+		$rule_result = self::parse_with_rules( $command, $normalized, $client_context );
 
 		/*
 		* 1. Fallback to deterministic rules only when the AI command router is unavailable.
@@ -76,23 +217,33 @@ class YoRo_Parser_Engine {
 		* but they are not unknown. Rule parser should be allowed
 		* to start a collect_missing_params workflow.
 		*/
-		$rule_result = self::parse_with_rules( $command, $normalized, $client_context );
-
 		if (
 			is_array( $rule_result ) &&
 			! empty( $rule_result['stage'] ) &&
 			'clarify' === $rule_result['stage'] &&
 			! empty( $rule_result['action'] )
 		) {
-			return $rule_result;
+			return self::with_resolution_path(
+				$rule_result,
+				self::RESOLUTION_PATH_RECOVERY_FALLBACK,
+				'rule_missing_params'
+			);
 		}
 
 		if ( self::should_prioritize_strong_read_only_rule_result( $rule_result ) ) {
-			return $rule_result;
+			return self::with_resolution_path(
+				$rule_result,
+				self::RESOLUTION_PATH_DETERMINISTIC_OVERRIDE,
+				'exact_rule_match'
+			);
 		}
 
 		if ( self::should_prioritize_strong_confirmation_gated_write_rule_result( $rule_result ) ) {
-			return $rule_result;
+			return self::with_resolution_path(
+				$rule_result,
+				self::RESOLUTION_PATH_DETERMINISTIC_OVERRIDE,
+				'exact_rule_match'
+			);
 		}
 
 		/*
@@ -115,17 +266,97 @@ class YoRo_Parser_Engine {
 			$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
 			$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
 
-			return YoRo_Entity_Validator::validate( $resolved_result );
+			return self::with_resolution_path(
+				YoRo_Entity_Validator::validate( $resolved_result ),
+				self::RESOLUTION_PATH_RECOVERY_FALLBACK,
+				'query_action_pattern'
+			);
+		}
+
+		$semantic_read_only_fallback = self::maybe_build_semantic_read_only_fallback(
+			$command,
+			$normalized,
+			$client_context
+		);
+
+		if ( is_array( $semantic_read_only_fallback ) ) {
+			$normalized_result = self::normalize_parsed_result(
+				$semantic_read_only_fallback,
+				$command,
+				$normalized,
+				$client_context
+			);
+
+			$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
+			$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
+
+			return self::with_resolution_path(
+				YoRo_Entity_Validator::validate( $resolved_result ),
+				self::RESOLUTION_PATH_RECOVERY_FALLBACK,
+				'semantic_read_only_fallback'
+			);
 		}
 
 		$hardening_result = self::parse_with_hardening_guards( $command, $normalized, $client_context );
 
 		if ( is_array( $hardening_result ) ) {
-			return $hardening_result;
+			$composition_candidate = self::maybe_resolve_action_composition_candidate(
+				$command,
+				$normalized,
+				$client_context,
+				$hardening_result
+			);
+
+			if ( is_array( $composition_candidate ) ) {
+				$normalized_candidate = self::normalize_parsed_result(
+					$composition_candidate,
+					$command,
+					$normalized,
+					$client_context
+				);
+				$resolved_candidate = YoRo_Entity_Resolver::resolve( $normalized_candidate, $client_context );
+				$resolved_candidate = YoRo_Intent_Router::resolve_action( $resolved_candidate );
+
+				return self::with_resolution_path(
+					YoRo_Entity_Validator::validate( $resolved_candidate ),
+					self::RESOLUTION_PATH_RECOVERY_FALLBACK,
+					'action_composition'
+				);
+			}
+
+			$workflow_candidate = self::maybe_resolve_workflow_candidate(
+				$command,
+				$normalized,
+				$client_context,
+				$hardening_result
+			);
+
+			if ( is_array( $workflow_candidate ) ) {
+				$normalized_candidate = self::normalize_parsed_result(
+					$workflow_candidate,
+					$command,
+					$normalized,
+					$client_context
+				);
+				$resolved_candidate = YoRo_Entity_Resolver::resolve( $normalized_candidate, $client_context );
+				$resolved_candidate = YoRo_Intent_Router::resolve_action( $resolved_candidate );
+
+				return self::with_resolution_path(
+					YoRo_Entity_Validator::validate( $resolved_candidate ),
+					self::RESOLUTION_PATH_RECOVERY_FALLBACK,
+					'workflow_candidate'
+				);
+			}
+
+			return self::with_resolution_path(
+				$hardening_result,
+				self::RESOLUTION_PATH_SAFETY_GUARD,
+				'hardening_guard'
+			);
 		}
 
 		if ( self::is_high_confidence_result( $rule_result ) ) {
-			return $rule_result;
+			return self::apply_rule_result_resolution_path( $rule_result, 'rule_high_confidence' );
 		}
 
 		/*
@@ -134,10 +365,14 @@ class YoRo_Parser_Engine {
 		* Only run this after rule/query parsers had a chance.
 		*/
 		if ( self::is_too_ambiguous( $normalized ) ) {
-			return self::clarification_response(
-				$command,
-				$normalized,
-				__( 'I need more detail before running this. What would you like me to show or manage?', 'yoro-agent-core' )
+			return self::with_resolution_path(
+				self::clarification_response(
+					$command,
+					$normalized,
+					__( 'I need more detail before running this. What would you like me to show or manage?', 'yoro-agent-core' )
+				),
+				self::RESOLUTION_PATH_SAFETY_GUARD,
+				'ambiguous_command'
 			);
 		}
 
@@ -172,7 +407,11 @@ class YoRo_Parser_Engine {
 			$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
 			$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
 
-			return YoRo_Entity_Validator::validate( $resolved_result );
+			return self::with_resolution_path(
+				YoRo_Entity_Validator::validate( $resolved_result ),
+				self::RESOLUTION_PATH_RECOVERY_FALLBACK,
+				'latest_orders_fallback'
+			);
 		}
 
 		$incomplete_intent = self::detect_incomplete_intent( $command, $normalized );
@@ -188,21 +427,304 @@ class YoRo_Parser_Engine {
 			$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
 			$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
 
-			return YoRo_Entity_Validator::validate( $resolved_result );
+			return self::with_resolution_path(
+				YoRo_Entity_Validator::validate( $resolved_result ),
+				self::RESOLUTION_PATH_SAFETY_GUARD,
+				'incomplete_intent'
+			);
 		}
 
 		/*
 		* 4. If a rule parser matched but was not high confidence, return it.
 		*/
 		if ( is_array( $rule_result ) && ! empty( $rule_result['matched'] ) ) {
-			return $rule_result;
+			return self::apply_rule_result_resolution_path( $rule_result, 'rule_match' );
 		}
 
-		return self::clarification_response(
+		return self::with_resolution_path(
+			self::clarification_response(
+				$command,
+				$normalized,
+				__( 'I need a little more detail. What would you like me to do?', 'yoro-agent-core' )
+			),
+			self::RESOLUTION_PATH_SAFETY_GUARD,
+			'generic_clarification'
+		);
+	}
+
+	private static function with_resolution_path( $result, $resolution_path, $fallback_reason = '' ) {
+		if ( ! is_array( $result ) ) {
+			return $result;
+		}
+
+		$sanitized_path = sanitize_key( (string) $resolution_path );
+		$result['resolution_path'] = $sanitized_path;
+		$sanitized_fallback_reason = sanitize_key( (string) $fallback_reason );
+
+		if ( '' !== $sanitized_fallback_reason && empty( $result['fallback_reason'] ) ) {
+			$result['fallback_reason'] = $sanitized_fallback_reason;
+		}
+
+		if ( ! empty( $result['result'] ) && is_array( $result['result'] ) && empty( $result['result']['resolution_path'] ) ) {
+			$result['result']['resolution_path'] = $sanitized_path;
+		}
+
+		if (
+			'' !== $sanitized_fallback_reason &&
+			! empty( $result['result'] ) &&
+			is_array( $result['result'] ) &&
+			empty( $result['result']['fallback_reason'] )
+		) {
+			$result['result']['fallback_reason'] = $sanitized_fallback_reason;
+		}
+
+		return $result;
+	}
+
+	private static function apply_rule_result_resolution_path( $result, $fallback_reason = 'rule_match' ) {
+		if ( ! is_array( $result ) ) {
+			return $result;
+		}
+
+		if ( self::should_prioritize_strong_read_only_rule_result( $result ) ) {
+			return self::with_resolution_path(
+				$result,
+				self::RESOLUTION_PATH_DETERMINISTIC_OVERRIDE,
+				'exact_rule_match'
+			);
+		}
+
+		if ( self::should_prioritize_strong_confirmation_gated_write_rule_result( $result ) ) {
+			return self::with_resolution_path(
+				$result,
+				self::RESOLUTION_PATH_DETERMINISTIC_OVERRIDE,
+				'exact_rule_match'
+			);
+		}
+
+		return self::with_resolution_path(
+			$result,
+			self::RESOLUTION_PATH_RECOVERY_FALLBACK,
+			$fallback_reason
+		);
+	}
+
+	private static function maybe_parse_current_email_delivery_before_ai( $command, $normalized, $client_context = [] ) {
+		if (
+			! in_array(
+				$normalized,
+				[
+					'send email',
+					'send the email',
+					'send this email',
+					'send current email',
+					'send reviewed email',
+				],
+				true
+			)
+		) {
+			return null;
+		}
+
+		$workflow = isset( $client_context['current_workflow'] ) && is_array( $client_context['current_workflow'] )
+			? $client_context['current_workflow']
+			: [];
+
+		if (
+			'customer_email' !== sanitize_key( $workflow['type'] ?? '' ) ||
+			empty( $workflow['order_id'] ) ||
+			empty( $workflow['subject'] ) ||
+			empty( $workflow['body'] )
+		) {
+			return null;
+		}
+
+		$result = [
+			'success'            => true,
+			'matched'            => true,
+			'action'             => 'orders.send_customer_email',
+			'params'             => [
+				'order_id' => absint( $workflow['order_id'] ),
+				'subject'  => sanitize_text_field( $workflow['subject'] ),
+				'body'     => sanitize_textarea_field( $workflow['body'] ),
+			],
+			'parser_rule'        => 'rule.follow_up.send_current_email.workflow',
+			'parser_source'      => 'rule',
+			'confidence'         => 0.96,
+			'original_command'   => $command,
+			'normalized_command' => $normalized,
+		];
+
+		$normalized_result = self::normalize_parsed_result(
+			$result,
 			$command,
 			$normalized,
-			__( 'I need a little more detail. What would you like me to do?', 'yoro-agent-core' )
+			$client_context
 		);
+
+		$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
+		$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
+
+		return YoRo_Entity_Validator::validate( $resolved_result );
+	}
+
+	private static function maybe_parse_guided_workflow_preview_before_ai( $command, $normalized, $client_context = [] ) {
+		$definitions = [
+			'workflow.fulfillment_followup_preview' => [
+				'context_key' => 'last_fulfillment_followup',
+				'rule'        => 'rule.workflow.fulfillment_followup_preview',
+				'needles'     => [
+					'prepare the next fulfillment follow up',
+					'prepare the next fulfillment follow-up',
+					'prepare the next delay email',
+					'draft the next delay email',
+					'draft next delay email',
+					'prepare next delay email',
+					'handle the first fulfillment issue',
+					'handle the next fulfillment recommendation',
+					'prepare the next fulfillment recommendation',
+				],
+			],
+			'workflow.customer_followup_preview' => [
+				'context_key' => 'last_service_followup',
+				'rule'        => 'rule.workflow.customer_followup_preview',
+				'needles'     => [
+					'prepare the next customer follow up',
+					'prepare the next customer follow-up',
+					'draft the next customer follow up',
+					'draft the next customer follow-up',
+					'draft the next customer reply',
+					'prepare the next customer reply',
+					'prepare the next support reply',
+					'prepare next support reply',
+					'handle the next customer recommendation',
+					'prepare the next customer recommendation',
+				],
+			],
+			'workflow.operations_attention_preview' => [
+				'context_key' => 'last_attention_followup',
+				'rule'        => 'rule.workflow.operations_attention_preview',
+				'needles'     => [
+					'prepare the next attention follow up',
+					'prepare the next attention follow-up',
+					'handle the next urgent operations issue',
+					'review the next attention item',
+					'prepare the next attention recommendation',
+					'prepare next attention item',
+				],
+			],
+			'workflow.inventory_pressure_preview' => [
+				'context_key' => 'last_inventory_followup',
+				'rule'        => 'rule.workflow.inventory_pressure_preview',
+				'needles'     => [
+					'prepare the next inventory review',
+					'show me the next stock issue to handle',
+					'review the next inventory recommendation',
+					'prepare the next inventory follow up',
+					'prepare the next inventory follow-up',
+					'prepare next inventory review',
+				],
+			],
+		];
+
+		foreach ( $definitions as $action => $definition ) {
+			$matches = false;
+
+			foreach ( $definition['needles'] as $needle ) {
+				if ( false !== strpos( $normalized, $needle ) ) {
+					$matches = true;
+					break;
+				}
+			}
+
+			if ( ! $matches ) {
+				continue;
+			}
+
+			$last_followup = isset( $client_context[ $definition['context_key'] ] ) && is_array( $client_context[ $definition['context_key'] ] )
+				? $client_context[ $definition['context_key'] ]
+				: [];
+
+			if ( empty( $last_followup['queues'] ) || ! is_array( $last_followup['queues'] ) ) {
+				return null;
+			}
+
+			$result = [
+				'success'            => true,
+				'matched'            => true,
+				'action'             => $action,
+				'params'             => [
+					'original_command' => $command,
+				],
+				'parser_rule'        => $definition['rule'],
+				'parser_source'      => 'rule',
+				'confidence'         => 0.94,
+				'original_command'   => $command,
+				'normalized_command' => $normalized,
+			];
+
+			$normalized_result = self::normalize_parsed_result(
+				$result,
+				$command,
+				$normalized,
+				$client_context
+			);
+
+			$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
+			$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
+
+			return YoRo_Entity_Validator::validate( $resolved_result );
+		}
+
+		return null;
+	}
+
+	private static function maybe_parse_contextual_order_write_before_ai( $command, $normalized, $client_context = [] ) {
+		if ( ! self::looks_like_contextual_plural_order_reference( $normalized ) ) {
+			return null;
+		}
+
+		if ( empty( self::resolve_bulk_order_ids_from_context( $normalized, $client_context ) ) ) {
+			return null;
+		}
+
+		if (
+			! preg_match( '/\b(?:change|mark|move|set|update|hold|add\s+note|leave\s+note|with\s+note|note\s*:)\b/i', $normalized )
+		) {
+			return null;
+		}
+
+		foreach ( [ 'parse_early', 'parse_write' ] as $parser ) {
+			if ( ! is_callable( [ 'YoRo_Orders_Command_Parser', $parser ] ) ) {
+				continue;
+			}
+
+			$parsed = call_user_func(
+				[ 'YoRo_Orders_Command_Parser', $parser ],
+				$command,
+				$normalized,
+				$client_context
+			);
+
+			if ( ! is_array( $parsed ) ) {
+				continue;
+			}
+
+			$parsed['parser_source'] = $parsed['parser_source'] ?? 'rule';
+			$parsed['confidence']    = $parsed['confidence'] ?? 1.0;
+
+			if ( ! empty( $parsed['stage'] ) && 'clarify' === $parsed['stage'] ) {
+				return $parsed;
+			}
+
+			$normalized_result = self::normalize_parsed_result( $parsed, $command, $normalized, $client_context );
+			$resolved_result   = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
+			$resolved_result   = YoRo_Intent_Router::resolve_action( $resolved_result );
+
+			return YoRo_Entity_Validator::validate( $resolved_result );
+		}
+
+		return null;
 	}
 
 	private static function parse_with_ai_command_router( $command, $normalized, $client_context = [] ) {
@@ -225,9 +747,19 @@ class YoRo_Parser_Engine {
 					[
 						'yoro_ai_missing_api_key',
 						'yoro_ai_intent_api_error',
+						'http_request_failed',
 					],
 					true
 				)
+			) {
+				return null;
+			}
+
+			$error_message = sanitize_text_field( $decision->get_error_message() );
+
+			if (
+				'' !== $error_message &&
+				preg_match( '/\b(?:cURL error|timed out|timeout|could not resolve host|connection refused)\b/i', $error_message )
 			) {
 				return null;
 			}
@@ -252,6 +784,42 @@ class YoRo_Parser_Engine {
 			return null;
 		}
 
+		$decision = self::hydrate_ai_router_email_authoring_decision(
+			$decision,
+			$command,
+			$normalized
+		);
+		$decision = self::normalize_ai_router_order_target_params_decision(
+			$decision,
+			$command
+		);
+		$decision = self::normalize_ai_router_email_instruction_decision(
+			$decision,
+			$command,
+			$normalized
+		);
+		$decision = self::hydrate_ai_router_briefing_decision(
+			$decision,
+			$command,
+			$normalized
+		);
+		$decision = self::hydrate_ai_router_queue_preview_decision(
+			$decision,
+			$command,
+			$normalized,
+			$client_context
+		);
+		$decision = self::hydrate_ai_router_read_only_window_decision(
+			$decision,
+			$command,
+			$normalized
+		);
+		$decision = self::hydrate_ai_router_write_confirmation_decision(
+			$decision,
+			$command,
+			$normalized
+		);
+		$decision = self::refresh_ai_router_decision_contract( $decision );
 		$mode       = sanitize_key( $decision['mode'] ?? 'clarify' );
 		$confidence = isset( $decision['confidence'] ) ? (float) $decision['confidence'] : 0;
 
@@ -293,7 +861,7 @@ class YoRo_Parser_Engine {
 
 		$threshold = self::get_ai_command_router_confidence_threshold( $decision );
 
-		if ( $confidence < $threshold ) {
+		if ( $confidence < $threshold && ! self::should_bypass_ai_router_low_confidence_clarify( $decision ) ) {
 			return self::build_ai_command_router_clarification_response(
 				$command,
 				$normalized,
@@ -307,6 +875,7 @@ class YoRo_Parser_Engine {
 			'success'            => true,
 			'matched'            => true,
 			'action'             => $action,
+			'intent_family'      => sanitize_key( $decision['intent_family'] ?? '' ),
 			'params'             => isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [],
 			'parser_rule'        => 'ai.command_router.v2',
 			'parser_source'      => 'ai_router',
@@ -317,6 +886,9 @@ class YoRo_Parser_Engine {
 			'summary'            => sanitize_text_field( $decision['summary'] ?? '' ),
 			'reasoning_summary'  => sanitize_text_field( $decision['reasoning_summary'] ?? '' ),
 			'meta'               => isset( $decision['meta'] ) && is_array( $decision['meta'] ) ? $decision['meta'] : [],
+			'raw_param_keys'     => isset( $decision['raw_param_keys'] ) && is_array( $decision['raw_param_keys'] ) ? $decision['raw_param_keys'] : [],
+			'dropped_param_keys' => isset( $decision['dropped_param_keys'] ) && is_array( $decision['dropped_param_keys'] ) ? $decision['dropped_param_keys'] : [],
+			'params_trimmed_count' => isset( $decision['params_trimmed_count'] ) ? absint( $decision['params_trimmed_count'] ) : 0,
 			'command_decision'   => self::compact_ai_command_decision_for_result( $decision ),
 		];
 
@@ -329,10 +901,590 @@ class YoRo_Parser_Engine {
 
 		$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
 		$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
+		$resolved_result = self::hydrate_result_intent_family_from_action( $resolved_result );
 		$resolved_result = self::correct_ai_hold_to_update_status( $resolved_result, $normalized );
+		$resolved_result = self::correct_ai_add_note_with_status_to_bulk_action( $resolved_result );
 		$resolved_result = self::correct_ai_update_status_with_note_to_bulk_action( $resolved_result );
 
+		$composition_candidate = self::maybe_resolve_action_composition_candidate(
+			$command,
+			$normalized,
+			$client_context,
+			$resolved_result
+		);
+
+		if ( is_array( $composition_candidate ) ) {
+			$normalized_candidate = self::normalize_parsed_result(
+				$composition_candidate,
+				$command,
+				$normalized,
+				$client_context
+			);
+
+			$resolved_candidate = YoRo_Entity_Resolver::resolve( $normalized_candidate, $client_context );
+			$resolved_candidate = YoRo_Intent_Router::resolve_action( $resolved_candidate );
+
+			return YoRo_Entity_Validator::validate( $resolved_candidate );
+		}
+
+		$direct_workflow_result = self::maybe_build_direct_ai_workflow_result(
+			$command,
+			$normalized,
+			$client_context,
+			$resolved_result
+		);
+
+		if ( is_array( $direct_workflow_result ) ) {
+			$normalized_candidate = self::normalize_parsed_result(
+				$direct_workflow_result,
+				$command,
+				$normalized,
+				$client_context
+			);
+
+			$resolved_candidate = YoRo_Entity_Resolver::resolve( $normalized_candidate, $client_context );
+			$resolved_candidate = YoRo_Intent_Router::resolve_action( $resolved_candidate );
+
+			return YoRo_Entity_Validator::validate( $resolved_candidate );
+		}
+
+		$workflow_candidate = self::maybe_resolve_workflow_candidate(
+			$command,
+			$normalized,
+			$client_context,
+			$resolved_result
+		);
+
+		if ( is_array( $workflow_candidate ) ) {
+			$normalized_candidate = self::normalize_parsed_result(
+				$workflow_candidate,
+				$command,
+				$normalized,
+				$client_context
+			);
+
+			$resolved_candidate = YoRo_Entity_Resolver::resolve( $normalized_candidate, $client_context );
+			$resolved_candidate = YoRo_Intent_Router::resolve_action( $resolved_candidate );
+
+			return YoRo_Entity_Validator::validate( $resolved_candidate );
+		}
+
 		return YoRo_Entity_Validator::validate( $resolved_result );
+	}
+
+	private static function hydrate_ai_router_email_authoring_decision( $decision, $command, $normalized ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$action   = sanitize_text_field( $decision['action'] ?? '' );
+		$mode     = sanitize_key( $decision['mode'] ?? '' );
+		$params   = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+		$missing  = isset( $decision['missing'] ) && is_array( $decision['missing'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $decision['missing'] ) ) )
+			: [];
+
+		if ( ! in_array( $action, [ 'orders.compose_customer_email', 'orders.save_customer_email_draft', 'orders.send_customer_email' ], true ) ) {
+			return $decision;
+		}
+
+		$order_id = absint( $params['order_id'] ?? 0 );
+		$has_subject = self::decision_has_meaningful_param_value( $params, 'subject' );
+		$has_body    = self::decision_has_meaningful_param_value( $params, 'body' );
+
+		if (
+			$order_id <= 0 ||
+			! in_array( $mode, [ 'task_request', 'clarify' ], true )
+		) {
+			return $decision;
+		}
+
+		if ( 'orders.compose_customer_email' !== $action && $has_subject && $has_body ) {
+			return $decision;
+		}
+
+		$needs_instruction_hydration = (
+			'orders.compose_customer_email' === $action
+			? in_array( 'instruction', $missing, true )
+			: ( ! $has_subject || ! $has_body )
+		);
+
+		if ( ! $needs_instruction_hydration ) {
+			return $decision;
+		}
+
+		$instruction = self::infer_email_authoring_instruction_from_command( $command, $normalized, $params );
+
+		if ( '' === $instruction ) {
+			return $decision;
+		}
+
+		$decision['action'] = 'orders.compose_customer_email';
+		$decision['intent_family'] = 'customer_email';
+		$decision['params']['instruction'] = $instruction;
+		$decision['params']['order_id'] = $order_id;
+
+		if ( empty( $decision['params']['order_ids'] ) || ! is_array( $decision['params']['order_ids'] ) ) {
+			$decision['params']['order_ids'] = [ $order_id ];
+		}
+
+		unset( $decision['params']['subject'], $decision['params']['body'] );
+		$decision['mode']   = 'task_request';
+		$decision['missing'] = array_values(
+			array_filter(
+				$missing,
+				static function( $item ) {
+					return ! in_array( $item, [ 'instruction', 'body', 'subject', 'email_body', 'message', 'topic' ], true );
+				}
+			)
+		);
+
+		if ( empty( $decision['summary'] ) ) {
+			$decision['summary'] = __( 'You asked me to write a customer email for a specific order.', 'yoro-agent-core' );
+		}
+
+		if ( empty( $decision['reasoning_summary'] ) ) {
+			$decision['reasoning_summary'] = __( 'The command already states an email goal for a specific order, so the email instruction can be inferred directly.', 'yoro-agent-core' );
+		}
+
+		$decision['clarification_question'] = '';
+
+		if ( empty( $decision['evidence'] ) || ! is_array( $decision['evidence'] ) ) {
+			$decision['evidence'] = [
+				'matched_terms'       => [],
+				'referenced_context'  => [],
+				'notes'               => '',
+			];
+		}
+
+		$decision['evidence']['notes'] = sanitize_text_field(
+			trim(
+				implode(
+					' ',
+					array_filter(
+						[
+							$decision['evidence']['notes'] ?? '',
+							__( 'Email goal inferred directly from the natural-language request.', 'yoro-agent-core' ),
+						]
+					)
+				)
+			)
+		);
+
+		return $decision;
+	}
+
+	private static function hydrate_ai_router_queue_preview_decision( $decision, $command, $normalized, $client_context = [] ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$action   = sanitize_text_field( $decision['action'] ?? '' );
+		$mode     = sanitize_key( $decision['mode'] ?? '' );
+		$params   = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+		$missing  = isset( $decision['missing'] ) && is_array( $decision['missing'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $decision['missing'] ) ) )
+			: [];
+		$client_context = is_array( $client_context ) ? $client_context : [];
+
+		$preview_map = [
+			'workflow.fulfillment_followup_preview' => [
+				'context_key'       => 'last_fulfillment_followup',
+				'context_field'     => 'queues',
+				'clarify_message'   => __( 'Open the fulfillment queue first so I can choose the right fulfillment item before preparing a follow-up.', 'yoro-agent-core' ),
+				'confidence'        => 0.92,
+			],
+			'workflow.customer_followup_preview' => [
+				'context_key'       => 'last_service_followup',
+				'context_field'     => 'queues',
+				'clarify_message'   => __( 'Open the customer service queue first so I can choose the right follow-up item before preparing a reply.', 'yoro-agent-core' ),
+				'confidence'        => 0.92,
+			],
+			'workflow.operations_attention_preview' => [
+				'context_key'       => 'last_attention_followup',
+				'context_field'     => 'queues',
+				'clarify_message'   => __( 'Open the operations attention queue first so I can choose the right attention item before preparing the next review step.', 'yoro-agent-core' ),
+				'confidence'        => 0.92,
+			],
+			'workflow.inventory_pressure_preview' => [
+				'context_key'       => 'last_inventory_followup',
+				'context_field'     => 'queues',
+				'clarify_message'   => __( 'Open the inventory queue first so I can choose the right stock issue before preparing the next review step.', 'yoro-agent-core' ),
+				'confidence'        => 0.92,
+			],
+			'workflow.business_summary_preview' => [
+				'context_key'       => 'last_business_followup',
+				'context_field'     => 'recommended_sequence',
+				'clarify_message'   => __( 'Open the business summary first so I can choose the right business signal before preparing the next review step.', 'yoro-agent-core' ),
+				'confidence'        => 0.92,
+			],
+		];
+
+		if ( empty( $preview_map[ $action ] ) ) {
+			return $decision;
+		}
+
+		$internal_missing_keys = [ 'queue_key', 'topic_key', 'reference_index', 'reference_selector' ];
+		$has_internal_missing  = ! empty( array_intersect( $missing, $internal_missing_keys ) );
+		$action_context        = isset( $client_context[ $preview_map[ $action ]['context_key'] ] ) && is_array( $client_context[ $preview_map[ $action ]['context_key'] ] )
+			? $client_context[ $preview_map[ $action ]['context_key'] ]
+			: [];
+		$has_context_choices   = ! empty( $action_context[ $preview_map[ $action ]['context_field'] ] ) && is_array( $action_context[ $preview_map[ $action ]['context_field'] ] );
+		$has_explicit_selector = (
+			! empty( $params['queue_key'] ) ||
+			! empty( $params['topic_key'] ) ||
+			isset( $params['reference_index'] ) ||
+			! empty( $params['reference_selector'] )
+		);
+
+		if ( $has_context_choices && ( 'clarify' === $mode || $has_internal_missing ) ) {
+			$decision['mode']   = 'task_request';
+			$decision['missing'] = array_values(
+				array_filter(
+					$missing,
+					static function( $item ) use ( $internal_missing_keys ) {
+						return ! in_array( $item, $internal_missing_keys, true );
+					}
+				)
+			);
+			$decision['clarification_question'] = '';
+
+			if ( empty( $decision['summary'] ) ) {
+				$decision['summary'] = __( 'You asked me to prepare the next guided workflow follow-up.', 'yoro-agent-core' );
+			}
+
+			if ( empty( $decision['reasoning_summary'] ) ) {
+				$decision['reasoning_summary'] = __( 'The required queue context is already available, so I can choose the next guided item without asking for an internal selector.', 'yoro-agent-core' );
+			}
+
+			if ( empty( $decision['evidence'] ) || ! is_array( $decision['evidence'] ) ) {
+				$decision['evidence'] = [
+					'matched_terms'      => [],
+					'referenced_context' => [],
+					'notes'              => '',
+				];
+			}
+
+			$decision['evidence']['notes'] = sanitize_text_field(
+				trim(
+					implode(
+						' ',
+						array_filter(
+							[
+								$decision['evidence']['notes'] ?? '',
+								__( 'Queue-based workflow preview was grounded from active follow-up context instead of an internal selector.', 'yoro-agent-core' ),
+							]
+						)
+					)
+				)
+			);
+
+			return $decision;
+		}
+
+		if (
+			'clarify' === $mode && (
+				$has_internal_missing ||
+				( ! $has_context_choices && ! $has_explicit_selector )
+			)
+		) {
+			$decision['missing'] = [];
+			$decision['clarification_question'] = $preview_map[ $action ]['clarify_message'];
+			$decision['summary'] = $preview_map[ $action ]['clarify_message'];
+			$decision['confidence'] = max(
+				isset( $decision['confidence'] ) ? (float) $decision['confidence'] : 0,
+				(float) $preview_map[ $action ]['confidence']
+			);
+
+			if ( empty( $decision['reasoning_summary'] ) ) {
+				$decision['reasoning_summary'] = __( 'This workflow needs active queue context, so the right next item should be selected from the queue instead of asking for an internal key.', 'yoro-agent-core' );
+			}
+
+			return $decision;
+		}
+
+		if ( 'task_request' === $mode && ! $has_context_choices && ! $has_explicit_selector ) {
+			$decision['mode'] = 'clarify';
+			$decision['missing'] = [];
+			$decision['clarification_question'] = $preview_map[ $action ]['clarify_message'];
+			$decision['summary'] = $preview_map[ $action ]['clarify_message'];
+			$decision['confidence'] = max(
+				isset( $decision['confidence'] ) ? (float) $decision['confidence'] : 0,
+				(float) $preview_map[ $action ]['confidence']
+			);
+
+			if ( empty( $decision['reasoning_summary'] ) ) {
+				$decision['reasoning_summary'] = __( 'This workflow preview can only choose the next item from active queue context or an explicit selector.', 'yoro-agent-core' );
+			}
+		}
+
+		return $decision;
+	}
+
+	private static function hydrate_ai_router_briefing_decision( $decision, $command, $normalized ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$action   = sanitize_text_field( $decision['action'] ?? '' );
+		$mode     = sanitize_key( $decision['mode'] ?? '' );
+
+		if ( 'task_request' !== $mode ) {
+			return $decision;
+		}
+
+		if ( ! in_array( $action, [ 'store.get_business_summary', 'operations.get_summary', 'store.get_insights' ], true ) ) {
+			return $decision;
+		}
+
+		$has_briefing_anchor = (bool) preg_match(
+			'/\b(?:brief|briefing|snapshot|readout|brief me|brief us)\b/i',
+			$normalized
+		);
+		$has_explicit_summary_anchor = (bool) preg_match(
+			'/\b(?:business summary|business overview|operations summary|operations overview|store insights|insights)\b/i',
+			$normalized
+		);
+		$has_morning_anchor = (bool) preg_match(
+			'/\b(?:morning briefing|morning brief)\b/i',
+			$normalized
+		);
+
+		if ( ! $has_briefing_anchor || $has_explicit_summary_anchor ) {
+			return $decision;
+		}
+
+		$decision['action'] = $has_morning_anchor ? 'store.get_morning_briefing' : 'store.get_daily_briefing';
+
+		if ( empty( $decision['summary'] ) || 'store.get_business_summary' === $action || 'operations.get_summary' === $action || 'store.get_insights' === $action ) {
+			$decision['summary'] = $has_morning_anchor
+				? __( 'Preparing a morning briefing for the store.', 'yoro-agent-core' )
+				: __( 'Preparing a store briefing for the requested time window.', 'yoro-agent-core' );
+		}
+
+		$decision['reasoning_summary'] = $has_morning_anchor
+			? __( 'The command explicitly asks for a morning briefing, so it should route to the morning briefing surface instead of a summary view.', 'yoro-agent-core' )
+			: __( 'The command uses briefing language, so it should route to the store briefing surface instead of a business summary view.', 'yoro-agent-core' );
+
+		return $decision;
+	}
+
+	private static function hydrate_ai_router_read_only_window_decision( $decision, $command, $normalized ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$action   = sanitize_text_field( $decision['action'] ?? '' );
+		$mode     = sanitize_key( $decision['mode'] ?? '' );
+		$params   = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+		$missing  = isset( $decision['missing'] ) && is_array( $decision['missing'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $decision['missing'] ) ) )
+			: [];
+
+		if ( 'clarify' !== $mode || '' === $action ) {
+			return $decision;
+		}
+
+		if ( ! in_array( $action, [ 'store.get_business_summary', 'operations.get_summary', 'store.get_daily_briefing', 'store.get_morning_briefing', 'store.get_insights' ], true ) ) {
+			return $decision;
+		}
+
+		$allowed_missing = array_diff( $missing, [ 'details', 'window' ] );
+
+		if ( ! empty( $allowed_missing ) ) {
+			return $decision;
+		}
+
+		if ( ! empty( $params['window'] ) ) {
+			return $decision;
+		}
+
+		$default_window = in_array( $action, [ 'store.get_daily_briefing', 'store.get_morning_briefing' ], true )
+			? 'today'
+			: 'last_7_days';
+
+		$params['window'] = self::detect_window_for_retrieval( $normalized, $default_window );
+
+		if ( in_array( $action, [ 'store.get_business_summary', 'operations.get_summary' ], true ) && empty( $params['focus'] ) ) {
+			$params['focus'] = 'overview';
+		}
+
+		$decision['mode'] = 'task_request';
+		$decision['params'] = $params;
+		$decision['missing'] = [];
+		$decision['ambiguities'] = [];
+
+		if ( empty( $decision['summary'] ) ) {
+			$decision['summary'] = __( 'Preparing the requested store summary.', 'yoro-agent-core' );
+		}
+
+		if ( empty( $decision['reasoning_summary'] ) ) {
+			$decision['reasoning_summary'] = __( 'The action surface is already clear, so the missing time window is normalized to the default reporting period instead of forcing an extra clarification.', 'yoro-agent-core' );
+		}
+
+		return $decision;
+	}
+
+	private static function hydrate_ai_router_write_confirmation_decision( $decision, $command, $normalized ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$mode     = sanitize_key( $decision['mode'] ?? '' );
+		$action   = sanitize_text_field( $decision['action'] ?? '' );
+		$params   = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+		$missing  = isset( $decision['missing'] ) && is_array( $decision['missing'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $decision['missing'] ) ) )
+			: [];
+		$ambiguities = isset( $decision['ambiguities'] ) && is_array( $decision['ambiguities'] )
+			? array_values( array_filter( array_map( 'sanitize_text_field', $decision['ambiguities'] ) ) )
+			: [];
+		$catalog_item = isset( $decision['action_catalog_item'] ) && is_array( $decision['action_catalog_item'] )
+			? $decision['action_catalog_item']
+			: [];
+
+		if ( 'clarify' !== $mode || '' === $action || empty( $catalog_item ) ) {
+			return $decision;
+		}
+
+		if ( empty( $catalog_item['write_action'] ) && empty( $catalog_item['requires_confirmation'] ) ) {
+			return $decision;
+		}
+
+		if ( ! empty( $missing ) || ! empty( $ambiguities ) ) {
+			return $decision;
+		}
+
+		$required_params = ! empty( $catalog_item['required_params'] ) && is_array( $catalog_item['required_params'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $catalog_item['required_params'] ) ) )
+			: [];
+
+		if ( empty( $required_params ) ) {
+			return $decision;
+		}
+
+		foreach ( $required_params as $required_param ) {
+			if ( ! self::decision_has_meaningful_param_value( $params, $required_param ) ) {
+				return $decision;
+			}
+		}
+
+		$decision['mode'] = 'task_request';
+		$decision['clarification_question'] = '';
+		$decision['missing'] = [];
+		$decision['ambiguities'] = [];
+
+		if ( empty( $decision['summary'] ) ) {
+			$decision['summary'] = self::build_ai_router_write_confirmation_summary( $action, $params );
+		}
+
+		if ( empty( $decision['reasoning_summary'] ) ) {
+			$decision['reasoning_summary'] = __( 'The write action already has the required target and content, so backend confirmation should handle the final approval instead of forcing an extra clarification step.', 'yoro-agent-core' );
+		}
+
+		return $decision;
+	}
+
+	private static function decision_has_meaningful_param_value( $params, $key ) {
+		$params = is_array( $params ) ? $params : [];
+		$key    = sanitize_key( $key );
+
+		if ( '' === $key || ! array_key_exists( $key, $params ) ) {
+			return false;
+		}
+
+		$value = $params[ $key ];
+
+		if ( is_array( $value ) ) {
+			return ! empty( array_filter( $value, static function( $item ) {
+				if ( is_string( $item ) ) {
+					return '' !== trim( $item );
+				}
+
+				return null !== $item && false !== $item && '' !== $item;
+			} ) );
+		}
+
+		if ( is_string( $value ) ) {
+			return '' !== trim( $value );
+		}
+
+		return null !== $value && false !== $value && '' !== $value;
+	}
+
+	private static function build_ai_router_write_confirmation_summary( $action, $params ) {
+		$action = sanitize_text_field( $action );
+		$params = is_array( $params ) ? $params : [];
+		$order_id = absint( $params['order_id'] ?? 0 );
+
+		if ( 0 === $order_id && ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
+			$order_id = absint( $params['order_ids'][0] ?? 0 );
+		}
+
+		switch ( $action ) {
+			case 'orders.add_note':
+				$note = sanitize_textarea_field( $params['note'] ?? '' );
+				if ( $order_id > 0 && '' !== $note ) {
+					return sprintf(
+						/* translators: 1: order id, 2: note content */
+						__( 'Add internal note to order %1$d: "%2$s"', 'yoro-agent-core' ),
+						$order_id,
+						$note
+					);
+				}
+				break;
+			case 'orders.update_status':
+				$status = sanitize_key( $params['status'] ?? '' );
+				if ( $order_id > 0 && '' !== $status ) {
+					return sprintf(
+						/* translators: 1: order id, 2: status */
+						__( 'Update order %1$d to status "%2$s".', 'yoro-agent-core' ),
+						$order_id,
+						$status
+					);
+				}
+				break;
+			case 'orders.hold':
+				if ( $order_id > 0 ) {
+					return sprintf(
+						/* translators: %d: order id */
+						__( 'Put order %d on hold.', 'yoro-agent-core' ),
+						$order_id
+					);
+				}
+				break;
+		}
+
+		return __( 'Preparing the requested write action.', 'yoro-agent-core' );
+	}
+
+	private static function should_bypass_ai_router_low_confidence_clarify( $decision ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$mode     = sanitize_key( $decision['mode'] ?? '' );
+		$action   = sanitize_text_field( $decision['action'] ?? '' );
+		$params   = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+		$catalog_item = isset( $decision['action_catalog_item'] ) && is_array( $decision['action_catalog_item'] )
+			? $decision['action_catalog_item']
+			: [];
+		$missing = isset( $decision['missing'] ) && is_array( $decision['missing'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $decision['missing'] ) ) )
+			: [];
+		$ambiguities = isset( $decision['ambiguities'] ) && is_array( $decision['ambiguities'] )
+			? array_values( array_filter( array_map( 'sanitize_text_field', $decision['ambiguities'] ) ) )
+			: [];
+
+		if ( 'task_request' !== $mode || '' === $action || empty( $catalog_item ) ) {
+			return false;
+		}
+
+		if ( empty( $catalog_item['write_action'] ) && empty( $catalog_item['requires_confirmation'] ) ) {
+			return false;
+		}
+
+		if ( ! empty( $missing ) || ! empty( $ambiguities ) ) {
+			return false;
+		}
+
+		$required_params = ! empty( $catalog_item['required_params'] ) && is_array( $catalog_item['required_params'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $catalog_item['required_params'] ) ) )
+			: [];
+
+		if ( empty( $required_params ) ) {
+			return false;
+		}
+
+		foreach ( $required_params as $required_param ) {
+			if ( ! self::decision_has_meaningful_param_value( $params, $required_param ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	private static function build_ai_command_router_non_action_response( $command, $normalized, $decision, $mode, $confidence ) {
@@ -346,12 +1498,73 @@ class YoRo_Parser_Engine {
 			);
 		}
 
+		if ( 'unsupported_request' === $mode ) {
+			$unsupported_decision = self::build_unsupported_response_decision(
+				'',
+				$command,
+				[
+					'summary'                => sanitize_text_field( $decision['summary'] ?? '' ),
+					'followup'               => sanitize_text_field( $decision['clarification_question'] ?? '' ),
+					'unsupported_capability' => sanitize_text_field( $command ),
+				]
+			);
+
+			return self::build_ai_command_router_assistant_response(
+				$command,
+				$normalized,
+				'ai.command_router.unsupported_request',
+				$unsupported_decision['summary'],
+				$unsupported_decision['followup'],
+				$unsupported_decision['suggestions'],
+				[
+					'conversation_topic'        => 'unsupported_request',
+					'closest_supported_surface' => sanitize_key( $unsupported_decision['closest_supported_surface'] ?? '' ),
+					'result_type'               => 'assistant_message',
+					'language'                  => sanitize_text_field( $decision['language'] ?? 'unknown' ),
+					'reasoning_summary'         => sanitize_text_field( $decision['reasoning_summary'] ?? '' ),
+					'command_decision'          => self::compact_ai_command_decision_for_result( $decision ),
+					'developer_handoff_offer'   => ! empty( $unsupported_decision['developer_handoff_offer'] ),
+					'handoff_request_text'      => sanitize_text_field( $unsupported_decision['handoff_request_text'] ?? $command ),
+					'fallback_reason'           => 'unsupported_request',
+				],
+				$confidence
+			);
+		}
+
+		if ( 'chat_only' === $mode ) {
+			$ai_inferred_support_response = self::build_ai_inferred_capability_support_response(
+				$command,
+				$normalized,
+				[],
+				[
+					'intent_family'           => sanitize_key( $decision['intent_family'] ?? '' ),
+					'capability_family_key'   => sanitize_key( $decision['capability_family_key'] ?? '' ),
+					'nearest_registry_family' => sanitize_key( $decision['nearest_registry_family'] ?? '' ),
+					'support_hypothesis'      => sanitize_key( $decision['support_hypothesis'] ?? '' ),
+					'target_family_guess'     => sanitize_key( $decision['target_family_guess'] ?? '' ),
+					'target_object'           => sanitize_text_field( $decision['target_object'] ?? '' ),
+					'requested_capability'    => sanitize_text_field( $decision['requested_capability'] ?? '' ),
+					'closest_supported_surface' => sanitize_key( $decision['closest_supported_surface'] ?? '' ),
+					'reasoning_summary'       => sanitize_text_field( $decision['reasoning_summary'] ?? '' ),
+					'summary'                 => sanitize_text_field( $decision['summary'] ?? '' ),
+					'followup'                => sanitize_text_field( $decision['followup'] ?? '' ),
+					'target_type'             => sanitize_key( $decision['target_type'] ?? '' ),
+				]
+			);
+
+			if ( is_array( $ai_inferred_support_response ) ) {
+				return $ai_inferred_support_response;
+			}
+
+			if ( self::is_capability_support_inquiry( $normalized ) || self::is_capability_question( $normalized ) ) {
+				return self::build_capability_support_response( $command, $normalized, [] );
+			}
+		}
+
 		$summary = sanitize_text_field( $decision['summary'] ?? '' );
 
 		if ( '' === $summary ) {
-			if ( 'unsupported_request' === $mode ) {
-				$summary = __( 'YoRo cannot do that yet.', 'yoro-agent-core' );
-			} elseif ( 'out_of_scope' === $mode ) {
+			if ( 'out_of_scope' === $mode ) {
 				$summary = __( 'I am focused on WooCommerce store operations, so I cannot help with that topic here.', 'yoro-agent-core' );
 			} else {
 				$summary = __( 'I can help with WooCommerce store operations.', 'yoro-agent-core' );
@@ -367,46 +1580,309 @@ class YoRo_Parser_Engine {
 			isset( $decision['suggestions'] ) && is_array( $decision['suggestions'] ) ? $decision['suggestions'] : [],
 			[
 				'conversation_topic' => $mode,
+				'intent_family'      => sanitize_key( $decision['intent_family'] ?? '' ),
 				'result_type'        => 'assistant_message',
 				'language'           => sanitize_text_field( $decision['language'] ?? 'unknown' ),
 				'reasoning_summary'  => sanitize_text_field( $decision['reasoning_summary'] ?? '' ),
 				'command_decision'   => self::compact_ai_command_decision_for_result( $decision ),
+				'fallback_reason'    => 'non_task_mode',
 			],
 			$confidence
 		);
+	}
+
+	private static function infer_email_authoring_instruction_from_command( $command, $normalized, $params = [] ) {
+		$params = is_array( $params ) ? $params : [];
+		$source = '';
+
+		if ( ! empty( $params['instruction'] ) ) {
+			$source = trim( sanitize_textarea_field( $params['instruction'] ) );
+		}
+
+		if ( '' === $source ) {
+			$source = (string) $command;
+		}
+
+		$instruction = preg_replace(
+			'/\bfor\s+order\s+#?\d+\b/i',
+			'',
+			$source
+		);
+
+		$instruction = preg_replace(
+			'/\border\s+#?\d+\b/i',
+			'',
+			(string) $instruction
+		);
+
+		$instruction = preg_replace(
+			'/^\s*(?:write|draft|compose|prepare|create|save|send)(?:\s+and\s+(?:save|send))?\b\s*/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/^\s*(?:me|us)\b\s*/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/^\s*(?:an?\s+)?(?:customer\s+)?(?:email|reply|message)\b[:\s-]*/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/\b(?:for\s+)?(?:this|that|the|current)?\s*order\b/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/^\s*(?:for|regarding|about)\b[\s:,-]*/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/\s+(?:and\s+)?(?:save(?:\s+it)?(?:\s+as)?\s+draft|save\s+as\s+draft|send(?:\s+it)?|send\s+to\s+customer)\s*$/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/\b(?:customer\s+)?email\b\s*$/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/\b(?:customer\s+)?email\b(?=\s*[\.\!\?]?\s*$)/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/^\s*(?:a|an)\s+/i',
+			'',
+			$instruction
+		);
+
+		$instruction = trim( wp_strip_all_tags( (string) $instruction ) );
+		$instruction = preg_replace( '/\s+([\.\!\?])/', '$1', (string) $instruction );
+		$instruction = trim( preg_replace( '/^[\s:,-]+|[\s:,-]+$/', '', $instruction ) );
+
+		if ( '' === $instruction ) {
+			return '';
+		}
+
+		$normalized_instruction = strtolower( $instruction );
+		$normalized_command     = strtolower( trim( (string) $normalized ) );
+
+		if (
+			$normalized_instruction === $normalized_command ||
+			preg_match( '/^(?:email|customer email|reply|message|about it|it|this|that|for|to|about|regarding)$/i', $instruction )
+		) {
+			return '';
+		}
+
+		return sanitize_textarea_field( $instruction );
+	}
+
+	private static function normalize_ai_router_email_instruction_decision( $decision, $command, $normalized ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$action   = sanitize_text_field( $decision['action'] ?? '' );
+		$params   = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+
+		if ( ! in_array( $action, [ 'orders.compose_customer_email', 'workflow.write_email_for_order', 'workflow.write_and_save_email_draft_for_order', 'workflow.write_and_send_email_for_order' ], true ) ) {
+			return $decision;
+		}
+
+		$current_instruction = sanitize_textarea_field( $params['instruction'] ?? '' );
+		$inferred_instruction = self::infer_email_authoring_instruction_from_command( $command, $normalized, $params );
+
+		if ( '' === $inferred_instruction ) {
+			return $decision;
+		}
+
+		if ( '' === $current_instruction || $inferred_instruction !== $current_instruction ) {
+			$decision['params']['instruction'] = $inferred_instruction;
+		}
+
+		return $decision;
+	}
+
+	private static function normalize_ai_router_order_target_params_decision( $decision, $command ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$action   = sanitize_text_field( $decision['action'] ?? '' );
+		$params   = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+
+		if ( ! in_array( $action, [ 'orders.hold', 'orders.add_note', 'orders.update_status', 'orders.bulk_update_status_with_note' ], true ) ) {
+			return $decision;
+		}
+
+		$order_ids = ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] )
+			? array_values( array_filter( array_map( 'absint', $params['order_ids'] ) ) )
+			: [];
+
+		if ( empty( $order_ids ) && class_exists( 'YoRo_Order_Helper' ) ) {
+			$order_ids = array_values( array_filter( array_map( 'absint', YoRo_Order_Helper::extract_order_ids_from_text( (string) $command ) ) ) );
+		}
+
+		if ( ! empty( $order_ids ) ) {
+			$decision['params']['order_ids'] = $order_ids;
+			$decision['params']['order_id']  = absint( reset( $order_ids ) );
+		}
+
+		return $decision;
+	}
+
+	private static function refresh_ai_router_decision_contract( $decision ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$action   = sanitize_text_field( $decision['action'] ?? '' );
+
+		if ( '' === $action ) {
+			return $decision;
+		}
+
+		$catalog_item = self::build_ai_router_action_catalog_item( $action );
+
+		if ( ! empty( $catalog_item ) ) {
+			$decision['action_catalog_item'] = $catalog_item;
+		}
+
+		if ( empty( $decision['intent_family'] ) && ! empty( $catalog_item['intent_family'] ) ) {
+			$decision['intent_family'] = sanitize_key( $catalog_item['intent_family'] );
+		}
+
+		return $decision;
+	}
+
+	private static function build_ai_router_action_catalog_item( $action ) {
+		$action = sanitize_text_field( $action );
+
+		if ( '' === $action || ! class_exists( 'YoRo_Action_Registry' ) ) {
+			return [];
+		}
+
+		$config = YoRo_Action_Registry::get( $action );
+
+		if ( empty( $config ) || ! is_array( $config ) ) {
+			return [];
+		}
+
+		$input_schema = isset( $config['input_schema'] ) && is_array( $config['input_schema'] )
+			? $config['input_schema']
+			: [];
+		$required_params = ! empty( $config['required_params'] ) && is_array( $config['required_params'] )
+			? array_values( array_map( 'sanitize_key', $config['required_params'] ) )
+			: [];
+
+		return [
+			'name'                  => $action,
+			'label'                 => sanitize_text_field( $config['label'] ?? $action ),
+			'description'           => sanitize_text_field( $config['ai_description'] ?? ( $config['description'] ?? '' ) ),
+			'category'              => sanitize_key( $config['category'] ?? 'general' ),
+			'intent_family'         => sanitize_key( $config['intent_family'] ?? '' ),
+			'input_schema'          => is_array( $input_schema ) ? $input_schema : [],
+			'required_params'       => $required_params,
+			'param_hints'           => isset( $config['param_hints'] ) && is_array( $config['param_hints'] ) ? $config['param_hints'] : [],
+			'clarification_hints'   => isset( $config['clarification_hints'] ) && is_array( $config['clarification_hints'] ) ? $config['clarification_hints'] : [],
+			'write_action'          => ! empty( $config['write_action'] ),
+			'requires_confirmation' => ! empty( $config['requires_confirmation'] ) || ! empty( $config['write_action'] ),
+			'risk_level'            => sanitize_key( $config['risk_level'] ?? 'low' ),
+		];
 	}
 
 	private static function build_ai_command_router_clarification_response( $command, $normalized, $decision, $message, $confidence ) {
 		$suggestions = isset( $decision['suggestions'] ) && is_array( $decision['suggestions'] )
 			? $decision['suggestions']
 			: [];
+		$clarify_reason = self::infer_clarify_reason_from_decision( $decision );
+		$action = sanitize_text_field( $decision['action'] ?? '' );
+		$params = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+		$raw_missing = isset( $decision['missing'] ) && is_array( $decision['missing'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $decision['missing'] ) ) )
+			: [];
+		$missing = self::infer_missing_params_for_pending_workflow( $action, $params, $raw_missing );
 		$current_workflow = self::build_pending_missing_params_workflow_from_decision(
 			$command,
 			$decision
 		);
+		$should_suppress_generic_options = self::should_suppress_ai_router_clarify_options(
+			$decision,
+			$missing,
+			$current_workflow
+		);
+		$options = [];
+
+		if ( ! $should_suppress_generic_options ) {
+			$options = ! empty( $suggestions ) ? $suggestions : self::get_clarification_options( $normalized );
+		}
 
 		$response = [
 			'success'            => false,
 			'matched'            => false,
 			'stage'              => 'clarify',
 			'message'            => sanitize_text_field( $message ),
-			'options'            => ! empty( $suggestions ) ? $suggestions : self::get_clarification_options( $normalized ),
+			'options'            => $options,
 			'parser_rule'        => 'ai.command_router.clarify',
 			'parser_source'      => 'ai_router',
 			'confidence'         => $confidence,
 			'original_command'   => $command,
 			'normalized_command' => $normalized,
 			'language'           => sanitize_text_field( $decision['language'] ?? 'unknown' ),
+			'intent_family'      => sanitize_key( $decision['intent_family'] ?? '' ),
 			'summary'            => sanitize_text_field( $decision['summary'] ?? '' ),
 			'reasoning_summary'  => sanitize_text_field( $decision['reasoning_summary'] ?? '' ),
 			'command_decision'   => self::compact_ai_command_decision_for_result( $decision ),
+			'clarify_reason'     => $clarify_reason,
+			'raw_param_keys'     => isset( $decision['raw_param_keys'] ) && is_array( $decision['raw_param_keys'] ) ? $decision['raw_param_keys'] : [],
+			'dropped_param_keys' => isset( $decision['dropped_param_keys'] ) && is_array( $decision['dropped_param_keys'] ) ? $decision['dropped_param_keys'] : [],
+			'params_trimmed_count' => isset( $decision['params_trimmed_count'] ) ? absint( $decision['params_trimmed_count'] ) : 0,
 		];
+
+		if ( '' !== $action ) {
+			$response['action'] = $action;
+		}
+
+		if ( ! empty( $params ) ) {
+			$response['params'] = $params;
+		}
+
+		if ( ! empty( $missing ) ) {
+			$response['missing'] = $missing;
+		}
 
 		if ( ! empty( $current_workflow ) ) {
 			$response['current_workflow'] = $current_workflow;
+			$response['options'] = self::append_workflow_cancel_option( $response['options'], $current_workflow );
 		}
 
 		return $response;
+	}
+
+	private static function should_suppress_ai_router_clarify_options( $decision, $missing, $current_workflow ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$missing = is_array( $missing ) ? $missing : [];
+		$current_workflow = is_array( $current_workflow ) ? $current_workflow : [];
+		$action = sanitize_text_field( $decision['action'] ?? '' );
+		$mode   = sanitize_key( $decision['mode'] ?? '' );
+
+		if ( ! empty( $current_workflow ) ) {
+			return false;
+		}
+
+		if ( '' === $action ) {
+			return false;
+		}
+
+		if ( ! empty( $missing ) ) {
+			return false;
+		}
+
+		return in_array( $mode, [ 'clarify', 'task_request' ], true );
 	}
 
 	private static function build_pending_missing_params_workflow_from_decision( $command, $decision ) {
@@ -426,6 +1902,7 @@ class YoRo_Parser_Engine {
 		}
 
 		$params = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+		$params = self::hydrate_pending_workflow_target_params_from_command( $command, $action, $params );
 		$missing = self::infer_missing_params_for_pending_workflow( $action, $params, $missing );
 		$workflow_type = 'generic';
 		$workflow_params = [];
@@ -453,6 +1930,7 @@ class YoRo_Parser_Engine {
 				}
 
 				$order_id = absint( reset( $order_ids ) );
+				$workflow_type = 'order_note';
 				$workflow_params = [
 					'order_ids' => $order_ids,
 				];
@@ -466,6 +1944,7 @@ class YoRo_Parser_Engine {
 				}
 
 				$order_id = absint( reset( $order_ids ) );
+				$workflow_type = 'order_status_update';
 				$workflow_params = [
 					'order_ids' => $order_ids,
 				];
@@ -491,6 +1970,38 @@ class YoRo_Parser_Engine {
 			'created_at'   => current_time( 'mysql' ),
 			'updated_at'   => current_time( 'mysql' ),
 		];
+	}
+
+	private static function hydrate_pending_workflow_target_params_from_command( $command, $action, $params ) {
+		$action = sanitize_text_field( $action );
+		$params = is_array( $params ) ? $params : [];
+
+		if ( ! in_array( $action, [ 'orders.add_note', 'orders.update_status', 'orders.compose_customer_email' ], true ) ) {
+			return $params;
+		}
+
+		if ( ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
+			return $params;
+		}
+
+		if ( ! empty( $params['order_id'] ) ) {
+			$params['order_ids'] = [ absint( $params['order_id'] ) ];
+			return $params;
+		}
+
+		$order_ids = class_exists( 'YoRo_Order_Helper' )
+			? YoRo_Order_Helper::extract_order_ids_from_text( (string) $command )
+			: [];
+		$order_ids = array_values( array_filter( array_map( 'absint', is_array( $order_ids ) ? $order_ids : [] ) ) );
+
+		if ( empty( $order_ids ) ) {
+			return $params;
+		}
+
+		$params['order_ids'] = $order_ids;
+		$params['order_id']  = absint( reset( $order_ids ) );
+
+		return $params;
 	}
 
 	private static function infer_missing_params_for_pending_workflow( $action, $params, $missing ) {
@@ -565,6 +2076,8 @@ class YoRo_Parser_Engine {
 		$topic    = is_array( $extra_result ) ? sanitize_key( $extra_result['conversation_topic'] ?? '' ) : '';
 		$summary  = self::normalize_assistant_response_copy( $summary, $topic );
 		$followup = self::normalize_assistant_response_copy( $followup, $topic );
+		$fallback_reason = is_array( $extra_result ) ? sanitize_key( $extra_result['fallback_reason'] ?? '' ) : '';
+		$suggestions = self::filter_ai_router_assistant_suggestions( $suggestions );
 
 		$result = array_merge(
 			[
@@ -586,19 +2099,81 @@ class YoRo_Parser_Engine {
 			'confidence'         => $confidence,
 			'original_command'   => $command,
 			'normalized_command' => $normalized,
+			'fallback_reason'    => $fallback_reason,
 			'result'             => $result,
 		];
+	}
+
+	private static function filter_ai_router_assistant_suggestions( $suggestions ) {
+		if ( ! is_array( $suggestions ) ) {
+			return [];
+		}
+
+		return array_values(
+			array_filter(
+				$suggestions,
+				static function( $suggestion ) {
+					if ( ! is_array( $suggestion ) ) {
+						return false;
+					}
+
+					return '' !== sanitize_text_field( $suggestion['action'] ?? '' );
+				}
+			)
+		);
 	}
 
 	private static function compact_ai_command_decision_for_result( $decision ) {
 		return [
 			'mode'                  => sanitize_key( $decision['mode'] ?? '' ),
+			'intent_family'         => sanitize_key( $decision['intent_family'] ?? '' ),
 			'action'                => sanitize_text_field( $decision['action'] ?? '' ),
 			'confidence'            => isset( $decision['confidence'] ) ? (float) $decision['confidence'] : 0,
+			'catalog_action_count'  => isset( $decision['catalog_action_count'] ) ? absint( $decision['catalog_action_count'] ) : 0,
 			'missing'               => isset( $decision['missing'] ) && is_array( $decision['missing'] ) ? array_values( array_map( 'sanitize_key', $decision['missing'] ) ) : [],
 			'ambiguities'           => isset( $decision['ambiguities'] ) && is_array( $decision['ambiguities'] ) ? array_values( array_map( 'sanitize_text_field', $decision['ambiguities'] ) ) : [],
 			'clarification_question' => sanitize_text_field( $decision['clarification_question'] ?? '' ),
+			'raw_param_keys'        => isset( $decision['raw_param_keys'] ) && is_array( $decision['raw_param_keys'] ) ? array_values( array_map( 'sanitize_key', $decision['raw_param_keys'] ) ) : [],
+			'dropped_param_keys'    => isset( $decision['dropped_param_keys'] ) && is_array( $decision['dropped_param_keys'] ) ? array_values( array_map( 'sanitize_key', $decision['dropped_param_keys'] ) ) : [],
+			'params_trimmed_count'  => isset( $decision['params_trimmed_count'] ) ? absint( $decision['params_trimmed_count'] ) : 0,
 		];
+	}
+
+	private static function infer_clarify_reason_from_decision( $decision ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$missing = isset( $decision['missing'] ) && is_array( $decision['missing'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $decision['missing'] ) ) )
+			: [];
+
+		if ( ! empty( $missing[0] ) ) {
+			switch ( $missing[0] ) {
+				case 'order_id':
+				case 'order_ids':
+				case 'customer_id':
+				case 'draft_id':
+				case 'template_id':
+					return 'missing_target';
+				case 'status':
+				case 'order_status':
+					return 'missing_status';
+				case 'note':
+				case 'note_text':
+					return 'missing_note';
+				case 'instruction':
+				case 'email_body':
+				case 'body':
+				case 'subject':
+					return 'missing_instruction';
+			}
+		}
+
+		$confidence = isset( $decision['confidence'] ) ? (float) $decision['confidence'] : 0;
+
+		if ( $confidence > 0 && $confidence < 0.75 ) {
+			return 'low_confidence';
+		}
+
+		return 'details';
 	}
 
 	private static function get_ai_command_router_confidence_threshold( $decision ) {
@@ -630,6 +2205,69 @@ class YoRo_Parser_Engine {
 		if ( isset( $result['intent'] ) && is_array( $result['intent'] ) ) {
 			$result['intent']['name'] = 'orders_bulk_update_status_with_note';
 			$result['intent']['action'] = 'orders.bulk_update_status_with_note';
+		}
+
+		return $result;
+	}
+
+	private static function correct_ai_add_note_with_status_to_bulk_action( $result ) {
+		if ( ! is_array( $result ) || 'orders.add_note' !== ( $result['action'] ?? '' ) ) {
+			return $result;
+		}
+
+		$status = sanitize_key( $result['params']['status'] ?? '' );
+		$note   = isset( $result['params']['note'] ) ? trim( sanitize_text_field( $result['params']['note'] ) ) : '';
+		$order_ids = isset( $result['params']['order_ids'] ) && is_array( $result['params']['order_ids'] )
+			? array_values( array_filter( array_map( 'absint', $result['params']['order_ids'] ) ) )
+			: [];
+
+		if ( '' === $status || '' === $note || empty( $order_ids ) ) {
+			return $result;
+		}
+
+		$result['action'] = 'orders.bulk_update_status_with_note';
+		$result['intent_family'] = 'update_order_status';
+
+		if ( isset( $result['intent'] ) && is_array( $result['intent'] ) ) {
+			$result['intent']['name'] = 'orders_bulk_update_status_with_note';
+			$result['intent']['action'] = 'orders.bulk_update_status_with_note';
+		}
+
+		if ( isset( $result['command_decision'] ) && is_array( $result['command_decision'] ) ) {
+			$result['command_decision']['action'] = 'orders.bulk_update_status_with_note';
+			$result['command_decision']['intent_family'] = 'update_order_status';
+		}
+
+		return $result;
+	}
+
+	private static function hydrate_result_intent_family_from_action( $result ) {
+		$result = is_array( $result ) ? $result : [];
+		$action = sanitize_text_field( $result['action'] ?? '' );
+
+		if ( '' === $action || ! empty( $result['intent_family'] ) ) {
+			return $result;
+		}
+
+		$map = [
+			'orders.refund_preview'                         => 'refund_review',
+			'workflow.refund_review'                        => 'refund_review',
+			'orders.hold'                                   => 'hold_order',
+			'orders.add_note'                               => 'add_note',
+			'orders.update_status'                          => 'update_order_status',
+			'orders.bulk_update_status_with_note'           => 'update_order_status',
+			'orders.compose_customer_email'                 => 'customer_email',
+			'workflow.write_email_for_order'                => 'customer_email',
+			'workflow.write_and_save_email_draft_for_order' => 'customer_email',
+			'workflow.write_and_send_email_for_order'       => 'customer_email',
+		];
+
+		if ( isset( $map[ $action ] ) ) {
+			$result['intent_family'] = $map[ $action ];
+		}
+
+		if ( isset( $result['command_decision'] ) && is_array( $result['command_decision'] ) && empty( $result['command_decision']['intent_family'] ) && ! empty( $result['intent_family'] ) ) {
+			$result['command_decision']['intent_family'] = $result['intent_family'];
 		}
 
 		return $result;
@@ -1041,7 +2679,8 @@ class YoRo_Parser_Engine {
 			! empty( $status ) &&
 			YoRo_Order_Helper::is_valid_order_status( $status ) &&
 			preg_match( '/\b(?:change|mark|move|set|update)\b/i', $text_for_match ) &&
-			preg_match( '/\b(?:to|as|status)\b/i', $text_for_match )
+			preg_match( '/\b(?:to|as|status)\b/i', $text_for_match ) &&
+			! preg_match( '/\b(?:add\s+note|with\s+note|note)\b/i', $text_for_match )
 		) {
 			$parsed = [
 				'success'            => true,
@@ -1064,6 +2703,61 @@ class YoRo_Parser_Engine {
 			$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
 
 			return YoRo_Entity_Validator::validate( $resolved_result );
+		}
+
+		if ( preg_match( '/\b(?:refund|refundable)\b/i', $text_for_match ) || preg_match( '/\b(?:hoàn tiền|hoan tien)\b/u', $text_for_match ) ) {
+			$order_id = absint( reset( $order_ids ) );
+			$delivery_mode = self::resolve_explicit_refund_delivery_mode( $text_for_match );
+			$is_preview_only = 'preview' === $delivery_mode && preg_match( '/\b(?:preview|xem trước|xem truoc)\b/u', $text_for_match ) && ! preg_match( '/\b(?:review|check|inspect|look at|open|prepare)\b/i', $text_for_match );
+
+			if ( $is_preview_only ) {
+				$parsed = [
+					'success'            => true,
+					'matched'            => true,
+					'action'             => 'orders.refund_preview',
+					'intent_family'      => 'refund_review',
+					'params'             => [
+						'order_id'  => $order_id,
+						'order_ids' => [ $order_id ],
+					],
+					'parser_rule'        => 'guard.orders.refund_preview.explicit_order',
+					'parser_source'      => 'guard',
+					'confidence'         => 0.99,
+					'original_command'   => $command,
+					'normalized_command' => $normalized,
+				];
+
+				$normalized_result = self::normalize_parsed_result( $parsed, $command, $normalized, $client_context );
+				$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
+				$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
+
+				return YoRo_Entity_Validator::validate( self::hydrate_result_intent_family_from_action( $resolved_result ) );
+			}
+
+			if ( class_exists( 'YoRo_Workflow_Templates' ) ) {
+				$workflow_result = YoRo_Workflow_Templates::build_parsed(
+					'refund_review',
+					[
+						'order_id'       => $order_id,
+						'delivery_mode'  => $delivery_mode,
+						'original_command' => $command,
+					],
+					$command
+				);
+
+				if ( is_array( $workflow_result ) ) {
+					$workflow_result['parser_source'] = 'guard';
+					$workflow_result['parser_rule'] = 'guard.workflow.refund_review.explicit_order';
+					$workflow_result['confidence'] = 0.99;
+					$workflow_result['intent_family'] = 'refund_review';
+
+					if ( isset( $workflow_result['command_decision'] ) && is_array( $workflow_result['command_decision'] ) ) {
+						$workflow_result['command_decision']['intent_family'] = 'refund_review';
+					}
+				}
+
+				return $workflow_result;
+			}
 		}
 
 		if (
@@ -1093,6 +2787,7 @@ class YoRo_Parser_Engine {
 
 		if (
 			preg_match( '/\b(?:add\s+(?:a\s+)?)?note\b/i', $text_for_match ) &&
+			! preg_match( '/\b(?:change|mark|move|set|update)\b.*\b(?:to|as|status)\b/i', $text_for_match ) &&
 			! preg_match( '/\b(?:hold|on hold)\b/i', $text_for_match )
 		) {
 			$note = '';
@@ -1148,6 +2843,24 @@ class YoRo_Parser_Engine {
 		return null;
 	}
 
+	private static function resolve_explicit_refund_delivery_mode( $text ) {
+		$text = is_string( $text ) ? strtolower( trim( $text ) ) : '';
+
+		if ( '' === $text ) {
+			return 'preview';
+		}
+
+		if ( preg_match( '/\b(?:save(?:\s+it)?(?:\s+as)?\s+draft|save\s+as\s+draft|draft)\b/i', $text ) ) {
+			return 'save_draft';
+		}
+
+		if ( preg_match( '/\b(?:send|email customer|notify customer)\b/i', $text ) || preg_match( '/\b(?:gửi|gui)\b/u', $text ) ) {
+			return 'send';
+		}
+
+		return 'preview';
+	}
+
 	private static function detect_window_for_retrieval( $normalized, $default ) {
 		if ( false !== strpos( $normalized, 'today' ) ) {
 			return 'today';
@@ -1192,6 +2905,173 @@ class YoRo_Parser_Engine {
 		}
 
 		return $default;
+	}
+
+	private static function maybe_build_semantic_read_only_fallback( $command, $normalized, $client_context = [] ) {
+		$normalized = strtolower( trim( (string) $normalized ) );
+
+		if ( '' === $normalized ) {
+			return null;
+		}
+
+		$contextual_surface = self::resolve_contextual_read_only_surface_for_fallback( $client_context );
+
+		if ( empty( $contextual_surface ) || ! self::is_contextual_read_only_refresh_request( $normalized ) ) {
+			return null;
+		}
+
+		$action = $contextual_surface['action'] ?? '';
+		$intent_name = $contextual_surface['intent_name'] ?? '';
+		$default_window = $contextual_surface['default_window'] ?? 'today';
+		$confidence = 0.88;
+
+		if ( in_array( $action, [ 'store.get_daily_briefing', 'store.get_morning_briefing' ], true ) ) {
+			return [
+				'success'            => true,
+				'matched'            => true,
+				'action'             => $action,
+				'params'             => [
+					'window' => self::detect_window_for_retrieval( $normalized, $default_window ),
+				],
+				'parser_rule'        => 'guard.contextual_read_only_surface',
+				'parser_source'      => 'guard',
+				'confidence'         => $confidence,
+				'original_command'   => $command,
+				'normalized_command' => $normalized,
+				'intent'             => [
+					'name'       => $intent_name,
+					'confidence' => $confidence,
+					'source'     => 'guard',
+				],
+			];
+		}
+
+		if ( 'store.get_business_summary' === $action ) {
+			return [
+				'success'            => true,
+				'matched'            => true,
+				'action'             => $action,
+				'params'             => [
+					'window' => self::detect_window_for_retrieval( $normalized, $default_window ),
+					'focus'  => self::detect_business_focus_for_retrieval( $normalized ),
+				],
+				'parser_rule'        => 'guard.contextual_read_only_surface',
+				'parser_source'      => 'guard',
+				'confidence'         => $confidence,
+				'original_command'   => $command,
+				'normalized_command' => $normalized,
+				'intent'             => [
+					'name'       => $intent_name,
+					'confidence' => $confidence,
+					'source'     => 'guard',
+				],
+			];
+		}
+
+		if ( 'operations.get_summary' === $action ) {
+			return [
+				'success'            => true,
+				'matched'            => true,
+				'action'             => $action,
+				'params'             => [
+					'window' => self::detect_window_for_retrieval( $normalized, $default_window ),
+					'focus'  => 'overview',
+				],
+				'parser_rule'        => 'guard.contextual_read_only_surface',
+				'parser_source'      => 'guard',
+				'confidence'         => $confidence,
+				'original_command'   => $command,
+				'normalized_command' => $normalized,
+				'intent'             => [
+					'name'       => $intent_name,
+					'confidence' => $confidence,
+					'source'     => 'guard',
+				],
+			];
+		}
+
+		return null;
+	}
+
+	private static function resolve_contextual_read_only_surface_for_fallback( $client_context = [] ) {
+		$active_followup_type = sanitize_key( $client_context['active_followup_type'] ?? '' );
+		$last_result_type = sanitize_key( $client_context['last_result_type'] ?? '' );
+
+		$candidates = array_values(
+			array_filter(
+				[
+					$active_followup_type,
+					$last_result_type,
+				]
+			)
+		);
+
+		$map = [
+			'briefing' => [
+				'action'         => 'store.get_daily_briefing',
+				'intent_name'    => 'store_briefing',
+				'default_window' => 'today',
+			],
+			'morning_briefing' => [
+				'action'         => 'store.get_morning_briefing',
+				'intent_name'    => 'store_briefing',
+				'default_window' => 'today',
+			],
+			'business' => [
+				'action'         => 'store.get_business_summary',
+				'intent_name'    => 'business_summary',
+				'default_window' => 'last_7_days',
+			],
+			'business_summary' => [
+				'action'         => 'store.get_business_summary',
+				'intent_name'    => 'business_summary',
+				'default_window' => 'last_7_days',
+			],
+			'operations' => [
+				'action'         => 'operations.get_summary',
+				'intent_name'    => 'operations_overview',
+				'default_window' => 'last_7_days',
+			],
+			'operations_summary' => [
+				'action'         => 'operations.get_summary',
+				'intent_name'    => 'operations_overview',
+				'default_window' => 'last_7_days',
+			],
+		];
+
+		foreach ( $candidates as $candidate ) {
+			if ( ! empty( $map[ $candidate ] ) ) {
+				return $map[ $candidate ];
+			}
+		}
+
+		return [];
+	}
+
+	private static function is_contextual_read_only_refresh_request( $normalized ) {
+		$normalized = strtolower( trim( (string) $normalized ) );
+
+		if ( '' === $normalized ) {
+			return false;
+		}
+
+		if ( preg_match( '/\b(?:order|orders|customer|customers|email|draft|template|note|status|refund|hold|cancel|send|write|compose)\b/i', $normalized ) ) {
+			return false;
+		}
+
+		$word_count = str_word_count( preg_replace( '/[^\p{L}\p{N}\s]+/u', ' ', $normalized ) );
+		$window = self::detect_window_for_retrieval( $normalized, '' );
+		$has_refresh_anchor = (bool) preg_match( '/\b(?:again|refresh|latest|update|current|now|today|weekly|monthly)\b/i', $normalized );
+
+		if ( '' !== $window && $word_count <= 4 ) {
+			return true;
+		}
+
+		if ( $has_refresh_anchor && $word_count <= 3 ) {
+			return true;
+		}
+
+		return false;
 	}
 
 	private static function detect_business_focus_for_retrieval( $normalized ) {
@@ -1293,6 +3173,70 @@ class YoRo_Parser_Engine {
 		);
 	}
 
+	private static function is_semantic_store_briefing_request( $normalized ) {
+		$normalized = strtolower( trim( (string) $normalized ) );
+
+		if ( '' === $normalized ) {
+			return false;
+		}
+
+		if ( ! preg_match( '/\b(?:brief|briefing|brief me|brief us|snapshot|readout)\b/i', $normalized ) ) {
+			return false;
+		}
+
+		if ( preg_match( '/\b(?:business summary|business overview|operations summary|operations overview|store insights|insights)\b/i', $normalized ) ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	private static function is_semantic_business_summary_request( $normalized ) {
+		$normalized = strtolower( trim( (string) $normalized ) );
+
+		if ( '' === $normalized ) {
+			return false;
+		}
+
+		if ( self::is_unsupported_analytics_request( $normalized ) ) {
+			return false;
+		}
+
+		if ( preg_match( '/\b(?:brief|briefing|snapshot|readout)\b/i', $normalized ) ) {
+			return false;
+		}
+
+		if ( preg_match( '/\b(?:operations summary|operations overview|attention queue|fulfillment queue|customer service queue|inventory queue|store insights|insights)\b/i', $normalized ) ) {
+			return false;
+		}
+
+		if ( preg_match( '/\b(?:business summary|business overview|business performance)\b/i', $normalized ) ) {
+			return true;
+		}
+
+		if ( preg_match( '/\b(?:our\s+business|the\s+business|business)\b/i', $normalized ) ) {
+			return (bool) preg_match(
+				'/\b(?:how\s+is|how(?:\'?s| is)|show|summary|get|give|tell|update|details|doing|performance|about)\b/i',
+				$normalized
+			);
+		}
+
+		return false;
+	}
+
+	private static function is_semantic_operations_overview_request( $normalized ) {
+		$normalized = strtolower( trim( (string) $normalized ) );
+
+		if ( '' === $normalized ) {
+			return false;
+		}
+
+		return (bool) preg_match(
+			'/\b(?:how\s+is\s+the\s+store\s+doing|what\s+does\s+the\s+store\s+look\s+like|what(?:\'?s| is)?\s+new)\b/i',
+			$normalized
+		);
+	}
+
 	private static function is_email_template_list_request( $normalized ) {
 		$normalized = strtolower( trim( (string) $normalized ) );
 
@@ -1358,7 +3302,7 @@ class YoRo_Parser_Engine {
 			}
 
 			$parsed = call_user_func( $parser, $command, $normalized, $client_context );
-			
+
 			if ( $parsed ) {
 				if ( is_array( $parsed ) ) {
 					$parsed['parser_source'] = $parsed['parser_source'] ?? 'rule';
@@ -1374,6 +3318,46 @@ class YoRo_Parser_Engine {
 					$normalized_result = self::normalize_parsed_result( $parsed, $command, $normalized, $client_context );
 					$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
 					$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
+
+					$composition_candidate = self::maybe_resolve_action_composition_candidate(
+						$command,
+						$normalized,
+						$client_context,
+						$resolved_result
+					);
+
+					if ( is_array( $composition_candidate ) ) {
+						$normalized_candidate = self::normalize_parsed_result(
+							$composition_candidate,
+							$command,
+							$normalized,
+							$client_context
+						);
+						$resolved_candidate = YoRo_Entity_Resolver::resolve( $normalized_candidate, $client_context );
+						$resolved_candidate = YoRo_Intent_Router::resolve_action( $resolved_candidate );
+
+						return YoRo_Entity_Validator::validate( $resolved_candidate );
+					}
+
+					$workflow_candidate = self::maybe_resolve_workflow_candidate(
+						$command,
+						$normalized,
+						$client_context,
+						$resolved_result
+					);
+
+					if ( is_array( $workflow_candidate ) ) {
+						$normalized_candidate = self::normalize_parsed_result(
+							$workflow_candidate,
+							$command,
+							$normalized,
+							$client_context
+						);
+						$resolved_candidate = YoRo_Entity_Resolver::resolve( $normalized_candidate, $client_context );
+						$resolved_candidate = YoRo_Intent_Router::resolve_action( $resolved_candidate );
+
+						return YoRo_Entity_Validator::validate( $resolved_candidate );
+					}
 
 					return YoRo_Entity_Validator::validate( $resolved_result );
 				}
@@ -1393,6 +3377,165 @@ class YoRo_Parser_Engine {
 		$confidence = isset( $result['confidence'] ) ? (float) $result['confidence'] : 1.0;
 
 		return $confidence >= 0.95;
+	}
+
+	private static function maybe_resolve_workflow_candidate( $command, $normalized, $client_context, $parsed ) {
+		if ( ! class_exists( 'YoRo_Workflow_Candidate_Resolver' ) || ! is_array( $parsed ) ) {
+			return null;
+		}
+
+		if ( self::should_preserve_direct_ai_email_authoring_action( $command, $normalized, $parsed ) ) {
+			return null;
+		}
+
+		$action = sanitize_text_field( $parsed['action'] ?? '' );
+
+		if ( '' === $action || 0 === strpos( $action, 'workflow.' ) ) {
+			return null;
+		}
+
+		return YoRo_Workflow_Candidate_Resolver::resolve(
+			$command,
+			$normalized,
+			$client_context,
+			[
+				'action'        => $action,
+				'params'      => isset( $parsed['params'] ) && is_array( $parsed['params'] ) ? $parsed['params'] : [],
+				'confidence' => isset( $parsed['confidence'] ) ? (float) $parsed['confidence'] : 0,
+				'parser_source' => sanitize_text_field( $parsed['parser_source'] ?? 'rule' ),
+			]
+		);
+	}
+
+	private static function maybe_build_direct_ai_workflow_result( $command, $normalized, $client_context, $parsed ) {
+		if ( ! class_exists( 'YoRo_Workflow_Templates' ) || ! is_array( $parsed ) ) {
+			return null;
+		}
+
+		$action        = sanitize_text_field( $parsed['action'] ?? '' );
+		$parser_source = sanitize_key( $parsed['parser_source'] ?? '' );
+		$params        = isset( $parsed['params'] ) && is_array( $parsed['params'] ) ? $parsed['params'] : [];
+		$template_id   = '';
+
+		if ( 'ai_router' !== $parser_source ) {
+			return null;
+		}
+
+		switch ( $action ) {
+			case 'workflow.write_email_for_order':
+			case 'workflow.write_and_save_email_draft_for_order':
+			case 'workflow.write_and_send_email_for_order':
+				$template_id = str_replace( 'workflow.', '', $action );
+				break;
+			default:
+				return null;
+		}
+
+		if ( empty( $params['order_id'] ) && ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
+			$params['order_id'] = absint( reset( $params['order_ids'] ) );
+		}
+
+		$inferred_instruction = self::infer_email_authoring_instruction_from_command( $command, $normalized, $params );
+
+		if ( '' !== $inferred_instruction ) {
+			$params['instruction'] = $inferred_instruction;
+		}
+
+		if ( 'workflow.write_and_save_email_draft_for_order' === $action ) {
+			$params['delivery_mode'] = 'save_draft';
+		} elseif ( 'workflow.write_and_send_email_for_order' === $action ) {
+			$params['delivery_mode'] = 'send';
+		}
+
+		$workflow_result = YoRo_Workflow_Templates::build_parsed(
+			$template_id,
+			$params,
+			$command
+		);
+
+		if ( ! is_array( $workflow_result ) ) {
+			return $workflow_result;
+		}
+
+		$workflow_result['parser_source']       = 'ai_router';
+		$workflow_result['parser_rule']         = 'ai.command_router.v2';
+		$workflow_result['confidence']          = isset( $parsed['confidence'] ) ? (float) $parsed['confidence'] : 0;
+		$workflow_result['intent_family']       = sanitize_key( $parsed['intent_family'] ?? 'customer_email' );
+		$workflow_result['language']            = sanitize_text_field( $parsed['language'] ?? '' );
+		$workflow_result['summary']             = sanitize_text_field( $parsed['summary'] ?? '' );
+		$workflow_result['reasoning_summary']   = sanitize_text_field( $parsed['reasoning_summary'] ?? '' );
+		$workflow_result['meta']                = isset( $parsed['meta'] ) && is_array( $parsed['meta'] ) ? $parsed['meta'] : [];
+		$workflow_result['raw_param_keys']      = isset( $parsed['raw_param_keys'] ) && is_array( $parsed['raw_param_keys'] ) ? $parsed['raw_param_keys'] : [];
+		$workflow_result['dropped_param_keys']  = isset( $parsed['dropped_param_keys'] ) && is_array( $parsed['dropped_param_keys'] ) ? $parsed['dropped_param_keys'] : [];
+		$workflow_result['params_trimmed_count'] = isset( $parsed['params_trimmed_count'] ) ? absint( $parsed['params_trimmed_count'] ) : 0;
+		$workflow_result['command_decision']    = isset( $parsed['command_decision'] ) && is_array( $parsed['command_decision'] ) ? $parsed['command_decision'] : [];
+		$workflow_result['resolution_path']     = sanitize_key( $parsed['resolution_path'] ?? 'ai_primary' );
+		$workflow_result['workflow_promotion_source'] = 'ai_router';
+		$workflow_result['workflow_promotion_reason'] = 'direct_ai_workflow_action';
+		$workflow_result['workflow_promotion_trigger_action'] = $action;
+
+		if ( ! empty( $workflow_result['workflow'] ) && is_array( $workflow_result['workflow'] ) ) {
+			$workflow_result['workflow']['promotion'] = [
+				'source'         => 'ai_router',
+				'reason'         => 'direct_ai_workflow_action',
+				'trigger_action' => $action,
+			];
+		}
+
+		return $workflow_result;
+	}
+
+	private static function should_preserve_direct_ai_email_authoring_action( $command, $normalized, $parsed ) {
+		$parsed = is_array( $parsed ) ? $parsed : [];
+		$action = sanitize_text_field( $parsed['action'] ?? '' );
+		$parser_source = sanitize_key( $parsed['parser_source'] ?? '' );
+		$params = isset( $parsed['params'] ) && is_array( $parsed['params'] ) ? $parsed['params'] : [];
+		$instruction = sanitize_textarea_field( $params['instruction'] ?? '' );
+		$order_id = absint( $params['order_id'] ?? 0 );
+
+		if ( 'ai_router' !== $parser_source || 'orders.compose_customer_email' !== $action ) {
+			return false;
+		}
+
+		if ( $order_id <= 0 && ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
+			$order_id = absint( reset( $params['order_ids'] ) );
+		}
+
+		if ( $order_id <= 0 || '' === trim( $instruction ) ) {
+			return false;
+		}
+
+		$normalized = is_string( $normalized ) ? $normalized : self::normalize( (string) $command );
+
+		if ( preg_match( '/\b(?:send|save|draft|template|use template|save as draft)\b/i', $normalized ) ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	private static function maybe_resolve_action_composition_candidate( $command, $normalized, $client_context, $parsed ) {
+		if ( ! class_exists( 'YoRo_Action_Composition_Planner' ) || ! is_array( $parsed ) ) {
+			return null;
+		}
+
+		$action = sanitize_text_field( $parsed['action'] ?? '' );
+
+		if ( '' === $action || 0 === strpos( $action, 'workflow.' ) ) {
+			return null;
+		}
+
+		return YoRo_Action_Composition_Planner::maybe_build_parsed(
+			$command,
+			$normalized,
+			$client_context,
+			[
+				'action'        => $action,
+				'params'        => isset( $parsed['params'] ) && is_array( $parsed['params'] ) ? $parsed['params'] : [],
+				'confidence'    => isset( $parsed['confidence'] ) ? (float) $parsed['confidence'] : 0,
+				'parser_source' => sanitize_text_field( $parsed['parser_source'] ?? 'rule' ),
+			]
+		);
 	}
 
 	private static function should_prioritize_strong_read_only_rule_result( $result ) {
@@ -1618,7 +3761,8 @@ class YoRo_Parser_Engine {
 			class_exists( 'YoRo_Order_Helper' ) &&
 			YoRo_Order_Helper::is_valid_order_status( $status ) &&
 			preg_match( '/\b(?:change|mark|move|set|update)\b/i', $normalized ) &&
-			preg_match( '/\b(?:to|as|status)\b/i', $normalized )
+			preg_match( '/\b(?:to|as|status)\b/i', $normalized ) &&
+			! preg_match( '/\b(?:add\s+note|with\s+note|note)\b/i', $normalized )
 		) {
 			return [
 				'action'     => 'orders.update_status',
@@ -1641,7 +3785,10 @@ class YoRo_Parser_Engine {
 			];
 		}
 
-		if ( preg_match( '/\b(?:add\s+(?:a\s+)?)?note\b/i', $normalized ) ) {
+		if (
+			preg_match( '/\b(?:add\s+(?:a\s+)?)?note\b/i', $normalized ) &&
+			! preg_match( '/\b(?:change|mark|move|set|update)\b.*\b(?:to|as|status)\b/i', $normalized )
+		) {
 			$note = '';
 
 			if ( isset( $params['note'] ) ) {
@@ -1704,6 +3851,23 @@ class YoRo_Parser_Engine {
 		return null;
 	}
 
+	private static function looks_like_contextual_plural_order_reference( $normalized ) {
+		$normalized = is_string( $normalized ) ? strtolower( trim( $normalized ) ) : '';
+
+		if ( '' === $normalized ) {
+			return false;
+		}
+
+		return (
+			false !== strpos( $normalized, 'these orders' ) ||
+			false !== strpos( $normalized, 'those orders' ) ||
+			false !== strpos( $normalized, 'selected orders' ) ||
+			false !== strpos( $normalized, 'all these' ) ||
+			false !== strpos( $normalized, 'all of them' ) ||
+			preg_match( '/\bthem\b/i', $normalized )
+		);
+	}
+
 	private static function resolve_bulk_order_ids_from_context( $normalized, $client_context = [] ) {
 		$last_orders = isset( $client_context['last_orders'] ) && is_array( $client_context['last_orders'] )
 			? $client_context['last_orders']
@@ -1733,13 +3897,7 @@ class YoRo_Parser_Engine {
 			return array_slice( $last_order_ids, 0, $limit );
 		}
 
-		if (
-			false !== strpos( $normalized, 'these orders' ) ||
-			false !== strpos( $normalized, 'those orders' ) ||
-			false !== strpos( $normalized, 'selected orders' ) ||
-			false !== strpos( $normalized, 'all these' ) ||
-			false !== strpos( $normalized, 'all of them' )
-		) {
+		if ( self::looks_like_contextual_plural_order_reference( $normalized ) ) {
 			if ( ! empty( $last_orders ) ) {
 				return array_values(
 					array_filter(
@@ -2916,6 +5074,7 @@ class YoRo_Parser_Engine {
 				[
 					'conversation_topic' => 'developer_handoff',
 					'result_type'        => 'assistant_message',
+					'fallback_reason'    => 'developer_handoff_without_context',
 				]
 			);
 		}
@@ -2974,7 +5133,8 @@ class YoRo_Parser_Engine {
 			return self::clarification_response(
 				$command,
 				$normalized,
-				__( 'I need a little more detail before I act on that. What would you like me to do?', 'yoro-agent-core' )
+				__( 'I need a little more detail before I act on that. What would you like me to do?', 'yoro-agent-core' ),
+				'ambiguous_reference'
 			);
 		}
 
@@ -3463,6 +5623,11 @@ class YoRo_Parser_Engine {
 				'email_templates.list',
 				'orders.get_customer_email_drafts',
 				'orders.compose_customer_email',
+				'workflow.review_suspicious_order',
+				'workflow.refund_review',
+				'workflow.write_email_for_order',
+				'workflow.write_and_save_email_draft_for_order',
+				'workflow.write_and_send_email_for_order',
 				'workflow.fulfillment_followup_preview',
 				'workflow.customer_followup_preview',
 				'workflow.operations_attention_preview',
@@ -3489,6 +5654,10 @@ class YoRo_Parser_Engine {
 				'orders.send_customer_email',
 				'email_templates.save',
 				'email_templates.delete',
+				'workflow.hold_and_add_note',
+				'workflow.update_status_with_note',
+				'workflow.review_suspicious_order',
+				'workflow.verify_customer_before_fulfillment',
 				'workflow.cancel',
 			],
 			true
@@ -4186,6 +6355,98 @@ class YoRo_Parser_Engine {
 
 				return $normalized_params;
 
+			case 'workflow.refund_review':
+				$delivery_mode = ! empty( $params['delivery_mode'] ) ? sanitize_key( $params['delivery_mode'] ) : 'preview';
+
+				return array_filter(
+					[
+						'order_id'         => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
+						'delivery_mode'    => $delivery_mode,
+						'instruction'      => ! empty( $params['instruction'] ) ? sanitize_textarea_field( $params['instruction'] ) : '',
+						'original_command' => $command,
+					],
+					static function( $value ) {
+						return ! ( '' === $value || 0 === $value || [] === $value );
+					}
+				);
+
+			case 'workflow.review_suspicious_order':
+				return array_filter(
+					[
+						'order_id'         => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
+						'note'             => ! empty( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : '',
+						'original_command' => $command,
+					],
+					static function( $value ) {
+						return ! ( '' === $value || 0 === $value || [] === $value );
+					}
+				);
+
+			case 'workflow.verify_customer_before_fulfillment':
+				return array_filter(
+					[
+						'order_id'            => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
+						'email_delivery_mode' => ! empty( $params['email_delivery_mode'] ) ? sanitize_key( $params['email_delivery_mode'] ) : 'preview',
+						'note'                => ! empty( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : '',
+						'original_command'    => $command,
+					],
+					static function( $value ) {
+						return ! ( '' === $value || 0 === $value || [] === $value );
+					}
+				);
+
+			case 'workflow.hold_and_add_note':
+				return array_filter(
+					[
+						'order_id'         => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
+						'note'             => ! empty( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : '',
+						'original_command' => $command,
+					],
+					static function( $value ) {
+						return ! ( '' === $value || 0 === $value || [] === $value );
+					}
+				);
+
+			case 'workflow.update_status_with_note':
+				return array_filter(
+					[
+						'order_id'         => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
+						'status'           => ! empty( $params['status'] ) ? sanitize_key( $params['status'] ) : '',
+						'note'             => ! empty( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : '',
+						'original_command' => $command,
+					],
+					static function( $value ) {
+						return ! ( '' === $value || 0 === $value || [] === $value );
+					}
+				);
+
+			case 'workflow.write_email_for_order':
+			case 'workflow.write_and_save_email_draft_for_order':
+			case 'workflow.write_and_send_email_for_order':
+				$delivery_mode = ! empty( $params['delivery_mode'] ) ? sanitize_key( $params['delivery_mode'] ) : '';
+
+				if ( '' === $delivery_mode ) {
+					if ( 'workflow.write_and_save_email_draft_for_order' === $action ) {
+						$delivery_mode = 'save_draft';
+					} elseif ( 'workflow.write_and_send_email_for_order' === $action ) {
+						$delivery_mode = 'send';
+					} else {
+						$delivery_mode = 'preview';
+					}
+				}
+
+				return array_filter(
+					[
+						'order_id'         => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
+						'instruction'      => ! empty( $params['instruction'] ) ? sanitize_textarea_field( $params['instruction'] ) : '',
+						'delivery_mode'    => $delivery_mode,
+						'original_command' => $command,
+					],
+					static function( $value ) {
+						return ! ( '' === $value || 0 === $value || [] === $value );
+					}
+				);
+
 			case 'workflow.cancel':
 				return [
 					'original_command' => $command,
@@ -4722,6 +6983,14 @@ class YoRo_Parser_Engine {
 			'email_templates.save' => 'Save this as a template',
 			'email_templates.delete' => 'Delete this template',
 			'workflow.cancel' => 'Cancel this workflow',
+			'workflow.hold_and_add_note' => 'Hold this order and add a note',
+			'workflow.refund_review' => 'Review refund details for this order',
+			'workflow.review_suspicious_order' => 'Review this suspicious order workflow',
+			'workflow.update_status_with_note' => 'Update this order status with a note',
+			'workflow.verify_customer_before_fulfillment' => 'Verify this customer before fulfillment',
+			'workflow.write_email_for_order' => 'Write an email for this order',
+			'workflow.write_and_save_email_draft_for_order' => 'Write and save an email draft for this order',
+			'workflow.write_and_send_email_for_order' => 'Write and send an email for this order',
 			'workflow.fulfillment_followup_preview' => 'Preview the next fulfillment follow-up',
 			'workflow.customer_followup_preview' => 'Preview the next customer follow-up',
 			'workflow.operations_attention_preview' => 'Preview the next operations attention follow-up',
@@ -4759,6 +7028,7 @@ class YoRo_Parser_Engine {
 				'conversation_topic' => 'clarify',
 				'conversation_family' => 'ai_inferred_action',
 				'result_type' => 'assistant_message',
+				'clarify_reason' => 'ai_inferred_action',
 			]
 		);
 	}
@@ -4843,9 +7113,189 @@ class YoRo_Parser_Engine {
 		);
 	}
 
+	private static function build_pre_router_explicit_refund_guard_response( $command, $normalized, $client_context = [] ) {
+		if ( ! class_exists( 'YoRo_Order_Helper' ) ) {
+			return null;
+		}
+
+		$order_ids = YoRo_Order_Helper::extract_order_ids_from_text( $command );
+
+		if ( empty( $order_ids ) ) {
+			return null;
+		}
+
+		$text_for_match = strtolower( trim( $command . ' ' . $normalized ) );
+
+		if ( ! preg_match( '/\b(?:refund|refundable)\b/i', $text_for_match ) && ! preg_match( '/\b(?:hoàn tiền|hoan tien)\b/u', $text_for_match ) ) {
+			return null;
+		}
+
+		$order_id = absint( reset( $order_ids ) );
+		$delivery_mode = self::resolve_explicit_refund_delivery_mode( $text_for_match );
+		$requires_workflow = self::requires_explicit_refund_workflow( $text_for_match );
+		$is_preview_only = 'preview' === $delivery_mode && ! $requires_workflow;
+
+		if ( $is_preview_only ) {
+			$parsed = [
+				'success'            => true,
+				'matched'            => true,
+				'action'             => 'orders.refund_preview',
+				'intent_family'      => 'refund_review',
+				'params'             => [
+					'order_id'  => $order_id,
+					'order_ids' => [ $order_id ],
+				],
+				'parser_rule'        => 'guard.orders.refund_preview.explicit_order',
+				'parser_source'      => 'guard',
+				'confidence'         => 0.99,
+				'original_command'   => $command,
+				'normalized_command' => $normalized,
+			];
+
+			$normalized_result = self::normalize_parsed_result( $parsed, $command, $normalized, $client_context );
+			$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
+			$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
+
+			return YoRo_Entity_Validator::validate( self::hydrate_result_intent_family_from_action( $resolved_result ) );
+		}
+
+		if ( ! class_exists( 'YoRo_Workflow_Templates' ) ) {
+			return null;
+		}
+
+		$workflow_result = YoRo_Workflow_Templates::build_parsed(
+			'refund_review',
+			[
+				'order_id'         => $order_id,
+				'delivery_mode'    => $delivery_mode,
+				'instruction'      => self::extract_explicit_refund_followup_instruction( $command, $normalized, $delivery_mode ),
+				'original_command' => $command,
+			],
+			$command
+		);
+
+		if ( is_array( $workflow_result ) ) {
+			$workflow_result['parser_source'] = 'guard';
+			$workflow_result['parser_rule'] = 'guard.workflow.refund_review.explicit_order';
+			$workflow_result['confidence'] = 0.99;
+			$workflow_result['intent_family'] = 'refund_review';
+		}
+
+		return $workflow_result;
+	}
+
+	private static function requires_explicit_refund_workflow( $text ) {
+		$text = is_string( $text ) ? strtolower( trim( $text ) ) : '';
+
+		if ( '' === $text ) {
+			return false;
+		}
+
+		if ( preg_match( '/\brefund\s+workflow\b/i', $text ) ) {
+			return true;
+		}
+
+		if ( preg_match( '/\b(?:follow-up|follow up)\b/i', $text ) ) {
+			return true;
+		}
+
+		if ( preg_match( '/\b(?:email|draft|save(?:\s+it)?(?:\s+as)?\s+draft|save\s+as\s+draft|send|notify customer|email customer)\b/i', $text ) ) {
+			return true;
+		}
+
+		if ( preg_match( '/\b(?:gửi|gui|nháp|nhap)\b/u', $text ) ) {
+			return true;
+		}
+
+		return false;
+	}
+
+	private static function build_pre_router_explicit_verification_guard_response( $command, $normalized, $client_context = [] ) {
+		if ( ! class_exists( 'YoRo_Order_Helper' ) || ! class_exists( 'YoRo_Workflow_Templates' ) ) {
+			return null;
+		}
+
+		$order_ids = YoRo_Order_Helper::extract_order_ids_from_text( $command );
+
+		if ( empty( $order_ids ) ) {
+			return null;
+		}
+
+		$text_for_match = strtolower( trim( $command . ' ' . $normalized ) );
+
+		if ( ! preg_match( '/\b(?:verify|verification|confirm)\b/i', $text_for_match ) && ! preg_match( '/\b(?:xác minh|xac minh|xác nhận|xac nhan)\b/u', $text_for_match ) ) {
+			return null;
+		}
+
+		if (
+			! preg_match( '/\b(?:address|identity|details|shipping|ship|fulfillment)\b/i', $text_for_match ) &&
+			! preg_match( '/\b(?:địa chỉ|dia chi|giao hàng|giao hang)\b/u', $text_for_match )
+		) {
+			return null;
+		}
+
+		$order_id = absint( reset( $order_ids ) );
+		$workflow_result = YoRo_Workflow_Templates::build_parsed(
+			'verify_customer_before_fulfillment',
+			[
+				'order_id'            => $order_id,
+				'email_delivery_mode' => self::resolve_explicit_email_delivery_mode( $text_for_match ),
+				'original_command'    => $command,
+			],
+			$command
+		);
+
+		if ( is_array( $workflow_result ) ) {
+			$workflow_result['parser_source'] = 'guard';
+			$workflow_result['parser_rule']   = 'guard.workflow.verify_customer_before_fulfillment.explicit_order';
+			$workflow_result['confidence']    = 0.99;
+		}
+
+		return $workflow_result;
+	}
+
+	private static function extract_explicit_refund_followup_instruction( $command, $normalized, $delivery_mode ) {
+		$command    = is_string( $command ) ? trim( $command ) : '';
+		$normalized = is_string( $normalized ) ? trim( $normalized ) : '';
+
+		if ( '' === $command && '' === $normalized ) {
+			return '';
+		}
+
+		$has_email_authoring_cue = preg_match( '/\b(?:write|draft|compose|create)\b/i', $command )
+			&& preg_match( '/\b(?:email|reply|message)\b/i', $command );
+
+		if ( ! $has_email_authoring_cue && ! in_array( $delivery_mode, [ 'save_draft', 'send' ], true ) ) {
+			return '';
+		}
+
+		if (
+			preg_match(
+				'/\b(?:email|reply|message)\b\s+(?:about|for|to)?\s*(.+?)(?:\s+and\s+(?:save|store|keep|send).*)?$/i',
+				$command,
+				$matches
+			)
+		) {
+			$instruction = sanitize_textarea_field( trim( (string) $matches[1] ) );
+
+			if (
+				'' !== $instruction &&
+				! preg_match( '/^(?:it|this|that|them|the customer)$/i', $instruction )
+			) {
+				return $instruction;
+			}
+		}
+
+		return 'Explain the refund review outcome and next steps to the customer. Keep it clear and concise.';
+	}
+
+	private static function resolve_explicit_email_delivery_mode( $text ) {
+		return self::resolve_explicit_refund_delivery_mode( $text );
+	}
+
 	private static function contains_store_scope_markers( $normalized ) {
 		return (bool) preg_match(
-			'/\b(?:order|orders|customer|customers|product|products|queue|briefing|store|inventory|fulfillment|shipping|shipment|tracking|note|status|email|draft|refund|backorder|stock|sku)\b/i',
+			'/\b(?:order|orders|customer|customers|product|products|queue|briefing|store|business|performance|revenue|sales|inventory|fulfillment|shipping|shipment|tracking|note|status|email|draft|refund|backorder|stock|sku)\b/i',
 			(string) $normalized
 		);
 	}
@@ -5109,7 +7559,7 @@ class YoRo_Parser_Engine {
 		if ( $include_handoff ) {
 			return [
 				[
-					'label' => __( 'Yes, send this to developers', 'yoro-agent-core' ),
+					'label' => __( 'Send to developers', 'yoro-agent-core' ),
 					'value' => 'Yes, send this to developers',
 				],
 			];
@@ -5422,8 +7872,18 @@ class YoRo_Parser_Engine {
 			'handoff_request_text'      => sanitize_text_field( $result['unsupported_capability'] ?? $requested_capability ?: $target_object ?: $command ),
 			'suggestions'               => [
 				[
-					'label' => __( 'Yes, send this to developers', 'yoro-agent-core' ),
-					'value' => 'Yes, send this to developers',
+					'label'   => __( 'Send to developers', 'yoro-agent-core' ),
+					'action'  => 'assistant.submit_developer_request',
+					'params'  => [
+						'request_text'              => sanitize_text_field( $result['unsupported_capability'] ?? $requested_capability ?: $target_object ?: $command ),
+						'original_command'          => sanitize_text_field( $command ),
+						'unsupported_capability'    => sanitize_text_field( $result['unsupported_capability'] ?? $requested_capability ?: $target_object ?: $command ),
+						'conversation_family'       => $family,
+						'closest_supported_surface' => '',
+						'context_order_id'          => 0,
+					],
+					'confirm' => false,
+					'preview' => false,
 				],
 			],
 		];
@@ -5608,23 +8068,42 @@ class YoRo_Parser_Engine {
 			}
 
 			$label = sanitize_text_field( $item['label'] ?? '' );
+			$action = sanitize_text_field( $item['action'] ?? '' );
 			$value = sanitize_text_field( $item['value'] ?? $item['command'] ?? '' );
 
-			if ( '' === $label || '' === $value ) {
+			if ( '' === $label || ( '' === $value && '' === $action ) ) {
 				continue;
 			}
 
-			$key = strtolower( $value );
+			$key = '' !== $action
+				? strtolower( $action . '|' . wp_json_encode( is_array( $item['params'] ?? null ) ? $item['params'] : [] ) )
+				: strtolower( $value );
 
 			if ( isset( $seen[ $key ] ) ) {
 				continue;
 			}
 
 			$seen[ $key ] = true;
-			$output[] = [
+			$normalized_item = [
 				'label' => $label,
-				'value' => $value,
 			];
+
+			if ( '' !== $action ) {
+				$normalized_item['action']  = $action;
+				$normalized_item['params']  = is_array( $item['params'] ?? null ) ? $item['params'] : [];
+				$normalized_item['confirm'] = ! empty( $item['confirm'] );
+				$normalized_item['preview'] = ! empty( $item['preview'] );
+			}
+
+			if ( '' !== $value ) {
+				$normalized_item['value'] = $value;
+			}
+
+			if ( ! empty( $item['requires_input'] ) ) {
+				$normalized_item['requires_input'] = true;
+			}
+
+			$output[] = $normalized_item;
 		}
 
 		return $output;
@@ -5719,6 +8198,8 @@ class YoRo_Parser_Engine {
 		$topic    = is_array( $extra_result ) ? sanitize_key( $extra_result['conversation_topic'] ?? '' ) : '';
 		$summary  = self::normalize_assistant_response_copy( $summary, $topic );
 		$followup = self::normalize_assistant_response_copy( $followup, $topic );
+		$clarify_reason = is_array( $extra_result ) ? sanitize_key( $extra_result['clarify_reason'] ?? '' ) : '';
+		$fallback_reason = is_array( $extra_result ) ? sanitize_key( $extra_result['fallback_reason'] ?? '' ) : '';
 
 		$result = array_merge(
 			[
@@ -5740,6 +8221,8 @@ class YoRo_Parser_Engine {
 			'confidence'         => 1.0,
 			'original_command'   => $command,
 			'normalized_command' => $normalized,
+			'clarify_reason'     => $clarify_reason,
+			'fallback_reason'    => $fallback_reason,
 			'result'             => $result,
 		];
 	}
@@ -5799,7 +8282,7 @@ class YoRo_Parser_Engine {
 		return sanitize_text_field( $text );
 	}
 
-	private static function clarification_response( $command, $normalized, $message ) {
+	private static function clarification_response( $command, $normalized, $message, $clarify_reason = 'details' ) {
 		$options = self::get_clarification_options( $normalized );
 
 		return [
@@ -5810,6 +8293,22 @@ class YoRo_Parser_Engine {
 			'options'            => $options,
 			'original_command'   => $command,
 			'normalized_command' => $normalized,
+			'clarify_reason'     => sanitize_key( $clarify_reason ),
+		];
+	}
+
+	private static function append_workflow_cancel_option( $options, $workflow ) {
+		$workflow = is_array( $workflow ) ? $workflow : [];
+
+		if ( 'collect_missing_params' !== sanitize_key( $workflow['step'] ?? '' ) ) {
+			return is_array( $options ) ? array_values( $options ) : [];
+		}
+
+		return [
+			[
+			'label'   => __( 'Cancel', 'yoro-agent-core' ),
+			'command' => 'workflow.cancel',
+			],
 		];
 	}
 
