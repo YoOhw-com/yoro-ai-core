@@ -59,7 +59,7 @@ class YoRo_REST_Execute_Handler {
 			'parsed' => $parsed,
 		];
 
-		if ( $confirm && ! empty( $registered_action['write_action'] ) ) {
+		if ( $confirm ) {
 			$stored_action_state = YoRo_REST_Workflow_State::get_action(
 				$user_id,
 				$action_state_token,
@@ -94,6 +94,19 @@ class YoRo_REST_Execute_Handler {
 		);
 
 		if ( is_wp_error( $runtime ) ) {
+			$semantic_response = YoRo_REST_Response_Helper::maybe_build_semantic_validation_response(
+				$trace_id,
+				$parsed,
+				$plan,
+				[],
+				[],
+				$runtime
+			);
+
+			if ( is_array( $semantic_response ) ) {
+				return rest_ensure_response( $semantic_response );
+			}
+
 			return $runtime;
 		}
 
@@ -121,18 +134,16 @@ class YoRo_REST_Execute_Handler {
 				$runtime
 			);
 
-			if ( ! empty( $registered_action['write_action'] ) ) {
-				$action_state_token = YoRo_REST_Workflow_State::create_action_token(
-					$user_id,
-					$action,
-					$params,
-					$parsed,
-					$plan
-				);
+			$action_state_token = YoRo_REST_Workflow_State::create_action_token(
+				$user_id,
+				$action,
+				$params,
+				$parsed,
+				$plan
+			);
 
-				$response['action_state_token']  = $action_state_token;
-				$response['pending_action_token'] = $action_state_token;
-			}
+			$response['action_state_token']   = $action_state_token;
+			$response['pending_action_token'] = $action_state_token;
 
 			$response['trace_id'] = $trace_id;
 			YoRo_REST_Execute_Log_Helper::log_runtime_confirmation_required(
@@ -154,6 +165,19 @@ class YoRo_REST_Execute_Handler {
 		}
 
 		if ( is_array( $result ) && empty( $result['success'] ) && empty( $result['requires_confirmation'] ) ) {
+			$semantic_response = YoRo_REST_Response_Helper::maybe_build_semantic_validation_response_from_result(
+				$trace_id,
+				$parsed,
+				$plan,
+				$risk,
+				$policy,
+				$result
+			);
+
+			if ( is_array( $semantic_response ) ) {
+				return rest_ensure_response( $semantic_response );
+			}
+
 			YoRo_REST_Execute_Log_Helper::log_error(
 				$user_id,
 				$action,
@@ -193,18 +217,16 @@ class YoRo_REST_Execute_Handler {
 				'result'  => $result,
 			];
 
-			if ( ! empty( $registered_action['write_action'] ) ) {
-				$action_state_token = YoRo_REST_Workflow_State::create_action_token(
-					$user_id,
-					$action,
-					$params,
-					$parsed,
-					$plan
-				);
+			$action_state_token = YoRo_REST_Workflow_State::create_action_token(
+				$user_id,
+				$action,
+				$params,
+				$parsed,
+				$plan
+			);
 
-				$response['action_state_token']  = $action_state_token;
-				$response['pending_action_token'] = $action_state_token;
-			}
+			$response['action_state_token']   = $action_state_token;
+			$response['pending_action_token'] = $action_state_token;
 
 			YoRo_REST_Execute_Log_Helper::log_preview(
 				$user_id,
@@ -223,15 +245,13 @@ class YoRo_REST_Execute_Handler {
 			$result['result_type']  = $result['result_type'] ?? 'confirmation';
 			$result['display_type'] = $result['display_type'] ?? 'confirmation';
 
-			if ( ! empty( $registered_action['write_action'] ) ) {
-				$action_state_token = YoRo_REST_Workflow_State::create_action_token(
-					$user_id,
-					$action,
-					$params,
-					$parsed,
-					$plan
-				);
-			}
+			$action_state_token = YoRo_REST_Workflow_State::create_action_token(
+				$user_id,
+				$action,
+				$params,
+				$parsed,
+				$plan
+			);
 
 			YoRo_REST_Execute_Log_Helper::log_confirmation_required(
 				$user_id,

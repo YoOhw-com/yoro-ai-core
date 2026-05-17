@@ -429,10 +429,12 @@ class YoRo_Orders_Read_Service {
 			'skipped'      => [],
 			'errors'       => [],
 			'window'       => [
-				'key'   => $window_key,
-				'label' => $window['label'],
-				'start' => $window['start'],
-				'end'   => $window['end'],
+				'key'      => $window_key,
+				'label'    => $window['label'],
+				'start'    => $window['start'],
+				'end'      => $window['end'],
+				'start_ts' => isset( $window['start_ts'] ) ? (int) $window['start_ts'] : 0,
+				'end_ts'   => isset( $window['end_ts'] ) ? (int) $window['end_ts'] : 0,
 			],
 			'insights'     => $insights,
 			'result_type'  => 'store_insights',
@@ -514,14 +516,19 @@ class YoRo_Orders_Read_Service {
 				continue;
 			}
 
+			$refund_date = $refund->get_date_created();
+
 			$refunds[] = [
 				'id'         => $refund->get_id(),
 				'amount'     => wc_format_decimal( abs( (float) $refund->get_amount() ), 2 ),
 				'reason'     => $refund->get_reason(),
-				'date'       => $refund->get_date_created() ? $refund->get_date_created()->date_i18n( 'Y-m-d H:i:s' ) : '',
+				'date'       => $refund_date ? YoRo_Date_Helper::format_wc_datetime( $refund_date ) : '',
+				'date_ts'    => $refund_date ? YoRo_Date_Helper::get_wc_timestamp( $refund_date ) : 0,
 				'created_by' => $refund->get_created_by(),
 			];
 		}
+
+		$order_date_created = $order->get_date_created();
 
 		return [
 			'success' => true,
@@ -547,7 +554,8 @@ class YoRo_Orders_Read_Service {
 				'payment_method' => $order->get_payment_method(),
 				'payment_title'  => $order->get_payment_method_title(),
 				'transaction_id' => $order->get_transaction_id(),
-				'date_created'   => $order->get_date_created() ? $order->get_date_created()->date_i18n( 'Y-m-d H:i:s' ) : '',
+				'date_created'   => $order_date_created ? YoRo_Date_Helper::format_wc_datetime( $order_date_created ) : '',
+				'date_created_ts'=> $order_date_created ? YoRo_Date_Helper::get_wc_timestamp( $order_date_created ) : 0,
 				'edit_url'       => method_exists( $order, 'get_edit_order_url' ) ? $order->get_edit_order_url() : admin_url( 'post.php?post=' . $order->get_id() . '&action=edit' ),
 			],
 
@@ -602,8 +610,8 @@ class YoRo_Orders_Read_Service {
 		$total_spent      = 0;
 		$status_counts    = [];
 		$payment_methods  = [];
-		$first_order_date = '';
-		$last_order_date  = '';
+		$first_order_timestamp = 0;
+		$last_order_timestamp  = 0;
 		$resolved_customer_name = '';
 		$customer_id      = 0;
 		$latest_order_id  = 0;
@@ -626,14 +634,15 @@ class YoRo_Orders_Read_Service {
 				$payment_methods[ $payment ] = isset( $payment_methods[ $payment ] ) ? $payment_methods[ $payment ] + 1 : 1;
 			}
 
-			$date = $order->get_date_created() ? $order->get_date_created()->date_i18n( 'Y-m-d H:i:s' ) : '';
+			$date_created = $order->get_date_created();
+			$date_ts      = $date_created ? (int) $date_created->getTimestamp() : 0;
 
-			if ( $date && ( '' === $last_order_date || $date > $last_order_date ) ) {
-				$last_order_date = $date;
+			if ( $date_ts > 0 && ( 0 === $last_order_timestamp || $date_ts > $last_order_timestamp ) ) {
+				$last_order_timestamp = $date_ts;
 			}
 
-			if ( $date && ( '' === $first_order_date || $date < $first_order_date ) ) {
-				$first_order_date = $date;
+			if ( $date_ts > 0 && ( 0 === $first_order_timestamp || $date_ts < $first_order_timestamp ) ) {
+				$first_order_timestamp = $date_ts;
 			}
 
 			if ( '' === $resolved_customer_name ) {
@@ -666,8 +675,10 @@ class YoRo_Orders_Read_Service {
 			'currency'         => get_woocommerce_currency(),
 			'status_counts'    => $status_counts,
 			'payment_methods'  => $payment_methods,
-			'first_order_date' => $first_order_date,
-			'last_order_date'  => $last_order_date,
+			'first_order_date' => $first_order_timestamp > 0 ? YoRo_Date_Helper::format_timestamp( $first_order_timestamp ) : '',
+			'first_order_date_ts' => $first_order_timestamp,
+			'last_order_date'  => $last_order_timestamp > 0 ? YoRo_Date_Helper::format_timestamp( $last_order_timestamp ) : '',
+			'last_order_date_ts' => $last_order_timestamp,
 			'latest_order_id'  => $latest_order_id,
 			'latest_order_no'  => $latest_order_no,
 			'orders'           => $data,
@@ -1145,6 +1156,14 @@ class YoRo_Orders_Read_Service {
 		return self::build_fulfillment_filter_queue( $key, $label, $description, $limit, $filter, $reason );
 	}
 
+	public static function fulfillment_get_processing_candidates( $limit = 50 ) {
+		return self::get_processing_fulfillment_candidates( $limit );
+	}
+
+	public static function fulfillment_build_candidate_queue( $key, $label, $description, $candidates, $limit, $filter, $reason ) {
+		return self::build_fulfillment_candidate_queue( $key, $label, $description, $candidates, $limit, $filter, $reason );
+	}
+
 	public static function fulfillment_order_has_tracking( WC_Order $order ) {
 		return self::order_has_tracking( $order );
 	}
@@ -1288,11 +1307,13 @@ class YoRo_Orders_Read_Service {
 		}
 
 		return [
-			'key'   => $window_key,
-			'label' => $label,
-			'start' => $start->format( 'Y-m-d H:i:s' ),
-			'end'   => $end->format( 'Y-m-d H:i:s' ),
-			'query' => $start->format( 'Y-m-d H:i:s' ) . '...' . $end->format( 'Y-m-d H:i:s' ),
+			'key'      => $window_key,
+			'label'    => $label,
+			'start'    => $start->format( 'Y-m-d H:i:s' ),
+			'end'      => $end->format( 'Y-m-d H:i:s' ),
+			'start_ts' => (int) $start->getTimestamp(),
+			'end_ts'   => (int) $end->getTimestamp(),
+			'query'    => $start->format( 'Y-m-d H:i:s' ) . '...' . $end->format( 'Y-m-d H:i:s' ),
 		];
 	}
 
@@ -1330,17 +1351,32 @@ class YoRo_Orders_Read_Service {
 	}
 
 	private static function build_fulfillment_filter_queue( $key, $label, $description, $limit, $filter, $reason ) {
-		$candidates = wc_get_orders(
+		return self::build_fulfillment_candidate_queue(
+			$key,
+			$label,
+			$description,
+			self::get_processing_fulfillment_candidates( 50 ),
+			$limit,
+			$filter,
+			$reason
+		);
+	}
+
+	private static function get_processing_fulfillment_candidates( $limit = 50 ) {
+		return wc_get_orders(
 			[
-				'limit'   => 50,
+				'limit'   => min( max( absint( $limit ), 1 ), 200 ),
 				'status'  => [ 'processing' ],
 				'orderby' => 'date',
 				'order'   => 'DESC',
 			]
 		);
+	}
 
-		$orders = [];
-		$count  = 0;
+	private static function build_fulfillment_candidate_queue( $key, $label, $description, $candidates, $limit, $filter, $reason ) {
+		$candidates = is_array( $candidates ) ? $candidates : [];
+		$orders     = [];
+		$count      = 0;
 
 		foreach ( $candidates as $order ) {
 			if ( ! $order instanceof WC_Order || ! is_callable( $filter ) || ! call_user_func( $filter, $order ) ) {

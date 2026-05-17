@@ -22,10 +22,28 @@ class YoRo_Action_Planner {
 		}
 
 		if ( ! empty( $parsed['actions'] ) && is_array( $parsed['actions'] ) ) {
-			return self::build_sequence_plan( $parsed );
+			$plan = self::build_sequence_plan( $parsed );
+		} else {
+			$plan = self::build_single_plan( $parsed );
 		}
 
-		return self::build_single_plan( $parsed );
+		if ( is_wp_error( $plan ) ) {
+			return $plan;
+		}
+
+		if ( class_exists( 'YoRo_Plan_Semantic_Validator' ) ) {
+			$validation = YoRo_Plan_Semantic_Validator::validate( $plan, $parsed );
+
+			if ( is_wp_error( $validation ) ) {
+				return $validation;
+			}
+
+			if ( is_array( $validation ) && ! empty( $validation ) ) {
+				$plan['validation'] = $validation;
+			}
+		}
+
+		return $plan;
 	}
 
 	private static function build_single_plan( $parsed ) {
@@ -65,7 +83,9 @@ class YoRo_Action_Planner {
 			'action'        => sanitize_text_field( $parsed['action'] ),
 			'steps'         => $steps,
 			'params'        => isset( $parsed['params'] ) && is_array( $parsed['params'] ) ? $parsed['params'] : [],
-			'workflow'      => $parsed['workflow'] ?? [],
+			'workflow'      => ! empty( $parsed['current_workflow'] ) && is_array( $parsed['current_workflow'] )
+				? $parsed['current_workflow']
+				: ( $parsed['workflow'] ?? [] ),
 			'intent'        => $parsed['intent'] ?? [],
 			'entities'      => $parsed['entities'] ?? [],
 			'parsed'        => $parsed,

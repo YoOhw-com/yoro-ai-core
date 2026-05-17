@@ -10,6 +10,7 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 		return $this->request(
 			$payload,
 			60,
+			'parse_action',
 			'yoro_ai_api_error',
 			__( 'AI parser request failed.', 'yoro-agent-core' )
 		);
@@ -19,6 +20,7 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 		return $this->request(
 			$payload,
 			60,
+			'parse_intent',
 			'yoro_ai_intent_api_error',
 			__( 'AI intent parser request failed.', 'yoro-agent-core' )
 		);
@@ -28,6 +30,7 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 		return $this->request(
 			$payload,
 			60,
+			'plan_workflow',
 			'yoro_ai_workflow_api_error',
 			__( 'AI workflow planner request failed.', 'yoro-agent-core' )
 		);
@@ -37,6 +40,7 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 		return $this->request(
 			$payload,
 			30,
+			'generate_suggestions',
 			'yoro_ai_freeform_api_error',
 			__( 'AI suggestion request failed.', 'yoro-agent-core' )
 		);
@@ -46,12 +50,13 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 		return $this->request(
 			$payload,
 			60,
+			'compose_email',
 			'yoro_ai_email_api_error',
 			__( 'AI email compose request failed.', 'yoro-agent-core' )
 		);
 	}
 
-	private function request( array $payload, $timeout, $error_code, $default_message ) {
+	private function request( array $payload, $timeout, $operation, $error_code, $default_message ) {
 		$api_key = YoRo_AI_Settings::get_openai_api_key();
 
 		if ( '' === $api_key ) {
@@ -61,6 +66,7 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 			);
 		}
 
+		$started_at = microtime( true );
 		$response = wp_remote_post(
 			'https://api.openai.com/v1/responses',
 			[
@@ -72,8 +78,13 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 				'body'    => wp_json_encode( $payload ),
 			]
 		);
+		$duration_ms = max( 0, (int) round( ( microtime( true ) - $started_at ) * 1000 ) );
 
 		if ( is_wp_error( $response ) ) {
+			if ( class_exists( 'YoRo_AI_Request_Tracker' ) ) {
+				YoRo_AI_Request_Tracker::record( $operation, $duration_ms, 'error' );
+			}
+
 			return $response;
 		}
 
@@ -82,10 +93,18 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 		$json = json_decode( $raw, true );
 
 		if ( $code < 200 || $code >= 300 ) {
+			if ( class_exists( 'YoRo_AI_Request_Tracker' ) ) {
+				YoRo_AI_Request_Tracker::record( $operation, $duration_ms, 'error' );
+			}
+
 			return new WP_Error(
 				$error_code,
 				$json['error']['message'] ?? $default_message
 			);
+		}
+
+		if ( class_exists( 'YoRo_AI_Request_Tracker' ) ) {
+			YoRo_AI_Request_Tracker::record( $operation, $duration_ms, 'success' );
 		}
 
 		return self::extract_output_text( $json );

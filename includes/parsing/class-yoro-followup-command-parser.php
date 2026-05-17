@@ -1346,6 +1346,18 @@ class YoRo_Followup_Command_Parser {
 			}
 		}
 
+		$ordinal_index = self::resolve_order_list_reference_index( $normalized, $last_orders, $last_order_ids );
+
+		if ( null !== $ordinal_index ) {
+			if ( isset( $last_orders[ $ordinal_index ]['id'] ) ) {
+				return [ absint( $last_orders[ $ordinal_index ]['id'] ) ];
+			}
+
+			if ( isset( $last_order_ids[ $ordinal_index ] ) ) {
+				return [ absint( $last_order_ids[ $ordinal_index ] ) ];
+			}
+		}
+
 		if (
 			false !== strpos( $normalized, 'all of them' ) ||
 			false !== strpos( $normalized, 'all these' ) ||
@@ -1361,6 +1373,41 @@ class YoRo_Followup_Command_Parser {
 		}
 
 		return [];
+	}
+
+	private static function resolve_order_list_reference_index( $normalized, $last_orders, $last_order_ids ) {
+		$available_count = max(
+			is_array( $last_orders ) ? count( $last_orders ) : 0,
+			is_array( $last_order_ids ) ? count( $last_order_ids ) : 0
+		);
+
+		if ( $available_count <= 0 ) {
+			return null;
+		}
+
+		if ( false !== strpos( $normalized, 'first one' ) ) {
+			return 0;
+		}
+
+		if ( false !== strpos( $normalized, 'second one' ) ) {
+			return $available_count > 1 ? 1 : null;
+		}
+
+		if ( false !== strpos( $normalized, 'third one' ) ) {
+			return $available_count > 2 ? 2 : null;
+		}
+
+		if ( false !== strpos( $normalized, 'last one' ) ) {
+			return $available_count - 1;
+		}
+
+		if ( preg_match( '/\b(\d+)(?:st|nd|rd|th)\s+one\b/i', $normalized, $matches ) ) {
+			$index = max( 1, absint( $matches[1] ) ) - 1;
+
+			return $index < $available_count ? $index : null;
+		}
+
+		return null;
 	}
 
 	private static function build_order_reference_options( $client_context, $note = '' ) {
@@ -1461,7 +1508,21 @@ class YoRo_Followup_Command_Parser {
 			false !== strpos( $normalized, 'that order' ) ||
 			false !== strpos( $normalized, 'same order' ) ||
 			false !== strpos( $normalized, 'order detail' ) ||
-			false !== strpos( $normalized, 'order details' )
+			false !== strpos( $normalized, 'order details' ) ||
+			(
+				(
+					false !== strpos( $normalized, 'open' ) ||
+					false !== strpos( $normalized, 'show' ) ||
+					false !== strpos( $normalized, 'view' )
+				) &&
+				(
+					false !== strpos( $normalized, 'first one' ) ||
+					false !== strpos( $normalized, 'second one' ) ||
+					false !== strpos( $normalized, 'third one' ) ||
+					false !== strpos( $normalized, 'last one' ) ||
+					preg_match( '/\b\d+(?:st|nd|rd|th)\s+one\b/i', $normalized )
+				)
+			)
 		);
 	}
 

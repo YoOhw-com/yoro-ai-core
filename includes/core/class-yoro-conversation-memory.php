@@ -289,6 +289,12 @@ class YoRo_Conversation_Memory {
 				'current_workflow'      => isset( $workflow_state['current_workflow'] ) && is_array( $workflow_state['current_workflow'] )
 					? $workflow_state['current_workflow']
 					: [],
+				'last_workflow_result'  => isset( $workflow_state['last_workflow_result'] ) && is_array( $workflow_state['last_workflow_result'] )
+					? $workflow_state['last_workflow_result']
+					: [],
+				'workflow_history'      => isset( $workflow_state['workflow_history'] ) && is_array( $workflow_state['workflow_history'] )
+					? $workflow_state['workflow_history']
+					: [],
 				'pending_confirmation' => $pending_confirmation,
 				'conversation'         => $conversation_state,
 				'entity_context'       => $structured_state['entity_context'],
@@ -342,6 +348,321 @@ class YoRo_Conversation_Memory {
 				],
 			]
 		);
+	}
+
+	public static function remember_runtime_state( $user_id, $parsed, $result, $plan = [], $entities = [] ) {
+		if ( ! $user_id || ! is_array( $result ) ) {
+			return;
+		}
+
+		$structured_state       = self::get_structured_state( $user_id );
+		$existing_conversation  = isset( $structured_state['conversation'] ) && is_array( $structured_state['conversation'] )
+			? $structured_state['conversation']
+			: [];
+		$existing_entity_state  = isset( $structured_state['entity_context'] ) && is_array( $structured_state['entity_context'] )
+			? $structured_state['entity_context']
+			: [];
+
+		$conversation = [
+			'last_result'        => self::compact_result( $result ),
+			'last_action_params' => is_array( $parsed['params'] ?? null ) ? $parsed['params'] : [],
+			'last_briefing'      => isset( $existing_conversation['last_briefing'] ) && is_array( $existing_conversation['last_briefing'] )
+				? $existing_conversation['last_briefing']
+				: [],
+			'last_business_followup' => isset( $existing_conversation['last_business_followup'] ) && is_array( $existing_conversation['last_business_followup'] )
+				? $existing_conversation['last_business_followup']
+				: [],
+			'last_attention_followup' => isset( $existing_conversation['last_attention_followup'] ) && is_array( $existing_conversation['last_attention_followup'] )
+				? $existing_conversation['last_attention_followup']
+				: [],
+			'last_service_followup' => isset( $existing_conversation['last_service_followup'] ) && is_array( $existing_conversation['last_service_followup'] )
+				? $existing_conversation['last_service_followup']
+				: [],
+			'last_fulfillment_followup' => isset( $existing_conversation['last_fulfillment_followup'] ) && is_array( $existing_conversation['last_fulfillment_followup'] )
+				? $existing_conversation['last_fulfillment_followup']
+				: [],
+			'last_inventory_followup' => isset( $existing_conversation['last_inventory_followup'] ) && is_array( $existing_conversation['last_inventory_followup'] )
+				? $existing_conversation['last_inventory_followup']
+				: [],
+			'morning_briefing_state' => isset( $existing_conversation['morning_briefing_state'] ) && is_array( $existing_conversation['morning_briefing_state'] )
+				? $existing_conversation['morning_briefing_state']
+				: [],
+			'active_followup_type' => sanitize_key( $existing_conversation['active_followup_type'] ?? '' ),
+		];
+
+		$workflow_state = [];
+		$entity_update  = [];
+
+		if ( ! empty( $plan ) && is_array( $plan ) ) {
+			$conversation['last_plan'] = self::compact_plan( $plan );
+		}
+
+		if ( ! empty( $result['workflow'] ) && is_array( $result['workflow'] ) ) {
+			$workflow_state['last_workflow_result'] = self::compact_result( $result );
+		}
+
+		if ( ! empty( $result['email'] ) && is_array( $result['email'] ) ) {
+			$conversation['last_email_subject'] = sanitize_text_field( $result['email']['subject'] ?? '' );
+			$conversation['last_email_body']    = wp_kses_post( $result['email']['body'] ?? '' );
+		}
+
+		if ( ! empty( $result['draft'] ) && is_array( $result['draft'] ) ) {
+			$conversation['last_draft']    = $result['draft'];
+			$conversation['last_draft_id'] = sanitize_text_field( $result['draft']['id'] ?? $result['draft']['draft_id'] ?? '' );
+		}
+
+		if ( ! empty( $result['errors'] ) && is_array( $result['errors'] ) ) {
+			$conversation['last_failed_step'] = self::extract_failed_step( $result );
+		}
+
+		if ( ! empty( $entities ) && is_array( $entities ) ) {
+			$graph = isset( $entities['graph'] ) && is_array( $entities['graph'] )
+				? $entities['graph']
+				: [];
+
+			$entity_update['entity_graph']      = $graph;
+			$entity_update['last_entity_graph'] = $graph;
+			$entity_update['entity_focus']      = self::detect_entity_focus( $entities );
+		}
+
+		if ( 'daily_briefing' === sanitize_key( $result['result_type'] ?? '' ) ) {
+			$conversation['last_briefing'] = self::compact_result( $result );
+			$conversation['active_followup_type'] = 'briefing';
+		}
+
+		if ( 'business_summary' === sanitize_key( $result['result_type'] ?? '' ) ) {
+			$conversation['last_business_followup'] = self::compact_result( $result );
+			$conversation['active_followup_type'] = 'business';
+		}
+
+		if ( 'operations_attention_queue' === sanitize_key( $result['result_type'] ?? '' ) ) {
+			$conversation['last_attention_followup'] = self::compact_result( $result );
+			$conversation['active_followup_type'] = 'operations_attention';
+		}
+
+		if ( 'customer_service_queue' === sanitize_key( $result['result_type'] ?? '' ) ) {
+			$conversation['last_service_followup'] = self::compact_result( $result );
+			$conversation['active_followup_type'] = 'customer_service';
+		}
+
+		if ( 'fulfillment_queue' === sanitize_key( $result['result_type'] ?? '' ) ) {
+			$conversation['last_fulfillment_followup'] = self::compact_result( $result );
+			$conversation['active_followup_type'] = 'fulfillment';
+		}
+
+		if ( 'inventory_queue' === sanitize_key( $result['result_type'] ?? '' ) ) {
+			$conversation['last_inventory_followup'] = self::compact_result( $result );
+			$conversation['active_followup_type'] = 'inventory';
+		}
+
+		if (
+			'rule.follow_up.briefing.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			isset( $conversation['last_briefing'] ) &&
+			is_array( $conversation['last_briefing'] ) &&
+			! empty( $conversation['last_briefing']['recommended_sequence'] ) &&
+			is_array( $conversation['last_briefing']['recommended_sequence'] )
+		) {
+			$sequence = array_values( $conversation['last_briefing']['recommended_sequence'] );
+			$sequence_index = isset( $parsed['briefing_sequence_index'] ) ? absint( $parsed['briefing_sequence_index'] ) : -1;
+			$resolved_command = sanitize_text_field( $parsed['resolved_followup_command'] ?? '' );
+
+			if ( $sequence_index < 0 && '' !== $resolved_command ) {
+				foreach ( $sequence as $index => $sequence_item ) {
+					$sequence_command = sanitize_text_field( $sequence_item['command'] ?? '' );
+
+					if ( '' !== $sequence_command && strtolower( $sequence_command ) === strtolower( $resolved_command ) ) {
+						$sequence_index = (int) $index;
+						break;
+					}
+				}
+			}
+
+			if ( $sequence_index >= 0 ) {
+				$conversation['last_briefing']['recommendation_cursor'] = $sequence_index;
+			}
+
+			$conversation['last_briefing']['last_recommendation_action'] = sanitize_text_field( $parsed['action'] ?? '' );
+			$conversation['last_briefing']['last_recommendation_command'] = $resolved_command;
+			$conversation['active_followup_type'] = 'briefing';
+		}
+
+		if (
+			'rule.follow_up.business.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			isset( $conversation['last_business_followup'] ) &&
+			is_array( $conversation['last_business_followup'] ) &&
+			! empty( $conversation['last_business_followup']['recommended_sequence'] ) &&
+			is_array( $conversation['last_business_followup']['recommended_sequence'] )
+		) {
+			$sequence = array_values( $conversation['last_business_followup']['recommended_sequence'] );
+			$sequence_index = isset( $parsed['business_sequence_index'] ) ? (int) $parsed['business_sequence_index'] : -1;
+			$resolved_command = sanitize_text_field( $parsed['resolved_followup_command'] ?? '' );
+
+			if ( $sequence_index < 0 && '' !== $resolved_command ) {
+				foreach ( $sequence as $index => $sequence_item ) {
+					$sequence_command = sanitize_text_field( $sequence_item['command'] ?? '' );
+
+					if ( '' !== $sequence_command && strtolower( $sequence_command ) === strtolower( $resolved_command ) ) {
+						$sequence_index = (int) $index;
+						break;
+					}
+				}
+			}
+
+			if ( $sequence_index >= 0 ) {
+				$conversation['last_business_followup']['recommendation_cursor'] = $sequence_index;
+			}
+
+			$conversation['last_business_followup']['last_recommendation_action'] = sanitize_text_field( $parsed['action'] ?? '' );
+			$conversation['last_business_followup']['last_recommendation_command'] = $resolved_command;
+			$conversation['active_followup_type'] = 'business';
+		}
+
+		if (
+			'rule.follow_up.attention.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			isset( $conversation['last_attention_followup'] ) &&
+			is_array( $conversation['last_attention_followup'] ) &&
+			! empty( $conversation['last_attention_followup']['recommended_sequence'] ) &&
+			is_array( $conversation['last_attention_followup']['recommended_sequence'] )
+		) {
+			$sequence = array_values( $conversation['last_attention_followup']['recommended_sequence'] );
+			$sequence_index = isset( $parsed['attention_sequence_index'] ) ? (int) $parsed['attention_sequence_index'] : -1;
+			$resolved_command = sanitize_text_field( $parsed['resolved_followup_command'] ?? '' );
+
+			if ( $sequence_index < 0 && '' !== $resolved_command ) {
+				foreach ( $sequence as $index => $sequence_item ) {
+					$sequence_command = sanitize_text_field( $sequence_item['command'] ?? '' );
+
+					if ( '' !== $sequence_command && strtolower( $sequence_command ) === strtolower( $resolved_command ) ) {
+						$sequence_index = (int) $index;
+						break;
+					}
+				}
+			}
+
+			if ( $sequence_index >= 0 ) {
+				$conversation['last_attention_followup']['recommendation_cursor'] = $sequence_index;
+			}
+
+			$conversation['last_attention_followup']['last_recommendation_action'] = sanitize_text_field( $parsed['action'] ?? '' );
+			$conversation['last_attention_followup']['last_recommendation_command'] = $resolved_command;
+			$conversation['active_followup_type'] = 'operations_attention';
+		}
+
+		if (
+			'rule.follow_up.service.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			isset( $conversation['last_service_followup'] ) &&
+			is_array( $conversation['last_service_followup'] ) &&
+			! empty( $conversation['last_service_followup']['recommended_sequence'] ) &&
+			is_array( $conversation['last_service_followup']['recommended_sequence'] )
+		) {
+			$sequence = array_values( $conversation['last_service_followup']['recommended_sequence'] );
+			$sequence_index = isset( $parsed['service_sequence_index'] ) ? (int) $parsed['service_sequence_index'] : -1;
+			$resolved_command = sanitize_text_field( $parsed['resolved_followup_command'] ?? '' );
+
+			if ( $sequence_index < 0 && '' !== $resolved_command ) {
+				foreach ( $sequence as $index => $sequence_item ) {
+					$sequence_command = sanitize_text_field( $sequence_item['command'] ?? '' );
+
+					if ( '' !== $sequence_command && strtolower( $sequence_command ) === strtolower( $resolved_command ) ) {
+						$sequence_index = (int) $index;
+						break;
+					}
+				}
+			}
+
+			if ( $sequence_index >= 0 ) {
+				$conversation['last_service_followup']['recommendation_cursor'] = $sequence_index;
+			}
+
+			$conversation['last_service_followup']['last_recommendation_action'] = sanitize_text_field( $parsed['action'] ?? '' );
+			$conversation['last_service_followup']['last_recommendation_command'] = $resolved_command;
+			$conversation['active_followup_type'] = 'customer_service';
+		}
+
+		if (
+			'rule.follow_up.fulfillment.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			isset( $conversation['last_fulfillment_followup'] ) &&
+			is_array( $conversation['last_fulfillment_followup'] ) &&
+			! empty( $conversation['last_fulfillment_followup']['recommended_sequence'] ) &&
+			is_array( $conversation['last_fulfillment_followup']['recommended_sequence'] )
+		) {
+			$sequence = array_values( $conversation['last_fulfillment_followup']['recommended_sequence'] );
+			$sequence_index = isset( $parsed['fulfillment_sequence_index'] ) ? (int) $parsed['fulfillment_sequence_index'] : -1;
+			$resolved_command = sanitize_text_field( $parsed['resolved_followup_command'] ?? '' );
+
+			if ( $sequence_index < 0 && '' !== $resolved_command ) {
+				foreach ( $sequence as $index => $sequence_item ) {
+					$sequence_command = sanitize_text_field( $sequence_item['command'] ?? '' );
+
+					if ( '' !== $sequence_command && strtolower( $sequence_command ) === strtolower( $resolved_command ) ) {
+						$sequence_index = (int) $index;
+						break;
+					}
+				}
+			}
+
+			if ( $sequence_index >= 0 ) {
+				$conversation['last_fulfillment_followup']['recommendation_cursor'] = $sequence_index;
+			}
+
+			$conversation['last_fulfillment_followup']['last_recommendation_action'] = sanitize_text_field( $parsed['action'] ?? '' );
+			$conversation['last_fulfillment_followup']['last_recommendation_command'] = $resolved_command;
+			$conversation['active_followup_type'] = 'fulfillment';
+		}
+
+		if (
+			'rule.follow_up.inventory.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			isset( $conversation['last_inventory_followup'] ) &&
+			is_array( $conversation['last_inventory_followup'] ) &&
+			! empty( $conversation['last_inventory_followup']['recommended_sequence'] ) &&
+			is_array( $conversation['last_inventory_followup']['recommended_sequence'] )
+		) {
+			$sequence = array_values( $conversation['last_inventory_followup']['recommended_sequence'] );
+			$sequence_index = isset( $parsed['inventory_sequence_index'] ) ? (int) $parsed['inventory_sequence_index'] : -1;
+			$resolved_command = sanitize_text_field( $parsed['resolved_followup_command'] ?? '' );
+
+			if ( $sequence_index < 0 && '' !== $resolved_command ) {
+				foreach ( $sequence as $index => $sequence_item ) {
+					$sequence_command = sanitize_text_field( $sequence_item['command'] ?? '' );
+
+					if ( '' !== $sequence_command && strtolower( $sequence_command ) === strtolower( $resolved_command ) ) {
+						$sequence_index = (int) $index;
+						break;
+					}
+				}
+			}
+
+			if ( $sequence_index >= 0 ) {
+				$conversation['last_inventory_followup']['recommendation_cursor'] = $sequence_index;
+			}
+
+			$conversation['last_inventory_followup']['last_recommendation_action'] = sanitize_text_field( $parsed['action'] ?? '' );
+			$conversation['last_inventory_followup']['last_recommendation_command'] = $resolved_command;
+			$conversation['active_followup_type'] = 'inventory';
+		}
+
+		if ( empty( $entity_update ) ) {
+			$entity_update['entity_graph']      = isset( $existing_entity_state['entity_graph'] ) && is_array( $existing_entity_state['entity_graph'] )
+				? $existing_entity_state['entity_graph']
+				: [];
+			$entity_update['last_entity_graph'] = isset( $existing_entity_state['last_entity_graph'] ) && is_array( $existing_entity_state['last_entity_graph'] )
+				? $existing_entity_state['last_entity_graph']
+				: [];
+			$entity_update['entity_focus']      = isset( $existing_entity_state['entity_focus'] ) && is_array( $existing_entity_state['entity_focus'] )
+				? $existing_entity_state['entity_focus']
+				: [ 'type' => '', 'id' => 0 ];
+		}
+
+		$payload = [
+			'conversation'   => $conversation,
+			'entity_context' => $entity_update,
+		];
+
+		if ( ! empty( $workflow_state ) ) {
+			$payload['workflow_state'] = $workflow_state;
+		}
+
+		self::update( $user_id, $payload );
 	}
 
 	public static function remember_result( $user_id, $parsed, $result, $plan = [] ) {
@@ -899,12 +1220,26 @@ class YoRo_Conversation_Memory {
 			[
 				'id'           => 'wf_' . wp_generate_uuid4(),
 				'type'         => '',
+				'definition_id'=> '',
+				'label'        => '',
+				'description'  => '',
+				'category'     => '',
+				'status'       => '',
+				'surface'      => '',
 				'action'       => '',
 				'step'         => '',
+				'current_step_id'    => '',
+				'current_step_index' => -1,
 				'order_id'     => 0,
+				'product_id'   => 0,
 				'subject'      => '',
 				'body'         => '',
 				'draft_id'     => '',
+				'steps'        => [],
+				'resolved_entities' => [],
+				'input_context'=> [],
+				'artifacts'    => [],
+				'plan'         => [],
 				'params'       => [],
 				'missing'      => [],
 				'last_command' => '',

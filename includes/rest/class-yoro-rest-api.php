@@ -122,6 +122,16 @@ class YoRo_REST_API {
 				[
 					'methods'  => 'GET',
 					'callback' => [ __CLASS__, 'parser_test' ],
+					'args'     => [
+						'group' => [
+							'required' => false,
+							'type'     => 'string',
+						],
+						'pack' => [
+							'required' => false,
+							'type'     => 'string',
+						],
+					],
 					'permission_callback' => function () {
 						return current_user_can( 'manage_options' );
 					},
@@ -208,7 +218,7 @@ class YoRo_REST_API {
 
 	public static function get_morning_briefing( WP_REST_Request $request ) {
 		$user_id = get_current_user_id();
-		$now = current_datetime();
+		$now = self::resolve_client_datetime( $request );
 		$today_key = $now->format( 'Y-m-d' );
 		$test_hour = $request->get_param( 'test_hour' );
 		$hour = is_numeric( $test_hour ) ? (int) $test_hour : (int) $now->format( 'G' );
@@ -323,7 +333,7 @@ class YoRo_REST_API {
 
 	public static function dismiss_morning_briefing( WP_REST_Request $request ) {
 		$user_id = get_current_user_id();
-		$today_key = current_datetime()->format( 'Y-m-d' );
+		$today_key = self::resolve_client_datetime( $request )->format( 'Y-m-d' );
 
 		YoRo_Conversation_Memory::dismiss_morning_briefing( $user_id, $today_key );
 
@@ -365,7 +375,7 @@ class YoRo_REST_API {
 		);
 	}
 
-	public static function parser_test() {
+	public static function parser_test( WP_REST_Request $request ) {
 		if ( ! defined( 'WP_DEBUG' ) || ! WP_DEBUG ) {
 			return new WP_Error(
 				'yoro_disabled',
@@ -380,8 +390,29 @@ class YoRo_REST_API {
 			);
 		}
 
+		$group = sanitize_key( (string) $request->get_param( 'group' ) );
+		$pack  = sanitize_key( (string) $request->get_param( 'pack' ) );
+
+		switch ( $group ) {
+			case 'evaluation':
+				$result = YoRo_Parser_Test_Suite::run_evaluation_tests( $pack ?: 'all' );
+				break;
+			case 'real_traffic':
+				$result = YoRo_Parser_Test_Suite::run_real_traffic_eval_tests();
+				break;
+			case 'hardening':
+				$result = YoRo_Parser_Test_Suite::run_hardening_tests();
+				break;
+			case 'parser':
+				$result = YoRo_Parser_Test_Suite::run_parser_tests();
+				break;
+			default:
+				$result = YoRo_Parser_Test_Suite::run();
+				break;
+		}
+
 		return rest_ensure_response(
-			YoRo_Parser_Test_Suite::run()
+			$result
 		);
 	}
 
@@ -396,5 +427,19 @@ class YoRo_REST_API {
 		return rest_ensure_response(
 			YoRo_Logger::build_real_query_evaluation_pack()
 		);
+	}
+
+	private static function resolve_client_datetime( WP_REST_Request $request ) {
+		$browser_timezone = sanitize_text_field( (string) $request->get_param( 'browser_timezone' ) );
+
+		if ( '' !== $browser_timezone ) {
+			try {
+				return new DateTimeImmutable( 'now', new DateTimeZone( $browser_timezone ) );
+			} catch ( Exception $e ) {
+				// Fall back to the WordPress site timezone when the browser timezone is invalid.
+			}
+		}
+
+		return current_datetime();
 	}
 }

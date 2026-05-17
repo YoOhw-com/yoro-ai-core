@@ -239,4 +239,72 @@ class YoRo_Action_Registry {
 			true
 		);
 	}
+
+	public static function get_ai_metadata_audit() {
+		$audit = [];
+
+		foreach ( self::all() as $name => $action ) {
+			if ( empty( $action['ai_exposed'] ) ) {
+				continue;
+			}
+
+			$missing = self::get_missing_ai_metadata_fields( $action );
+			$scope   = self::get_ai_metadata_audit_scope( $name, $action );
+			$enforce = 'core' === $scope;
+
+			$audit[ $name ] = [
+				'action'                       => sanitize_text_field( $name ),
+				'ai_exposed'                   => true,
+				'audit_scope'                  => $scope,
+				'enforce_metadata'             => $enforce,
+				'missing_fields'               => $missing,
+				'passed'                       => empty( $missing ) || ! $enforce,
+				'uses_inferred_required_params' => empty( $action['required_params'] ),
+			];
+		}
+
+		return $audit;
+	}
+
+	private static function get_ai_metadata_audit_scope( $name, $action ) {
+		$name   = is_string( $name ) ? strtolower( trim( $name ) ) : '';
+		$action = is_array( $action ) ? $action : [];
+
+		if ( ! empty( $action['ai_metadata_audit_scope'] ) ) {
+			return sanitize_key( $action['ai_metadata_audit_scope'] );
+		}
+
+		if ( 0 === strpos( $name, 'custom.' ) ) {
+			return 'custom';
+		}
+
+		return 'core';
+	}
+
+	private static function get_missing_ai_metadata_fields( $action ) {
+		$action = is_array( $action ) ? $action : [];
+		$missing = [];
+
+		if ( '' === trim( (string) ( $action['ai_description'] ?? '' ) ) ) {
+			$missing[] = 'ai_description';
+		}
+
+		if ( ! array_key_exists( 'required_params', $action ) || ! is_array( $action['required_params'] ) ) {
+			$missing[] = 'required_params';
+		}
+
+		if ( empty( $action['ai_examples'] ) || ! is_array( $action['ai_examples'] ) ) {
+			$missing[] = 'ai_examples';
+		}
+
+		if ( ! array_key_exists( 'param_hints', $action ) || ! is_array( $action['param_hints'] ) ) {
+			$missing[] = 'param_hints';
+		}
+
+		if ( ! array_key_exists( 'clarification_hints', $action ) || ! is_array( $action['clarification_hints'] ) ) {
+			$missing[] = 'clarification_hints';
+		}
+
+		return $missing;
+	}
 }

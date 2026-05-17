@@ -18,12 +18,13 @@ class YoRo_Command_Decision_Normalizer {
 					'enum' => [ 'task_request', 'clarify', 'chat_only', 'unsupported_request', 'out_of_scope' ],
 				],
 				'language' => [ 'type' => 'string' ],
+				'intent_family' => [ 'type' => 'string' ],
 				'action' => [ 'type' => 'string' ],
 				'params' => [
 					'type'                 => 'object',
 					'additionalProperties' => false,
 					'properties'           => $param_properties,
-					'required'             => array_keys( $param_properties ),
+					'required'             => array_values( array_keys( $param_properties ) ),
 				],
 				'confidence' => [ 'type' => 'number' ],
 				'missing' => [
@@ -66,7 +67,7 @@ class YoRo_Command_Decision_Normalizer {
 					],
 				],
 			],
-			'required'             => [ 'mode', 'language', 'action', 'params', 'confidence', 'missing', 'ambiguities', 'evidence', 'clarification_question', 'summary', 'reasoning_summary', 'suggestions' ],
+			'required'             => [ 'mode', 'language', 'intent_family', 'action', 'params', 'confidence', 'missing', 'ambiguities', 'evidence', 'clarification_question', 'summary', 'reasoning_summary', 'suggestions' ],
 		];
 	}
 
@@ -175,14 +176,19 @@ class YoRo_Command_Decision_Normalizer {
 		$params = isset( $decision['params'] ) && is_array( $decision['params'] )
 			? $decision['params']
 			: [];
+		$raw_param_keys = self::normalize_param_keys( $params, false );
+		$dropped_param_keys = [];
 
 		if ( $catalog_item ) {
-			$params = self::filter_params_for_action( $params, $catalog_item );
+			$filtered = self::filter_params_for_action( $params, $catalog_item );
+			$params = $filtered['params'];
+			$dropped_param_keys = $filtered['dropped_param_keys'];
 		}
 
 		return [
 			'mode'                   => $mode,
 			'language'               => self::normalize_language( $decision['language'] ?? '' ),
+			'intent_family'          => self::normalize_intent_family( $decision['intent_family'] ?? '', $action ),
 			'action'                 => $action,
 			'params'                 => $params,
 			'confidence'             => self::normalize_confidence( $decision['confidence'] ?? 0 ),
@@ -194,7 +200,65 @@ class YoRo_Command_Decision_Normalizer {
 			'reasoning_summary'      => self::normalize_response_copy( $decision['reasoning_summary'] ?? '', $mode ),
 			'suggestions'            => self::normalize_suggestions( $decision['suggestions'] ?? [] ),
 			'action_catalog_item'    => $catalog_item ?: [],
+			'raw_param_keys'         => $raw_param_keys,
+			'dropped_param_keys'     => $dropped_param_keys,
+			'params_trimmed_count'   => count( $dropped_param_keys ),
 		];
+	}
+
+	private static function normalize_intent_family( $intent_family, $action = '' ) {
+		$intent_family = sanitize_key( (string) $intent_family );
+
+		if ( '' !== $intent_family ) {
+			return $intent_family;
+		}
+
+		return self::infer_intent_family_from_action( $action );
+	}
+
+	private static function infer_intent_family_from_action( $action ) {
+		$action = sanitize_text_field( $action );
+
+		if ( '' === $action ) {
+			return '';
+		}
+
+		$map = [
+			'store.get_business_summary'                => 'business_summary',
+			'store.get_morning_briefing'                => 'store_briefing',
+			'store.get_daily_briefing'                  => 'store_briefing',
+			'operations.get_summary'                    => 'operations_overview',
+			'operations.get_attention_queue'            => 'operations_attention',
+			'operations.get_fulfillment_queue'          => 'fulfillment_review',
+			'products.get_inventory_queue'              => 'inventory_review',
+			'customers.get_service_queue'               => 'customer_service_review',
+			'orders.search'                             => 'search_orders',
+			'orders.get_details'                        => 'get_order_details',
+			'orders.find_by_customer'                   => 'find_customer_orders',
+			'customers.get_summary'                     => 'customer_summary',
+			'orders.update_status'                      => 'update_order_status',
+			'orders.bulk_update_status_with_note'       => 'update_order_status',
+			'orders.hold'                               => 'hold_order',
+			'orders.add_note'                           => 'add_note',
+			'orders.compose_customer_email'             => 'customer_email',
+			'orders.save_customer_email_draft'          => 'customer_email',
+			'orders.send_customer_email'                => 'customer_email',
+			'workflow.write_email_for_order'            => 'customer_email',
+			'workflow.write_and_save_email_draft_for_order' => 'customer_email',
+			'workflow.write_and_send_email_for_order'   => 'customer_email',
+			'workflow.review_suspicious_order'          => 'review_suspicious_order',
+			'workflow.verify_customer_before_fulfillment' => 'verify_customer_before_fulfillment',
+			'workflow.refund_review'                    => 'refund_review',
+			'workflow.fulfillment_followup_preview'     => 'fulfillment_review',
+			'workflow.customer_followup_preview'        => 'customer_service_review',
+			'workflow.operations_attention_preview'     => 'operations_attention',
+			'workflow.inventory_pressure_preview'       => 'inventory_review',
+			'workflow.business_summary_preview'         => 'business_summary',
+			'workflow.composed_actions'                 => 'composed_actions',
+			'workflow.cancel'                           => 'workflow_control',
+		];
+
+		return sanitize_key( $map[ $action ] ?? '' );
 	}
 
 	private static function normalize_response_copy( $text, $mode = '' ) {
@@ -274,7 +338,10 @@ class YoRo_Command_Decision_Normalizer {
 			: [];
 
 		if ( empty( $schema ) ) {
-			return [];
+			return [
+				'params'             => [],
+				'dropped_param_keys' => self::normalize_param_keys( $params, false ),
+			];
 		}
 
 		$filtered = [];
@@ -285,11 +352,51 @@ class YoRo_Command_Decision_Normalizer {
 			}
 		}
 
-		if ( isset( $schema['focus'] ) && empty( $filtered['focus'] ) ) {
-			$filtered['focus'] = 'overview';
+		$filtered = self::apply_action_param_defaults( $filtered, $catalog_item, $schema );
+
+		return [
+			'params'             => $filtered,
+			'dropped_param_keys' => array_values( array_diff( self::normalize_param_keys( $params, false ), array_keys( $filtered ) ) ),
+		];
+	}
+
+	private static function apply_action_param_defaults( $params, $catalog_item, $schema ) {
+		$params       = is_array( $params ) ? $params : [];
+		$catalog_item = is_array( $catalog_item ) ? $catalog_item : [];
+		$schema       = is_array( $schema ) ? $schema : [];
+		$action_name  = sanitize_text_field( $catalog_item['name'] ?? '' );
+
+		if (
+			isset( $schema['focus'] ) &&
+			empty( $params['focus'] ) &&
+			in_array( $action_name, [ 'operations.get_summary', 'store.get_business_summary', 'products.get_inventory_queue' ], true )
+		) {
+			$params['focus'] = 'overview';
 		}
 
-		return $filtered;
+		return $params;
+	}
+
+	private static function normalize_param_keys( $params, $include_null_values = true ) {
+		if ( ! is_array( $params ) ) {
+			return [];
+		}
+
+		$keys = [];
+
+		foreach ( $params as $key => $value ) {
+			if ( ! $include_null_values && null === $value ) {
+				continue;
+			}
+
+			$key = sanitize_key( (string) $key );
+
+			if ( '' !== $key ) {
+				$keys[] = $key;
+			}
+		}
+
+		return array_values( array_unique( $keys ) );
 	}
 
 	private static function normalize_param_value( $value, $type, $param = '' ) {

@@ -28,9 +28,11 @@ class YoRo_Agent_Core {
 	}
 
 	private static function include_core() {
+		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-action-cache.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-logger.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-db.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-rate-limiter.php';
+		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-date-helper.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-conversation-memory.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-memory-context-resolver.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/core/class-yoro-context-provider.php';
@@ -41,6 +43,7 @@ class YoRo_Agent_Core {
 	private static function include_ai() {
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/interfaces/interface-yoro-ai-client.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/class-yoro-ai-settings.php';
+		require_once YORO_AGENT_CORE_PATH . 'includes/ai/class-yoro-ai-request-tracker.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/class-yoro-ai-provider-resolver.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/clients/class-yoro-openai-client.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/clients/class-yoro-cloud-client.php';
@@ -50,19 +53,25 @@ class YoRo_Agent_Core {
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-email-prompt.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-suggestions-prompt.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-conversation-prompt.php';
+		require_once YORO_AGENT_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-action-decomposition-prompt.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-command-router-prompt.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-parse-result-normalizer.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-workflow-result-normalizer.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-email-result-normalizer.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/class-yoro-ai-parser.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/ai/class-yoro-ai-command-router.php';
+		require_once YORO_AGENT_CORE_PATH . 'includes/ai/class-yoro-ai-action-decomposer.php';
 	}
 
 	private static function include_workflows() {
+		require_once YORO_AGENT_CORE_PATH . 'includes/workflows/class-yoro-workflow-definition-registry.php';
+		require_once YORO_AGENT_CORE_PATH . 'includes/workflows/class-yoro-workflow-runner.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/workflows/class-yoro-workflow-templates.php';
+		require_once YORO_AGENT_CORE_PATH . 'includes/workflows/class-yoro-workflow-candidate-resolver.php';
 	}
 
 	private static function include_parsing() {
+		require_once YORO_AGENT_CORE_PATH . 'includes/parsing/class-yoro-action-intent-extractor.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/parsing/class-yoro-entity-phrase-resolver.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/parsing/class-yoro-entity-graph.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/parsing/class-yoro-entity-resolver.php';
@@ -94,6 +103,8 @@ class YoRo_Agent_Core {
 	}
 
 	private static function include_execution() {
+		require_once YORO_AGENT_CORE_PATH . 'includes/execution/class-yoro-action-composition-planner.php';
+		require_once YORO_AGENT_CORE_PATH . 'includes/execution/class-yoro-plan-semantic-validator.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/execution/class-yoro-action-planner.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/execution/class-yoro-policy-engine.php';
 		require_once YORO_AGENT_CORE_PATH . 'includes/execution/class-yoro-plan-risk-engine.php';

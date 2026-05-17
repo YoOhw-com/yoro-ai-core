@@ -308,6 +308,7 @@ class YoRo_Policy_Engine {
 		$is_destructive = YoRo_Action_Registry::has_capability( $action, 'destructive' );
 		$is_bulk        = YoRo_Action_Registry::has_capability( $action, 'bulk' );
 		$is_email       = YoRo_Action_Registry::has_capability( $action, 'customer_communication' );
+		$is_confirmation_exempt_read = 'orders.refund_preview' === $action;
 		$is_guided_workflow_preview = in_array(
 			$action,
 			[
@@ -332,7 +333,7 @@ class YoRo_Policy_Engine {
 		* Capability-level baseline.
 		* These apply even in permissive mode, because they represent inherently sensitive actions.
 		*/
-		if ( $is_financial || $is_destructive ) {
+		if ( ( $is_financial && ! $is_confirmation_exempt_read ) || $is_destructive ) {
 			$policy['requires_confirmation'] = 1;
 		}
 
@@ -345,7 +346,7 @@ class YoRo_Policy_Engine {
 		}
 
 		if ( 'balanced' === $mode ) {
-			if ( $is_guided_workflow_preview ) {
+			if ( $is_guided_workflow_preview || $is_confirmation_exempt_read ) {
 				$policy['requires_confirmation'] = 0;
 				return $policy;
 			}
@@ -375,7 +376,7 @@ class YoRo_Policy_Engine {
 				$policy['requires_confirmation'] = 1;
 			}
 
-			if ( $is_financial || $is_destructive || ( $is_email && $write_action ) ) {
+			if ( ( $is_financial && ! $is_confirmation_exempt_read ) || $is_destructive || ( $is_email && $write_action ) ) {
 				$policy['requires_preview']      = 1;
 				$policy['requires_confirmation'] = 1;
 			}

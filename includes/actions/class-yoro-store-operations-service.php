@@ -13,119 +13,129 @@ class YoRo_Store_Operations_Service {
 
 		$window_key = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( $params['window'] ?? 'today' );
 		$focus      = ! empty( $params['focus'] ) ? sanitize_key( $params['focus'] ) : 'overview';
-		$window     = YoRo_Orders_Read_Service::briefing_get_operations_window( $window_key );
 
-		$window_statuses = [
-			'pending',
-			'processing',
-			'on-hold',
-			'completed',
-			'cancelled',
-			'refunded',
-			'failed',
-		];
-
-		$window_status_counts = [];
-
-		foreach ( $window_statuses as $status ) {
-			$window_status_counts[ $status ] = YoRo_Orders_Read_Service::briefing_count_orders(
-				[
-					'status'       => [ $status ],
-					'date_created' => $window['query'],
-				]
-			);
-		}
-
-		$backlog_counts = [
-			'pending'    => YoRo_Orders_Read_Service::briefing_count_orders( [ 'status' => [ 'pending' ] ] ),
-			'processing' => YoRo_Orders_Read_Service::briefing_count_orders( [ 'status' => [ 'processing' ] ] ),
-			'on-hold'    => YoRo_Orders_Read_Service::briefing_count_orders( [ 'status' => [ 'on-hold' ] ] ),
-		];
-
-		$attention_counts = [
-			'pending_over_24h'    => YoRo_Orders_Read_Service::briefing_count_orders(
-				[
-					'status'       => [ 'pending' ],
-					'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-24 hours' ),
-				]
-			),
-			'processing_over_72h' => YoRo_Orders_Read_Service::briefing_count_orders(
-				[
-					'status'       => [ 'processing' ],
-					'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-72 hours' ),
-				]
-			),
-			'on_hold_over_48h'    => YoRo_Orders_Read_Service::briefing_count_orders(
-				[
-					'status'       => [ 'on-hold' ],
-					'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-48 hours' ),
-				]
-			),
-		];
-
-		$window_total    = array_sum( $window_status_counts );
-		$backlog_total   = array_sum( $backlog_counts );
-		$attention_total = array_sum( $attention_counts );
-		$recent_orders   = [];
-
-		foreach (
-			wc_get_orders(
-				[
-					'limit'   => 5,
-					'status'  => [ 'pending', 'processing', 'on-hold' ],
-					'orderby' => 'date',
-					'order'   => 'DESC',
-				]
-			) as $order
-		) {
-			if ( $order instanceof WC_Order ) {
-				$recent_orders[] = YoRo_Order_Presenter::format_order_summary( $order );
-			}
-		}
-
-		return [
-			'success'              => true,
-			'action'               => 'operations.get_summary',
-			'summary'              => sprintf(
-				'Operations summary for %1$s: %2$d new orders, %3$d open backlog, %4$d attention items.',
-				$window['label'],
-				$window_total,
-				$backlog_total,
-				$attention_total
-			),
-			'message'              => sprintf(
-				'Operations summary for %1$s: %2$d new orders, %3$d open backlog, %4$d attention items.',
-				$window['label'],
-				$window_total,
-				$backlog_total,
-				$attention_total
-			),
-			'count'                => $window_total,
-			'read_only'            => true,
-			'undoable'             => false,
-			'undo_plan'            => [],
-			'data'                 => [],
-			'meta'                 => [],
-			'processed'            => [],
-			'skipped'              => [],
-			'errors'               => [],
-			'window'               => [
-				'key'   => $window_key,
-				'label' => $window['label'],
-				'start' => $window['start'],
-				'end'   => $window['end'],
+		return YoRo_Action_Cache::remember(
+			'operations_summary',
+			[
+				'window' => $window_key,
+				'focus'  => $focus,
 			],
-			'focus'                => $focus,
-			'window_order_count'   => $window_total,
-			'backlog_total'        => $backlog_total,
-			'attention_total'      => $attention_total,
-			'window_status_counts' => $window_status_counts,
-			'backlog_counts'       => $backlog_counts,
-			'attention_counts'     => $attention_counts,
-			'recent_orders'        => $recent_orders,
-			'result_type'          => 'operations_summary',
-			'display_type'         => 'operations_summary',
-		];
+			function() use ( $window_key, $focus ) {
+				$window = YoRo_Orders_Read_Service::briefing_get_operations_window( $window_key );
+
+				$window_statuses = [
+					'pending',
+					'processing',
+					'on-hold',
+					'completed',
+					'cancelled',
+					'refunded',
+					'failed',
+				];
+
+				$window_status_counts = [];
+
+				foreach ( $window_statuses as $status ) {
+					$window_status_counts[ $status ] = YoRo_Orders_Read_Service::briefing_count_orders(
+						[
+							'status'       => [ $status ],
+							'date_created' => $window['query'],
+						]
+					);
+				}
+
+				$backlog_counts = [
+					'pending'    => YoRo_Orders_Read_Service::briefing_count_orders( [ 'status' => [ 'pending' ] ] ),
+					'processing' => YoRo_Orders_Read_Service::briefing_count_orders( [ 'status' => [ 'processing' ] ] ),
+					'on-hold'    => YoRo_Orders_Read_Service::briefing_count_orders( [ 'status' => [ 'on-hold' ] ] ),
+				];
+
+				$attention_counts = [
+					'pending_over_24h'    => YoRo_Orders_Read_Service::briefing_count_orders(
+						[
+							'status'       => [ 'pending' ],
+							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-24 hours' ),
+						]
+					),
+					'processing_over_72h' => YoRo_Orders_Read_Service::briefing_count_orders(
+						[
+							'status'       => [ 'processing' ],
+							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-72 hours' ),
+						]
+					),
+					'on_hold_over_48h'    => YoRo_Orders_Read_Service::briefing_count_orders(
+						[
+							'status'       => [ 'on-hold' ],
+							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-48 hours' ),
+						]
+					),
+				];
+
+				$window_total    = array_sum( $window_status_counts );
+				$backlog_total   = array_sum( $backlog_counts );
+				$attention_total = array_sum( $attention_counts );
+				$recent_orders   = [];
+
+				foreach (
+					wc_get_orders(
+						[
+							'limit'   => 5,
+							'status'  => [ 'pending', 'processing', 'on-hold' ],
+							'orderby' => 'date',
+							'order'   => 'DESC',
+						]
+					) as $order
+				) {
+					if ( $order instanceof WC_Order ) {
+						$recent_orders[] = YoRo_Order_Presenter::format_order_summary( $order );
+					}
+				}
+
+				return [
+					'success'              => true,
+					'action'               => 'operations.get_summary',
+					'summary'              => sprintf(
+						'Operations summary for %1$s: %2$d new orders, %3$d open backlog, %4$d attention items.',
+						$window['label'],
+						$window_total,
+						$backlog_total,
+						$attention_total
+					),
+					'message'              => sprintf(
+						'Operations summary for %1$s: %2$d new orders, %3$d open backlog, %4$d attention items.',
+						$window['label'],
+						$window_total,
+						$backlog_total,
+						$attention_total
+					),
+					'count'                => $window_total,
+					'read_only'            => true,
+					'undoable'             => false,
+					'undo_plan'            => [],
+					'data'                 => [],
+					'meta'                 => [],
+					'processed'            => [],
+					'skipped'              => [],
+					'errors'               => [],
+					'window'               => [
+						'key'   => $window_key,
+						'label' => $window['label'],
+						'start' => $window['start'],
+						'end'   => $window['end'],
+					],
+					'focus'                => $focus,
+					'window_order_count'   => $window_total,
+					'backlog_total'        => $backlog_total,
+					'attention_total'      => $attention_total,
+					'window_status_counts' => $window_status_counts,
+					'backlog_counts'       => $backlog_counts,
+					'attention_counts'     => $attention_counts,
+					'recent_orders'        => $recent_orders,
+					'result_type'          => 'operations_summary',
+					'display_type'         => 'operations_summary',
+				];
+			}
+		);
 	}
 
 	public static function get_operations_attention_queue( $params ) {
@@ -138,115 +148,124 @@ class YoRo_Store_Operations_Service {
 		$high_value_threshold = isset( $params['high_value_threshold'] ) ? (float) $params['high_value_threshold'] : 200;
 		$high_value_threshold = max( 0, $high_value_threshold );
 
-		$queues = [
-			YoRo_Orders_Read_Service::operations_build_attention_queue(
-				'pending_payment_older_than_24h',
-				__( 'Pending payment older than 24h', 'yoro-agent-core' ),
-				__( 'Orders still pending payment after 24 hours.', 'yoro-agent-core' ),
-				[
-					'status'       => [ 'pending' ],
-					'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-24 hours' ),
-				],
-				$limit
-			),
-			YoRo_Orders_Read_Service::operations_build_attention_queue(
-				'processing_older_than_72h',
-				__( 'Processing older than 72h', 'yoro-agent-core' ),
-				__( 'Paid/open orders that may need fulfillment follow-up.', 'yoro-agent-core' ),
-				[
-					'status'       => [ 'processing' ],
-					'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-72 hours' ),
-				],
-				$limit
-			),
-			YoRo_Orders_Read_Service::operations_build_attention_queue(
-				'on_hold_older_than_48h',
-				__( 'On-hold older than 48h', 'yoro-agent-core' ),
-				__( 'On-hold orders that have not moved for two days.', 'yoro-agent-core' ),
-				[
-					'status'       => [ 'on-hold' ],
-					'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-48 hours' ),
-				],
-				$limit
-			),
-			YoRo_Orders_Read_Service::operations_build_attention_queue(
-				'recent_failed_orders',
-				__( 'Recent failed orders', 'yoro-agent-core' ),
-				__( 'Failed checkout/payment attempts from the last 7 days.', 'yoro-agent-core' ),
-				[
-					'status'       => [ 'failed' ],
-					'date_created' => YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-7 days' ) . '...' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( 'now' ),
-				],
-				$limit
-			),
-			YoRo_Orders_Read_Service::operations_build_high_value_open_queue( $limit, $high_value_threshold ),
-		];
-		$queues = self::rank_operations_attention_queue_orders( $queues );
+		return YoRo_Action_Cache::remember(
+			'operations_attention_queue',
+			[
+				'limit'                => $limit,
+				'high_value_threshold' => $high_value_threshold,
+			],
+			function() use ( $limit, $high_value_threshold ) {
+				$queues = [
+					YoRo_Orders_Read_Service::operations_build_attention_queue(
+						'pending_payment_older_than_24h',
+						__( 'Pending payment older than 24h', 'yoro-agent-core' ),
+						__( 'Orders still pending payment after 24 hours.', 'yoro-agent-core' ),
+						[
+							'status'       => [ 'pending' ],
+							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-24 hours' ),
+						],
+						$limit
+					),
+					YoRo_Orders_Read_Service::operations_build_attention_queue(
+						'processing_older_than_72h',
+						__( 'Processing older than 72h', 'yoro-agent-core' ),
+						__( 'Paid/open orders that may need fulfillment follow-up.', 'yoro-agent-core' ),
+						[
+							'status'       => [ 'processing' ],
+							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-72 hours' ),
+						],
+						$limit
+					),
+					YoRo_Orders_Read_Service::operations_build_attention_queue(
+						'on_hold_older_than_48h',
+						__( 'On-hold older than 48h', 'yoro-agent-core' ),
+						__( 'On-hold orders that have not moved for two days.', 'yoro-agent-core' ),
+						[
+							'status'       => [ 'on-hold' ],
+							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-48 hours' ),
+						],
+						$limit
+					),
+					YoRo_Orders_Read_Service::operations_build_attention_queue(
+						'recent_failed_orders',
+						__( 'Recent failed orders', 'yoro-agent-core' ),
+						__( 'Failed checkout/payment attempts from the last 7 days.', 'yoro-agent-core' ),
+						[
+							'status'       => [ 'failed' ],
+							'date_created' => YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-7 days' ) . '...' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( 'now' ),
+						],
+						$limit
+					),
+					YoRo_Orders_Read_Service::operations_build_high_value_open_queue( $limit, $high_value_threshold ),
+				];
+				$queues = self::rank_operations_attention_queue_orders( $queues );
 
-		$total_items = 0;
-		$orders      = [];
+				$total_items = 0;
+				$orders      = [];
 
-		foreach ( $queues as $queue ) {
-			$total_items += absint( $queue['count'] ?? 0 );
+				foreach ( $queues as $queue ) {
+					$total_items += absint( $queue['count'] ?? 0 );
 
-			foreach ( $queue['orders'] as $order ) {
-				$orders[ $order['id'] ] = $order;
-			}
-		}
+					foreach ( $queue['orders'] as $order ) {
+						$orders[ $order['id'] ] = $order;
+					}
+				}
 
-		$orders               = array_values( $orders );
-		usort(
-			$orders,
-			function( $a, $b ) {
-				return (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 );
+				$orders               = array_values( $orders );
+				usort(
+					$orders,
+					function( $a, $b ) {
+						return (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 );
+					}
+				);
+				$attention_context    = self::build_operations_attention_orchestrator_context( $queues, $high_value_threshold );
+				$priority_items       = self::build_operations_attention_priority_items( $queues, $attention_context );
+				$case_rankings        = self::build_operations_attention_case_rankings( $queues, $attention_context );
+				$recommended_sequence = self::build_operations_attention_recommended_sequence( $case_rankings, $attention_context );
+				$next_case            = self::build_operations_attention_next_recommended_case( $case_rankings );
+				$batch_candidates     = self::build_operations_attention_batch_candidates( $case_rankings );
+
+				return [
+					'success'              => true,
+					'action'               => 'operations.get_attention_queue',
+					'summary'              => sprintf(
+						'Operations attention queue: %d items across %d queues.',
+						$total_items,
+						count( $queues )
+					),
+					'message'              => sprintf(
+						'Operations attention queue: %d items across %d queues.',
+						$total_items,
+						count( $queues )
+					),
+					'count'                => $total_items,
+					'read_only'            => true,
+					'undoable'             => false,
+					'undo_plan'            => [],
+					'data'                 => [],
+					'meta'                 => [
+						'limit_per_queue'       => $limit,
+						'high_value_threshold'  => $high_value_threshold,
+						'fraud_scoring_applied' => false,
+					],
+					'processed'            => [],
+					'skipped'              => [],
+					'errors'               => [],
+					'queues'               => $queues,
+					'orders'               => $orders,
+					'limit_per_queue'      => $limit,
+					'high_value_threshold' => $high_value_threshold,
+					'attention_context'    => $attention_context,
+					'priority_items'       => array_slice( $priority_items, 0, 3 ),
+					'case_rankings'        => array_slice( $case_rankings, 0, 10 ),
+					'recommended_sequence' => array_slice( $recommended_sequence, 0, 4 ),
+					'next_recommended_case'=> $next_case,
+					'batch_draft_candidates' => $batch_candidates,
+					'result_type'          => 'operations_attention_queue',
+					'display_type'         => 'operations_attention_queue',
+				];
 			}
 		);
-		$attention_context    = self::build_operations_attention_orchestrator_context( $queues, $high_value_threshold );
-		$priority_items       = self::build_operations_attention_priority_items( $queues, $attention_context );
-		$case_rankings        = self::build_operations_attention_case_rankings( $queues, $attention_context );
-		$recommended_sequence = self::build_operations_attention_recommended_sequence( $case_rankings, $attention_context );
-		$next_case            = self::build_operations_attention_next_recommended_case( $case_rankings );
-		$batch_candidates     = self::build_operations_attention_batch_candidates( $case_rankings );
-
-		return [
-			'success'              => true,
-			'action'               => 'operations.get_attention_queue',
-			'summary'              => sprintf(
-				'Operations attention queue: %d items across %d queues.',
-				$total_items,
-				count( $queues )
-			),
-			'message'              => sprintf(
-				'Operations attention queue: %d items across %d queues.',
-				$total_items,
-				count( $queues )
-			),
-			'count'                => $total_items,
-			'read_only'            => true,
-			'undoable'             => false,
-			'undo_plan'            => [],
-			'data'                 => [],
-			'meta'                 => [
-				'limit_per_queue'       => $limit,
-				'high_value_threshold'  => $high_value_threshold,
-				'fraud_scoring_applied' => false,
-			],
-			'processed'            => [],
-			'skipped'              => [],
-			'errors'               => [],
-			'queues'               => $queues,
-			'orders'               => $orders,
-			'limit_per_queue'      => $limit,
-			'high_value_threshold' => $high_value_threshold,
-			'attention_context'    => $attention_context,
-			'priority_items'       => array_slice( $priority_items, 0, 3 ),
-			'case_rankings'        => array_slice( $case_rankings, 0, 10 ),
-			'recommended_sequence' => array_slice( $recommended_sequence, 0, 4 ),
-			'next_recommended_case'=> $next_case,
-			'batch_draft_candidates' => $batch_candidates,
-			'result_type'          => 'operations_attention_queue',
-			'display_type'         => 'operations_attention_queue',
-		];
 	}
 
 	private static function build_operations_attention_orchestrator_context( $queues, $high_value_threshold ) {

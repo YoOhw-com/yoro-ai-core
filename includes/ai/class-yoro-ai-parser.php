@@ -8,6 +8,7 @@ class YoRo_AI_Parser {
 
 	const PROMPT_VERSION_PARSE = 'parse.v1';
 	const PROMPT_VERSION_WORKFLOW = 'workflow.v1';
+	const PROMPT_VERSION_ACTION_DECOMPOSITION = 'action_decomposition.v1';
 	const PROMPT_VERSION_SUGGESTIONS = 'suggestions.v1';
 	const PROMPT_VERSION_EMAIL = 'email.v1';
 	const PROMPT_VERSION_CONVERSATION = 'conversation.v3';
@@ -42,7 +43,29 @@ class YoRo_AI_Parser {
 		return self::parse_workflow_plan_openai( $prompt );
 	}
 
+	public static function parse_action_decomposition( array $payload ) {
+		if ( YORO_AI_PROVIDER_YORO_CLOUD === self::get_provider() ) {
+			return new WP_Error(
+				'not_ready',
+				__( 'YoRo Cloud action decomposition is not ready.', 'yoro-agent-core' )
+			);
+		}
+
+		return self::parse_action_decomposition_openai( $payload );
+	}
+
 	public static function compose_email( WC_Order $order, $instruction ) {
+		$mock_result = apply_filters(
+			'yoro_ai_compose_email_mock_result',
+			null,
+			$order,
+			$instruction
+		);
+
+		if ( null !== $mock_result ) {
+			return $mock_result;
+		}
+
 		if ( ! YoRo_AI_Provider_Resolver::supports( 'email_compose' ) ) {
 			return new WP_Error(
 				'yoro_ai_missing_api_key',
@@ -133,6 +156,8 @@ class YoRo_AI_Parser {
 		switch ( sanitize_key( $feature ) ) {
 			case 'workflow_plan':
 				return self::PROMPT_VERSION_WORKFLOW;
+			case 'action_decomposition':
+				return self::PROMPT_VERSION_ACTION_DECOMPOSITION;
 			case 'suggestions':
 				return self::PROMPT_VERSION_SUGGESTIONS;
 			case 'email_compose':
@@ -530,6 +555,31 @@ class YoRo_AI_Parser {
 		}
 
 		return $output_text;
+	}
+
+	private static function parse_action_decomposition_openai( array $payload ) {
+		if ( ! YoRo_AI_Settings::get_openai_api_key() ) {
+			return new WP_Error(
+				'yoro_ai_missing_api_key',
+				__( 'OpenAI API key is missing.', 'yoro-agent-core' )
+			);
+		}
+
+		$body = YoRo_AI_Action_Decomposition_Prompt::build_request( $payload );
+		$output_text = YoRo_AI_Provider_Resolver::get_client()->plan_workflow( $body );
+
+		if ( is_wp_error( $output_text ) ) {
+			return $output_text;
+		}
+
+		if ( empty( $output_text ) ) {
+			return new WP_Error(
+				'yoro_ai_action_decomposition_empty_response',
+				__( 'AI action decomposition returned an empty response.', 'yoro-agent-core' )
+			);
+		}
+
+		return YoRo_AI_Workflow_Result_Normalizer::decode( $output_text );
 	}
 
 	private static function parse_with_yoro_cloud( $command ) {

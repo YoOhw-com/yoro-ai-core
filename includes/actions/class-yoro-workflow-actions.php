@@ -23,6 +23,18 @@ class YoRo_Workflow_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_fulfillment_followup_preview' ],
 				'max_items'        => 1,
+				'ai_description'   => 'Prepare the next fulfillment follow-up preview from the active fulfillment queue and current store context.',
+				'ai_examples'      => [
+					'Prepare the next fulfillment follow-up',
+					'Preview the next shipping follow-up',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'original_command' => 'Keep the original user wording for preview context when available.',
+				],
+				'clarification_hints' => [
+					'queue_key' => 'If there is no active fulfillment queue context, ask the person to open the fulfillment queue first instead of asking for an internal queue key.',
+				],
 				'capabilities' => [
 					'workflow',
 					'fulfillment',
@@ -48,6 +60,18 @@ class YoRo_Workflow_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_customer_followup_preview' ],
 				'max_items'        => 1,
+				'ai_description'   => 'Prepare the next customer follow-up preview from the active customer-service queue and current store context.',
+				'ai_examples'      => [
+					'Prepare the next customer follow-up',
+					'Preview the next customer reply workflow',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'original_command' => 'Keep the original user wording for preview context when available.',
+				],
+				'clarification_hints' => [
+					'queue_key' => 'If there is no active customer-service queue context, ask the person to open that queue first instead of asking for an internal queue key.',
+				],
 				'capabilities' => [
 					'workflow',
 					'customers',
@@ -73,6 +97,18 @@ class YoRo_Workflow_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_operations_attention_preview' ],
 				'max_items'        => 1,
+				'ai_description'   => 'Prepare the next guided operations-attention preview from the active operations attention queue.',
+				'ai_examples'      => [
+					'Prepare the next operations attention follow-up',
+					'Preview the next operations item to review',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'original_command' => 'Keep the original user wording for preview context when available.',
+				],
+				'clarification_hints' => [
+					'queue_key' => 'If there is no active operations attention queue context, ask the person to open that queue first instead of asking for an internal queue key.',
+				],
 				'capabilities' => [
 					'workflow',
 					'operations',
@@ -98,6 +134,18 @@ class YoRo_Workflow_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_inventory_pressure_preview' ],
 				'max_items'        => 1,
+				'ai_description'   => 'Prepare the next guided inventory-pressure preview from the active inventory queue.',
+				'ai_examples'      => [
+					'Prepare the next inventory follow-up',
+					'Preview the next inventory item to review',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'original_command' => 'Keep the original user wording for preview context when available.',
+				],
+				'clarification_hints' => [
+					'queue_key' => 'If there is no active inventory queue context, ask the person to open that queue first instead of asking for an internal queue key.',
+				],
 				'capabilities' => [
 					'workflow',
 					'inventory',
@@ -122,11 +170,214 @@ class YoRo_Workflow_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_business_summary_preview' ],
 				'max_items'        => 1,
+				'ai_description'   => 'Prepare the next guided business-summary preview from the current business summary context.',
+				'ai_examples'      => [
+					'Prepare the next business summary follow-up',
+					'Preview the next business signal to review',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'original_command' => 'Keep the original user wording for preview context when available.',
+				],
+				'clarification_hints' => [
+					'queue_key' => 'If there is no active business summary context, ask the person to open the business summary first instead of asking for an internal queue key.',
+				],
 				'capabilities' => [
 					'workflow',
 					'business',
 					'preview',
 					'read',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'workflow.write_email_for_order',
+			[
+				'label'       => 'Write email for order workflow',
+				'description' => 'Load an order, compose a customer email, then continue through the guided email workflow.',
+				'category'    => 'workflow',
+				'permission'  => 'manage_woocommerce',
+				'risk_level'  => 'low',
+				'write_action'=> false,
+				'input_schema'=> [
+					'order_id'         => 'integer',
+					'instruction'      => 'string',
+					'delivery_mode'    => 'string',
+					'original_command' => 'string',
+				],
+				'max_items'      => 1,
+				'ai_description' => 'Start the guided workflow that loads an order, composes a customer email, and then previews, saves a draft, or sends it depending on delivery_mode.',
+				'ai_examples'    => [
+					'Write a payment follow-up email for order 6864',
+					'Draft a customer email for this order',
+				],
+				'required_params' => [ 'order_id', 'instruction' ],
+				'param_hints'     => [
+					'instruction'   => 'Summarize the email goal in a short natural-language phrase such as payment follow-up or shipping delay apology.',
+					'delivery_mode' => 'Use preview by default unless the person clearly asks to save as draft or send.',
+				],
+				'capabilities' => [
+					'workflow',
+					'orders',
+					'email',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'workflow.write_and_save_email_draft_for_order',
+			[
+				'label'       => 'Write and save email draft workflow',
+				'description' => 'Load an order, compose a customer email, and save the result as a draft on the order.',
+				'category'    => 'workflow',
+				'permission'  => 'manage_woocommerce',
+				'risk_level'  => 'medium',
+				'write_action'=> false,
+				'input_schema'=> [
+					'order_id'         => 'integer',
+					'instruction'      => 'string',
+					'delivery_mode'    => 'string',
+					'original_command' => 'string',
+				],
+				'max_items'      => 1,
+				'ai_description' => 'Start the guided workflow that loads an order, composes a customer email, and saves it as a draft.',
+				'ai_examples'    => [
+					'Write a payment follow-up email for order 6864 and save as draft',
+					'Draft an apology email for this order and save it',
+				],
+				'required_params' => [ 'order_id', 'instruction' ],
+				'param_hints'     => [
+					'instruction'   => 'Summarize the email goal in a short natural-language phrase.',
+					'delivery_mode' => 'Set to save_draft when the person explicitly asks to save the authored email as a draft.',
+				],
+				'capabilities' => [
+					'workflow',
+					'orders',
+					'email',
+					'draft',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'workflow.write_and_send_email_for_order',
+			[
+				'label'       => 'Write and send email workflow',
+				'description' => 'Load an order, compose a customer email, and send it to the customer.',
+				'category'    => 'workflow',
+				'permission'  => 'manage_woocommerce',
+				'risk_level'  => 'medium',
+				'write_action'=> false,
+				'input_schema'=> [
+					'order_id'         => 'integer',
+					'instruction'      => 'string',
+					'delivery_mode'    => 'string',
+					'original_command' => 'string',
+				],
+				'max_items'      => 1,
+				'ai_description' => 'Start the guided workflow that loads an order, composes a customer email, and sends it after confirmation.',
+				'ai_examples'    => [
+					'Write a payment follow-up email for order 6864 and send it',
+					'Send a short apology email for this order',
+				],
+				'required_params' => [ 'order_id', 'instruction' ],
+				'param_hints'     => [
+					'instruction'   => 'Summarize the email goal in a short natural-language phrase.',
+					'delivery_mode' => 'Set to send when the person explicitly asks to send the authored email.',
+				],
+				'capabilities' => [
+					'workflow',
+					'orders',
+					'email',
+					'send',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'workflow.verify_customer_before_fulfillment',
+			[
+				'label'       => 'Verify customer before fulfillment workflow',
+				'description' => 'Guide the order-verification workflow before fulfillment or shipping.',
+				'category'    => 'workflow',
+				'permission'  => 'manage_woocommerce',
+				'risk_level'  => 'medium',
+				'write_action'=> false,
+				'input_schema'=> [
+					'order_id'         => 'integer',
+					'email_delivery_mode' => 'string',
+					'original_command' => 'string',
+				],
+				'max_items'      => 1,
+				'ai_description' => 'Start the guided workflow that verifies a customer or order details before fulfillment.',
+				'ai_examples'    => [
+					'Verify this customer before fulfillment',
+					'Check the customer details before shipping order 6864',
+				],
+				'required_params' => [ 'order_id' ],
+				'capabilities' => [
+					'workflow',
+					'orders',
+					'verification',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'workflow.refund_review',
+			[
+				'label'       => 'Refund review workflow',
+				'description' => 'Guide the refund review workflow for a specific order.',
+				'category'    => 'workflow',
+				'permission'  => 'manage_woocommerce',
+				'risk_level'  => 'medium',
+				'write_action'=> false,
+				'input_schema'=> [
+					'order_id'         => 'integer',
+					'instruction'      => 'string',
+					'delivery_mode'    => 'string',
+					'original_command' => 'string',
+				],
+				'max_items'      => 1,
+				'ai_description' => 'Start the guided refund review workflow for a specific order.',
+				'ai_examples'    => [
+					'Review the refund for order 6864',
+					'Prepare a refund review for this order',
+				],
+				'required_params' => [ 'order_id' ],
+				'capabilities' => [
+					'workflow',
+					'orders',
+					'refund',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'workflow.review_suspicious_order',
+			[
+				'label'       => 'Review suspicious order workflow',
+				'description' => 'Guide the suspicious-order review workflow for a specific order.',
+				'category'    => 'workflow',
+				'permission'  => 'manage_woocommerce',
+				'risk_level'  => 'medium',
+				'write_action'=> false,
+				'input_schema'=> [
+					'order_id'         => 'integer',
+					'original_command' => 'string',
+				],
+				'max_items'      => 1,
+				'ai_description' => 'Start the guided suspicious-order review workflow for a specific order.',
+				'ai_examples'    => [
+					'Review suspicious order 6864',
+					'Investigate this risky order',
+				],
+				'required_params' => [ 'order_id' ],
+				'capabilities' => [
+					'workflow',
+					'orders',
+					'risk',
 				],
 			]
 		);
@@ -143,6 +394,15 @@ class YoRo_Workflow_Actions {
 				'write_action'          => false,
 				'input_schema' => [],
 				'max_items'    => 1,
+				'ai_description'   => 'Cancel the current active workflow or guided preview flow.',
+				'ai_examples'      => [
+					'Cancel this workflow',
+					'Stop this flow',
+					'Hủy workflow này',
+				],
+				'required_params'     => [],
+				'param_hints'         => [],
+				'clarification_hints' => [],
 				'capabilities' => [
 					'workflow',
 					'state',
@@ -176,17 +436,12 @@ class YoRo_Workflow_Actions {
 		$current_workflow = YoRo_Conversation_Memory::get_workflow( $user_id );
 		if (
 			! empty( $params['_yoro_confirmed'] ) &&
-			! empty( $current_workflow['type'] ) &&
-			'fulfillment_followup' === sanitize_key( $current_workflow['type'] ) &&
-			'preview_ready' === sanitize_key( $current_workflow['step'] ?? '' )
+			YoRo_Workflow_Runner::is_confirmable_preview_workflow(
+				$current_workflow,
+				'fulfillment_followup',
+				'workflow.fulfillment_followup_preview'
+			)
 		) {
-			if ( 'workflow.fulfillment_followup_preview' !== sanitize_text_field( $current_workflow['action'] ?? '' ) ) {
-				return new WP_Error(
-					'yoro_workflow_stale',
-					__( 'This fulfillment follow-up preview is stale. Please generate a new preview before confirming.', 'yoro-agent-core' )
-				);
-			}
-
 			return self::execute_fulfillment_followup_after_confirmation( $current_workflow );
 		}
 
@@ -225,26 +480,29 @@ class YoRo_Workflow_Actions {
 			],
 		];
 
-		$workflow = [
-			'id'           => 'wf_' . wp_generate_uuid4(),
-			'type'         => 'fulfillment_followup',
-			'surface'      => 'admin_copilot',
-			'action'       => 'workflow.fulfillment_followup_preview',
-			'step'         => 'preview_ready',
-			'order_id'     => $selected_item['order_id'],
-			'params'       => [
-				'queue_key'          => $queue_source['key'],
-				'selected_item'      => $selected_item,
-				'selection_reason'   => $selection_reason,
-				'proposed_action'    => [
+		$workflow = YoRo_Workflow_Runner::build_followup_workflow(
+			'fulfillment_followup',
+			[
+				'order_id'         => $selected_item['order_id'],
+				'selected_item'    => $selected_item,
+				'queue_source'     => $queue_source,
+				'selection_reason' => $selection_reason,
+				'email_preview'    => $email_preview,
+				'subject'          => $email_subject,
+				'body'             => $email_body,
+				'original_command' => $params['original_command'] ?? '',
+				'proposed_action'  => [
 					'action' => 'orders.save_customer_email_draft',
 					'label'  => __( 'Save reviewed customer email draft', 'yoro-agent-core' ),
 				],
+				'draft_summary'    => [
+					'template'     => 'shipping_delay',
+					'subject'      => $email_subject,
+					'body_preview' => wp_trim_words( $email_body, 40 ),
+				],
 				'next_after_confirm' => $next_after_confirm,
-			],
-			'last_command' => sanitize_textarea_field( $params['original_command'] ?? '' ),
-			'updated_at'   => current_time( 'mysql' ),
-		];
+			]
+		);
 
 		YoRo_Conversation_Memory::set_workflow( $user_id, $workflow );
 
@@ -351,17 +609,12 @@ class YoRo_Workflow_Actions {
 		$current_workflow = YoRo_Conversation_Memory::get_workflow( $user_id );
 		if (
 			! empty( $params['_yoro_confirmed'] ) &&
-			! empty( $current_workflow['type'] ) &&
-			'customer_followup' === sanitize_key( $current_workflow['type'] ) &&
-			'preview_ready' === sanitize_key( $current_workflow['step'] ?? '' )
+			YoRo_Workflow_Runner::is_confirmable_preview_workflow(
+				$current_workflow,
+				'customer_followup',
+				'workflow.customer_followup_preview'
+			)
 		) {
-			if ( 'workflow.customer_followup_preview' !== sanitize_text_field( $current_workflow['action'] ?? '' ) ) {
-				return new WP_Error(
-					'yoro_workflow_stale',
-					__( 'This customer follow-up preview is stale. Please generate a new preview before confirming.', 'yoro-agent-core' )
-				);
-			}
-
 			return self::execute_customer_followup_after_confirmation( $current_workflow );
 		}
 
@@ -419,26 +672,30 @@ class YoRo_Workflow_Actions {
 			$next_after_confirm['params']['draft_id'] = $existing_draft_id;
 		}
 
-		$workflow = [
-			'id'           => 'wf_' . wp_generate_uuid4(),
-			'type'         => 'customer_followup',
-			'surface'      => 'admin_copilot',
-			'action'       => 'workflow.customer_followup_preview',
-			'step'         => 'preview_ready',
-			'order_id'     => $selected_item['order_id'],
-			'params'       => [
-				'queue_key'          => $queue_source['key'],
-				'selected_item'      => $selected_item,
-				'selection_reason'   => $selection_reason,
-				'proposed_action'    => [
+		$workflow = YoRo_Workflow_Runner::build_followup_workflow(
+			'customer_followup',
+			[
+				'order_id'         => $selected_item['order_id'],
+				'selected_item'    => $selected_item,
+				'queue_source'     => $queue_source,
+				'selection_reason' => $selection_reason,
+				'email_preview'    => $email_preview,
+				'subject'          => $email_subject,
+				'body'             => $email_body,
+				'draft_id'         => $existing_draft_id,
+				'original_command' => $params['original_command'] ?? '',
+				'proposed_action'  => [
 					'action' => $next_after_confirm['action'],
 					'label'  => $next_after_confirm['label'],
 				],
+				'draft_summary'    => [
+					'template'     => 'customer_followup',
+					'subject'      => $email_subject,
+					'body_preview' => wp_trim_words( $email_body, 40 ),
+				],
 				'next_after_confirm' => $next_after_confirm,
-			],
-			'last_command' => sanitize_textarea_field( $params['original_command'] ?? '' ),
-			'updated_at'   => current_time( 'mysql' ),
-		];
+			]
+		);
 
 		YoRo_Conversation_Memory::set_workflow( $user_id, $workflow );
 
@@ -560,23 +817,19 @@ class YoRo_Workflow_Actions {
 		$next_without_confirm = $selected['next_without_confirm'];
 		$preview_summary   = $selected['preview_summary'];
 
-		$workflow = [
-			'id'           => 'wf_' . wp_generate_uuid4(),
-			'type'         => 'operations_attention',
-			'surface'      => 'admin_copilot',
-			'action'       => 'workflow.operations_attention_preview',
-			'step'         => 'preview_ready',
-			'order_id'     => $selected_item['order_id'],
-			'params'       => [
-				'queue_key'            => $queue_source['key'],
-				'selected_item'        => $selected_item,
-				'selection_reason'     => $selection_reason,
-				'proposed_action'      => $proposed_action,
-				'next_without_confirm' => $next_without_confirm,
-			],
-			'last_command' => sanitize_textarea_field( $params['original_command'] ?? '' ),
-			'updated_at'   => current_time( 'mysql' ),
-		];
+		$workflow = YoRo_Workflow_Runner::build_preview_workflow(
+			'operations_attention',
+			[
+				'order_id'            => $selected_item['order_id'],
+				'selected_item'       => $selected_item,
+				'queue_source'        => $queue_source,
+				'selection_reason'    => $selection_reason,
+				'proposed_action'     => $proposed_action,
+				'preview_summary'     => $preview_summary,
+				'next_without_confirm'=> $next_without_confirm,
+				'original_command'    => $params['original_command'] ?? '',
+			]
+		);
 
 		YoRo_Conversation_Memory::set_workflow( $user_id, $workflow );
 
@@ -673,22 +926,19 @@ class YoRo_Workflow_Actions {
 		$next_without_confirm = $selected['next_without_confirm'];
 		$preview_summary      = $selected['preview_summary'];
 
-		$workflow = [
-			'id'           => 'wf_' . wp_generate_uuid4(),
-			'type'         => 'inventory_pressure',
-			'action'       => 'workflow.inventory_pressure_preview',
-			'step'         => 'preview_ready',
-			'product_id'   => $selected_item['product_id'],
-			'params'       => [
-				'queue_key'            => $queue_source['key'],
-				'selected_item'        => $selected_item,
-				'selection_reason'     => $selection_reason,
-				'proposed_action'      => $proposed_action,
-				'next_without_confirm' => $next_without_confirm,
-			],
-			'last_command' => sanitize_textarea_field( $params['original_command'] ?? '' ),
-			'updated_at'   => current_time( 'mysql' ),
-		];
+		$workflow = YoRo_Workflow_Runner::build_preview_workflow(
+			'inventory_pressure',
+			[
+				'product_id'          => $selected_item['product_id'],
+				'selected_item'       => $selected_item,
+				'queue_source'        => $queue_source,
+				'selection_reason'    => $selection_reason,
+				'proposed_action'     => $proposed_action,
+				'preview_summary'     => $preview_summary,
+				'next_without_confirm'=> $next_without_confirm,
+				'original_command'    => $params['original_command'] ?? '',
+			]
+		);
 
 		YoRo_Conversation_Memory::set_workflow( $user_id, $workflow );
 
@@ -775,20 +1025,17 @@ class YoRo_Workflow_Actions {
 		$next_without_confirm = $selected['next_without_confirm'];
 		$preview_summary      = $selected['preview_summary'];
 
-		$workflow = [
-			'id'           => 'wf_' . wp_generate_uuid4(),
-			'type'         => 'business_summary',
-			'action'       => 'workflow.business_summary_preview',
-			'step'         => 'preview_ready',
-			'params'       => [
-				'selected_item'        => $selected_item,
-				'selection_reason'     => $selection_reason,
-				'proposed_action'      => $proposed_action,
-				'next_without_confirm' => $next_without_confirm,
-			],
-			'last_command' => sanitize_textarea_field( $params['original_command'] ?? '' ),
-			'updated_at'   => current_time( 'mysql' ),
-		];
+		$workflow = YoRo_Workflow_Runner::build_preview_workflow(
+			'business_summary',
+			[
+				'selected_item'       => $selected_item,
+				'selection_reason'    => $selection_reason,
+				'proposed_action'     => $proposed_action,
+				'preview_summary'     => $preview_summary,
+				'next_without_confirm'=> $next_without_confirm,
+				'original_command'    => $params['original_command'] ?? '',
+			]
+		);
 
 		YoRo_Conversation_Memory::set_workflow( $user_id, $workflow );
 
@@ -855,12 +1102,21 @@ class YoRo_Workflow_Actions {
 			];
 		}
 
+		$workflow = class_exists( 'YoRo_Workflow_Runner' )
+			? YoRo_Workflow_Runner::cancel_workflow( $workflow )
+			: $workflow;
+
 		YoRo_Conversation_Memory::clear_workflow( $user_id );
 
 		return [
-			'success' => true,
-			'action'  => 'workflow.cancel',
-			'summary' => __( 'Workflow cancelled.', 'yoro-agent-core' ),
+			'success'      => true,
+			'action'       => 'workflow.cancel',
+			'summary'      => __( 'Workflow cancelled.', 'yoro-agent-core' ),
+			'message'      => __( 'Workflow cancelled.', 'yoro-agent-core' ),
+			'workflow'     => $workflow,
+			'result_type'  => 'assistant_message',
+			'display_type' => 'assistant_message',
+			'read_only'    => true,
 		];
 	}
 
@@ -1307,8 +1563,8 @@ class YoRo_Workflow_Actions {
 				'id'         => $id,
 				'subject'    => $subject,
 				'body'       => $body,
-				'created_at' => sanitize_text_field( $draft['created_at'] ?? '' ),
-				'updated_at' => sanitize_text_field( $draft['updated_at'] ?? '' ),
+				'created_at' => YoRo_Date_Helper::format_mysql( $draft['created_at'] ?? '' ),
+				'updated_at' => YoRo_Date_Helper::format_mysql( $draft['updated_at'] ?? '' ),
 			];
 		}
 
@@ -1785,54 +2041,27 @@ class YoRo_Workflow_Actions {
 	}
 
 	private static function execute_fulfillment_followup_after_confirmation( $workflow ) {
-		$next_action = sanitize_text_field( $workflow['params']['next_after_confirm']['action'] ?? '' );
-		$params = isset( $workflow['params']['next_after_confirm']['params'] ) && is_array( $workflow['params']['next_after_confirm']['params'] )
-			? $workflow['params']['next_after_confirm']['params']
-			: [];
-		$selected_item_order_id = absint( $workflow['params']['selected_item']['order_id'] ?? 0 );
+		$execution = YoRo_Workflow_Runner::execute_confirmed_workflow( $workflow );
 
-		if (
-			'orders.save_customer_email_draft' !== $next_action ||
-			empty( $params['order_id'] ) ||
-			empty( $params['subject'] ) ||
-			empty( $params['body'] ) ||
-			( $selected_item_order_id > 0 && absint( $params['order_id'] ) !== $selected_item_order_id )
-		) {
-			return new WP_Error(
-				'yoro_workflow_stale',
-				__( 'This fulfillment follow-up preview is stale. Please generate a new preview before confirming.', 'yoro-agent-core' )
-			);
-		}
-
-		$result = self::execute_workflow_followup_action(
-			$workflow,
-			$next_action,
-			$params
-		);
-
-		if ( is_wp_error( $result ) ) {
-			return $result;
+		if ( is_wp_error( $execution ) ) {
+			return $execution;
 		}
 
 		$user_id = get_current_user_id();
+		$result  = is_array( $execution['result'] ) ? $execution['result'] : [];
+		$workflow = is_array( $execution['workflow'] ) ? $execution['workflow'] : $workflow;
 
-		$result['workflow'] = array_merge(
-			is_array( $workflow ) ? $workflow : [],
-			[
-				'step'       => 'executed',
-				'updated_at' => current_time( 'mysql' ),
-			]
-		);
+		$result['workflow'] = $workflow;
 		$result['workflow_id'] = 'fulfillment_followup_v1';
 		$result['workflow_version'] = 'v1';
 		$result['workflow_executed'] = true;
-		$result['selection_reason'] = sanitize_text_field( $workflow['params']['selection_reason'] ?? '' );
-		$result['selected_item'] = isset( $workflow['params']['selected_item'] ) && is_array( $workflow['params']['selected_item'] )
-			? $workflow['params']['selected_item']
+		$result['selection_reason'] = sanitize_text_field( $workflow['artifacts']['selection_reason'] ?? $workflow['params']['selection_reason'] ?? '' );
+		$result['selected_item'] = isset( $workflow['artifacts']['selected_item'] ) && is_array( $workflow['artifacts']['selected_item'] )
+			? $workflow['artifacts']['selected_item']
 			: [];
-		$result['queue_source'] = [
-			'key' => sanitize_key( $workflow['params']['queue_key'] ?? '' ),
-		];
+		$result['queue_source'] = isset( $workflow['artifacts']['queue_source'] ) && is_array( $workflow['artifacts']['queue_source'] )
+			? $workflow['artifacts']['queue_source']
+			: [ 'key' => sanitize_key( $workflow['params']['queue_key'] ?? '' ) ];
 
 		YoRo_Conversation_Memory::clear_workflow( $user_id );
 
@@ -1840,121 +2069,30 @@ class YoRo_Workflow_Actions {
 	}
 
 	private static function execute_customer_followup_after_confirmation( $workflow ) {
-		$next_action = sanitize_text_field( $workflow['params']['next_after_confirm']['action'] ?? '' );
-		$params      = isset( $workflow['params']['next_after_confirm']['params'] ) && is_array( $workflow['params']['next_after_confirm']['params'] )
-			? $workflow['params']['next_after_confirm']['params']
-			: [];
-		$selected_item_order_id = absint( $workflow['params']['selected_item']['order_id'] ?? 0 );
+		$execution = YoRo_Workflow_Runner::execute_confirmed_workflow( $workflow );
 
-		if (
-			empty( $params['order_id'] ) ||
-			empty( $params['subject'] ) ||
-			empty( $params['body'] ) ||
-			'' === $next_action ||
-			! in_array( $next_action, [ 'orders.save_customer_email_draft', 'orders.update_customer_email_draft' ], true ) ||
-			( $selected_item_order_id > 0 && absint( $params['order_id'] ) !== $selected_item_order_id )
-		) {
-			return new WP_Error(
-				'yoro_workflow_stale',
-				__( 'This customer follow-up preview is stale. Please generate a new preview before confirming.', 'yoro-agent-core' )
-			);
-		}
-
-		if ( 'orders.update_customer_email_draft' === $next_action ) {
-			if ( empty( $params['draft_id'] ) ) {
-				return new WP_Error(
-					'yoro_workflow_stale',
-					__( 'This customer follow-up preview is stale. Please generate a new preview before confirming.', 'yoro-agent-core' )
-				);
-			}
-
-			$result = self::execute_workflow_followup_action(
-				$workflow,
-				$next_action,
-				$params
-			);
-		} else {
-			$result = self::execute_workflow_followup_action(
-				$workflow,
-				$next_action,
-				$params
-			);
-		}
-
-		if ( is_wp_error( $result ) ) {
-			return $result;
+		if ( is_wp_error( $execution ) ) {
+			return $execution;
 		}
 
 		$user_id = get_current_user_id();
+		$result  = is_array( $execution['result'] ) ? $execution['result'] : [];
+		$workflow = is_array( $execution['workflow'] ) ? $execution['workflow'] : $workflow;
 
-		$result['workflow'] = array_merge(
-			is_array( $workflow ) ? $workflow : [],
-			[
-				'step'       => 'executed',
-				'updated_at' => current_time( 'mysql' ),
-			]
-		);
+		$result['workflow'] = $workflow;
 		$result['workflow_id']       = 'customer_followup_v1';
 		$result['workflow_version']  = 'v1';
 		$result['workflow_executed'] = true;
-		$result['selection_reason']  = sanitize_text_field( $workflow['params']['selection_reason'] ?? '' );
-		$result['selected_item']     = isset( $workflow['params']['selected_item'] ) && is_array( $workflow['params']['selected_item'] )
-			? $workflow['params']['selected_item']
+		$result['selection_reason']  = sanitize_text_field( $workflow['artifacts']['selection_reason'] ?? $workflow['params']['selection_reason'] ?? '' );
+		$result['selected_item']     = isset( $workflow['artifacts']['selected_item'] ) && is_array( $workflow['artifacts']['selected_item'] )
+			? $workflow['artifacts']['selected_item']
 			: [];
-		$result['queue_source']      = [
-			'key' => sanitize_key( $workflow['params']['queue_key'] ?? '' ),
-		];
+		$result['queue_source']      = isset( $workflow['artifacts']['queue_source'] ) && is_array( $workflow['artifacts']['queue_source'] )
+			? $workflow['artifacts']['queue_source']
+			: [ 'key' => sanitize_key( $workflow['params']['queue_key'] ?? '' ) ];
 
 		YoRo_Conversation_Memory::clear_workflow( $user_id );
 
 		return $result;
-	}
-
-	private static function execute_workflow_followup_action( $workflow, $action, $params ) {
-		$action = sanitize_text_field( $action );
-		$params = is_array( $params ) ? $params : [];
-
-		if ( '' === $action ) {
-			return new WP_Error(
-				'yoro_workflow_missing_action',
-				__( 'Workflow action is missing.', 'yoro-agent-core' )
-			);
-		}
-
-		$plan = [
-			'type'   => 'single',
-			'action' => $action,
-			'params' => $params,
-			'parsed' => [
-				'success' => true,
-				'matched' => true,
-				'action'  => $action,
-				'params'  => $params,
-			],
-		];
-
-		$runtime = YoRo_Runtime_Guard::prepare(
-			$plan,
-			[
-				'source'  => 'direct',
-				'route'   => 'workflow',
-				'preview' => false,
-				'confirm' => true,
-				'surface' => sanitize_key( $workflow['surface'] ?? '' ),
-			]
-		);
-
-		if ( is_wp_error( $runtime ) ) {
-			return $runtime;
-		}
-
-		if ( ! empty( $runtime['preview'] ) || ! empty( $runtime['requires_confirmation'] ) ) {
-			return new WP_Error(
-				'yoro_workflow_boundary_blocked',
-				__( 'This workflow step now requires a fresh preview or confirmation before execution.', 'yoro-agent-core' )
-			);
-		}
-
-		return YoRo_Plan_Executor::execute( $plan, true, false );
 	}
 }

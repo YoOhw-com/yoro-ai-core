@@ -14,7 +14,8 @@ class YoRo_Context_Provider {
 			'user'         => self::get_user_context(),
 			'plugins'      => self::get_plugin_context(),
 			'actions'      => self::get_actions_context(),
-			'generated_at' => current_time( 'mysql' ),
+			'workflow'     => self::get_workflow_context(),
+			'generated_at' => YoRo_Date_Helper::format_mysql( current_time( 'mysql' ) ),
 		];
 	}
 
@@ -191,5 +192,139 @@ class YoRo_Context_Provider {
 		}
 
 		return $summary;
+	}
+
+	private static function get_workflow_context() {
+		$user_id = get_current_user_id();
+
+		if ( ! $user_id || ! class_exists( 'YoRo_Conversation_Memory' ) ) {
+			return [
+				'active'                 => false,
+				'current_workflow'       => [],
+				'last_workflow_result'   => [],
+				'workflow_history'       => [],
+				'can_continue'           => false,
+				'can_retry_failed_step'  => false,
+			];
+		}
+
+		$workflow_state        = YoRo_Conversation_Memory::get_workflow_state( $user_id );
+		$current_workflow      = self::compact_workflow_snapshot( $workflow_state['current_workflow'] ?? [] );
+		$last_workflow_result  = self::compact_workflow_snapshot( $workflow_state['last_workflow_result'] ?? [] );
+		$workflow_history      = array_map(
+			[ __CLASS__, 'compact_workflow_history_entry' ],
+			isset( $workflow_state['workflow_history'] ) && is_array( $workflow_state['workflow_history'] )
+				? $workflow_state['workflow_history']
+				: []
+		);
+
+		return [
+			'active'                => ! empty( $current_workflow['id'] ),
+			'current_workflow'      => $current_workflow,
+			'last_workflow_result'  => $last_workflow_result,
+			'workflow_history'      => array_values( array_filter( $workflow_history ) ),
+			'can_continue'          => self::is_continueable_workflow_status( $current_workflow['status'] ?? '' ),
+			'can_retry_failed_step' => 'failed' === sanitize_key( $current_workflow['status'] ?? '' )
+				|| 'failed' === sanitize_key( $last_workflow_result['status'] ?? '' )
+				|| self::has_failed_workflow_history( $workflow_history ),
+		];
+	}
+
+	private static function compact_workflow_snapshot( $workflow ) {
+		$workflow = is_array( $workflow ) ? $workflow : [];
+
+		if ( empty( $workflow ) ) {
+			return [];
+		}
+
+		$updated_at = sanitize_text_field( $workflow['updated_at'] ?? '' );
+		$created_at = sanitize_text_field( $workflow['created_at'] ?? '' );
+
+		return [
+			'id'                 => sanitize_text_field( $workflow['id'] ?? '' ),
+			'type'               => sanitize_key( $workflow['type'] ?? '' ),
+			'definition_id'      => sanitize_key( $workflow['definition_id'] ?? '' ),
+			'label'              => sanitize_text_field( $workflow['label'] ?? '' ),
+			'description'        => sanitize_text_field( $workflow['description'] ?? '' ),
+			'status'             => sanitize_key( $workflow['status'] ?? $workflow['step'] ?? '' ),
+			'step'               => sanitize_key( $workflow['step'] ?? '' ),
+			'current_step_id'    => sanitize_key( $workflow['current_step_id'] ?? '' ),
+			'current_step_index' => isset( $workflow['current_step_index'] ) ? (int) $workflow['current_step_index'] : -1,
+			'order_id'           => absint( $workflow['order_id'] ?? 0 ),
+			'product_id'         => absint( $workflow['product_id'] ?? 0 ),
+			'updated_at'         => $updated_at,
+			'updated_at_ts'      => $updated_at ? YoRo_Date_Helper::get_mysql_timestamp( $updated_at ) : 0,
+			'created_at'         => $created_at,
+			'created_at_ts'      => $created_at ? YoRo_Date_Helper::get_mysql_timestamp( $created_at ) : 0,
+			'steps'              => self::compact_workflow_steps( $workflow['steps'] ?? [] ),
+		];
+	}
+
+	private static function compact_workflow_steps( $steps ) {
+		$steps = is_array( $steps ) ? $steps : [];
+
+		return array_values(
+			array_filter(
+				array_map(
+					function ( $step ) {
+						$step = is_array( $step ) ? $step : [];
+
+						if ( empty( $step ) ) {
+							return [];
+						}
+
+						return [
+							'id'     => sanitize_key( $step['id'] ?? '' ),
+							'label'  => sanitize_text_field( $step['label'] ?? '' ),
+							'action' => sanitize_text_field( $step['action'] ?? '' ),
+							'status' => sanitize_key( $step['status'] ?? 'pending' ),
+						];
+					},
+					$steps
+				)
+			)
+		);
+	}
+
+	private static function compact_workflow_history_entry( $entry ) {
+		$entry = is_array( $entry ) ? $entry : [];
+
+		if ( empty( $entry ) ) {
+			return [];
+		}
+
+		$updated_at = sanitize_text_field( $entry['updated_at'] ?? '' );
+
+		return [
+			'id'                 => sanitize_text_field( $entry['id'] ?? '' ),
+			'type'               => sanitize_key( $entry['type'] ?? '' ),
+			'definition_id'      => sanitize_key( $entry['definition_id'] ?? '' ),
+			'label'              => sanitize_text_field( $entry['label'] ?? '' ),
+			'status'             => sanitize_key( $entry['status'] ?? '' ),
+			'current_step_id'    => sanitize_key( $entry['current_step_id'] ?? '' ),
+			'current_step_index' => isset( $entry['current_step_index'] ) ? (int) $entry['current_step_index'] : -1,
+			'updated_at'         => $updated_at,
+			'updated_at_ts'      => $updated_at ? YoRo_Date_Helper::get_mysql_timestamp( $updated_at ) : 0,
+		];
+	}
+
+	private static function is_continueable_workflow_status( $status ) {
+		return in_array(
+			sanitize_key( $status ),
+			[ 'collect_missing_params', 'preview_ready', 'ready_to_execute', 'executing' ],
+			true
+		);
+	}
+
+	private static function has_failed_workflow_history( $history ) {
+		$history = is_array( $history ) ? $history : [];
+
+		foreach ( $history as $entry ) {
+			if ( 'failed' === sanitize_key( $entry['status'] ?? '' ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 }

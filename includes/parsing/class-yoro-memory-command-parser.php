@@ -126,10 +126,9 @@ class YoRo_Memory_Command_Parser {
 			return null;
 		}
 
-		if (
-			empty( $workflow['action'] ) ||
-			empty( $workflow['params'] )
-		) {
+		$resume = self::resolve_workflow_resume_target( $workflow );
+
+		if ( empty( $resume['action'] ) ) {
 			return [
 				'success'            => false,
 				'matched'            => true,
@@ -146,10 +145,10 @@ class YoRo_Memory_Command_Parser {
 		return [
 			'success'            => true,
 			'matched'            => true,
-			'action'             => sanitize_text_field( $workflow['action'] ),
-			'params'             => is_array( $workflow['params'] ) ? $workflow['params'] : [],
+			'action'             => sanitize_text_field( $resume['action'] ),
+			'params'             => isset( $resume['params'] ) && is_array( $resume['params'] ) ? $resume['params'] : [],
 			'parser_source'      => 'memory',
-			'parser_rule'        => 'memory.continue_previous_workflow',
+			'parser_rule'        => sanitize_text_field( $resume['parser_rule'] ?? 'memory.continue_previous_workflow' ),
 			'confidence'         => 1.0,
 			'original_command'   => $command,
 			'normalized_command' => $normalized,
@@ -161,9 +160,7 @@ class YoRo_Memory_Command_Parser {
 			return null;
 		}
 
-		$failed = isset( $memory['last_failed_step'] ) && is_array( $memory['last_failed_step'] )
-			? $memory['last_failed_step']
-			: [];
+		$failed = self::resolve_failed_step_target( $memory );
 
 		if ( empty( $failed['action'] ) ) {
 			return [
@@ -192,6 +189,128 @@ class YoRo_Memory_Command_Parser {
 			'original_command'   => $command,
 			'normalized_command' => $normalized,
 		];
+	}
+
+	private static function resolve_workflow_resume_target( $workflow ) {
+		$workflow = is_array( $workflow ) ? $workflow : [];
+
+		if ( empty( $workflow['action'] ) ) {
+			return [];
+		}
+
+		$workflow_step   = sanitize_key( $workflow['step'] ?? '' );
+		$workflow_status = sanitize_key( $workflow['status'] ?? '' );
+
+		if ( in_array( $workflow_step, [ 'collect_missing_params', 'ready_to_execute', 'preview_ready' ], true ) ) {
+			return [
+				'action'      => sanitize_text_field( $workflow['action'] ),
+				'params'      => self::build_resume_params_from_workflow( $workflow ),
+				'parser_rule' => 'memory.continue_previous_workflow',
+			];
+		}
+
+		if ( 'failed' === $workflow_step || 'failed' === $workflow_status ) {
+			return [];
+		}
+
+		if ( ! empty( $workflow['params'] ) && is_array( $workflow['params'] ) ) {
+			return [
+				'action'      => sanitize_text_field( $workflow['action'] ),
+				'params'      => $workflow['params'],
+				'parser_rule' => 'memory.continue_previous_workflow.legacy',
+			];
+		}
+
+		return [];
+	}
+
+	private static function build_resume_params_from_workflow( $workflow ) {
+		$workflow     = is_array( $workflow ) ? $workflow : [];
+		$input_context = isset( $workflow['input_context'] ) && is_array( $workflow['input_context'] )
+			? $workflow['input_context']
+			: [];
+		$params       = isset( $workflow['params'] ) && is_array( $workflow['params'] )
+			? $workflow['params']
+			: [];
+
+		$resume = array_merge( $params, $input_context );
+
+		if ( empty( $resume['original_command'] ) && ! empty( $workflow['last_command'] ) ) {
+			$resume['original_command'] = sanitize_textarea_field( $workflow['last_command'] );
+		}
+
+		return $resume;
+	}
+
+	private static function resolve_failed_step_target( $memory ) {
+		$memory    = is_array( $memory ) ? $memory : [];
+		$workflow  = isset( $memory['current_workflow'] ) && is_array( $memory['current_workflow'] )
+			? $memory['current_workflow']
+			: [];
+		$last_workflow_result = isset( $memory['last_workflow_result'] ) && is_array( $memory['last_workflow_result'] )
+			? $memory['last_workflow_result']
+			: [];
+
+		$failed_target = self::extract_failed_step_from_workflow( $workflow );
+
+		if ( ! empty( $failed_target['action'] ) ) {
+			return $failed_target;
+		}
+
+		$failed_target = self::extract_failed_step_from_workflow(
+			isset( $last_workflow_result['workflow'] ) && is_array( $last_workflow_result['workflow'] )
+				? $last_workflow_result['workflow']
+				: []
+		);
+
+		if ( ! empty( $failed_target['action'] ) ) {
+			return $failed_target;
+		}
+
+		$failed = isset( $memory['last_failed_step'] ) && is_array( $memory['last_failed_step'] )
+			? $memory['last_failed_step']
+			: [];
+
+		return is_array( $failed ) ? $failed : [];
+	}
+
+	private static function extract_failed_step_from_workflow( $workflow ) {
+		$workflow = is_array( $workflow ) ? $workflow : [];
+
+		if ( 'failed' !== sanitize_key( $workflow['step'] ?? '' ) && 'failed' !== sanitize_key( $workflow['status'] ?? '' ) ) {
+			return [];
+		}
+
+		$steps = isset( $workflow['steps'] ) && is_array( $workflow['steps'] )
+			? array_values( $workflow['steps'] )
+			: [];
+
+		$current_step_index = isset( $workflow['current_step_index'] ) ? (int) $workflow['current_step_index'] : -1;
+		$current_step_id    = sanitize_key( $workflow['current_step_id'] ?? '' );
+
+		if ( isset( $steps[ $current_step_index ] ) && ! empty( $steps[ $current_step_index ]['action'] ) ) {
+			return [
+				'action' => sanitize_text_field( $steps[ $current_step_index ]['action'] ),
+				'params' => isset( $steps[ $current_step_index ]['params'] ) && is_array( $steps[ $current_step_index ]['params'] )
+					? $steps[ $current_step_index ]['params']
+					: [],
+			];
+		}
+
+		foreach ( $steps as $step ) {
+			if ( $current_step_id && $current_step_id !== sanitize_key( $step['id'] ?? '' ) ) {
+				continue;
+			}
+
+			if ( 'failed' === sanitize_key( $step['status'] ?? '' ) && ! empty( $step['action'] ) ) {
+				return [
+					'action' => sanitize_text_field( $step['action'] ),
+					'params' => isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [],
+				];
+			}
+		}
+
+		return [];
 	}
 
 	private static function parse_do_same_for_other_orders( $command, $normalized, $memory, $client_context ) {

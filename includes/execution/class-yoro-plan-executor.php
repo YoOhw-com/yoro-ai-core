@@ -151,12 +151,26 @@ class YoRo_Plan_Executor {
 				];
 			}
 
+			$workflow = isset( $plan['workflow'] ) && is_array( $plan['workflow'] )
+				? $plan['workflow']
+				: [];
+
+			if ( ! empty( $workflow ) && class_exists( 'YoRo_Workflow_Runner' ) ) {
+				$workflow = YoRo_Workflow_Runner::apply_sequence_result(
+					$workflow,
+					[
+						'preview' => true,
+						'actions' => $results,
+					]
+				);
+			}
+
 			return [
 				'success'      => true,
 				'preview'      => true,
 				'multi_action' => true,
 				'action'       => $plan['action'] ?? 'multi_action',
-				'workflow'     => $plan['workflow'] ?? [],
+				'workflow'     => $workflow,
 				'summary'      => __( 'Multi-step preview generated.', 'yoro-agent-core' ),
 				'message'      => __( 'Multi-step preview generated.', 'yoro-agent-core' ),
 				'actions'      => $results,
@@ -174,14 +188,30 @@ class YoRo_Plan_Executor {
 
 		// CONFIRM REQUIRED
 		if ( ! $confirm && self::sequence_requires_confirmation( $steps ) ) {
+			$workflow = isset( $plan['workflow'] ) && is_array( $plan['workflow'] )
+				? $plan['workflow']
+				: [];
+
+			if ( ! empty( $workflow ) && class_exists( 'YoRo_Workflow_Runner' ) ) {
+				$workflow = YoRo_Workflow_Runner::apply_sequence_result(
+					$workflow,
+					[
+						'requires_confirmation' => true,
+						'actions'               => $steps,
+					]
+				);
+			}
+
+			$confirmation_copy = self::describe_sequence_confirmation( $workflow, $steps );
+
 			return [
 				'success'               => false,
 				'requires_confirmation' => true,
 				'multi_action'          => true,
 				'action'                => $plan['action'] ?? 'multi_action',
-				'workflow'              => $plan['workflow'] ?? [],
-				'summary'               => '',
-				'message'               => __( 'This multi-step action requires confirmation.', 'yoro-agent-core' ),
+				'workflow'              => $workflow,
+				'summary'               => sanitize_text_field( $confirmation_copy['summary'] ?? '' ),
+				'message'               => sanitize_text_field( $confirmation_copy['message'] ?? __( 'This multi-step action requires confirmation.', 'yoro-agent-core' ) ),
 				'actions'               => $steps,
 				'processed'             => [],
 				'skipped'               => [],
@@ -200,8 +230,15 @@ class YoRo_Plan_Executor {
 		$undo_steps = [];
 		$context    = [];
 		$workflow_errors = [];
+		$workflow = isset( $plan['workflow'] ) && is_array( $plan['workflow'] )
+			? $plan['workflow']
+			: [];
 
-		foreach ( $steps as $step ) {
+		if ( ! empty( $workflow ) && class_exists( 'YoRo_Workflow_Runner' ) ) {
+			$workflow = YoRo_Workflow_Runner::begin_sequence_execution( $workflow );
+		}
+
+		foreach ( $steps as $index => $step ) {
 
 			$action = sanitize_text_field( $step['action'] ?? '' );
 			$params = isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [];
@@ -242,6 +279,12 @@ class YoRo_Plan_Executor {
 				$plan['parsed'] ?? []
 			);
 
+			if ( ! empty( $workflow ) && class_exists( 'YoRo_Workflow_Runner' ) ) {
+				$workflow = YoRo_Workflow_Runner::mark_step_executing( $workflow, $step, $index );
+			}
+
+			do_action( 'yoro_workflow_step_start', $workflow, $step, $params, $plan );
+
 			$pre_undo = self::build_pre_execution_undo_for_step( $action, $params );
 
 			$retry = isset( $step['retry'] ) && is_array( $step['retry'] )
@@ -269,6 +312,8 @@ class YoRo_Plan_Executor {
 					break;
 				}
 			}
+
+			do_action( 'yoro_workflow_step_finish', $workflow, $step, $params, $result, $plan );
 
 			if ( self::is_step_failure( $result ) ) {
 				$error_message = is_wp_error( $result )
@@ -322,11 +367,21 @@ class YoRo_Plan_Executor {
 				}
 
 				if ( 'skip_remaining' === $error_policy ) {
+					if ( ! empty( $workflow ) && class_exists( 'YoRo_Workflow_Runner' ) ) {
+						$workflow = YoRo_Workflow_Runner::apply_sequence_result(
+							$workflow,
+							[
+								'success' => false,
+								'actions' => $results,
+							]
+						);
+					}
+
 					return [
 						'success'        => false,
 						'multi_action'   => true,
 						'action'         => $plan['action'] ?? 'multi_action',
-						'workflow'       => $plan['workflow'] ?? [],
+						'workflow'       => $workflow,
 						'summary'        => __( 'Workflow stopped after a failed step.', 'yoro-agent-core' ),
 						'message'        => __( 'A workflow step failed, so remaining steps were skipped.', 'yoro-agent-core' ),
 						'failed_action'  => $action,
@@ -356,11 +411,21 @@ class YoRo_Plan_Executor {
 					$rollback_results = self::rollback( $undo_steps );
 				}
 
+				if ( ! empty( $workflow ) && class_exists( 'YoRo_Workflow_Runner' ) ) {
+					$workflow = YoRo_Workflow_Runner::apply_sequence_result(
+						$workflow,
+						[
+							'success' => false,
+							'actions' => $results,
+						]
+					);
+				}
+
 				return [
 					'success'        => false,
 					'multi_action'   => true,
 					'action'         => $action,
-					'workflow'       => $plan['workflow'] ?? [],
+					'workflow'       => $workflow,
 					'message'        => $error_message,
 					'failed_action'  => $action,
 					'step_attempts'  => $attempt,
@@ -447,17 +512,25 @@ class YoRo_Plan_Executor {
 			];
 		}
 
+		if ( ! empty( $workflow ) && class_exists( 'YoRo_Workflow_Runner' ) ) {
+			$workflow = YoRo_Workflow_Runner::apply_sequence_result(
+				$workflow,
+				[
+					'success' => true,
+					'actions' => $results,
+				]
+			);
+		}
+
+		$completion_copy = self::describe_sequence_completion( $workflow, $workflow_errors );
+
 		return [
 			'success'      => true,
 			'multi_action' => true,
 			'action'       => $plan['action'] ?? 'multi_action',
-			'workflow'     => $plan['workflow'] ?? [],
-			'summary' => empty( $workflow_errors )
-				? __( 'Multi-step action completed.', 'yoro-agent-core' )
-				: __( 'Workflow completed with errors.', 'yoro-agent-core' ),
-			'message' => empty( $workflow_errors )
-				? __( 'Multi-step action completed.', 'yoro-agent-core' )
-				: __( 'Workflow completed, but one or more steps failed.', 'yoro-agent-core' ),
+			'workflow'     => $workflow,
+			'summary' => $completion_copy['summary'],
+			'message' => $completion_copy['message'],
 			'actions'      => $results,
 			'processed'    => self::collect_processed_ids( $results ),
 			'skipped'      => [],
@@ -468,6 +541,146 @@ class YoRo_Plan_Executor {
 			'undo_plan'    => $undo_steps,
 			'result_type'  => 'multi_action',
 			'display_type' => 'multi_action',
+		];
+	}
+
+	private static function describe_sequence_confirmation( $workflow, $steps ) {
+		$workflow      = is_array( $workflow ) ? $workflow : [];
+		$definition_id = sanitize_key( $workflow['definition_id'] ?? $workflow['type'] ?? '' );
+		$branch        = isset( $workflow['branch'] ) && is_array( $workflow['branch'] ) ? $workflow['branch'] : [];
+		$delivery_mode = sanitize_key( $branch['delivery_mode'] ?? '' );
+		$email_mode    = sanitize_key( $branch['email_delivery_mode'] ?? '' );
+
+		if ( 'write_email_for_order' === $definition_id ) {
+			if ( 'save_draft' === $delivery_mode ) {
+				return [
+					'summary' => __( 'Confirm draft save', 'yoro-agent-core' ),
+					'message' => __( 'Review this email workflow before YoRo saves the draft to the order.', 'yoro-agent-core' ),
+				];
+			}
+
+			if ( 'send' === $delivery_mode ) {
+				return [
+					'summary' => __( 'Confirm email send', 'yoro-agent-core' ),
+					'message' => __( 'Review this email workflow before YoRo sends the message to the customer.', 'yoro-agent-core' ),
+				];
+			}
+		}
+
+		if ( 'verify_customer_before_fulfillment' === $definition_id ) {
+			if ( 'save_draft' === $email_mode ) {
+				return [
+					'summary' => __( 'Confirm verification workflow', 'yoro-agent-core' ),
+					'message' => __( 'Review this verification workflow before YoRo holds the order, adds the note, and saves the verification email draft.', 'yoro-agent-core' ),
+				];
+			}
+
+			if ( 'send' === $email_mode ) {
+				return [
+					'summary' => __( 'Confirm verification workflow', 'yoro-agent-core' ),
+					'message' => __( 'Review this verification workflow before YoRo holds the order, adds the note, and sends the verification email.', 'yoro-agent-core' ),
+				];
+			}
+		}
+
+		if ( 'refund_review' === $definition_id ) {
+			if ( 'save_draft' === $delivery_mode ) {
+				return [
+					'summary' => __( 'Confirm refund review workflow', 'yoro-agent-core' ),
+					'message' => __( 'Review this refund workflow before YoRo saves the refund follow-up email draft.', 'yoro-agent-core' ),
+				];
+			}
+
+			if ( 'send' === $delivery_mode ) {
+				return [
+					'summary' => __( 'Confirm refund review workflow', 'yoro-agent-core' ),
+					'message' => __( 'Review this refund workflow before YoRo sends the refund follow-up email.', 'yoro-agent-core' ),
+				];
+			}
+		}
+
+		return [
+			'summary' => '',
+			'message' => __( 'This multi-step action requires confirmation.', 'yoro-agent-core' ),
+		];
+	}
+
+	private static function describe_sequence_completion( $workflow, $workflow_errors ) {
+		$workflow      = is_array( $workflow ) ? $workflow : [];
+		$definition_id = sanitize_key( $workflow['definition_id'] ?? $workflow['type'] ?? '' );
+		$branch        = isset( $workflow['branch'] ) && is_array( $workflow['branch'] ) ? $workflow['branch'] : [];
+		$delivery_mode = sanitize_key( $branch['delivery_mode'] ?? '' );
+		$email_mode    = sanitize_key( $branch['email_delivery_mode'] ?? '' );
+		$has_errors    = ! empty( $workflow_errors );
+
+		if ( $has_errors ) {
+			return [
+				'summary' => __( 'Workflow completed with errors.', 'yoro-agent-core' ),
+				'message' => __( 'Workflow completed, but one or more steps failed.', 'yoro-agent-core' ),
+			];
+		}
+
+		if ( 'write_email_for_order' === $definition_id ) {
+			if ( 'save_draft' === $delivery_mode ) {
+				return [
+					'summary' => __( 'Email draft saved.', 'yoro-agent-core' ),
+					'message' => __( 'YoRo wrote the email and saved the draft on the order.', 'yoro-agent-core' ),
+				];
+			}
+
+			if ( 'send' === $delivery_mode ) {
+				return [
+					'summary' => __( 'Email sent.', 'yoro-agent-core' ),
+					'message' => __( 'YoRo wrote the email and sent it to the customer.', 'yoro-agent-core' ),
+				];
+			}
+
+			return [
+				'summary' => __( 'Email prepared.', 'yoro-agent-core' ),
+				'message' => __( 'YoRo wrote the email and left it ready for review.', 'yoro-agent-core' ),
+			];
+		}
+
+		if ( 'verify_customer_before_fulfillment' === $definition_id ) {
+			if ( 'save_draft' === $email_mode ) {
+				return [
+					'summary' => __( 'Verification workflow completed.', 'yoro-agent-core' ),
+					'message' => __( 'YoRo held the order, added the verification note, and saved the verification email draft.', 'yoro-agent-core' ),
+				];
+			}
+
+			if ( 'send' === $email_mode ) {
+				return [
+					'summary' => __( 'Verification workflow completed.', 'yoro-agent-core' ),
+					'message' => __( 'YoRo held the order, added the verification note, and sent the verification email.', 'yoro-agent-core' ),
+				];
+			}
+		}
+
+		if ( 'refund_review' === $definition_id ) {
+			if ( 'save_draft' === $delivery_mode ) {
+				return [
+					'summary' => __( 'Refund review completed.', 'yoro-agent-core' ),
+					'message' => __( 'YoRo reviewed the refund and saved the follow-up email draft.', 'yoro-agent-core' ),
+				];
+			}
+
+			if ( 'send' === $delivery_mode ) {
+				return [
+					'summary' => __( 'Refund review completed.', 'yoro-agent-core' ),
+					'message' => __( 'YoRo reviewed the refund and sent the follow-up email.', 'yoro-agent-core' ),
+				];
+			}
+
+			return [
+				'summary' => __( 'Refund review completed.', 'yoro-agent-core' ),
+				'message' => __( 'YoRo reviewed the refundable amount and order details.', 'yoro-agent-core' ),
+			];
+		}
+
+		return [
+			'summary' => __( 'Multi-step action completed.', 'yoro-agent-core' ),
+			'message' => __( 'Multi-step action completed.', 'yoro-agent-core' ),
 		];
 	}
 

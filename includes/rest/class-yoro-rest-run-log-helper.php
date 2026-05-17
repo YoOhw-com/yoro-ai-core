@@ -17,10 +17,13 @@ class YoRo_REST_Run_Log_Helper {
 				'confirm' => false,
 				'status'  => 'confirm_required',
 				'trace_id' => $trace_id,
+				'resolution_path' => $parsed['resolution_path'] ?? '',
+				'router_mode' => $parsed['command_decision']['mode'] ?? '',
 				'result'  => [
 					'reason'     => 'low_ai_router_confidence',
 					'confidence' => $confidence,
 					'source'     => $source,
+					'resolution_path' => $parsed['resolution_path'] ?? '',
 				],
 			]
 		);

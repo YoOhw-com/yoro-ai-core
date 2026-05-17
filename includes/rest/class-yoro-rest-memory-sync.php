@@ -11,28 +11,38 @@ class YoRo_REST_Memory_Sync {
 			return;
 		}
 
-		if ( method_exists( 'YoRo_Conversation_Memory', 'remember_plan' ) && is_array( $plan ) && ! empty( $plan ) ) {
-			YoRo_Conversation_Memory::remember_plan( $user_id, $plan );
-		}
-
-		if ( method_exists( 'YoRo_Conversation_Memory', 'remember_result' ) ) {
-			YoRo_Conversation_Memory::remember_result(
+		if ( method_exists( 'YoRo_Conversation_Memory', 'remember_runtime_state' ) ) {
+			YoRo_Conversation_Memory::remember_runtime_state(
 				$user_id,
 				is_array( $parsed ) ? $parsed : [],
 				$result,
-				is_array( $plan ) ? $plan : []
+				is_array( $plan ) ? $plan : [],
+				! empty( $parsed['entities'] ) && is_array( $parsed['entities'] ) ? $parsed['entities'] : []
 			);
-		}
+		} else {
+			if ( method_exists( 'YoRo_Conversation_Memory', 'remember_plan' ) && is_array( $plan ) && ! empty( $plan ) ) {
+				YoRo_Conversation_Memory::remember_plan( $user_id, $plan );
+			}
 
-		if (
-			method_exists( 'YoRo_Conversation_Memory', 'remember_entity_graph' ) &&
-			! empty( $parsed['entities'] ) &&
-			is_array( $parsed['entities'] )
-		) {
-			YoRo_Conversation_Memory::remember_entity_graph(
-				$user_id,
-				$parsed['entities']
-			);
+			if ( method_exists( 'YoRo_Conversation_Memory', 'remember_result' ) ) {
+				YoRo_Conversation_Memory::remember_result(
+					$user_id,
+					is_array( $parsed ) ? $parsed : [],
+					$result,
+					is_array( $plan ) ? $plan : []
+				);
+			}
+
+			if (
+				method_exists( 'YoRo_Conversation_Memory', 'remember_entity_graph' ) &&
+				! empty( $parsed['entities'] ) &&
+				is_array( $parsed['entities'] )
+			) {
+				YoRo_Conversation_Memory::remember_entity_graph(
+					$user_id,
+					$parsed['entities']
+				);
+			}
 		}
 
 		$conversation_update = [
@@ -41,7 +51,13 @@ class YoRo_REST_Memory_Sync {
 		];
 		$entity_update          = [];
 		$workflow_update        = [];
-		$current_entity_context = YoRo_Conversation_Memory::get_entity_context( $user_id );
+		$structured_state       = YoRo_Conversation_Memory::get_structured_state( $user_id );
+		$current_entity_context = isset( $structured_state['entity_context'] ) && is_array( $structured_state['entity_context'] )
+			? $structured_state['entity_context']
+			: [];
+		$current_workflow_state = isset( $structured_state['workflow_state'] ) && is_array( $structured_state['workflow_state'] )
+			? $structured_state['workflow_state']
+			: [];
 		$recent_order_ids       = isset( $current_entity_context['recent_order_ids'] ) && is_array( $current_entity_context['recent_order_ids'] )
 			? $current_entity_context['recent_order_ids']
 			: [];
@@ -173,7 +189,19 @@ class YoRo_REST_Memory_Sync {
 		}
 
 		if ( ! empty( $result['workflow'] ) && is_array( $result['workflow'] ) ) {
-			$workflow_update['current_workflow'] = $result['workflow'];
+			$workflow_step   = sanitize_key( $result['workflow']['step'] ?? '' );
+			$workflow_status = sanitize_key( $result['workflow']['status'] ?? '' );
+
+			if ( in_array( $workflow_step, [ 'executed', 'failed', 'cancelled' ], true ) || in_array( $workflow_status, [ 'executed', 'failed', 'cancelled' ], true ) ) {
+				$workflow_update['current_workflow']   = [];
+				$workflow_update['last_workflow_result'] = $result['workflow'];
+				$workflow_update['workflow_history'] = self::append_workflow_history_entry(
+					$current_workflow_state['workflow_history'] ?? [],
+					$result['workflow']
+				);
+			} else {
+				$workflow_update['current_workflow'] = $result['workflow'];
+			}
 		}
 
 		if ( ! empty( $new_recent_order_ids ) ) {
@@ -209,5 +237,42 @@ class YoRo_REST_Memory_Sync {
 		}
 
 		return $merged;
+	}
+
+	private static function append_workflow_history_entry( $existing_history, $workflow, $limit = 10 ) {
+		$existing_history = is_array( $existing_history ) ? array_values( $existing_history ) : [];
+		$workflow         = is_array( $workflow ) ? $workflow : [];
+
+		if ( empty( $workflow ) ) {
+			return $existing_history;
+		}
+
+		$entry = [
+			'id'                 => sanitize_text_field( $workflow['id'] ?? '' ),
+			'type'               => sanitize_key( $workflow['type'] ?? '' ),
+			'definition_id'      => sanitize_key( $workflow['definition_id'] ?? '' ),
+			'label'              => sanitize_text_field( $workflow['label'] ?? '' ),
+			'status'             => sanitize_key( $workflow['status'] ?? $workflow['step'] ?? '' ),
+			'current_step_id'    => sanitize_key( $workflow['current_step_id'] ?? '' ),
+			'current_step_index' => isset( $workflow['current_step_index'] ) ? (int) $workflow['current_step_index'] : -1,
+			'updated_at'         => sanitize_text_field( $workflow['updated_at'] ?? current_time( 'mysql' ) ),
+		];
+
+		array_unshift( $existing_history, $entry );
+
+		$existing_history = array_values(
+			array_filter(
+				$existing_history,
+				function ( $item ) {
+					return is_array( $item ) && ! empty( $item['id'] );
+				}
+			)
+		);
+
+		if ( $limit > 0 ) {
+			$existing_history = array_slice( $existing_history, 0, absint( $limit ) );
+		}
+
+		return $existing_history;
 	}
 }

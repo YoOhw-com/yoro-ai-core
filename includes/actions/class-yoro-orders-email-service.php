@@ -343,8 +343,8 @@ class YoRo_Orders_Email_Service {
 			'undo_plan'    => [],
 			'data'         => [],
 			'meta'         => [],
-			'template'     => $template,
-			'templates'    => $templates,
+			'template'     => self::format_email_template_record( $template ),
+			'templates'    => self::format_email_template_records( $templates ),
 			'processed'    => [ $template['id'] ],
 			'skipped'      => [],
 			'errors'       => [],
@@ -367,7 +367,7 @@ class YoRo_Orders_Email_Service {
 			'undo_plan'    => [],
 			'data'         => [],
 			'meta'         => [],
-			'templates'    => $templates,
+			'templates'    => self::format_email_template_records( $templates ),
 			'processed'    => [],
 			'skipped'      => [],
 			'errors'       => [],
@@ -512,8 +512,8 @@ class YoRo_Orders_Email_Service {
 			'meta'         => [],
 			'order_id'     => $order->get_id(),
 			'order'        => self::build_order_context( $order ),
-			'draft'        => $draft,
-			'drafts'       => $drafts,
+			'draft'        => self::format_email_draft_record( $draft ),
+			'drafts'       => self::format_email_draft_records( $drafts ),
 			'result_type'  => 'customer_email_drafts',
 			'display_type' => 'customer_email_drafts',
 			'workflow'     => [
@@ -563,7 +563,7 @@ class YoRo_Orders_Email_Service {
 			'data'         => [],
 			'meta'         => [],
 			'order'        => self::build_order_context( $order ),
-			'drafts'       => $drafts,
+			'drafts'       => self::format_email_draft_records( $drafts ),
 			'processed'    => [],
 			'skipped'      => [],
 			'errors'       => [],
@@ -650,8 +650,8 @@ class YoRo_Orders_Email_Service {
 			'meta'         => [],
 			'order_id'     => $order->get_id(),
 			'order'        => self::build_order_context( $order ),
-			'draft'        => $updated,
-			'drafts'       => $drafts,
+			'draft'        => self::format_email_draft_record( $updated ),
+			'drafts'       => self::format_email_draft_records( $drafts ),
 			'processed'    => [ $order->get_id() ],
 			'skipped'      => [],
 			'errors'       => [],
@@ -742,8 +742,8 @@ class YoRo_Orders_Email_Service {
 			'order_id'     => $order->get_id(),
 			'order'        => self::build_order_context( $order ),
 			'draft_id'     => $draft_id,
-			'deleted'      => $deleted,
-			'drafts'       => $remaining,
+			'deleted'      => self::format_email_draft_record( $deleted ),
+			'drafts'       => self::format_email_draft_records( $remaining ),
 			'result_type'  => 'customer_email_drafts',
 			'display_type' => 'customer_email_drafts',
 			'processed'    => [ $order->get_id() ],
@@ -891,12 +891,26 @@ class YoRo_Orders_Email_Service {
 
 		$message = self::wrap_customer_email_with_woocommerce_template( $subject, $body );
 
-		$sent = WC()->mailer()->send(
-			$to,
-			$subject,
-			$message,
-			[ 'Content-Type: text/html; charset=UTF-8' ]
+		$sent_override = apply_filters(
+			'yoro_send_customer_email_mock_result',
+			null,
+			[
+				'order'   => $order,
+				'to'      => $to,
+				'subject' => $subject,
+				'body'    => $body,
+				'html'    => $message,
+			]
 		);
+
+		$sent = null !== $sent_override
+			? (bool) $sent_override
+			: WC()->mailer()->send(
+				$to,
+				$subject,
+				$message,
+				[ 'Content-Type: text/html; charset=UTF-8' ]
+			);
 
 		if ( ! $sent ) {
 			return new WP_Error(
@@ -1380,5 +1394,61 @@ class YoRo_Orders_Email_Service {
 		}
 
 		return $clean;
+	}
+
+	private static function format_email_template_records( $templates ) {
+		$formatted = [];
+
+		foreach ( (array) $templates as $template ) {
+			$formatted[] = self::format_email_template_record( $template );
+		}
+
+		return $formatted;
+	}
+
+	private static function format_email_template_record( $template ) {
+		if ( ! is_array( $template ) ) {
+			return [];
+		}
+
+		if ( ! empty( $template['created_at'] ) ) {
+			$template['created_at_ts'] = YoRo_Date_Helper::get_mysql_timestamp( $template['created_at'] );
+			$template['created_at'] = YoRo_Date_Helper::format_mysql( $template['created_at'] );
+		}
+
+		if ( ! empty( $template['updated_at'] ) ) {
+			$template['updated_at_ts'] = YoRo_Date_Helper::get_mysql_timestamp( $template['updated_at'] );
+			$template['updated_at'] = YoRo_Date_Helper::format_mysql( $template['updated_at'] );
+		}
+
+		return $template;
+	}
+
+	private static function format_email_draft_records( $drafts ) {
+		$formatted = [];
+
+		foreach ( (array) $drafts as $draft ) {
+			$formatted[] = self::format_email_draft_record( $draft );
+		}
+
+		return $formatted;
+	}
+
+	private static function format_email_draft_record( $draft ) {
+		if ( ! is_array( $draft ) ) {
+			return [];
+		}
+
+		if ( ! empty( $draft['created_at'] ) ) {
+			$draft['created_at_ts'] = YoRo_Date_Helper::get_mysql_timestamp( $draft['created_at'] );
+			$draft['created_at'] = YoRo_Date_Helper::format_mysql( $draft['created_at'] );
+		}
+
+		if ( ! empty( $draft['updated_at'] ) ) {
+			$draft['updated_at_ts'] = YoRo_Date_Helper::get_mysql_timestamp( $draft['updated_at'] );
+			$draft['updated_at'] = YoRo_Date_Helper::format_mysql( $draft['updated_at'] );
+		}
+
+		return $draft;
 	}
 }

@@ -7,6 +7,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Order_Presenter {
 
 	public static function format_order_summary( WC_Order $order ) {
+		$date_created = $order->get_date_created();
+		$draft_count  = self::get_order_email_draft_count( $order );
+
 		return [
 			'id'             => $order->get_id(),
 			'number'         => $order->get_order_number(),
@@ -18,8 +21,11 @@ class YoRo_Order_Presenter {
 			'customer_name'  => trim( $order->get_formatted_billing_full_name() ),
 			'billing_email'  => self::mask_email( $order->get_billing_email() ),
 			'billing_phone'  => self::mask_phone( $order->get_billing_phone() ),
-			'date_created'   => $order->get_date_created() ? $order->get_date_created()->date_i18n( 'Y-m-d H:i:s' ) : '',
+			'date_created'   => $date_created ? YoRo_Date_Helper::format_wc_datetime( $date_created ) : '',
+			'date_created_ts'=> $date_created ? YoRo_Date_Helper::get_wc_timestamp( $date_created ) : 0,
 			'age_hours'      => self::get_order_age_hours( $order ),
+			'draft_count'    => $draft_count,
+			'has_email_drafts' => $draft_count > 0,
 			'edit_url'       => method_exists( $order, 'get_edit_order_url' ) ? $order->get_edit_order_url() : admin_url( 'post.php?post=' . $order->get_id() . '&action=edit' ),
 		];
 	}
@@ -49,8 +55,12 @@ class YoRo_Order_Presenter {
 		$data['customer_id']        = $order->get_customer_id();
 		$data['payment_method_title'] = $order->get_payment_method_title();
 		$data['transaction_id']       = $order->get_transaction_id();
-		$data['date_paid']            = $order->get_date_paid() ? $order->get_date_paid()->date_i18n( 'Y-m-d H:i:s' ) : '';
-		$data['date_completed']       = $order->get_date_completed() ? $order->get_date_completed()->date_i18n( 'Y-m-d H:i:s' ) : '';
+		$date_paid                    = $order->get_date_paid();
+		$date_completed               = $order->get_date_completed();
+		$data['date_paid']            = $date_paid ? YoRo_Date_Helper::format_wc_datetime( $date_paid ) : '';
+		$data['date_paid_ts']         = $date_paid ? YoRo_Date_Helper::get_wc_timestamp( $date_paid ) : 0;
+		$data['date_completed']       = $date_completed ? YoRo_Date_Helper::format_wc_datetime( $date_completed ) : '';
+		$data['date_completed_ts']    = $date_completed ? YoRo_Date_Helper::get_wc_timestamp( $date_completed ) : 0;
 		$data['currency_symbol']      = function_exists( 'get_woocommerce_currency_symbol' ) ? get_woocommerce_currency_symbol( $order->get_currency() ) : $order->get_currency();
 		$data['item_count']           = (int) $order->get_item_count();
 		$data['age_hours']            = self::get_order_age_hours( $order );
@@ -123,13 +133,19 @@ class YoRo_Order_Presenter {
 				continue;
 			}
 
+			$date_created = ! empty( $note->date_created ) && is_object( $note->date_created ) && method_exists( $note->date_created, 'getTimestamp' )
+				? $note->date_created
+				: null;
+
 			$data[] = [
 				'author'    => sanitize_text_field( $note->added_by ?? '' ),
 				'content'   => sanitize_textarea_field( wp_strip_all_tags( $note->content ?? '' ) ),
-				'date'      => ! empty( $note->date_created ) && is_object( $note->date_created ) && method_exists( $note->date_created, 'date_i18n' )
-					? $note->date_created->date_i18n( 'Y-m-d H:i:s' )
+				'date'      => $date_created
+					? YoRo_Date_Helper::format_wc_datetime( $date_created )
 					: '',
+				'date_ts'   => $date_created ? YoRo_Date_Helper::get_wc_timestamp( $date_created ) : 0,
 				'customer'  => ! empty( $note->customer_note ),
+				'via_yoro'  => 'chat' === (string) get_comment_meta( absint( $note->id ?? 0 ), '_yoro_note_origin', true ),
 			];
 		}
 
@@ -151,6 +167,12 @@ class YoRo_Order_Presenter {
 		}
 
 		return max( 0, (int) floor( ( $now - $timestamp ) / HOUR_IN_SECONDS ) );
+	}
+
+	private static function get_order_email_draft_count( WC_Order $order ) {
+		$drafts = $order->get_meta( '_yoro_customer_email_drafts', true );
+
+		return is_array( $drafts ) ? count( $drafts ) : 0;
 	}
 
 	private static function get_order_shipping_method_label( WC_Order $order ) {

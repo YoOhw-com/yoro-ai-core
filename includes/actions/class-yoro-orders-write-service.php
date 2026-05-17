@@ -6,6 +6,49 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Orders_Write_Service {
 
+	const YORO_NOTE_META_KEY = '_yoro_note_origin';
+	const YORO_NOTE_META_VALUE = 'chat';
+
+	private static function build_yoro_note_content( $note ) {
+		return sprintf(
+			/* translators: %s: note text */
+			__( '[YoRo] %s', 'yoro-agent-core' ),
+			$note
+		);
+	}
+
+	private static function mark_note_as_yoro_created( $note_id ) {
+		$note_id = absint( $note_id );
+
+		if ( $note_id <= 0 ) {
+			return;
+		}
+
+		update_comment_meta(
+			$note_id,
+			self::YORO_NOTE_META_KEY,
+			self::YORO_NOTE_META_VALUE
+		);
+	}
+
+	private static function is_yoro_created_note( $comment ) {
+		if ( ! $comment || ! is_object( $comment ) ) {
+			return false;
+		}
+
+		$comment_id = absint( $comment->comment_ID ?? 0 );
+
+		if ( $comment_id > 0 ) {
+			$origin = (string) get_comment_meta( $comment_id, self::YORO_NOTE_META_KEY, true );
+
+			if ( self::YORO_NOTE_META_VALUE === $origin ) {
+				return true;
+			}
+		}
+
+		return false !== strpos( (string) $comment->comment_content, 'YoRo Agent note:' );
+	}
+
 	public static function add_private_note_template( $params ) {
 		$template  = ! empty( $params['template'] ) ? sanitize_key( $params['template'] ) : '';
 		$templates = self::get_private_note_templates();
@@ -113,14 +156,14 @@ class YoRo_Orders_Write_Service {
 			}
 
 			$note_id = $order->add_order_note(
-				sprintf(
-					__( 'YoRo Agent note: %s', 'yoro-agent-core' ),
-					$note
-				)
+				self::build_yoro_note_content( $note ),
+				0,
+				true
 			);
 
 			if ( $note_id ) {
 				$note_ids[] = absint( $note_id );
+				self::mark_note_as_yoro_created( $note_id );
 			}
 
 			$processed[] = $order_id;
@@ -175,7 +218,7 @@ class YoRo_Orders_Write_Service {
 				continue;
 			}
 
-			if ( false === strpos( (string) $comment->comment_content, 'YoRo Agent note:' ) ) {
+			if ( ! self::is_yoro_created_note( $comment ) ) {
 				$skipped[] = [
 					'id'     => $note_id,
 					'reason' => 'Not a YoRo-created note',
@@ -449,13 +492,15 @@ class YoRo_Orders_Write_Service {
 					)
 				);
 
-				$order->add_order_note(
-					sprintf(
-						/* translators: %s: note text */
-						__( 'YoRo Agent note: %s', 'yoro-agent-core' ),
-						$note
-					)
+				$order_note_id = $order->add_order_note(
+					self::build_yoro_note_content( $note ),
+					0,
+					true
 				);
+
+				if ( $order_note_id ) {
+					self::mark_note_as_yoro_created( $order_note_id );
+				}
 
 				$processed[] = $order_id;
 			} catch ( Exception $e ) {

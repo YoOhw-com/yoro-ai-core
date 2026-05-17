@@ -33,6 +33,23 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_search_orders' ],
 				'max_items'        => 50,
+				'ai_description'   => __( 'Search WooCommerce orders by status, customer, order number, payment method, country, total range, or date range.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Show the latest 10 orders',
+					'Show pending orders',
+					'Find order #1234',
+					'Xem 5 đơn mới nhất',
+					'Tìm đơn #1234',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'status' => __( 'Use WooCommerce status slugs like pending, processing, completed, on-hold, cancelled, refunded, or failed.', 'yoro-agent-core' ),
+					'limit'  => __( 'Use a small numeric limit for list requests such as 5, 10, or 20.', 'yoro-agent-core' ),
+					'order_id' => __( 'Use the numeric WooCommerce order ID when the person references a specific order.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_id' => __( 'Ask which order they want when they ask for a specific order but do not provide an order number or reference.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'read',
@@ -56,6 +73,19 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_order_details' ],
 				'max_items'        => 20,
+				'ai_description'   => __( 'Open the details for one or more specific WooCommerce orders.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Show order #1234',
+					'Open the details for order 1234',
+					'Xem chi tiết đơn #1234',
+				],
+				'required_params'     => [ 'order_ids' ],
+				'param_hints'         => [
+					'order_ids' => __( 'Use one or more numeric WooCommerce order IDs.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_ids' => __( 'Ask which order they want when no specific order reference is available.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'read',
@@ -80,6 +110,18 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_operations_summary' ],
 				'max_items'        => 1,
+				'ai_description'   => __( 'Show a read-only operations overview for a time window, including order flow, backlog, and current store pressure.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'How is the store doing today?',
+					'Show operations summary for this week',
+					'Tình hình vận hành hôm nay thế nào?',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'window' => __( 'Normalize relative windows such as today, this week, or this month into store reporting windows.', 'yoro-agent-core' ),
+					'focus'  => __( 'Use overview when the person wants a general operations summary.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [],
 				'capabilities' => [
 					'operations',
 					'orders',
@@ -105,6 +147,19 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_operations_attention_queue' ],
 				'max_items'        => 50,
+				'ai_description'   => __( 'Open the operations attention queue that highlights orders needing manual review or operational follow-up.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'What needs attention right now?',
+					'Show the operations attention queue',
+					'Which orders need manual review first?',
+					'What looks urgent on the operations side?',
+					'Có việc gì cần xử lý gấp không?',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'limit' => __( 'Use a small numeric limit when the person asks for a shortlist.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [],
 				'capabilities' => [
 					'operations',
 					'orders',
@@ -129,6 +184,19 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_fulfillment_queue' ],
 				'max_items'        => 50,
+				'ai_description'   => __( 'Open the fulfillment queue for orders that may need shipping, tracking, or processing attention.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Show fulfillment queue',
+					'What orders are waiting to ship?',
+					'Show me shipment blockers',
+					'What looks stuck in shipping?',
+					'Đơn nào đang chờ giao hàng?',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'limit' => __( 'Use a small numeric limit when the person asks for a shortlist.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [],
 				'capabilities' => [
 					'operations',
 					'orders',
@@ -155,6 +223,18 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_inventory_queue' ],
 				'max_items'        => 50,
+				'ai_description'   => __( 'Open the inventory queue for products that may be low on stock, out of stock, or otherwise need inventory attention.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Show inventory queue',
+					'What products are low on stock?',
+					'Sản phẩm nào cần chú ý tồn kho?',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'limit' => __( 'Use a small numeric limit when the person asks for only the top inventory issues.', 'yoro-agent-core' ),
+					'focus' => __( 'Use focus to narrow the queue to a specific inventory concern when the person names one.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [],
 				'capabilities' => [
 					'products',
 					'inventory',
@@ -181,6 +261,18 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_morning_briefing' ],
 				'max_items'        => 1,
+				'ai_description'   => __( 'Prepare the morning store briefing that combines recent performance with the main operational queues for today.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Show morning briefing',
+					'Brief me this morning',
+					'Cho tôi briefing buổi sáng',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'window' => __( 'Use a short current window such as today unless the person explicitly asks for a different period.', 'yoro-agent-core' ),
+					'yesterday_window' => __( 'Use a prior-day comparison window for morning briefings.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [],
 				'capabilities' => [
 					'store',
 					'operations',
@@ -210,6 +302,18 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_daily_briefing' ],
 				'max_items'        => 1,
+				'ai_description'   => __( 'Prepare a store briefing or store snapshot for the requested time window across operations, customers, fulfillment, and inventory.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Show today\'s briefing',
+					'Give me a weekly brief',
+					'Cho tôi xem briefing hôm nay',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'window' => __( 'Normalize windows like today, this week, or this month into supported reporting windows.', 'yoro-agent-core' ),
+					'limit'  => __( 'Keep the result compact for briefing requests.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [],
 				'capabilities' => [
 					'store',
 					'operations',
@@ -238,6 +342,24 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_business_summary' ],
 				'max_items'        => 1,
+				'ai_description'   => __( 'Show a business-health or business-performance summary for the requested time window, including revenue, customer activity, product signals, and overall commercial direction.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'How is our business doing this month?',
+					'Show business summary for this week',
+					'Tóm tắt tình hình kinh doanh tuần này',
+					'Tình hình kinh doanh dạo này như thế nào?',
+					'Tình hình kinh doanh tuần này thế nào?',
+					'Cho tôi xem tình hình kinh doanh tuần này',
+					'¿Cómo va el negocio esta semana?',
+					'Muéstrame el resumen del negocio de esta semana',
+					'¿Cómo está yendo el negocio últimamente?',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'window' => __( 'Normalize relative reporting windows like this week or this month.', 'yoro-agent-core' ),
+					'focus'  => __( 'Use overview unless the person explicitly narrows to one business dimension.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [],
 				'capabilities' => [
 					'store',
 					'orders',
@@ -266,6 +388,18 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_store_insights' ],
 				'max_items'        => 50,
+				'ai_description'   => __( 'Show read-only store insights, trends, and signals for the requested reporting window.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Show store insights for this week',
+					'What patterns do you see this month?',
+					'Cho tôi xem insight cửa hàng tuần này',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'window' => __( 'Normalize relative reporting windows like this week or this month.', 'yoro-agent-core' ),
+					'limit'  => __( 'Keep insight lists compact unless the person asks for more.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [],
 				'capabilities' => [
 					'store',
 					'orders',
@@ -294,6 +428,22 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_customer_summary' ],
 				'max_items'        => 50,
+				'ai_description'   => __( 'Show a customer summary based on email or phone, including order history and recent activity.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Show customer summary for john@example.com',
+					'Find the customer with phone 555-1234',
+					'Tóm tắt khách hàng john@example.com',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'email' => __( 'Use the customer email when it is explicitly mentioned.', 'yoro-agent-core' ),
+					'phone' => __( 'Use the customer phone number when that is the clearest identifier.', 'yoro-agent-core' ),
+					'limit' => __( 'Keep the result compact unless the person asks for a larger history.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'email' => __( 'Ask for the customer email or phone when the person wants a customer summary but provides no customer identifier.', 'yoro-agent-core' ),
+					'phone' => __( 'Ask for the customer phone when there is no usable email or customer reference.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'customers',
 					'read',
@@ -317,6 +467,19 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_customer_service_queue' ],
 				'max_items'        => 50,
+				'ai_description'   => __( 'Open the customer-service queue for orders that likely need customer follow-up, without sending anything.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Show customer service queue',
+					'Who needs customer follow-up?',
+					'Which customers need a reply?',
+					'Who should we answer first today?',
+					'Khách nào cần chăm sóc tiếp?',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'limit' => __( 'Use a small numeric limit when the person asks for a shortlist.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [],
 				'capabilities' => [
 					'customers',
 					'orders',
@@ -345,6 +508,22 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_find_orders_by_customer' ],
 				'max_items'        => 50,
+				'ai_description'   => __( 'Find WooCommerce orders for a customer using email, phone number, or customer ID.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Show orders for john@example.com',
+					'Find orders for customer 123',
+					'Tìm đơn của khách john@example.com',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'email'       => __( 'Use the customer email when it is explicitly mentioned.', 'yoro-agent-core' ),
+					'phone'       => __( 'Use the phone number when it is the clearest customer identifier.', 'yoro-agent-core' ),
+					'customer_id' => __( 'Use the numeric customer ID when the person provides it directly.', 'yoro-agent-core' ),
+					'limit'       => __( 'Use a small numeric limit for list requests.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'email' => __( 'Ask which customer they mean when there is no clear email, phone, or customer ID.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'read',
@@ -369,6 +548,19 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_find_orders_by_identity' ],
 				'max_items'        => 50,
+				'ai_description'   => __( 'Find related orders that share identity signals with a specific order, such as email, phone, IP, or device identifiers.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Find related orders for order #1234',
+					'Show identity matches for this order',
+				],
+				'required_params'     => [ 'order_id' ],
+				'param_hints'         => [
+					'order_id' => __( 'Use the reference order ID whose identity signals should be compared.', 'yoro-agent-core' ),
+					'limit'    => __( 'Keep identity-match lists compact unless the person asks for more.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_id' => __( 'Ask which order should be used for identity matching when no target order is available.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'read',
@@ -392,6 +584,18 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_refund_preview' ],
 				'max_items'        => 1,
+				'ai_description'   => __( 'Preview refund context for a specific order, including refundable amount and refunded amount, without changing store data.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Review refund for order #1234',
+					'Show refund preview for this order',
+				],
+				'required_params'     => [ 'order_id' ],
+				'param_hints'         => [
+					'order_id' => __( 'Use the target order ID for refund review.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_id' => __( 'Ask which order should be reviewed for refund context when no order target is clear.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'financial',
@@ -417,6 +621,20 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_email_customer_preview' ],
 				'max_items'        => 1,
+				'ai_description'   => __( 'Preview a template-based customer email for a specific order without sending it.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Preview the shipping delay template for order #1234',
+					'Show a customer email preview for this order',
+				],
+				'required_params'     => [ 'order_id', 'template' ],
+				'param_hints'         => [
+					'order_id' => __( 'Use the order ID the template email should reference.', 'yoro-agent-core' ),
+					'template' => __( 'Use the template slug or template name the person wants to preview.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_id' => __( 'Ask which order the template preview is for when there is no clear order target.', 'yoro-agent-core' ),
+					'template' => __( 'Ask which template should be previewed when the person wants a template email preview but does not name the template.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'email',
@@ -444,6 +662,20 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback'      => [ __CLASS__, 'preview_email_customer_template' ],
 				'max_items'             => 1,
+				'ai_description'        => __( 'Send a template-based customer email for a specific order after confirmation.', 'yoro-agent-core' ),
+				'ai_examples'           => [
+					'Send the shipping delay template for order #1234',
+					'Send a template email to the customer for this order',
+				],
+				'required_params'       => [ 'order_id', 'template' ],
+				'param_hints'           => [
+					'order_id' => __( 'Use the order ID tied to the outgoing template email.', 'yoro-agent-core' ),
+					'template' => __( 'Use the template slug or template name that should be sent.', 'yoro-agent-core' ),
+				],
+				'clarification_hints'   => [
+					'order_id' => __( 'Ask which order should receive the template email when no order target is clear.', 'yoro-agent-core' ),
+					'template' => __( 'Ask which email template should be sent when the person does not name one.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'email',
 					'customer_communication',
@@ -466,6 +698,22 @@ class YoRo_Orders_Actions {
 					'subject' => 'string',
 					'body'    => 'string',
 				],
+				'ai_description'      => __( 'Save a reusable customer email template with a name, subject, and body.', 'yoro-agent-core' ),
+				'ai_examples'         => [
+					'Save this as template "shipping delay"',
+					'Create an email template named payment follow-up',
+				],
+				'required_params'     => [ 'name', 'subject', 'body' ],
+				'param_hints'         => [
+					'name'    => __( 'Use a short reusable template name.', 'yoro-agent-core' ),
+					'subject' => __( 'Use the reviewed email subject line.', 'yoro-agent-core' ),
+					'body'    => __( 'Use the reviewed email body text.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'name'    => __( 'Ask what the template should be called when the person wants to save a template but gives no name.', 'yoro-agent-core' ),
+					'subject' => __( 'Ask for the template subject when it is missing.', 'yoro-agent-core' ),
+					'body'    => __( 'Ask for the template body when it is missing.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'email',
 					'draft',
@@ -483,6 +731,14 @@ class YoRo_Orders_Actions {
 				'permission'   => 'manage_woocommerce',
 				'callback'     => [ __CLASS__, 'list_email_templates' ],
 				'write_action' => false,
+				'ai_description'      => __( 'List the reusable customer email templates available in the store.', 'yoro-agent-core' ),
+				'ai_examples'         => [
+					'Show saved email templates',
+					'List customer email templates',
+				],
+				'required_params'     => [],
+				'param_hints'         => [],
+				'clarification_hints' => [],
 				'capabilities' => [
 					'email_templates',
 					'read',
@@ -502,6 +758,18 @@ class YoRo_Orders_Actions {
 				'requires_confirmation' => true,
 				'input_schema'          => [
 					'template_id' => 'string',
+				],
+				'ai_description'        => __( 'Delete a reusable customer email template after confirmation.', 'yoro-agent-core' ),
+				'ai_examples'           => [
+					'Delete the shipping delay template',
+					'Remove template payment follow-up',
+				],
+				'required_params'       => [ 'template_id' ],
+				'param_hints'           => [
+					'template_id' => __( 'Use the saved template ID or slug.', 'yoro-agent-core' ),
+				],
+				'clarification_hints'   => [
+					'template_id' => __( 'Ask which template should be deleted when the person does not identify one clearly.', 'yoro-agent-core' ),
 				],
 				'capabilities' => [
 					'email_templates',
@@ -523,6 +791,20 @@ class YoRo_Orders_Actions {
 				'input_schema' => [
 					'order_id'    => 'integer',
 					'template_id' => 'string',
+				],
+				'ai_description'      => __( 'Apply a saved reusable email template to a specific order email context without sending it.', 'yoro-agent-core' ),
+				'ai_examples'         => [
+					'Use the shipping delay template for order #1234',
+					'Apply template payment follow-up to this order',
+				],
+				'required_params'     => [ 'order_id', 'template_id' ],
+				'param_hints'         => [
+					'order_id'    => __( 'Use the target order ID.', 'yoro-agent-core' ),
+					'template_id' => __( 'Use the saved template ID or slug.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_id'    => __( 'Ask which order should use the template when no order target is clear.', 'yoro-agent-core' ),
+					'template_id' => __( 'Ask which saved template should be applied when the person does not identify one.', 'yoro-agent-core' ),
 				],
 				'capabilities' => [
 					'orders',
@@ -550,6 +832,21 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_compose_customer_email' ],
 				'max_items'        => 1,
+				'ai_description'   => __( 'Compose a customer email for a specific order from a natural-language goal, without sending it.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Write an email for order #1234 about a shipping delay',
+					'Draft a payment confirmation email for order 1234',
+					'Viết email cho đơn #1234 để báo chậm giao hàng',
+				],
+				'required_params'     => [ 'order_id', 'instruction' ],
+				'param_hints'         => [
+					'order_id'    => __( 'Use the specific order ID the email is about.', 'yoro-agent-core' ),
+					'instruction' => __( 'Use the natural-language goal of the email, such as shipping delay, payment confirmation, or address verification.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_id'    => __( 'Ask which order the email is for when no specific order is available.', 'yoro-agent-core' ),
+					'instruction' => __( 'Ask what the email should be about when the person names an order but does not provide the email goal.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'email',
@@ -578,6 +875,22 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_save_customer_email_draft' ],
 				'max_items'        => 1,
+				'ai_description'   => __( 'Save a reviewed customer email draft for a specific order.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Save this email draft for order #1234',
+					'Save the reviewed customer email draft',
+				],
+				'required_params'     => [ 'order_id', 'subject', 'body' ],
+				'param_hints'         => [
+					'order_id' => __( 'Use the order ID tied to the current draft.', 'yoro-agent-core' ),
+					'subject'  => __( 'Use the reviewed draft subject line.', 'yoro-agent-core' ),
+					'body'     => __( 'Use the reviewed draft body text.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_id' => __( 'Ask which order the draft belongs to when no draft context is active.', 'yoro-agent-core' ),
+					'subject'  => __( 'Ask the person to review or regenerate the draft when subject is missing.', 'yoro-agent-core' ),
+					'body'     => __( 'Ask the person to review or regenerate the draft when body is missing.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'email',
 					'draft',
@@ -601,6 +914,18 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_customer_email_drafts' ],
 				'max_items'        => 1,
+				'ai_description'   => __( 'Load saved customer email drafts for a specific order.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Show email drafts for order #1234',
+					'Load saved customer email drafts for this order',
+				],
+				'required_params'     => [ 'order_id' ],
+				'param_hints'         => [
+					'order_id' => __( 'Use the order ID tied to the saved drafts.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_id' => __( 'Ask which order the drafts belong to when no order target is available.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'email',
@@ -629,6 +954,22 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback'      => [ __CLASS__, 'preview_update_customer_email_draft' ],
 				'max_items'             => 1,
+				'ai_description'        => __( 'Update a saved customer email draft for a specific order.', 'yoro-agent-core' ),
+				'ai_examples'           => [
+					'Update this email draft',
+					'Revise the saved draft for order #1234',
+				],
+				'required_params'       => [ 'order_id', 'draft_id', 'subject', 'body' ],
+				'param_hints'           => [
+					'order_id' => __( 'Use the target order ID for the draft.', 'yoro-agent-core' ),
+					'draft_id' => __( 'Use the saved draft ID.', 'yoro-agent-core' ),
+					'subject'  => __( 'Use the revised draft subject line.', 'yoro-agent-core' ),
+					'body'     => __( 'Use the revised draft body text.', 'yoro-agent-core' ),
+				],
+				'clarification_hints'   => [
+					'order_id' => __( 'Ask which order the draft belongs to when there is no active draft context.', 'yoro-agent-core' ),
+					'draft_id' => __( 'Ask which draft should be updated when more than one draft exists or the draft is unclear.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'email',
 					'draft',
@@ -654,6 +995,20 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback'      => [ __CLASS__, 'preview_delete_customer_email_draft' ],
 				'max_items'             => 1,
+				'ai_description'        => __( 'Delete a saved customer email draft for a specific order after confirmation.', 'yoro-agent-core' ),
+				'ai_examples'           => [
+					'Delete this email draft',
+					'Remove the saved draft for order #1234',
+				],
+				'required_params'       => [ 'order_id', 'draft_id' ],
+				'param_hints'           => [
+					'order_id' => __( 'Use the target order ID for the draft.', 'yoro-agent-core' ),
+					'draft_id' => __( 'Use the saved draft ID.', 'yoro-agent-core' ),
+				],
+				'clarification_hints'   => [
+					'order_id' => __( 'Ask which order the draft belongs to when there is no active draft context.', 'yoro-agent-core' ),
+					'draft_id' => __( 'Ask which draft should be deleted when the draft is unclear.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'destructive',
@@ -679,6 +1034,22 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_render_customer_email_preview' ],
 				'max_items'        => 1,
+				'ai_description'   => __( 'Render a reviewed customer email preview for a specific order without sending it.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Preview this custom email for order #1234',
+					'Render the reviewed customer email preview',
+				],
+				'required_params'     => [ 'order_id', 'subject', 'body' ],
+				'param_hints'         => [
+					'order_id' => __( 'Use the target order ID for the email preview.', 'yoro-agent-core' ),
+					'subject'  => __( 'Use the reviewed email subject line.', 'yoro-agent-core' ),
+					'body'     => __( 'Use the reviewed email body text.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_id' => __( 'Ask which order the preview belongs to when there is no active draft or order context.', 'yoro-agent-core' ),
+					'subject'  => __( 'Ask for the reviewed subject if it is missing.', 'yoro-agent-core' ),
+					'body'     => __( 'Ask for the reviewed body if it is missing.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'email',
@@ -707,6 +1078,23 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback'      => [ __CLASS__, 'preview_send_customer_email' ],
 				'max_items'             => 1,
+				'ai_description'        => __( 'Send a reviewed custom customer email for a specific order after confirmation.', 'yoro-agent-core' ),
+				'ai_examples'           => [
+					'Send this email to the customer',
+					'Send the reviewed email for order #1234',
+					'Gửi email này cho khách',
+				],
+				'required_params'       => [ 'order_id', 'subject', 'body' ],
+				'param_hints'           => [
+					'order_id' => __( 'Use the specific order ID for the outgoing email.', 'yoro-agent-core' ),
+					'subject'  => __( 'Use the reviewed subject line.', 'yoro-agent-core' ),
+					'body'     => __( 'Use the reviewed body text.', 'yoro-agent-core' ),
+				],
+				'clarification_hints'   => [
+					'order_id' => __( 'Ask which order the email belongs to when no active draft or order context is present.', 'yoro-agent-core' ),
+					'subject'  => __( 'Ask the person to preview or review the email before sending when subject is missing.', 'yoro-agent-core' ),
+					'body'     => __( 'Ask the person to preview or review the email before sending when body is missing.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'email',
@@ -734,6 +1122,21 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_add_private_note_template' ],
 				'max_items'        => 20,
+				'ai_description'   => __( 'Add a predefined internal note template to one or more orders.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Add the verification note template to order #1234',
+					'Use the private note template for these orders',
+					'Thêm mẫu ghi chú nội bộ vào đơn #1234',
+				],
+				'required_params'     => [ 'order_ids', 'template' ],
+				'param_hints'         => [
+					'order_ids' => __( 'Use one or more target order IDs resolved from the command or current context.', 'yoro-agent-core' ),
+					'template'  => __( 'Use the template key or template name that matches the requested private note.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_ids' => __( 'Ask which order should receive the private note template when no order target is clear.', 'yoro-agent-core' ),
+					'template'  => __( 'Ask which private note template to use when the person wants a template note but did not name one.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'notes',
@@ -771,6 +1174,19 @@ class YoRo_Orders_Actions {
 					'write',
 					'bulk',
 				],
+				'ai_description'      => __( 'Put one or more orders on hold after confirmation.', 'yoro-agent-core' ),
+				'ai_examples'         => [
+					'Put order #1234 on hold',
+					'Hold this order',
+					'Giữ đơn #1234',
+				],
+				'required_params'     => [ 'order_ids' ],
+				'param_hints'         => [
+					'order_ids' => __( 'Use one or more order IDs resolved from the command or conversation context.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_ids' => __( 'Ask which order should be put on hold when no clear order target is available.', 'yoro-agent-core' ),
+				],
 			]
 		);
 
@@ -805,6 +1221,21 @@ class YoRo_Orders_Actions {
 					'write',
 					'bulk',
 				],
+				'ai_description'      => __( 'Add an internal order note for one or more orders.', 'yoro-agent-core' ),
+				'ai_examples'         => [
+					'Add note to order #1234: customer asked for a callback',
+					'Add a note to this order',
+					'Thêm ghi chú vào đơn #1234: khách muốn gọi lại',
+				],
+				'required_params'     => [ 'order_ids', 'note' ],
+				'param_hints'         => [
+					'order_ids' => __( 'Use one or more target order IDs.', 'yoro-agent-core' ),
+					'note'      => __( 'Use the exact internal note text the person wants to save.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_ids' => __( 'Ask which order should receive the note when no target order is clear.', 'yoro-agent-core' ),
+					'note'      => __( 'Ask what note should be saved when the person wants to add a note but did not provide the note text.', 'yoro-agent-core' ),
+				],
 			]
 		);
 
@@ -823,6 +1254,19 @@ class YoRo_Orders_Actions {
 					'note_ids' => 'array<int>',
 				],
 				'max_items'             => 20,
+				'ai_description'        => __( 'Remove one or more YoRo-created internal order notes.', 'yoro-agent-core' ),
+				'ai_examples'           => [
+					'Remove the last note from this order',
+					'Delete these internal notes',
+					'Xóa ghi chú nội bộ này',
+				],
+				'required_params'       => [ 'note_ids' ],
+				'param_hints'           => [
+					'note_ids' => __( 'Use the exact note IDs from a prior action result or undo context.', 'yoro-agent-core' ),
+				],
+				'clarification_hints'   => [
+					'note_ids' => __( 'Ask which note should be removed when there is no clear prior note target or undo context.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'orders',
 					'destructive',
@@ -861,6 +1305,22 @@ class YoRo_Orders_Actions {
 					'write',
 					'bulk',
 				],
+				'ai_description'      => __( 'Update the status of one or more orders after confirmation.', 'yoro-agent-core' ),
+				'ai_examples'         => [
+					'Mark order #1234 as completed',
+					'Update order #1234 to on hold',
+					'Chuyển đơn #1234 sang hoàn tất',
+				],
+				'required_params'     => [ 'order_ids', 'status' ],
+				'param_hints'         => [
+					'order_ids' => __( 'Use one or more target order IDs.', 'yoro-agent-core' ),
+					'status'    => __( 'Use WooCommerce status slugs like pending, processing, completed, on-hold, cancelled, refunded, or failed.', 'yoro-agent-core' ),
+					'note'      => __( 'Use note only when the person explicitly wants a status update with an internal note.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_ids' => __( 'Ask which order should change status when no target order is clear.', 'yoro-agent-core' ),
+					'status'    => __( 'Ask what status to apply when the person wants to change status but does not name the new status.', 'yoro-agent-core' ),
+				],
 			]
 		);
 
@@ -875,6 +1335,7 @@ class YoRo_Orders_Actions {
 				'requires_confirmation' => false,
 				'risk_level'            => 'medium',
 				'write_action'          => true,
+				'ai_exposed'            => false,
 				'input_schema'          => [
 					'statuses' => 'array',
 				],
@@ -917,6 +1378,23 @@ class YoRo_Orders_Actions {
 					'write',
 					'bulk',
 				],
+				'ai_description'      => __( 'Update the status of one or more orders and save an internal note in the same confirmed action.', 'yoro-agent-core' ),
+				'ai_examples'         => [
+					'Mark order #1234 as completed with note: packed and verified',
+					'Update order #1234 to on hold with note: customer needs verification',
+					'Chuyển đơn #1234 sang hoàn tất và thêm ghi chú: đã đóng gói',
+				],
+				'required_params'     => [ 'order_ids', 'status', 'note' ],
+				'param_hints'         => [
+					'order_ids' => __( 'Use one or more target order IDs.', 'yoro-agent-core' ),
+					'status'    => __( 'Use a valid WooCommerce status slug.', 'yoro-agent-core' ),
+					'note'      => __( 'Use the internal note text that should be saved alongside the status change.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'order_ids' => __( 'Ask which order should change status when no target order is clear.', 'yoro-agent-core' ),
+					'status'    => __( 'Ask what status should be applied when it is missing.', 'yoro-agent-core' ),
+					'note'      => __( 'Ask what note should be saved when the person wants a combined status-and-note action but did not provide the note text.', 'yoro-agent-core' ),
+				],
 			]
 		);
 
@@ -939,6 +1417,24 @@ class YoRo_Orders_Actions {
 					'context_order_id'          => 'integer',
 				],
 				'max_items' => 1,
+				'ai_description'   => __( 'Save an unsupported feature or integration request so developers can review it later.', 'yoro-agent-core' ),
+				'ai_examples'      => [
+					'Send this unsupported integration request to the developers',
+					'Log this feature request for the dev team',
+					'Gửi yêu cầu tính năng này cho đội phát triển',
+				],
+				'required_params'     => [ 'request_text' ],
+				'param_hints'         => [
+					'request_text'              => __( 'Use a short plain-language description of the unsupported feature or integration request.', 'yoro-agent-core' ),
+					'original_command'          => __( 'Preserve the original user command when available for developer context.', 'yoro-agent-core' ),
+					'unsupported_capability'    => __( 'Use the clearest unsupported capability label inferred from the conversation.', 'yoro-agent-core' ),
+					'conversation_family'       => __( 'Use the unsupported-request family key when one was inferred.', 'yoro-agent-core' ),
+					'closest_supported_surface' => __( 'Use the closest currently supported product surface when one is known.', 'yoro-agent-core' ),
+					'context_order_id'          => __( 'Use the current order ID only when the unsupported request is tied to a specific order.', 'yoro-agent-core' ),
+				],
+				'clarification_hints' => [
+					'request_text' => __( 'Ask what should be passed to the developers when the unsupported request text is missing.', 'yoro-agent-core' ),
+				],
 				'capabilities' => [
 					'assistant',
 					'feedback',

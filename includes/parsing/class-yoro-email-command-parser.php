@@ -11,7 +11,13 @@ class YoRo_Email_Command_Parser {
 			return null;
 		}
 
-		return self::parse_workflow_continue( $command, $normalized, $client_context );
+		$parsed = self::parse_workflow_continue( $command, $normalized, $client_context );
+
+		if ( is_array( $parsed ) ) {
+			return $parsed;
+		}
+
+		return self::parse_priority_workflow_control_follow_up( $command, $normalized, $client_context );
 	}
 
 	public static function parse( $command, $normalized, $client_context = [] ) {
@@ -62,6 +68,25 @@ class YoRo_Email_Command_Parser {
 		);
 	}
 
+	private static function parse_priority_workflow_control_follow_up( $command, $normalized, $client_context = [] ) {
+		$priority_follow_up_parsers = [
+			'parse_follow_up_save_current_email_draft',
+			'parse_follow_up_save_current_email_as_template',
+			'parse_follow_up_delete_current_email_draft',
+			'parse_follow_up_send_current_email',
+		];
+
+		foreach ( $priority_follow_up_parsers as $parser ) {
+			$parsed = self::$parser( $command, $normalized, $client_context );
+
+			if ( is_array( $parsed ) ) {
+				return $parsed;
+			}
+		}
+
+		return null;
+	}
+
 	private static function parse_workflow_continue( $command, $normalized, $client_context = [] ) {
 		$workflow = self::get_workflow_from_context( $client_context );
 
@@ -104,6 +129,7 @@ class YoRo_Email_Command_Parser {
 					'matched'            => false,
 					'stage'              => 'clarify',
 					'message'            => __( 'This workflow has expired. Please start again.', 'yoro-agent-core' ),
+					'clarify_reason'     => 'workflow_expired',
 					'original_command'   => $command,
 					'normalized_command' => $normalized,
 				];
@@ -124,6 +150,10 @@ class YoRo_Email_Command_Parser {
 			return null;
 		}
 
+		if ( self::should_defer_workflow_reply_to_follow_up_or_standalone_parser( $workflow, $action, $missing, $command, $normalized ) ) {
+			return null;
+		}
+
 		$inferred_params = self::infer_missing_workflow_params_from_command(
 			$action,
 			$params,
@@ -138,6 +168,12 @@ class YoRo_Email_Command_Parser {
 			$missing = self::get_missing_workflow_params( $action, $params, $missing );
 
 			if ( empty( $missing ) ) {
+				$resumed_composed = self::maybe_resume_composed_actions_workflow( $workflow, $params, $command, $normalized );
+
+				if ( is_array( $resumed_composed ) ) {
+					return $resumed_composed;
+				}
+
 				YoRo_Conversation_Memory::set_workflow(
 					get_current_user_id(),
 					[
@@ -190,6 +226,7 @@ class YoRo_Email_Command_Parser {
 					'params'             => $params,
 					'missing'            => $new_missing,
 					'message'            => self::build_workflow_missing_message( $action, $new_missing ),
+					'clarify_reason'     => self::infer_workflow_clarify_reason( $action, $new_missing ),
 					'parser_source'      => 'rule',
 					'parser_rule'        => 'rule.workflow.continue',
 					'confidence'         => 1.0,
@@ -220,14 +257,7 @@ class YoRo_Email_Command_Parser {
 			);
 		}
 
-		if (
-			preg_match( '/\b(save|create|delete|update|list|show|find|search)\b/i', $normalized ) &&
-			! preg_match( '/\b[a-z_]+\s+"[^"]+"/i', $command )
-		) {
-			return null;
-		}
-
-		if ( self::looks_like_standalone_non_workflow_request( $command, $normalized ) ) {
+		if ( self::supports_state_driven_slot_filling( $action ) || self::looks_like_standalone_non_workflow_request( $command, $normalized ) ) {
 			return null;
 		}
 
@@ -264,6 +294,7 @@ class YoRo_Email_Command_Parser {
 				'params'             => $params,
 				'missing'            => $new_missing,
 				'message'            => self::build_workflow_missing_message( $action, $new_missing ),
+				'clarify_reason'     => self::infer_workflow_clarify_reason( $action, $new_missing ),
 				'parser_source'      => 'rule',
 				'parser_rule'        => 'rule.workflow.continue',
 				'confidence'         => 1.0,
@@ -298,17 +329,98 @@ class YoRo_Email_Command_Parser {
 		);
 	}
 
+	private static function should_defer_workflow_reply_to_follow_up_or_standalone_parser( $workflow, $action, $missing, $command, $normalized ) {
+		if ( self::is_workflow_control_command( $workflow, $action, $normalized ) ) {
+			return true;
+		}
+
+		if ( self::looks_like_standalone_non_workflow_request( $command, $normalized ) ) {
+			return true;
+		}
+
+		return false;
+	}
+
+	private static function supports_state_driven_slot_filling( $action ) {
+		return in_array(
+			sanitize_text_field( $action ),
+			[
+				'orders.add_note',
+				'orders.update_status',
+				'orders.compose_customer_email',
+				'email_templates.save',
+			],
+			true
+		);
+	}
+
+	private static function is_workflow_control_command( $workflow, $action, $normalized ) {
+		$workflow = is_array( $workflow ) ? $workflow : [];
+		$normalized = strtolower( trim( (string) $normalized ) );
+		$action = sanitize_text_field( $action );
+		$workflow_type = sanitize_key( $workflow['type'] ?? '' );
+
+		if ( '' === $normalized ) {
+			return false;
+		}
+
+		if ( preg_match( '/^\s*(cancel|discard|stop)\b/i', $normalized ) ) {
+			return true;
+		}
+
+		if (
+			'customer_email' === $workflow_type ||
+			'orders.compose_customer_email' === $action
+		) {
+			$email_control_commands = [
+				'save draft',
+				'save this draft',
+				'save the draft',
+				'save current draft',
+				'save email draft',
+				'save this email draft',
+				'save the email draft',
+				'send email',
+				'send the email',
+				'send this email',
+				'send current email',
+				'send reviewed email',
+			];
+
+			if ( in_array( $normalized, $email_control_commands, true ) ) {
+				return true;
+			}
+
+			if (
+				false !== strpos( $normalized, 'save' ) &&
+				false !== strpos( $normalized, 'template' )
+			) {
+				return true;
+			}
+
+			if (
+				preg_match( '/\b(delete|remove)\b/i', $normalized ) &&
+				false !== strpos( $normalized, 'draft' )
+			) {
+				return true;
+			}
+		}
+
+		if (
+			'email_templates.save' === $action &&
+			preg_match( '/\btemplate\b/i', $normalized ) &&
+			preg_match( '/\b(save|create|add)\b/i', $normalized )
+		) {
+			return true;
+		}
+
+		return false;
+	}
+
 	private static function should_capture_missing_workflow_param_raw( $action, $missing, $command, $normalized ) {
 		$missing = array_values( array_filter( array_map( 'sanitize_key', (array) $missing ) ) );
 
 		if ( empty( $missing ) ) {
-			return false;
-		}
-
-		if (
-			preg_match( '/^\s*(cancel|discard|stop)\b/i', $normalized ) &&
-			( false !== strpos( $normalized, 'workflow' ) || false !== strpos( $normalized, 'email' ) )
-		) {
 			return false;
 		}
 
@@ -324,6 +436,20 @@ class YoRo_Email_Command_Parser {
 			'orders.update_status' === $action &&
 			[ 'status' ] === $missing &&
 			! self::looks_like_new_update_status_command( $command, $normalized )
+		) {
+			return true;
+		}
+
+		if (
+			'orders.compose_customer_email' === $action &&
+			[ 'instruction' ] === $missing
+		) {
+			return true;
+		}
+
+		if (
+			'email_templates.save' === $action &&
+			! empty( array_intersect( $missing, [ 'name', 'subject', 'body' ] ) )
 		) {
 			return true;
 		}
@@ -358,6 +484,10 @@ class YoRo_Email_Command_Parser {
 			}
 		}
 
+		if ( 'orders.compose_customer_email' === $action && in_array( 'instruction', $missing, true ) ) {
+			$inferred['instruction'] = sanitize_textarea_field( $command );
+		}
+
 		if ( 'email_templates.save' === $action ) {
 			if ( in_array( 'name', $missing, true ) && preg_match( '/\b(?:named|name)\s+"([^"]+)"/i', $command, $matches ) ) {
 				$inferred['name'] = sanitize_text_field( trim( $matches[1] ) );
@@ -388,6 +518,41 @@ class YoRo_Email_Command_Parser {
 		}
 
 		return false;
+	}
+
+	private static function maybe_resume_composed_actions_workflow( $workflow, $params, $command, $normalized ) {
+		$workflow = is_array( $workflow ) ? $workflow : [];
+		$params   = is_array( $params ) ? $params : [];
+
+		$workflow_action = sanitize_text_field( $workflow['action'] ?? '' );
+
+		if (
+			'composed_actions' !== sanitize_key( $workflow['type'] ?? '' ) ||
+			empty( $params['_yoro_composed_requested_actions'] ) ||
+			! class_exists( 'YoRo_Action_Composition_Planner' )
+		) {
+			return null;
+		}
+
+		$workflow['params'] = $params;
+
+		if ( 'orders.add_note' === $workflow_action ) {
+			return YoRo_Action_Composition_Planner::resume_from_missing_note(
+				$workflow,
+				$command,
+				$normalized
+			);
+		}
+
+		if ( 'orders.compose_customer_email' === $workflow_action ) {
+			return YoRo_Action_Composition_Planner::resume_from_missing_instruction(
+				$workflow,
+				$command,
+				$normalized
+			);
+		}
+
+		return null;
 	}
 
 	private static function looks_like_new_update_status_command( $command, $normalized ) {
@@ -447,6 +612,7 @@ class YoRo_Email_Command_Parser {
 					'matched'            => false,
 					'stage'              => 'clarify',
 					'message'            => __( 'This email workflow has expired. Please compose the email again.', 'yoro-agent-core' ),
+					'clarify_reason'     => 'workflow_expired',
 					'original_command'   => $command,
 					'normalized_command' => $normalized,
 				];
@@ -463,6 +629,7 @@ class YoRo_Email_Command_Parser {
 				'matched'            => false,
 				'stage'              => 'clarify',
 				'message'            => __( 'No email draft is ready to save. Please compose or preview an email first.', 'yoro-agent-core' ),
+				'clarify_reason'     => 'missing_instruction',
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -478,6 +645,7 @@ class YoRo_Email_Command_Parser {
 				'matched'            => false,
 				'stage'              => 'clarify',
 				'message'            => __( 'The current email draft is missing order, subject, or body. Please preview the email again before saving.', 'yoro-agent-core' ),
+				'clarify_reason'     => 'missing_instruction',
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -525,6 +693,7 @@ class YoRo_Email_Command_Parser {
 				'stage'              => 'clarify',
 				'action'             => 'email_templates.save',
 				'message'            => __( 'What should I name this template?', 'yoro-agent-core' ),
+				'clarify_reason'     => 'missing_target',
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -1092,6 +1261,33 @@ class YoRo_Email_Command_Parser {
 			__( 'Please provide %s.', 'yoro-agent-core' ),
 			$first
 		);
+	}
+
+	private static function infer_workflow_clarify_reason( $action, $missing ) {
+		$action = sanitize_text_field( $action );
+		$missing = is_array( $missing ) ? array_values( array_filter( array_map( 'sanitize_key', $missing ) ) ) : [];
+		$first = $missing[0] ?? '';
+
+		if ( 'orders.update_status' === $action || 'status' === $first ) {
+			return 'missing_status';
+		}
+
+		if ( 'orders.add_note' === $action || 'note' === $first ) {
+			return 'missing_note';
+		}
+
+		if (
+			'orders.compose_customer_email' === $action ||
+			in_array( $first, [ 'instruction', 'subject', 'body' ], true )
+		) {
+			return 'missing_instruction';
+		}
+
+		if ( in_array( $first, [ 'name', 'template_id' ], true ) ) {
+			return 'missing_target';
+		}
+
+		return 'details';
 	}
 
 	private static function detect_customer_email_template( $normalized ) {

@@ -14,119 +14,133 @@ class YoRo_Store_Fulfillment_Service {
 		$limit = isset( $params['limit'] ) ? absint( $params['limit'] ) : 5;
 		$limit = min( max( $limit, 1 ), 20 );
 
-		$queues = [
-			YoRo_Orders_Read_Service::fulfillment_build_filter_queue(
-				'processing_without_tracking',
-				__( 'Processing without tracking', 'yoro-agent-core' ),
-				__( 'Shippable processing orders without a known shipment tracking signal.', 'yoro-agent-core' ),
-				$limit,
-				function( $order ) {
-					return $order instanceof WC_Order
-						&& YoRo_Orders_Read_Service::fulfillment_order_requires_shipping( $order )
-						&& ! YoRo_Orders_Read_Service::fulfillment_order_has_tracking( $order );
-				},
-				__( 'No tracking number detected.', 'yoro-agent-core' )
-			),
-			YoRo_Orders_Read_Service::fulfillment_build_filter_queue(
-				'processing_older_than_48h',
-				__( 'Processing older than 48h', 'yoro-agent-core' ),
-				__( 'Shippable processing orders that have been waiting more than 48 hours.', 'yoro-agent-core' ),
-				$limit,
-				function( $order ) {
-					return $order instanceof WC_Order
-						&& YoRo_Orders_Read_Service::fulfillment_order_requires_shipping( $order )
-						&& YoRo_Orders_Read_Service::fulfillment_order_is_older_than_hours( $order, 48 );
-				},
-				__( 'Processing order has been waiting for fulfillment review for more than 48 hours.', 'yoro-agent-core' )
-			),
-			YoRo_Orders_Read_Service::fulfillment_build_filter_queue(
-				'missing_shipping_address',
-				__( 'Missing shipping address', 'yoro-agent-core' ),
-				__( 'Shippable processing orders with incomplete shipping address fields.', 'yoro-agent-core' ),
-				$limit,
-				function( $order ) {
-					return $order instanceof WC_Order
-						&& YoRo_Orders_Read_Service::fulfillment_order_requires_shipping( $order )
-						&& YoRo_Orders_Read_Service::fulfillment_order_has_incomplete_shipping_address( $order );
-				},
-				__( 'Shipping address appears incomplete.', 'yoro-agent-core' )
-			),
-			YoRo_Orders_Read_Service::fulfillment_build_filter_queue(
-				'recent_ready_to_fulfill',
-				__( 'Recent ready to fulfill', 'yoro-agent-core' ),
-				__( 'Recent shippable processing orders with tracking and complete shipping details.', 'yoro-agent-core' ),
-				$limit,
-				function( $order ) {
-					return $order instanceof WC_Order && YoRo_Orders_Read_Service::fulfillment_order_is_ready_to_fulfill( $order );
-				},
-				__( 'Tracked processing order looks ready for the next fulfillment step.', 'yoro-agent-core' )
-			),
-		];
-		$queues = self::rank_fulfillment_queue_orders( $queues );
+		return YoRo_Action_Cache::remember(
+			'fulfillment_queue',
+			[
+				'limit' => $limit,
+			],
+			function() use ( $limit ) {
+				$candidates = YoRo_Orders_Read_Service::fulfillment_get_processing_candidates( 50 );
 
-		$total_items = 0;
-		$orders      = [];
+				$queues = [
+					YoRo_Orders_Read_Service::fulfillment_build_candidate_queue(
+						'processing_without_tracking',
+						__( 'Processing without tracking', 'yoro-agent-core' ),
+						__( 'Shippable processing orders without a known shipment tracking signal.', 'yoro-agent-core' ),
+						$candidates,
+						$limit,
+						function( $order ) {
+							return $order instanceof WC_Order
+								&& YoRo_Orders_Read_Service::fulfillment_order_requires_shipping( $order )
+								&& ! YoRo_Orders_Read_Service::fulfillment_order_has_tracking( $order );
+						},
+						__( 'No tracking number detected.', 'yoro-agent-core' )
+					),
+					YoRo_Orders_Read_Service::fulfillment_build_candidate_queue(
+						'processing_older_than_48h',
+						__( 'Processing older than 48h', 'yoro-agent-core' ),
+						__( 'Shippable processing orders that have been waiting more than 48 hours.', 'yoro-agent-core' ),
+						$candidates,
+						$limit,
+						function( $order ) {
+							return $order instanceof WC_Order
+								&& YoRo_Orders_Read_Service::fulfillment_order_requires_shipping( $order )
+								&& YoRo_Orders_Read_Service::fulfillment_order_is_older_than_hours( $order, 48 );
+						},
+						__( 'Processing order has been waiting for fulfillment review for more than 48 hours.', 'yoro-agent-core' )
+					),
+					YoRo_Orders_Read_Service::fulfillment_build_candidate_queue(
+						'missing_shipping_address',
+						__( 'Missing shipping address', 'yoro-agent-core' ),
+						__( 'Shippable processing orders with incomplete shipping address fields.', 'yoro-agent-core' ),
+						$candidates,
+						$limit,
+						function( $order ) {
+							return $order instanceof WC_Order
+								&& YoRo_Orders_Read_Service::fulfillment_order_requires_shipping( $order )
+								&& YoRo_Orders_Read_Service::fulfillment_order_has_incomplete_shipping_address( $order );
+						},
+						__( 'Shipping address appears incomplete.', 'yoro-agent-core' )
+					),
+					YoRo_Orders_Read_Service::fulfillment_build_candidate_queue(
+						'recent_ready_to_fulfill',
+						__( 'Recent ready to fulfill', 'yoro-agent-core' ),
+						__( 'Recent shippable processing orders with tracking and complete shipping details.', 'yoro-agent-core' ),
+						$candidates,
+						$limit,
+						function( $order ) {
+							return $order instanceof WC_Order && YoRo_Orders_Read_Service::fulfillment_order_is_ready_to_fulfill( $order );
+						},
+						__( 'Tracked processing order looks ready for the next fulfillment step.', 'yoro-agent-core' )
+					),
+				];
+				$queues = self::rank_fulfillment_queue_orders( $queues );
 
-		foreach ( $queues as $queue ) {
-			$total_items += absint( $queue['count'] ?? 0 );
+				$total_items = 0;
+				$orders      = [];
 
-			foreach ( $queue['orders'] as $order ) {
-				$orders[ $order['id'] ] = $order;
-			}
-		}
+				foreach ( $queues as $queue ) {
+					$total_items += absint( $queue['count'] ?? 0 );
 
-		$orders               = array_values( $orders );
-		usort(
-			$orders,
-			function( $a, $b ) {
-				return (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 );
+					foreach ( $queue['orders'] as $order ) {
+						$orders[ $order['id'] ] = $order;
+					}
+				}
+
+				$orders               = array_values( $orders );
+				usort(
+					$orders,
+					function( $a, $b ) {
+						return (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 );
+					}
+				);
+				$fulfillment_context  = self::build_fulfillment_orchestrator_context( $queues );
+				$priority_items       = self::build_fulfillment_priority_items( $queues, $fulfillment_context );
+				$case_rankings        = self::build_fulfillment_case_rankings( $queues, $fulfillment_context );
+				$recommended_sequence = self::build_fulfillment_recommended_sequence( $case_rankings, $fulfillment_context );
+				$next_case            = self::build_fulfillment_next_recommended_case( $case_rankings );
+				$batch_candidates     = self::build_fulfillment_batch_draft_candidates( $case_rankings );
+
+				return [
+					'success'              => true,
+					'action'               => 'operations.get_fulfillment_queue',
+					'summary'              => sprintf(
+						'Fulfillment queue: %d items across %d queues.',
+						$total_items,
+						count( $queues )
+					),
+					'message'              => sprintf(
+						'Fulfillment queue: %d items across %d queues.',
+						$total_items,
+						count( $queues )
+					),
+					'count'                => $total_items,
+					'read_only'            => true,
+					'undoable'             => false,
+					'undo_plan'            => [],
+					'data'                 => [],
+					'meta'                 => [
+						'limit_per_queue'        => $limit,
+						'tracking_meta_detected' => true,
+						'changes_store'          => false,
+					],
+					'processed'            => [],
+					'skipped'              => [],
+					'errors'               => [],
+					'queues'               => $queues,
+					'orders'               => $orders,
+					'limit_per_queue'      => $limit,
+					'fulfillment_context'  => $fulfillment_context,
+					'priority_items'       => array_slice( $priority_items, 0, 3 ),
+					'case_rankings'        => array_slice( $case_rankings, 0, 10 ),
+					'recommended_sequence' => array_slice( $recommended_sequence, 0, 4 ),
+					'next_recommended_case'=> $next_case,
+					'batch_draft_candidates' => $batch_candidates,
+					'result_type'          => 'fulfillment_queue',
+					'display_type'         => 'fulfillment_queue',
+				];
 			}
 		);
-		$fulfillment_context  = self::build_fulfillment_orchestrator_context( $queues );
-		$priority_items       = self::build_fulfillment_priority_items( $queues, $fulfillment_context );
-		$case_rankings        = self::build_fulfillment_case_rankings( $queues, $fulfillment_context );
-		$recommended_sequence = self::build_fulfillment_recommended_sequence( $case_rankings, $fulfillment_context );
-		$next_case            = self::build_fulfillment_next_recommended_case( $case_rankings );
-		$batch_candidates     = self::build_fulfillment_batch_draft_candidates( $case_rankings );
-
-		return [
-			'success'              => true,
-			'action'               => 'operations.get_fulfillment_queue',
-			'summary'              => sprintf(
-				'Fulfillment queue: %d items across %d queues.',
-				$total_items,
-				count( $queues )
-			),
-			'message'              => sprintf(
-				'Fulfillment queue: %d items across %d queues.',
-				$total_items,
-				count( $queues )
-			),
-			'count'                => $total_items,
-			'read_only'            => true,
-			'undoable'             => false,
-			'undo_plan'            => [],
-			'data'                 => [],
-			'meta'                 => [
-				'limit_per_queue'        => $limit,
-				'tracking_meta_detected' => true,
-				'changes_store'          => false,
-			],
-			'processed'            => [],
-			'skipped'              => [],
-			'errors'               => [],
-			'queues'               => $queues,
-			'orders'               => $orders,
-			'limit_per_queue'      => $limit,
-			'fulfillment_context'  => $fulfillment_context,
-			'priority_items'       => array_slice( $priority_items, 0, 3 ),
-			'case_rankings'        => array_slice( $case_rankings, 0, 10 ),
-			'recommended_sequence' => array_slice( $recommended_sequence, 0, 4 ),
-			'next_recommended_case'=> $next_case,
-			'batch_draft_candidates' => $batch_candidates,
-			'result_type'          => 'fulfillment_queue',
-			'display_type'         => 'fulfillment_queue',
-		];
 	}
 
 	private static function build_fulfillment_orchestrator_context( $queues ) {

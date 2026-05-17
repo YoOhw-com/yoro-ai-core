@@ -77,6 +77,22 @@ class YoRo_Action_Executor {
 		$result = call_user_func( $action['callback'], $params );
 		$result = self::normalize_result( $action_name, $result, $action );
 
+		if (
+			! $is_undo &&
+			! empty( $action['write_action'] ) &&
+			is_array( $result ) &&
+			! empty( $result['success'] ) &&
+			class_exists( 'YoRo_Action_Cache' )
+		) {
+			YoRo_Action_Cache::flush_groups(
+				[
+					'operations_summary',
+					'operations_attention_queue',
+					'fulfillment_queue',
+				]
+			);
+		}
+
 		if ( ! $is_undo ) {
 			$result['suggestions'] = YoRo_Suggestions::get(
 				$action_name,

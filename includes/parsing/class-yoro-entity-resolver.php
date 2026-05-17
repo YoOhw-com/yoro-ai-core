@@ -35,6 +35,11 @@ class YoRo_Entity_Resolver {
 				'store.get_daily_briefing',
 				'store.get_insights',
 				'store.get_morning_briefing',
+				'workflow.fulfillment_followup_preview',
+				'workflow.customer_followup_preview',
+				'workflow.operations_attention_preview',
+				'workflow.inventory_pressure_preview',
+				'workflow.business_summary_preview',
 			],
 			true
 		);

@@ -267,6 +267,9 @@ class YoRo_Capability_Registry {
 		$record  = self::get_family( $capability_key );
 		$copy    = self::build_unsupported_copy( $parser_family, $result, $capability_key );
 		$surface = '';
+		$handoff_request_text = '' !== $request_text
+			? $request_text
+			: ( '' !== $requested_capability ? $requested_capability : $target_object );
 
 		if ( ! empty( $record['nearest_supported_surfaces'] ) && is_array( $record['nearest_supported_surfaces'] ) ) {
 			$surface = sanitize_key( (string) reset( $record['nearest_supported_surfaces'] ) );
@@ -281,14 +284,22 @@ class YoRo_Capability_Registry {
 			'followup'                => $copy['followup'] ?? __( 'If you want, I can pass that request to the developers.', 'yoro-agent-core' ),
 			'closest_supported_surface' => $surface,
 			'developer_handoff_offer' => ! empty( $record['developer_handoff_allowed'] ),
-			'handoff_request_text'    => '' !== $request_text
-				? $request_text
-				: ( '' !== $requested_capability ? $requested_capability : $target_object ),
+			'handoff_request_text'    => $handoff_request_text,
 			'suggestions'             => ! empty( $record['developer_handoff_allowed'] )
 				? [
 					[
-						'label' => __( 'Yes, send this to developers', 'yoro-agent-core' ),
-						'value' => 'Yes, send this to developers',
+						'label'   => __( 'Send to developers', 'yoro-agent-core' ),
+						'action'  => 'assistant.submit_developer_request',
+						'params'  => [
+							'request_text'              => $handoff_request_text,
+							'original_command'          => $handoff_request_text,
+							'unsupported_capability'    => $handoff_request_text,
+							'conversation_family'       => $parser_family,
+							'closest_supported_surface' => $surface,
+							'context_order_id'          => 0,
+						],
+						'confirm' => false,
+						'preview' => false,
 					],
 				]
 				: [],
@@ -305,8 +316,18 @@ class YoRo_Capability_Registry {
 
 		if ( $include_handoff ) {
 			$suggestions[] = [
-				'label' => __( 'Yes, send this to developers', 'yoro-agent-core' ),
-				'value' => 'Yes, send this to developers',
+				'label'   => __( 'Send to developers', 'yoro-agent-core' ),
+				'action'  => 'assistant.submit_developer_request',
+				'params'  => [
+					'request_text'              => sanitize_text_field( $decision['handoff_request_text'] ?? $normalized ),
+					'original_command'          => sanitize_text_field( $decision['handoff_request_text'] ?? $normalized ),
+					'unsupported_capability'    => sanitize_text_field( $decision['handoff_request_text'] ?? $normalized ),
+					'conversation_family'       => $capability_key,
+					'closest_supported_surface' => sanitize_key( $surfaces[0] ?? '' ),
+					'context_order_id'          => 0,
+				],
+				'confirm' => false,
+				'preview' => false,
 			];
 
 			if ( 'woocommerce_core_operations' !== $capability_key ) {

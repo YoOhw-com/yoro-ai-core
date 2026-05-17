@@ -19,7 +19,15 @@ class YoRo_REST_Runtime_Log {
 			'execution_source'   => sanitize_key( $extra['execution_source'] ?? '' ),
 			'parser_source'      => sanitize_key( $extra['parser_source'] ?? '' ),
 			'parser_rule'        => sanitize_text_field( $extra['parser_rule'] ?? '' ),
+			'resolution_path'    => sanitize_key( $extra['resolution_path'] ?? '' ),
+			'router_mode'        => sanitize_key( $extra['router_mode'] ?? '' ),
+			'catalog_action_count' => isset( $extra['catalog_action_count'] ) ? absint( $extra['catalog_action_count'] ) : 0,
+			'clarify_reason'     => sanitize_key( $extra['clarify_reason'] ?? '' ),
+			'fallback_reason'    => sanitize_key( $extra['fallback_reason'] ?? '' ),
+			'params_trimmed_count' => isset( $extra['params_trimmed_count'] ) ? absint( $extra['params_trimmed_count'] ) : 0,
 			'intent_name'        => sanitize_key( $extra['intent_name'] ?? '' ),
+			'intent_family'      => sanitize_key( $extra['intent_family'] ?? '' ),
+			'language'           => sanitize_key( $extra['language'] ?? '' ),
 			'confidence'         => isset( $extra['confidence'] ) && null !== $extra['confidence'] ? (float) $extra['confidence'] : null,
 			'ai_meta'            => isset( $extra['ai_meta'] ) && is_array( $extra['ai_meta'] ) ? $extra['ai_meta'] : [],
 			'retrieved_examples' => $retrieved_examples,
@@ -36,6 +44,9 @@ class YoRo_REST_Runtime_Log {
 				'risk_requires_confirmation'   => ! empty( $runtime['risk_requires_confirmation'] ),
 				'reason'                       => sanitize_key( $runtime['reason'] ?? '' ),
 			],
+			'stage_timings'      => isset( $extra['stage_timings'] ) && is_array( $extra['stage_timings'] ) ? $extra['stage_timings'] : [],
+			'ai_requests'        => isset( $extra['ai_requests'] ) && is_array( $extra['ai_requests'] ) ? $extra['ai_requests'] : [],
+			'ai_total_ms'        => isset( $extra['ai_total_ms'] ) ? absint( $extra['ai_total_ms'] ) : 0,
 		];
 
 		return array_merge( $data, $extra );

@@ -116,6 +116,13 @@ class YoRo_Logger {
 		$route_candidates = self::normalize_route_candidates(
 			$runtime['route_candidates'] ?? $data['route_candidates'] ?? []
 		);
+		$stage_timings = isset( $runtime['stage_timings'] ) && is_array( $runtime['stage_timings'] )
+			? $runtime['stage_timings']
+			: [];
+		$ai_requests = isset( $runtime['ai_requests'] ) && is_array( $runtime['ai_requests'] )
+			? $runtime['ai_requests']
+			: [];
+		$ai_total_ms = isset( $runtime['ai_total_ms'] ) ? absint( $runtime['ai_total_ms'] ) : 0;
 
 		if ( null === $duration_ms && ! empty( $runtime['request_started_at'] ) ) {
 			$duration_ms = max( 0, (int) round( ( microtime( true ) - (float) $runtime['request_started_at'] ) * 1000 ) );
@@ -129,7 +136,23 @@ class YoRo_Logger {
 			'execution_source'      => sanitize_key( $runtime['execution_source'] ?? '' ),
 			'parser_source'         => sanitize_key( $runtime['parser_source'] ?? $data['parser_source'] ?? '' ),
 			'parser_rule'           => sanitize_text_field( $runtime['parser_rule'] ?? $data['parser_rule'] ?? '' ),
+			'resolution_path'       => sanitize_key( $runtime['resolution_path'] ?? $data['resolution_path'] ?? $result['resolution_path'] ?? '' ),
+			'router_mode'           => sanitize_key( $runtime['router_mode'] ?? $data['router_mode'] ?? $result['router_mode'] ?? '' ),
+			'catalog_action_count'  => isset( $runtime['catalog_action_count'] )
+				? absint( $runtime['catalog_action_count'] )
+				: ( isset( $data['catalog_action_count'] )
+					? absint( $data['catalog_action_count'] )
+					: absint( $result['catalog_action_count'] ?? 0 ) ),
+			'clarify_reason'        => sanitize_key( $runtime['clarify_reason'] ?? $data['clarify_reason'] ?? $result['clarify_reason'] ?? '' ),
+			'fallback_reason'       => sanitize_key( $runtime['fallback_reason'] ?? $data['fallback_reason'] ?? $result['fallback_reason'] ?? '' ),
+			'params_trimmed_count'  => isset( $runtime['params_trimmed_count'] )
+				? absint( $runtime['params_trimmed_count'] )
+				: ( isset( $data['params_trimmed_count'] )
+					? absint( $data['params_trimmed_count'] )
+					: absint( $result['params_trimmed_count'] ?? 0 ) ),
 			'intent_name'           => sanitize_key( $runtime['intent_name'] ?? $data['intent_name'] ?? '' ),
+			'intent_family'         => sanitize_key( $runtime['intent_family'] ?? $data['intent_family'] ?? '' ),
+			'language'              => sanitize_key( $runtime['language'] ?? $data['language'] ?? $result['language'] ?? '' ),
 			'confidence'            => isset( $runtime['confidence'] ) ? (float) $runtime['confidence'] : ( isset( $data['confidence'] ) ? (float) $data['confidence'] : null ),
 			'ai_feature'            => sanitize_key( $ai_meta['feature'] ?? '' ),
 			'ai_provider'           => sanitize_key( $ai_meta['provider'] ?? '' ),
@@ -152,6 +175,9 @@ class YoRo_Logger {
 			'count'                 => isset( $result['count'] ) ? absint( $result['count'] ) : 0,
 			'error_code'            => sanitize_key( $result['error']['code'] ?? $data['error_code'] ?? '' ),
 			'duration_ms'           => $duration_ms,
+			'stage_timings'         => $stage_timings,
+			'ai_requests'           => $ai_requests,
+			'ai_total_ms'           => $ai_total_ms,
 		];
 	}
 
@@ -393,7 +419,7 @@ class YoRo_Logger {
 
 			$items[] = [
 				'id'             => absint( $row['id'] ?? 0 ),
-				'created_at'     => sanitize_text_field( $row['created_at'] ?? '' ),
+				'created_at'     => YoRo_Date_Helper::format_mysql( $row['created_at'] ?? '' ),
 				'command'        => sanitize_text_field( $row['command'] ?? '' ),
 				'action'         => sanitize_text_field( $row['action'] ?? '' ),
 				'status'         => sanitize_key( $row['status'] ?? '' ),
@@ -565,7 +591,7 @@ class YoRo_Logger {
 				'parser_source' => $parser_source,
 				'status'        => $status,
 				'confidence'    => $confidence,
-				'created_at'    => sanitize_text_field( $row['created_at'] ?? '' ),
+				'created_at'    => YoRo_Date_Helper::format_mysql( $row['created_at'] ?? '' ),
 			];
 
 			$pack['queries'][] = $entry;

@@ -29,8 +29,29 @@ class YoRo_AI_Command_Router {
 			);
 		}
 
-		$catalog = YoRo_Action_Catalog_Builder::build( $context );
-		$payload = YoRo_AI_Command_Router_Prompt::build( $command, $context, $catalog );
+		$router_hints = class_exists( 'YoRo_Action_Catalog_Builder' ) && method_exists( 'YoRo_Action_Catalog_Builder', 'build_router_hints' )
+			? YoRo_Action_Catalog_Builder::build_router_hints( $command, $context )
+			: [];
+		$catalog_scope = sanitize_key( $router_hints['catalog_scope'] ?? 'default' );
+		$full_catalog = YoRo_Action_Catalog_Builder::build( $context );
+		$catalog = class_exists( 'YoRo_Action_Catalog_Builder' ) && method_exists( 'YoRo_Action_Catalog_Builder', 'build_for_command' )
+			? YoRo_Action_Catalog_Builder::build_for_command( $command, $context )
+			: $full_catalog;
+		$payload = YoRo_AI_Command_Router_Prompt::build(
+			$command,
+			$context,
+			$catalog,
+			array_merge(
+				[
+					'catalog_scope' => $catalog_scope,
+					'catalog_total_action_count' => count( $full_catalog ),
+					'resolved_order_ids' => ! empty( $context['resolved_order_ids'] ) && is_array( $context['resolved_order_ids'] )
+						? array_values( array_filter( array_map( 'absint', $context['resolved_order_ids'] ) ) )
+						: [],
+				],
+				is_array( $router_hints ) ? $router_hints : []
+			)
+		);
 		$output_text = YoRo_AI_Provider_Resolver::get_client()->parse_intent( $payload );
 
 		if ( is_wp_error( $output_text ) ) {
@@ -47,6 +68,10 @@ class YoRo_AI_Command_Router {
 		$decision['parser_rule'] = 'ai.command_router.v2';
 		$decision['parser_source'] = 'ai_router';
 		$decision['original_command'] = $command;
+		$decision['catalog_action_count'] = count( $catalog );
+		$decision['catalog_scope'] = sanitize_key( $catalog_scope );
+		$decision['catalog_total_action_count'] = count( $full_catalog );
+		$decision['router_profile'] = sanitize_key( $router_hints['router_profile'] ?? '' );
 		$decision['meta'] = class_exists( 'YoRo_AI_Parser' ) && method_exists( 'YoRo_AI_Parser', 'build_meta' )
 			? YoRo_AI_Parser::build_meta(
 				'command_router',
@@ -86,7 +111,10 @@ class YoRo_AI_Command_Router {
 			return null;
 		}
 
-		$catalog = YoRo_Action_Catalog_Builder::build( $context );
+		$catalog = YoRo_Action_Catalog_Builder::build_for_command( $command, $context );
+		$router_hints = class_exists( 'YoRo_Action_Catalog_Builder' ) && method_exists( 'YoRo_Action_Catalog_Builder', 'build_router_hints' )
+			? YoRo_Action_Catalog_Builder::build_router_hints( $command, $context )
+			: [];
 		$decision = YoRo_Command_Decision_Normalizer::normalize( $mock, $catalog );
 
 		if ( is_wp_error( $decision ) ) {
@@ -96,6 +124,12 @@ class YoRo_AI_Command_Router {
 		$decision['parser_rule'] = 'ai.command_router.mock';
 		$decision['parser_source'] = 'ai_router';
 		$decision['original_command'] = $command;
+		$decision['catalog_action_count'] = count( $catalog );
+		$decision['catalog_scope'] = class_exists( 'YoRo_Action_Catalog_Builder' ) && method_exists( 'YoRo_Action_Catalog_Builder', 'detect_router_scope' )
+			? YoRo_Action_Catalog_Builder::detect_router_scope( $command, $context )
+			: 'default';
+		$decision['catalog_total_action_count'] = count( YoRo_Action_Catalog_Builder::build( $context ) );
+		$decision['router_profile'] = sanitize_key( $router_hints['router_profile'] ?? '' );
 		$decision['meta'] = [
 			'feature'        => 'command_router',
 			'provider'       => 'mock',
