@@ -2873,19 +2873,25 @@ class YoRo_Parser_Engine {
 		if (
 			false !== strpos( $normalized, 'last 30 days' ) ||
 			false !== strpos( $normalized, 'last thirty days' ) ||
-			false !== strpos( $normalized, 'this month' ) ||
 			false !== strpos( $normalized, 'monthly' )
 		) {
 			return 'last_30_days';
 		}
 
+		if ( false !== strpos( $normalized, 'this month' ) ) {
+			return 'this_month';
+		}
+
 		if (
 			false !== strpos( $normalized, 'last 7 days' ) ||
 			false !== strpos( $normalized, 'last seven days' ) ||
-			false !== strpos( $normalized, 'this week' ) ||
 			false !== strpos( $normalized, 'weekly' )
 		) {
 			return 'last_7_days';
+		}
+
+		if ( false !== strpos( $normalized, 'this week' ) ) {
+			return 'this_week';
 		}
 
 		return $default;
@@ -6583,10 +6589,12 @@ class YoRo_Parser_Engine {
 		$map = [
 			'today'         => 'today',
 			'yesterday'     => 'yesterday',
-			'this_week'     => 'last_7_days',
+			'this_week'     => 'this_week',
+			'last_week'     => 'last_week',
 			'weekly'        => 'last_7_days',
 			'last_7_days'   => 'last_7_days',
-			'this_month'    => 'last_30_days',
+			'this_month'    => 'this_month',
+			'last_month'    => 'last_month',
 			'monthly'       => 'last_30_days',
 			'last_30_days'  => 'last_30_days',
 		];

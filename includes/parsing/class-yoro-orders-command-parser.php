@@ -151,9 +151,13 @@ class YoRo_Orders_Command_Parser {
 			'limit'  => 1,
 		];
 
-		if ( false !== strpos( $normalized, 'this week' ) || false !== strpos( $normalized, 'weekly' ) ) {
+		if ( false !== strpos( $normalized, 'this week' ) ) {
+			$params['window'] = 'this_week';
+		} elseif ( false !== strpos( $normalized, 'weekly' ) ) {
 			$params['window'] = 'last_7_days';
-		} elseif ( false !== strpos( $normalized, 'this month' ) || false !== strpos( $normalized, 'monthly' ) ) {
+		} elseif ( false !== strpos( $normalized, 'this month' ) ) {
+			$params['window'] = 'this_month';
+		} elseif ( false !== strpos( $normalized, 'monthly' ) ) {
 			$params['window'] = 'last_30_days';
 		}
 
@@ -205,17 +209,19 @@ class YoRo_Orders_Command_Parser {
 		} elseif (
 			false !== strpos( $normalized, 'last 30 days' ) ||
 			false !== strpos( $normalized, 'last thirty days' ) ||
-			false !== strpos( $normalized, 'this month' ) ||
 			false !== strpos( $normalized, 'monthly' )
 		) {
 			$params['window'] = 'last_30_days';
+		} elseif ( false !== strpos( $normalized, 'this month' ) ) {
+			$params['window'] = 'this_month';
 		} elseif (
 			false !== strpos( $normalized, 'last 7 days' ) ||
 			false !== strpos( $normalized, 'last seven days' ) ||
-			false !== strpos( $normalized, 'this week' ) ||
 			false !== strpos( $normalized, 'weekly' )
 		) {
 			$params['window'] = 'last_7_days';
+		} elseif ( false !== strpos( $normalized, 'this week' ) ) {
+			$params['window'] = 'this_week';
 		}
 
 		if (
@@ -782,18 +788,20 @@ class YoRo_Orders_Command_Parser {
 			false !== strpos( $normalized, 'last 30 days' ) ||
 			false !== strpos( $normalized, 'last thirty days' ) ||
 			false !== strpos( $normalized, 'monthly' ) ||
-			false !== strpos( $normalized, 'this month' ) ||
 			false !== strpos( $normalized, 'month summary' )
 		) {
 			$params['window'] = 'last_30_days';
+		} elseif ( false !== strpos( $normalized, 'this month' ) ) {
+			$params['window'] = 'this_month';
 		} elseif (
 			false !== strpos( $normalized, 'last 7 days' ) ||
 			false !== strpos( $normalized, 'last seven days' ) ||
 			false !== strpos( $normalized, 'weekly' ) ||
-			false !== strpos( $normalized, 'this week' ) ||
 			false !== strpos( $normalized, 'week summary' )
 		) {
 			$params['window'] = 'last_7_days';
+		} elseif ( false !== strpos( $normalized, 'this week' ) ) {
+			$params['window'] = 'this_week';
 		} elseif (
 			false !== strpos( $normalized, 'today' ) ||
 			false !== strpos( $normalized, 'daily' )

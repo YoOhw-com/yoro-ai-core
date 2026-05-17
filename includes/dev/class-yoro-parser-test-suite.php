@@ -367,9 +367,13 @@ class YoRo_Parser_Test_Suite {
 
 		$normalized = strtolower( trim( (string) $command ) );
 
-		if ( false !== strpos( $normalized, 'monthly' ) || false !== strpos( $normalized, 'this month' ) ) {
+		if ( false !== strpos( $normalized, 'this month' ) ) {
+			$params['window'] = 'this_month';
+		} elseif ( false !== strpos( $normalized, 'monthly' ) ) {
 			$params['window'] = 'last_30_days';
-		} elseif ( false !== strpos( $normalized, 'weekly' ) || false !== strpos( $normalized, 'this week' ) ) {
+		} elseif ( false !== strpos( $normalized, 'this week' ) ) {
+			$params['window'] = 'this_week';
+		} elseif ( false !== strpos( $normalized, 'weekly' ) ) {
 			$params['window'] = 'last_7_days';
 		} elseif ( ! isset( $params['window'] ) ) {
 			$params['window'] = 'today';
@@ -539,7 +543,7 @@ class YoRo_Parser_Test_Suite {
 				'task_request',
 				'operations.get_summary',
 				[
-					'window' => 'last_7_days',
+					'window' => 'this_week',
 					'focus'  => 'overview',
 				],
 				0.95
@@ -1866,7 +1870,7 @@ class YoRo_Parser_Test_Suite {
 					'task_request',
 					'store.get_business_summary',
 					[
-						'window' => 'last_30_days',
+						'window' => 'this_month',
 						'focus'  => 'overview',
 					],
 					0.95
@@ -1875,7 +1879,7 @@ class YoRo_Parser_Test_Suite {
 					'resolution_path'                => 'ai_primary',
 					'intent_family'                  => 'business_summary',
 					'command_decision.intent_family' => 'business_summary',
-					'params.window'                  => 'last_30_days',
+					'params.window'                  => 'this_month',
 					'params.focus'                   => 'overview',
 				],
 				'assert'          => function( $actual ) {
@@ -1900,7 +1904,7 @@ class YoRo_Parser_Test_Suite {
 					'task_request',
 					'operations.get_summary',
 					[
-						'window' => 'last_7_days',
+						'window' => 'this_week',
 						'focus'  => 'overview',
 					],
 					0.95
@@ -1909,7 +1913,7 @@ class YoRo_Parser_Test_Suite {
 					'resolution_path'                => 'ai_primary',
 					'intent_family'                  => 'operations_overview',
 					'command_decision.intent_family' => 'operations_overview',
-					'params.window'                  => 'last_7_days',
+					'params.window'                  => 'this_week',
 					'params.focus'                   => 'overview',
 				],
 				'assert'          => function( $actual ) {
@@ -3271,7 +3275,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Show backlog summary for this week',
 				'expected_action' => 'operations.get_summary',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 					'params.focus'  => 'backlog',
 				],
 			],
@@ -3330,7 +3334,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Show store insights for this week',
 				'expected_action' => 'store.get_insights',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 					'params.limit'  => 5,
 				],
 			],
@@ -3339,7 +3343,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Show 8 store insights for this month',
 				'expected_action' => 'store.get_insights',
 				'expect'          => [
-					'params.window' => 'last_30_days',
+					'params.window' => 'this_month',
 					'params.limit'  => 8,
 				],
 			],
@@ -3348,7 +3352,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Show me summary of the business of this month',
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
-					'params.window' => 'last_30_days',
+					'params.window' => 'this_month',
 					'params.focus'  => 'overview',
 				],
 			],
@@ -3357,7 +3361,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'How is our business doing this month?',
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
-					'params.window' => 'last_30_days',
+					'params.window' => 'this_month',
 					'params.focus'  => 'overview',
 				],
 			],
@@ -3367,7 +3371,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
 					'intent.name'   => 'business_summary',
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 					'params.focus'  => 'overview',
 				],
 			],
@@ -3377,7 +3381,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
 					'intent.name'      => 'business_summary',
-					'params.window'    => 'last_7_days',
+					'params.window'    => 'this_week',
 					'params.focus'     => 'overview',
 					'resolution_path'  => 'ai_primary',
 				],
@@ -3388,7 +3392,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
 					'intent.name'   => 'business_summary',
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 					'params.focus'  => 'overview',
 				],
 			],
@@ -3398,7 +3402,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
 					'intent.name'   => 'business_summary',
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 					'params.focus'  => 'overview',
 				],
 			],
@@ -3407,7 +3411,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Show business performance this week',
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 					'params.focus'  => 'overview',
 				],
 			],
@@ -3416,7 +3420,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Show business summary for this week with operations focus',
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 					'params.focus'  => 'operations',
 				],
 			],
@@ -3426,7 +3430,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
 					'intent.name'   => 'business_summary',
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 					'params.focus'  => 'overview',
 				],
 			],
@@ -3435,7 +3439,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Summary the business this week',
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 					'params.focus'  => 'overview',
 				],
 			],
@@ -3445,7 +3449,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_action' => 'operations.get_summary',
 				'expect'          => [
 					'intent.name'   => 'operations_overview',
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 					'params.focus'  => 'overview',
 				],
 			],
@@ -3473,7 +3477,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'How is the store doing this week?',
 				'expected_action' => 'operations.get_summary',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 					'params.focus'  => 'overview',
 				],
 			],
@@ -4015,7 +4019,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'business_summary',
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 				],
 			],
 			[
@@ -4025,7 +4029,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'business_summary',
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 				],
 			],
 			[
@@ -4035,7 +4039,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'business_summary',
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
-					'params.window' => 'last_30_days',
+					'params.window' => 'this_month',
 				],
 			],
 			[
@@ -4045,7 +4049,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'business_summary',
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 				],
 			],
 			[
@@ -4055,7 +4059,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'business_summary',
 				'expected_action' => 'store.get_business_summary',
 				'expect'          => [
-					'params.window' => 'last_30_days',
+					'params.window' => 'this_month',
 				],
 			],
 			[
@@ -4085,7 +4089,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'store_briefing',
 				'expected_action' => 'store.get_daily_briefing',
 				'expect'          => [
-					'params.window' => 'last_30_days',
+					'params.window' => 'this_month',
 				],
 			],
 			[
@@ -4105,7 +4109,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'operations_overview',
 				'expected_action' => 'operations.get_summary',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 				],
 			],
 			[
@@ -4115,7 +4119,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'operations_overview',
 				'expected_action' => 'operations.get_summary',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 				],
 			],
 			[
@@ -4138,7 +4142,7 @@ class YoRo_Parser_Test_Suite {
 				'expect'          => [
 					'resolution_path' => 'recovery_fallback',
 					'fallback_reason' => 'semantic_read_only_fallback',
-					'params.window'   => 'last_7_days',
+					'params.window'   => 'this_week',
 					'params.focus'    => 'overview',
 				],
 			],
@@ -4149,7 +4153,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'operations_overview',
 				'expected_action' => 'operations.get_summary',
 				'expect'          => [
-					'params.window' => 'last_30_days',
+					'params.window' => 'this_month',
 				],
 			],
 			[
@@ -4169,7 +4173,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'operations_overview',
 				'expected_action' => 'operations.get_summary',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 				],
 			],
 			[
@@ -4500,7 +4504,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'store_briefing',
 				'expected_action' => 'store.get_daily_briefing',
 				'expect'          => [
-					'params.window' => 'last_30_days',
+					'params.window' => 'this_month',
 				],
 			],
 			[
@@ -4520,7 +4524,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'store_briefing',
 				'expected_action' => 'store.get_daily_briefing',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 				],
 			],
 			[
@@ -4531,7 +4535,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_action' => 'store.get_daily_briefing',
 				'expected_source' => 'ai_router',
 				'expect'          => [
-					'params.window' => 'last_7_days',
+					'params.window' => 'this_week',
 				],
 			],
 			[
@@ -4554,7 +4558,7 @@ class YoRo_Parser_Test_Suite {
 				'expect'          => [
 					'resolution_path' => 'recovery_fallback',
 					'fallback_reason' => 'semantic_read_only_fallback',
-					'params.window'   => 'last_30_days',
+					'params.window'   => 'this_month',
 				],
 			],
 			[
@@ -5352,7 +5356,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent_family' => 'business_summary',
 				'expected_action'        => 'store.get_business_summary',
 				'expected_source'        => 'ai_router',
-				'router_fixture'         => self::multilingual_router_fixture( 'es', 'task_request', 'store.get_business_summary', [ 'window' => 'last_7_days', 'focus' => 'overview' ], 'business_summary', 0.96 ),
+				'router_fixture'         => self::multilingual_router_fixture( 'es', 'task_request', 'store.get_business_summary', [ 'window' => 'this_week', 'focus' => 'overview' ], 'business_summary', 0.96 ),
 			],
 			[
 				'pack'                   => 'multilingual_representative',
@@ -5376,7 +5380,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent_family' => 'business_summary',
 				'expected_action'        => 'store.get_business_summary',
 				'expected_source'        => 'ai_router',
-				'router_fixture'         => self::multilingual_router_fixture( 'es', 'task_request', 'store.get_business_summary', [ 'window' => 'last_7_days', 'focus' => 'overview' ], 'business_summary', 0.96 ),
+				'router_fixture'         => self::multilingual_router_fixture( 'es', 'task_request', 'store.get_business_summary', [ 'window' => 'this_week', 'focus' => 'overview' ], 'business_summary', 0.96 ),
 			],
 			[
 				'pack'                   => 'multilingual_representative',
@@ -8695,7 +8699,7 @@ class YoRo_Parser_Test_Suite {
 					'result.read_only'            => true,
 					'result.result_type'          => 'daily_briefing',
 					'result.display_type'         => 'daily_briefing',
-					'result.window.key'           => 'last_30_days',
+					'result.window.key'           => 'this_month',
 					'result.briefing_label'       => 'Monthly briefing',
 				],
 			],
