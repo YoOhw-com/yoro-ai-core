@@ -2209,6 +2209,38 @@
 			});
 		}
 
+		function inferCalendarWindowFromCommand(normalized) {
+			if (/\bthis\s+week\b/i.test(normalized)) {
+				return 'this_week';
+			}
+
+			if (/\b(last|past)\s+7\s+days\b/i.test(normalized) || /\bpast\s+week\b/i.test(normalized)) {
+				return 'last_7_days';
+			}
+
+			if (/\b(last|past)\s+30\s+days\b/i.test(normalized) || /\bpast\s+month\b/i.test(normalized)) {
+				return 'last_30_days';
+			}
+
+			if (/\bthis\s+month\b/i.test(normalized)) {
+				return 'this_month';
+			}
+
+			if (/\blast\s+month\b/i.test(normalized)) {
+				return 'last_month';
+			}
+
+			if (/\blast\s+week\b/i.test(normalized)) {
+				return 'last_week';
+			}
+
+			if (/\bweekly\b|\bweek\b/i.test(normalized)) {
+				return 'this_week';
+			}
+
+			return 'today';
+		}
+
 		function mapSuggestionCommandToDirectAction(command) {
 			const text = String(command || '').trim();
 			const normalized = text.toLowerCase();
@@ -2289,7 +2321,7 @@
 				return {
 					action: 'operations.get_summary',
 					params: {
-						window: normalized.indexOf('week') !== -1 ? 'last_7_days' : 'today'
+						window: inferCalendarWindowFromCommand(normalized)
 					}
 				};
 			}

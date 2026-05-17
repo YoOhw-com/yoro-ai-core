@@ -69,7 +69,7 @@ class YoRo_REST_Confirmation_Flow {
 				'parser_source' => $parsed['parser_source'] ?? 'rule',
 				'trace_id'      => $trace_id,
 				'created_at'    => current_time( 'mysql' ),
-				'expires_at'    => date_i18n( 'Y-m-d H:i:s', current_time( 'timestamp' ) + YoRo_REST_Workflow_State::get_ttl() ),
+				'expires_at'    => wp_date( 'Y-m-d H:i:s', time() + YoRo_REST_Workflow_State::get_ttl(), wp_timezone() ),
 				'required'      => true,
 			]
 		);

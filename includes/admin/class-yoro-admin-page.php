@@ -208,7 +208,7 @@ class YoRo_Admin_Page {
 									type="button"
 									class="yoro-chat-quick-preset"
 									data-yoro-quick-action="store.get_daily_briefing"
-									data-yoro-quick-params="<?php echo esc_attr( wp_json_encode( [ 'window' => 'last_7_days', 'limit' => 1 ] ) ); ?>"
+									data-yoro-quick-params="<?php echo esc_attr( wp_json_encode( [ 'window' => 'this_week', 'limit' => 1 ] ) ); ?>"
 								>
 									<span class="yoro-chat-quick-preset-title"><?php esc_html_e( 'Weekly brief', 'yoro-agent-core' ); ?></span>
 									<span class="yoro-chat-quick-preset-meta"><?php esc_html_e( 'Read-only weekly store brief', 'yoro-agent-core' ); ?></span>
@@ -217,7 +217,7 @@ class YoRo_Admin_Page {
 									type="button"
 									class="yoro-chat-quick-preset"
 									data-yoro-quick-action="store.get_business_summary"
-									data-yoro-quick-params="<?php echo esc_attr( wp_json_encode( [ 'window' => 'last_7_days' ] ) ); ?>"
+									data-yoro-quick-params="<?php echo esc_attr( wp_json_encode( [ 'window' => 'this_week' ] ) ); ?>"
 								>
 									<span class="yoro-chat-quick-preset-title"><?php esc_html_e( 'Business', 'yoro-agent-core' ); ?></span>
 									<span class="yoro-chat-quick-preset-meta"><?php esc_html_e( 'Revenue and order summary', 'yoro-agent-core' ); ?></span>

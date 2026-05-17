@@ -203,7 +203,7 @@ class YoRo_Orders_Read_Service {
 		];
 
 		if ( ! empty( $resolved_window ) ) {
-			$response['date_window'] = $resolved_window;
+			$response['date_window'] = YoRo_Date_Helper::build_window_payload( $resolved_window );
 		}
 
 		return $response;
@@ -212,7 +212,7 @@ class YoRo_Orders_Read_Service {
 	private static function build_search_summary( $count, $params, $resolved_window = [] ) {
 		$count = absint( $count );
 		$command = strtolower( sanitize_text_field( (string) ( $params['original_command'] ?? '' ) ) );
-		$is_vietnamese = (bool) preg_match( '/[ăâđêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/iu', $command );
+		$is_vietnamese = YoRo_Date_Helper::is_likely_vietnamese( $command );
 
 		if ( $is_vietnamese ) {
 			$status = ! empty( $params['status'] ) && is_scalar( $params['status'] )
@@ -220,7 +220,7 @@ class YoRo_Orders_Read_Service {
 				: '';
 			$status_text = $status ? ' ' . $status : '';
 			$window_text = ! empty( $resolved_window['key'] )
-				? ' trong ' . self::get_vietnamese_window_label( $resolved_window['key'] )
+				? ' trong ' . YoRo_Date_Helper::get_window_label( $resolved_window['key'], 'vi' )
 				: '';
 
 			return sprintf( 'Tìm thấy %d đơn%s%s.', $count, $status_text, $window_text );
@@ -231,21 +231,6 @@ class YoRo_Orders_Read_Service {
 		}
 
 		return sprintf( 'Found %d orders.', $count );
-	}
-
-	private static function get_vietnamese_window_label( $window_key ) {
-		$labels = [
-			'today'        => 'hôm nay',
-			'yesterday'    => 'hôm qua',
-			'this_week'    => 'tuần này',
-			'last_week'    => 'tuần trước',
-			'last_7_days'  => '7 ngày qua',
-			'this_month'   => 'tháng này',
-			'last_month'   => 'tháng trước',
-			'last_30_days' => '30 ngày qua',
-		];
-
-		return $labels[ sanitize_key( $window_key ) ] ?? sanitize_text_field( $window_key );
 	}
 
 	public static function get_order_details( $params ) {
@@ -480,14 +465,7 @@ class YoRo_Orders_Read_Service {
 			'processed'    => [],
 			'skipped'      => [],
 			'errors'       => [],
-			'window'       => [
-				'key'      => $window_key,
-				'label'    => $window['label'],
-				'start'    => $window['start'],
-				'end'      => $window['end'],
-				'start_ts' => isset( $window['start_ts'] ) ? (int) $window['start_ts'] : 0,
-				'end_ts'   => isset( $window['end_ts'] ) ? (int) $window['end_ts'] : 0,
-			],
+			'window'       => YoRo_Date_Helper::build_window_payload( $window ),
 			'insights'     => $insights,
 			'result_type'  => 'store_insights',
 			'display_type' => 'store_insights',

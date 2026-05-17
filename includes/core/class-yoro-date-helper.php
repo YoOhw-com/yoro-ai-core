@@ -168,21 +168,67 @@ class YoRo_Date_Helper {
 		return $now->modify( '-' . $days_since_start . ' days' )->setTime( 0, 0, 0 );
 	}
 
-	public static function get_window_label( $window_key ) {
+	public static function get_window_label( $window_key, $language = '' ) {
+		$window_key = self::normalize_window_key( $window_key );
+		$language   = strtolower( sanitize_key( $language ) );
+
 		$labels = [
-			'today'        => __( 'Today', 'yoro-agent-core' ),
-			'yesterday'    => __( 'Yesterday', 'yoro-agent-core' ),
-			'this_week'    => __( 'This week', 'yoro-agent-core' ),
-			'last_week'    => __( 'Last week', 'yoro-agent-core' ),
-			'last_7_days'  => __( 'Last 7 days', 'yoro-agent-core' ),
-			'this_month'   => __( 'This month', 'yoro-agent-core' ),
-			'last_month'   => __( 'Last month', 'yoro-agent-core' ),
-			'last_30_days' => __( 'Last 30 days', 'yoro-agent-core' ),
+			'en' => [
+				'today'        => __( 'Today', 'yoro-agent-core' ),
+				'yesterday'    => __( 'Yesterday', 'yoro-agent-core' ),
+				'this_week'    => __( 'This week', 'yoro-agent-core' ),
+				'last_week'    => __( 'Last week', 'yoro-agent-core' ),
+				'last_7_days'  => __( 'Last 7 days', 'yoro-agent-core' ),
+				'this_month'   => __( 'This month', 'yoro-agent-core' ),
+				'last_month'   => __( 'Last month', 'yoro-agent-core' ),
+				'last_30_days' => __( 'Last 30 days', 'yoro-agent-core' ),
+			],
+			'vi' => [
+				'today'        => 'hôm nay',
+				'yesterday'    => 'hôm qua',
+				'this_week'    => 'tuần này',
+				'last_week'    => 'tuần trước',
+				'last_7_days'  => '7 ngày qua',
+				'this_month'   => 'tháng này',
+				'last_month'   => 'tháng trước',
+				'last_30_days' => '30 ngày qua',
+			],
 		];
 
-		$window_key = self::normalize_window_key( $window_key );
+		if ( isset( $labels[ $language ][ $window_key ] ) ) {
+			return $labels[ $language ][ $window_key ];
+		}
 
-		return $labels[ $window_key ] ?? sanitize_text_field( $window_key );
+		return $labels['en'][ $window_key ] ?? sanitize_text_field( $window_key );
+	}
+
+	public static function build_window_payload( $window ) {
+		if ( empty( $window ) || ! is_array( $window ) ) {
+			return [];
+		}
+
+		$window_key = self::normalize_window_key( $window['key'] ?? '' );
+		$label      = ! empty( $window['label'] ) ? sanitize_text_field( $window['label'] ) : self::get_window_label( $window_key );
+
+		return [
+			'key'            => $window_key,
+			'label'          => $label,
+			'date_from'      => sanitize_text_field( $window['date_from'] ?? '' ),
+			'date_to'        => sanitize_text_field( $window['date_to'] ?? '' ),
+			'start'          => sanitize_text_field( $window['start'] ?? '' ),
+			'end'            => sanitize_text_field( $window['end'] ?? '' ),
+			'start_ts'       => isset( $window['start_ts'] ) ? (int) $window['start_ts'] : 0,
+			'end_ts'         => isset( $window['end_ts'] ) ? (int) $window['end_ts'] : 0,
+			'query'          => sanitize_text_field( $window['query'] ?? '' ),
+			'timezone'       => sanitize_text_field( $window['timezone'] ?? wp_timezone_string() ),
+			'week_starts_on' => isset( $window['week_starts_on'] ) ? absint( $window['week_starts_on'] ) : absint( get_option( 'start_of_week', 1 ) ),
+		];
+	}
+
+	public static function is_likely_vietnamese( $text ) {
+		$text = sanitize_text_field( (string) $text );
+
+		return (bool) preg_match( '/[ăâđêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/iu', $text );
 	}
 
 	public static function format_timestamp( $timestamp ) {

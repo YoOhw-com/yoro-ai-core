@@ -716,14 +716,18 @@ class YoRo_AI_Parser {
 				return $clean;
 
 			case 'store.get_business_summary':
+				$window = ! empty( $params['window'] ) ? YoRo_Date_Helper::normalize_window_key( $params['window'] ) : '';
+
 				return [
-					'window' => ! empty( $params['window'] ) ? sanitize_key( $params['window'] ) : 'last_7_days',
+					'window' => '' !== $window ? $window : 'last_7_days',
 					'focus'  => ! empty( $params['focus'] ) ? sanitize_key( $params['focus'] ) : 'overview',
 				];
 
 			case 'store.get_insights':
+				$window = ! empty( $params['window'] ) ? YoRo_Date_Helper::normalize_window_key( $params['window'] ) : '';
+
 				return [
-					'window' => ! empty( $params['window'] ) ? sanitize_key( $params['window'] ) : 'last_7_days',
+					'window' => '' !== $window ? $window : 'last_7_days',
 					'limit'  => ! empty( $params['limit'] ) ? min( max( absint( $params['limit'] ), 1 ), 20 ) : 5,
 				];
 

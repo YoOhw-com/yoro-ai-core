@@ -7060,6 +7060,40 @@ class YoRo_Parser_Test_Suite {
 				},
 			],
 			[
+				'name'   => 'Execute store insights returns shared date window payload',
+				'action' => 'store.get_insights',
+				'params' => [
+					'window' => 'this_week',
+					'limit'  => 3,
+				],
+				'expect' => [
+					'result.success'    => true,
+					'result.action'     => 'store.get_insights',
+					'result.window.key' => 'this_week',
+				],
+				'assert' => function( $actual ) {
+					$expected_window = YoRo_Date_Helper::resolve_window( 'this_week' );
+
+					return [
+						'store_insights_window_has_date_from' => [
+							'expected' => $expected_window['date_from'] ?? '',
+							'actual'   => self::get_path( $actual, 'result.window.date_from', '' ),
+							'passed'   => ( $expected_window['date_from'] ?? '' ) === self::get_path( $actual, 'result.window.date_from', '' ),
+						],
+						'store_insights_window_uses_wp_timezone' => [
+							'expected' => wp_timezone_string(),
+							'actual'   => self::get_path( $actual, 'result.window.timezone', '' ),
+							'passed'   => wp_timezone_string() === self::get_path( $actual, 'result.window.timezone', '' ),
+						],
+						'store_insights_window_uses_wp_start_of_week' => [
+							'expected' => absint( get_option( 'start_of_week', 1 ) ),
+							'actual'   => self::get_path( $actual, 'result.window.week_starts_on', null ),
+							'passed'   => absint( get_option( 'start_of_week', 1 ) ) === self::get_path( $actual, 'result.window.week_starts_on', null ),
+						],
+					];
+				},
+			],
+			[
 				'name'          => 'REST run low confidence AI confirmation returns pending token',
 				'command'       => 'Maybe open order 123 for a quick look',
 				'rest_method'   => 'POST',
