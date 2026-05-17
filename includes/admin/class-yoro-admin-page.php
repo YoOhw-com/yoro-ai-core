@@ -20,12 +20,12 @@ class YoRo_Admin_Page {
 
 	public static function add_menu_page() {
 		add_menu_page(
-			__( 'YoRo Agent', 'yoro-agent-core' ),
-			__( 'YoRo Agent', 'yoro-agent-core' ),
+			__( 'YoRo AI', 'yoro-agent-core' ),
+			__( 'YoRo AI', 'yoro-agent-core' ),
 			'manage_woocommerce',
 			self::MENU_SLUG,
 			[ __CLASS__, 'render_page' ],
-			'dashicons-superhero',
+			self::get_menu_icon(),
 			2
 		);
 
@@ -55,6 +55,12 @@ class YoRo_Admin_Page {
 			'yoro-agent-settings',
 			[ __CLASS__, 'render_settings_page' ]
 		);
+	}
+
+	private static function get_menu_icon() {
+		$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="black" d="M12 1.8a10.2 10.2 0 1 0 0 20.4 10.2 10.2 0 0 0 0-20.4Zm0 1.7a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17Z"/><path fill="black" d="M17.8 4.7c-3.1.2-5.6 1.6-7.2 4.1-1.2 1.9-1.3 3.9-.3 5.2-2.1-.7-4.1.3-5.5 2.6C4 10.8 8.2 5.3 17.8 4.7Z"/><path fill="black" d="M6.2 19.3c3.1-.2 5.6-1.6 7.2-4.1 1.2-1.9 1.3-3.9.3-5.2 2.1.7 4.1-.3 5.5-2.6.8 5.8-3.4 11.3-13 11.9Z"/></svg>';
+
+		return 'data:image/svg+xml;base64,' . base64_encode( $svg );
 	}
 
 	public static function enqueue_assets( $hook ) {
@@ -324,7 +330,7 @@ class YoRo_Admin_Page {
 		?>
 
 		<div class="wrap yoro-agent-wrap">
-			<h1><?php esc_html_e( 'YoRo Agent History', 'yoro-agent-core' ); ?></h1>
+			<h1><?php esc_html_e( 'YoRo AI History', 'yoro-agent-core' ); ?></h1>
 
 			<?php self::render_telemetry_summary( $telemetry_summary ); ?>
 			<?php self::render_real_traffic_eval_summary( $real_traffic_eval ); ?>
@@ -1923,7 +1929,7 @@ class YoRo_Admin_Page {
 
 		?>
 		<div class="wrap yoro-agent-wrap">
-			<h1><?php esc_html_e( 'YoRo Agent Settings', 'yoro-agent-core' ); ?></h1>
+			<h1><?php esc_html_e( 'YoRo AI Settings', 'yoro-agent-core' ); ?></h1>
 
 			<form method="post" class="yoro-agent-settings-form">
 				<?php wp_nonce_field( 'yoro_agent_save_settings', 'yoro_agent_settings_nonce' ); ?>
@@ -2466,12 +2472,12 @@ class YoRo_Admin_Page {
 			return $text;
 		}
 
-		// Main YoRo Agent page: remove footer text completely.
+		// Main YoRo AI page: remove footer text completely.
 		if ( 'toplevel_page_' . self::MENU_SLUG === $screen->id ) {
 			return '';
 		}
 
-		// YoRo Agent submenus: personalized footer.
+		// YoRo AI submenus: personalized footer.
 		$yoro_screens = [
 			'yoro-agent_page_yoro-agent-history',
 			'yoro-agent_page_yoro-agent-policies',
@@ -2495,12 +2501,12 @@ class YoRo_Admin_Page {
 			return $text;
 		}
 
-		// Main YoRo Agent page: remove WordPress version.
+		// Main YoRo AI page: remove WordPress version.
 		if ( 'toplevel_page_' . self::MENU_SLUG === $screen->id ) {
 			return '';
 		}
 
-		// YoRo Agent submenus: personalized version text.
+		// YoRo AI submenus: personalized version text.
 		$yoro_screens = [
 			'yoro-agent_page_yoro-agent-history',
 			'yoro-agent_page_yoro-agent-policies',

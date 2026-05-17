@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: YoRo Agent Core
- * Description: Core runtime and execution layer for the YoRo AI Agent.
+ * Description: Core runtime and execution layer for YoRo AI.
  * Version: 0.1.5
  * Author: YoOhw
  * Text Domain: yoro-agent-core
