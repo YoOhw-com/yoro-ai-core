@@ -58,7 +58,7 @@ class YoRo_Admin_Page {
 	}
 
 	private static function get_menu_icon() {
-		$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="black" d="M12 1.8a10.2 10.2 0 1 0 0 20.4 10.2 10.2 0 0 0 0-20.4Zm0 1.7a8.5 8.5 0 1 1 0 17 8.5 8.5 0 0 1 0-17Z"/><path fill="black" d="M17.8 4.7c-3.1.2-5.6 1.6-7.2 4.1-1.2 1.9-1.3 3.9-.3 5.2-2.1-.7-4.1.3-5.5 2.6C4 10.8 8.2 5.3 17.8 4.7Z"/><path fill="black" d="M6.2 19.3c3.1-.2 5.6-1.6 7.2-4.1 1.2-1.9 1.3-3.9.3-5.2 2.1.7 4.1-.3 5.5-2.6.8 5.8-3.4 11.3-13 11.9Z"/></svg>';
+		$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="black" d="M10.9 2.8h2.2v2h-2.2zM9.2 3.6h5.6v1.6H9.2zM4.9 10.2H7v6.4H4.9a1.6 1.6 0 0 1-1.6-1.6v-3.2a1.6 1.6 0 0 1 1.6-1.6Zm12.1 0h2.1a1.6 1.6 0 0 1 1.6 1.6V15a1.6 1.6 0 0 1-1.6 1.6H17zM8.5 5.8h7a3 3 0 0 1 3 3v8.4a3 3 0 0 1-3 3h-7a3 3 0 0 1-3-3V8.8a3 3 0 0 1 3-3Zm0 1.8a1.2 1.2 0 0 0-1.2 1.2v8.4a1.2 1.2 0 0 0 1.2 1.2h7a1.2 1.2 0 0 0 1.2-1.2V8.8a1.2 1.2 0 0 0-1.2-1.2zM9.7 21h4.6v1.8H9.7z"/><path fill="black" d="M15.7 8.5c-2.4.1-4.2 1.1-5.4 2.9-.8 1.3-.9 2.7-.2 3.6-1.5-.5-3 .2-4 1.8-.5-4.2 2.5-7.9 9.6-8.3Z"/><path fill="black" d="M8.3 17.5c2.4-.1 4.2-1.1 5.4-2.9.8-1.3.9-2.7.2-3.6 1.5.5 3-.2 4-1.8.5 4.2-2.5 7.9-9.6 8.3Z"/></svg>';
 
 		return 'data:image/svg+xml;base64,' . base64_encode( $svg );
 	}
