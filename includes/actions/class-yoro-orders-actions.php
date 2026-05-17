@@ -23,6 +23,7 @@ class YoRo_Orders_Actions {
 					'email'           => 'string',
 					'phone'           => 'string',
 					'payment_method'  => 'string',
+					'date_window'     => 'string',
 					'date_from'       => 'string',
 					'date_to'         => 'string',
 					'order_id'        => 'integer',
@@ -37,8 +38,10 @@ class YoRo_Orders_Actions {
 				'ai_examples'      => [
 					'Show the latest 10 orders',
 					'Show pending orders',
+					'Show pending orders this week',
 					'Find order #1234',
 					'Xem 5 đơn mới nhất',
+					'Tuần này có đơn nào đang pending không?',
 					'Tìm đơn #1234',
 				],
 				'required_params'     => [],
@@ -46,6 +49,7 @@ class YoRo_Orders_Actions {
 					'status' => __( 'Use WooCommerce status slugs like pending, processing, completed, on-hold, cancelled, refunded, or failed.', 'yoro-agent-core' ),
 					'limit'  => __( 'Use a small numeric limit for list requests such as 5, 10, or 20.', 'yoro-agent-core' ),
 					'order_id' => __( 'Use the numeric WooCommerce order ID when the person references a specific order.', 'yoro-agent-core' ),
+					'date_window' => __( 'For relative dates such as today, yesterday, this week, last week, this month, or last 7 days, use a canonical key such as today, yesterday, this_week, last_week, this_month, or last_7_days instead of guessing date_from/date_to.', 'yoro-agent-core' ),
 				],
 				'clarification_hints' => [
 					'order_id' => __( 'Ask which order they want when they ask for a specific order but do not provide an order number or reference.', 'yoro-agent-core' ),

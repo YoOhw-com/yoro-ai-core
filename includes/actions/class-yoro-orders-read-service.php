@@ -68,7 +68,14 @@ class YoRo_Orders_Read_Service {
 			$args['billing_country'] = strtoupper( sanitize_text_field( $params['billing_country'] ) );
 		}
 
-		if ( ! empty( $params['date_from'] ) || ! empty( $params['date_to'] ) ) {
+		$date_window = ! empty( $params['date_window'] )
+			? YoRo_Date_Helper::normalize_window_key( $params['date_window'] )
+			: YoRo_Date_Helper::infer_window_key_from_text( $params['original_command'] ?? '' );
+		$resolved_window = $date_window ? YoRo_Date_Helper::resolve_window( $date_window ) : [];
+
+		if ( ! empty( $resolved_window ) ) {
+			$args['date_created'] = $resolved_window['query'];
+		} elseif ( ! empty( $params['date_from'] ) || ! empty( $params['date_to'] ) ) {
 			$date_from = ! empty( $params['date_from'] ) ? sanitize_text_field( $params['date_from'] ) : '';
 			$date_to   = ! empty( $params['date_to'] ) ? sanitize_text_field( $params['date_to'] ) : '';
 
@@ -181,10 +188,10 @@ class YoRo_Orders_Read_Service {
 			}
 		}
 
-		return [
+		$response = [
 			'success'      => true,
 			'action'       => 'orders.search',
-			'summary'      => sprintf( 'Found %d orders.', count( $data ) ),
+			'summary'      => self::build_search_summary( count( $data ), $params, $resolved_window ),
 			'count'        => count( $data ),
 			'read_only'    => true,
 			'orders'       => $data,
@@ -194,6 +201,51 @@ class YoRo_Orders_Read_Service {
 			'skipped'      => [],
 			'errors'       => [],
 		];
+
+		if ( ! empty( $resolved_window ) ) {
+			$response['date_window'] = $resolved_window;
+		}
+
+		return $response;
+	}
+
+	private static function build_search_summary( $count, $params, $resolved_window = [] ) {
+		$count = absint( $count );
+		$command = strtolower( sanitize_text_field( (string) ( $params['original_command'] ?? '' ) ) );
+		$is_vietnamese = (bool) preg_match( '/[ăâđêôơưáàảãạắằẳẵặấầẩẫậéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựýỳỷỹỵ]/iu', $command );
+
+		if ( $is_vietnamese ) {
+			$status = ! empty( $params['status'] ) && is_scalar( $params['status'] )
+				? sanitize_text_field( $params['status'] )
+				: '';
+			$status_text = $status ? ' ' . $status : '';
+			$window_text = ! empty( $resolved_window['key'] )
+				? ' trong ' . self::get_vietnamese_window_label( $resolved_window['key'] )
+				: '';
+
+			return sprintf( 'Tìm thấy %d đơn%s%s.', $count, $status_text, $window_text );
+		}
+
+		if ( ! empty( $resolved_window['label'] ) ) {
+			return sprintf( 'Found %d orders in %s.', $count, strtolower( $resolved_window['label'] ) );
+		}
+
+		return sprintf( 'Found %d orders.', $count );
+	}
+
+	private static function get_vietnamese_window_label( $window_key ) {
+		$labels = [
+			'today'        => 'hôm nay',
+			'yesterday'    => 'hôm qua',
+			'this_week'    => 'tuần này',
+			'last_week'    => 'tuần trước',
+			'last_7_days'  => '7 ngày qua',
+			'this_month'   => 'tháng này',
+			'last_month'   => 'tháng trước',
+			'last_30_days' => '30 ngày qua',
+		];
+
+		return $labels[ sanitize_key( $window_key ) ] ?? sanitize_text_field( $window_key );
 	}
 
 	public static function get_order_details( $params ) {
@@ -932,6 +984,7 @@ class YoRo_Orders_Read_Service {
 			'email'           => ! empty( $params['email'] ) ? sanitize_email( $params['email'] ) : '',
 			'phone'           => ! empty( $params['phone'] ) ? sanitize_text_field( $params['phone'] ) : '',
 			'payment_method'  => ! empty( $params['payment_method'] ) ? sanitize_key( $params['payment_method'] ) : '',
+			'date_window'     => ! empty( $params['date_window'] ) ? YoRo_Date_Helper::normalize_window_key( $params['date_window'] ) : '',
 			'date_from'       => ! empty( $params['date_from'] ) ? sanitize_text_field( $params['date_from'] ) : '',
 			'date_to'         => ! empty( $params['date_to'] ) ? sanitize_text_field( $params['date_to'] ) : '',
 			'changes_store'   => false,

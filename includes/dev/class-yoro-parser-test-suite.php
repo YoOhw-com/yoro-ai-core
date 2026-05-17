@@ -487,6 +487,20 @@ class YoRo_Parser_Test_Suite {
 				],
 				0.95
 			),
+			'Tuần này có đơn nào đang pending không?'    => array_merge(
+				self::base_router_fixture_decision(
+					'task_request',
+					'orders.search',
+					[
+						'status'      => [ 'pending' ],
+						'date_window' => 'this_week',
+					],
+					0.95
+				),
+				[
+					'language' => 'vi',
+				]
+			),
 			'Search pending orders'                       => self::base_router_fixture_decision(
 				'task_request',
 				'orders.search',
@@ -1666,6 +1680,20 @@ class YoRo_Parser_Test_Suite {
 					'params_trimmed_count'        => 1,
 					'command_decision.params_trimmed_count' => 1,
 					'command_decision.dropped_param_keys.0' => 'note',
+				],
+			],
+			[
+				'domain'          => 'date_windows',
+				'name'            => 'Vietnamese this week order search uses canonical date window',
+				'command'         => 'Tuần này có đơn nào đang pending không?',
+				'expected_action' => 'orders.search',
+				'expected_source' => 'ai_router',
+				'expect'          => [
+					'resolution_path'             => 'ai_primary',
+					'params.status.0'             => 'pending',
+					'params.date_window'          => 'this_week',
+					'language'                    => 'vi',
+					'command_decision.params_trimmed_count' => 0,
 				],
 			],
 			[
@@ -6935,6 +6963,40 @@ class YoRo_Parser_Test_Suite {
 
 	private static function execution_cases() {
 		return [
+			[
+				'name'   => 'Execute order search resolves Vietnamese this week through WP date settings',
+				'action' => 'orders.search',
+				'params' => [
+					'status'           => 'pending',
+					'original_command' => 'Tuần này có đơn nào đang pending không?',
+				],
+				'expect' => [
+					'result.success'         => true,
+					'result.action'          => 'orders.search',
+					'result.date_window.key' => 'this_week',
+				],
+				'assert' => function( $actual ) {
+					$expected_window = YoRo_Date_Helper::resolve_window( 'this_week' );
+
+					return [
+						'date_window_uses_wp_start_of_week' => [
+							'expected' => $expected_window['date_from'] ?? '',
+							'actual'   => self::get_path( $actual, 'result.date_window.date_from', '' ),
+							'passed'   => ( $expected_window['date_from'] ?? '' ) === self::get_path( $actual, 'result.date_window.date_from', '' ),
+						],
+						'date_window_uses_wp_timezone' => [
+							'expected' => wp_timezone_string(),
+							'actual'   => self::get_path( $actual, 'result.date_window.timezone', '' ),
+							'passed'   => wp_timezone_string() === self::get_path( $actual, 'result.date_window.timezone', '' ),
+						],
+						'vietnamese_summary_localized' => [
+							'expected' => true,
+							'actual'   => false !== strpos( (string) self::get_path( $actual, 'result.summary', '' ), 'Tìm thấy' ),
+							'passed'   => false !== strpos( (string) self::get_path( $actual, 'result.summary', '' ), 'Tìm thấy' ),
+						],
+					];
+				},
+			],
 			[
 				'name'          => 'REST run low confidence AI confirmation returns pending token',
 				'command'       => 'Maybe open order 123 for a quick look',

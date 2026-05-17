@@ -403,6 +403,12 @@ class YoRo_Command_Decision_Normalizer {
 		$type = strtolower( trim( (string) $type ) );
 		$param = sanitize_key( $param );
 
+		if ( 'date_window' === $param && class_exists( 'YoRo_Date_Helper' ) ) {
+			$normalized_window = YoRo_Date_Helper::normalize_window_key( $value );
+
+			return '' !== $normalized_window ? $normalized_window : sanitize_key( str_replace( ' ', '_', strtolower( sanitize_text_field( is_scalar( $value ) ? $value : '' ) ) ) );
+		}
+
 		if ( 'window' === $param ) {
 			return self::normalize_window_param( $value );
 		}
