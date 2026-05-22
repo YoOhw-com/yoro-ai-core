@@ -125,7 +125,12 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	}
 
 	public function compose_email( array $payload ) {
-		return $this->not_ready( 'yoro_cloud_email_not_ready', __( 'YoRo AI API email compose endpoint is reserved for the next phase.', 'yoro-ai-core' ) );
+		return $this->request_email_compose(
+			$this->build_email_compose_payload( $payload ),
+			'compose_email',
+			'yoro_cloud_email_api_error',
+			__( 'I could not reach the YoRo AI API email composer.', 'yoro-ai-core' )
+		);
 	}
 
 	private function request_route( array $payload, $operation, $error_code, $default_message ) {
@@ -283,6 +288,83 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return wp_json_encode( $this->normalize_workflow_plan_response( $json ) );
 	}
 
+	private function request_email_compose( array $payload, $operation, $error_code, $default_message ) {
+		$api_url  = YoRo_AI_Settings::get_cloud_api_url();
+		$site_key = YoRo_AI_Settings::get_cloud_site_key();
+
+		if ( '' === $api_url || '' === $site_key ) {
+			return new WP_Error(
+				'yoro_cloud_missing_config',
+				__( 'YoRo AI API is not configured yet.', 'yoro-ai-core' )
+			);
+		}
+
+		if ( ! YoRo_AI_Settings::cloud_allows_feature( 'email_compose' ) ) {
+			return new WP_Error(
+				'yoro_cloud_feature_not_in_plan',
+				__( 'This YoRo AI API feature is not available on the current plan.', 'yoro-ai-core' )
+			);
+		}
+
+		if ( ! YoRo_AI_Settings::cloud_has_quota_remaining() ) {
+			return new WP_Error(
+				'yoro_cloud_quota_exhausted',
+				__( 'The current YoRo AI API monthly request quota is exhausted.', 'yoro-ai-core' )
+			);
+		}
+
+		$started_at = microtime( true );
+		$response = wp_remote_post(
+			$this->build_email_compose_endpoint_url( $api_url ),
+			[
+				'timeout' => $this->route_timeout( $operation, $payload ),
+				'headers' => [
+					'Authorization' => 'Bearer ' . $site_key,
+					'Accept'        => 'application/json',
+					'Content-Type'  => 'application/json',
+				],
+				'body'    => wp_json_encode( $payload ),
+			]
+		);
+		$duration_ms = max( 0, (int) round( ( microtime( true ) - $started_at ) * 1000 ) );
+
+		if ( is_wp_error( $response ) ) {
+			$this->record_request( $operation, $duration_ms, 'error' );
+
+			return $response;
+		}
+
+		$code = wp_remote_retrieve_response_code( $response );
+		$raw  = wp_remote_retrieve_body( $response );
+		$json = json_decode( $raw, true );
+
+		if ( $code < 200 || $code >= 300 ) {
+			$this->record_request( $operation, $duration_ms, 'error' );
+			$this->record_route_usage( $json );
+
+			return new WP_Error(
+				$error_code,
+				is_array( $json ) && ! empty( $json['message'] )
+					? sanitize_text_field( $json['message'] )
+					: $default_message
+			);
+		}
+
+		if ( ! is_array( $json ) ) {
+			$this->record_request( $operation, $duration_ms, 'error' );
+
+			return new WP_Error(
+				'yoro_cloud_invalid_response',
+				__( 'YoRo AI API returned an invalid response.', 'yoro-ai-core' )
+			);
+		}
+
+		$this->record_request( $operation, $duration_ms, 'success' );
+		$this->record_route_usage( $json );
+
+		return wp_json_encode( $this->normalize_email_compose_response( $json ) );
+	}
+
 	private function route_timeout( $operation, array $payload ) {
 		return max(
 			15,
@@ -366,6 +448,21 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		];
 	}
 
+	private function build_email_compose_payload( array $payload ) {
+		if ( isset( $payload['input'] ) && is_array( $payload['input'] ) ) {
+			$payload = $this->extract_user_payload( $payload );
+		}
+
+		return [
+			'instruction'    => sanitize_textarea_field( $payload['instruction'] ?? '' ),
+			'site_url'       => esc_url_raw( $payload['site_url'] ?? home_url() ),
+			'plugin_version' => sanitize_text_field( $payload['plugin_version'] ?? ( defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '' ) ),
+			'order_context'  => isset( $payload['order_context'] ) && is_array( $payload['order_context'] )
+				? $payload['order_context']
+				: [],
+		];
+	}
+
 	private function extract_user_payload( array $payload ) {
 		$input = isset( $payload['input'] ) && is_array( $payload['input'] )
 			? $payload['input']
@@ -421,6 +518,32 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		}
 
 		return $api_url . '/ai/workflow/plan';
+	}
+
+	private function build_email_compose_endpoint_url( $api_url ) {
+		$api_url = untrailingslashit( esc_url_raw( $api_url ) );
+
+		if ( preg_match( '#/ai/email/compose$#', $api_url ) ) {
+			return $api_url;
+		}
+
+		if ( preg_match( '#/sites/handshake$#', $api_url ) ) {
+			return preg_replace( '#/sites/handshake$#', '/ai/email/compose', $api_url );
+		}
+
+		if ( preg_match( '#/ai/workflow/plan$#', $api_url ) ) {
+			return preg_replace( '#/ai/workflow/plan$#', '/ai/email/compose', $api_url );
+		}
+
+		if ( preg_match( '#/ai/route$#', $api_url ) ) {
+			return preg_replace( '#/ai/route$#', '/ai/email/compose', $api_url );
+		}
+
+		if ( preg_match( '#/parse$#', $api_url ) ) {
+			return preg_replace( '#/parse$#', '/ai/email/compose', $api_url );
+		}
+
+		return $api_url . '/ai/email/compose';
 	}
 
 	private function build_handshake_endpoint_url( $api_url ) {
@@ -514,6 +637,24 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'reason'           => sanitize_text_field( $response['reason'] ?? '' ),
 			'workflow_label'   => sanitize_text_field( $response['workflow_label'] ?? '' ),
 			'actions'          => $actions,
+			'routing_provider' => sanitize_key( $response['routing_provider'] ?? '' ),
+			'meta'             => [
+				'yoro_ai_api_request_id'      => sanitize_text_field( $usage['request_id'] ?? '' ),
+				'yoro_ai_api_plan'            => sanitize_key( $usage['plan'] ?? '' ),
+				'yoro_ai_api_usage_period'    => sanitize_text_field( $usage['period'] ?? '' ),
+				'yoro_ai_api_usage_limit'     => isset( $usage['limit'] ) ? absint( $usage['limit'] ) : null,
+				'yoro_ai_api_usage_used'      => isset( $usage['used'] ) ? absint( $usage['used'] ) : null,
+				'yoro_ai_api_usage_remaining' => isset( $usage['remaining'] ) ? absint( $usage['remaining'] ) : null,
+			],
+		];
+	}
+
+	private function normalize_email_compose_response( array $response ) {
+		$usage = isset( $response['usage'] ) && is_array( $response['usage'] ) ? $response['usage'] : [];
+
+		return [
+			'subject'          => sanitize_text_field( $response['subject'] ?? '' ),
+			'body'             => sanitize_textarea_field( $response['body'] ?? '' ),
 			'routing_provider' => sanitize_key( $response['routing_provider'] ?? '' ),
 			'meta'             => [
 				'yoro_ai_api_request_id'      => sanitize_text_field( $usage['request_id'] ?? '' ),
