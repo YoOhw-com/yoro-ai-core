@@ -4,50 +4,51 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+if ( ! defined( 'YORO_AI_PROVIDER_YORO_AI_API' ) ) {
+	define( 'YORO_AI_PROVIDER_YORO_AI_API', defined( 'YORO_AI_PROVIDER_YORO_CLOUD' ) ? YORO_AI_PROVIDER_YORO_CLOUD : 'yoro_cloud' );
+}
+
 class YoRo_AI_Parser {
 
 	const PROMPT_VERSION_PARSE = 'parse.v1';
 	const PROMPT_VERSION_WORKFLOW = 'workflow.v1';
 	const PROMPT_VERSION_ACTION_DECOMPOSITION = 'action_decomposition.v1';
 	const PROMPT_VERSION_SUGGESTIONS = 'suggestions.v1';
-	const PROMPT_VERSION_EMAIL = 'email.v1';
+	const PROMPT_VERSION_EMAIL = 'email.v2';
 	const PROMPT_VERSION_CONVERSATION = 'conversation.v3';
 	const PROMPT_VERSION_COMMAND_ROUTER = 'command_router.v2';
 
 	public static function parse( $command ) {
 		$provider = self::get_provider();
 
-		if ( YORO_AI_PROVIDER_YORO_CLOUD === $provider ) {
-			return self::parse_with_yoro_cloud( $command );
+		if ( YORO_AI_PROVIDER_YORO_AI_API === $provider ) {
+			return self::parse_with_yoro_ai_api( $command );
 		}
 
 		return self::parse_with_openai_direct( $command );
 	}
 
 	public static function parse_freeform( $prompt ) {
-		if ( YORO_AI_PROVIDER_YORO_CLOUD === self::get_provider() ) {
-			return new WP_Error( 'not_ready', 'YoRo Cloud not ready' );
+		if ( YORO_AI_PROVIDER_YORO_AI_API === self::get_provider() ) {
+			return new WP_Error( 'not_ready', 'YoRo AI API parse endpoint is not ready.' );
 		}
 
 		return self::parse_freeform_openai( $prompt );
 	}
 
 	public static function parse_workflow_plan( $prompt ) {
-		if ( YORO_AI_PROVIDER_YORO_CLOUD === self::get_provider() ) {
-			return new WP_Error(
-				'not_ready',
-				__( 'YoRo Cloud workflow planner is not ready.', 'yoro-agent-core' )
-			);
+		if ( YORO_AI_PROVIDER_YORO_AI_API === self::get_provider() ) {
+			return self::parse_workflow_plan_yoro_ai_api( $prompt );
 		}
 
 		return self::parse_workflow_plan_openai( $prompt );
 	}
 
 	public static function parse_action_decomposition( array $payload ) {
-		if ( YORO_AI_PROVIDER_YORO_CLOUD === self::get_provider() ) {
+		if ( YORO_AI_PROVIDER_YORO_AI_API === self::get_provider() ) {
 			return new WP_Error(
 				'not_ready',
-				__( 'YoRo Cloud action decomposition is not ready.', 'yoro-agent-core' )
+				__( 'YoRo AI API action decomposition is not ready.', 'yoro-ai-core' )
 			);
 		}
 
@@ -69,20 +70,67 @@ class YoRo_AI_Parser {
 		if ( ! YoRo_AI_Provider_Resolver::supports( 'email_compose' ) ) {
 			return new WP_Error(
 				'yoro_ai_missing_api_key',
-				__( 'OpenAI API key is missing.', 'yoro-agent-core' )
+				__( 'The AI service is not configured yet.', 'yoro-ai-core' )
 			);
 		}
 
+		$order_details = class_exists( 'YoRo_Order_Presenter' )
+			? YoRo_Order_Presenter::format_order_details( $order )
+			: [];
+
+		$requires_shipping = array_key_exists( 'requires_shipping', $order_details )
+			? ! empty( $order_details['requires_shipping'] )
+			: ( method_exists( $order, 'needs_shipping_address' ) ? (bool) $order->needs_shipping_address() : null );
+		$tracking_detected = array_key_exists( 'tracking_detected', $order_details )
+			? ! empty( $order_details['tracking_detected'] )
+			: null;
+		$shipping_complete = array_key_exists( 'shipping_complete', $order_details )
+			? ! empty( $order_details['shipping_complete'] )
+			: null;
+		$ready_to_fulfill = array_key_exists( 'ready_to_fulfill', $order_details )
+			? ! empty( $order_details['ready_to_fulfill'] )
+			: null;
+
+		$fulfillment_state = 'unknown';
+
+		if ( false === $requires_shipping ) {
+			$fulfillment_state = 'no_shipping_required';
+		} elseif ( true === $tracking_detected ) {
+			$fulfillment_state = 'tracking_available';
+		} elseif ( true === $requires_shipping && false === $shipping_complete ) {
+			$fulfillment_state = 'address_incomplete';
+		} elseif ( true === $requires_shipping && false === $ready_to_fulfill ) {
+			$fulfillment_state = 'not_ready_to_fulfill';
+		} elseif ( true === $requires_shipping ) {
+			$fulfillment_state = 'pre_shipment';
+		}
+
 		$order_context = [
-			'order_number'     => $order->get_order_number(),
-			'status'           => $order->get_status(),
-			'total'            => html_entity_decode( wp_strip_all_tags( wc_price( $order->get_total(), [ 'currency' => $order->get_currency() ] ) ) ),
-			'currency'         => $order->get_currency(),
-			'customer_name'    => trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() ),
-			'payment_method'   => $order->get_payment_method_title(),
-			'shipping_name'    => trim( $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name() ),
-			'shipping_city'    => $order->get_shipping_city(),
-			'shipping_country' => $order->get_shipping_country(),
+			'order_number'        => $order->get_order_number(),
+			'status'              => $order->get_status(),
+			'total'               => html_entity_decode( wp_strip_all_tags( wc_price( $order->get_total(), [ 'currency' => $order->get_currency() ] ) ) ),
+			'currency'            => $order->get_currency(),
+			'customer_name'       => trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() ),
+			'payment_method'      => $order->get_payment_method_title(),
+			'shipping_name'       => trim( $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name() ),
+			'shipping_city'       => $order->get_shipping_city(),
+			'shipping_state'      => $order->get_shipping_state(),
+			'shipping_country'    => $order->get_shipping_country(),
+			'shipping_method'     => sanitize_text_field( $order_details['shipping_method'] ?? '' ),
+			'item_count'          => isset( $order_details['item_count'] ) ? absint( $order_details['item_count'] ) : (int) $order->get_item_count(),
+			'line_items'          => isset( $order_details['line_items'] ) && is_array( $order_details['line_items'] ) ? array_slice( $order_details['line_items'], 0, 5 ) : [],
+			'requires_shipping'   => $requires_shipping,
+			'tracking_detected'   => $tracking_detected,
+			'shipping_complete'   => $shipping_complete,
+			'ready_to_fulfill'    => $ready_to_fulfill,
+			'fulfillment_state'   => $fulfillment_state,
+			'fulfillment_guidance'=> [
+				'tracking_available' => 'Safe to say the package has shipped or is on the way. You may mention tracking updates.',
+				'pre_shipment'       => 'Do not say shipped, dispatched, handed to carrier, or on the way. Use wording like being prepared for shipment or will ship soon.',
+				'not_ready_to_fulfill' => 'Avoid promising dispatch timing. Explain the order is still being prepared or reviewed before shipment.',
+				'no_shipping_required' => 'Do not mention shipping, dispatch, carrier, or tracking. Focus on processing, delivery by email/download, or next steps only if relevant.',
+				'address_incomplete' => 'Do not imply shipment progress. If shipping details are incomplete, keep the message cautious and avoid carrier/tracking claims.',
+			],
 		];
 
 		$trace_id = self::generate_trace_id();
@@ -98,7 +146,7 @@ class YoRo_AI_Parser {
 		if ( ! is_array( $parsed ) ) {
 			return new WP_Error(
 				'yoro_ai_invalid_email',
-				__( 'AI returned an invalid email draft.', 'yoro-agent-core' )
+				__( 'I could not prepare a usable email draft from the AI response.', 'yoro-ai-core' )
 			);
 		}
 
@@ -118,7 +166,7 @@ class YoRo_AI_Parser {
 	}
 
 	public static function parse_conversation( $command, $client_context = [] ) {
-		if ( YORO_AI_PROVIDER_YORO_CLOUD === self::get_provider() ) {
+		if ( YORO_AI_PROVIDER_YORO_AI_API === self::get_provider() ) {
 			return self::parse_conversation_with_openai_direct( $command, $client_context );
 		}
 
@@ -176,7 +224,7 @@ class YoRo_AI_Parser {
 		if ( ! YoRo_AI_Settings::get_openai_api_key() ) {
 			return new WP_Error(
 				'yoro_ai_missing_api_key',
-				__( 'OpenAI API key is missing.', 'yoro-agent-core' )
+				__( 'The AI service is not configured yet.', 'yoro-ai-core' )
 			);
 		}
 
@@ -232,7 +280,7 @@ class YoRo_AI_Parser {
 		if ( ! is_array( $parsed ) ) {
 			return new WP_Error(
 				'yoro_ai_invalid_json',
-				__( 'AI parser returned invalid JSON.', 'yoro-agent-core' )
+				__( 'I could not understand the AI routing response.', 'yoro-ai-core' )
 			);
 		}
 
@@ -240,7 +288,7 @@ class YoRo_AI_Parser {
 			return [
 				'success'          => false,
 				'matched'          => false,
-				'message'          => $parsed['reason'] ?? __( 'Command not recognized.', 'yoro-agent-core' ),
+				'message'          => $parsed['reason'] ?? __( 'Command not recognized.', 'yoro-ai-core' ),
 				'parser'           => 'ai',
 				'meta'             => $meta,
 				'original_command' => $command,
@@ -257,13 +305,14 @@ class YoRo_AI_Parser {
 		if ( ! YoRo_Action_Registry::get( $action ) ) {
 			return new WP_Error(
 				'yoro_ai_unknown_action',
-				__( 'AI parser selected an unknown action.', 'yoro-agent-core' )
+				__( 'I understood the request, but it mapped to an action YoRo does not support yet.', 'yoro-ai-core' )
 			);
 		}
 
 		$params = self::clean_params_for_action(
 			$action,
-			is_array( $parsed['params'] ) ? $parsed['params'] : []
+			is_array( $parsed['params'] ) ? $parsed['params'] : [],
+			$command
 		);
 
 		$confidence = isset( $parsed['confidence'] ) ? (float) $parsed['confidence'] : 0;
@@ -292,18 +341,18 @@ class YoRo_AI_Parser {
 		//		'stage'            => 'clarify',
 		//		'confidence'       => isset( $parsed['confidence'] ) ? (float) $parsed['confidence'] : 0,
 		//		'reason'           => $parsed['reason'] ?? '',
-		//		'message'          => __( 'What would you like me to show or manage?', 'yoro-agent-core' ),
+		//		'message'          => __( 'What would you like me to show or manage?', 'yoro-ai-core' ),
 		//		'options'          => [
 		//			[
-		//				'label'   => __( 'Recent orders', 'yoro-agent-core' ),
+		//				'label'   => __( 'Recent orders', 'yoro-ai-core' ),
 		//				'command' => 'Show recent orders',
 		//			],
 		//			[
-		//				'label'   => __( 'Pending orders', 'yoro-agent-core' ),
+		//				'label'   => __( 'Pending orders', 'yoro-ai-core' ),
 		//				'command' => 'Show pending orders',
 		//			],
 		//			[
-		//				'label'   => __( 'Completed orders', 'yoro-agent-core' ),
+		//				'label'   => __( 'Completed orders', 'yoro-ai-core' ),
 		//				'command' => 'Show completed orders',
 		//			],
 		//		],
@@ -354,7 +403,7 @@ class YoRo_AI_Parser {
 		if ( ! YoRo_AI_Settings::get_openai_api_key() ) {
 			return new WP_Error(
 				'yoro_ai_missing_api_key',
-				__( 'OpenAI API key is missing.', 'yoro-agent-core' )
+				__( 'The AI service is not configured yet.', 'yoro-ai-core' )
 			);
 		}
 
@@ -398,7 +447,7 @@ class YoRo_AI_Parser {
 		if ( ! YoRo_AI_Settings::get_openai_api_key() ) {
 			return new WP_Error(
 				'yoro_ai_missing_api_key',
-				__( 'OpenAI API key is missing.', 'yoro-agent-core' )
+				__( 'The AI service is not configured yet.', 'yoro-ai-core' )
 			);
 		}
 
@@ -422,7 +471,7 @@ class YoRo_AI_Parser {
 		if ( ! is_array( $parsed ) ) {
 			return new WP_Error(
 				'yoro_ai_conversation_invalid_json',
-				__( 'AI conversation gate returned invalid JSON.', 'yoro-agent-core' )
+				__( 'I could not understand the AI conversation response.', 'yoro-ai-core' )
 			);
 		}
 
@@ -516,8 +565,12 @@ class YoRo_AI_Parser {
 
 		$text = trim( preg_replace( '/\s+/', ' ', $text ) );
 
+		if ( class_exists( 'YoRo_Response_UX_Formatter' ) ) {
+			$text = YoRo_Response_UX_Formatter::clean_user_facing_copy( $text );
+		}
+
 		if ( preg_match( '/\bidentity information\b|\bno WooCommerce task\b/i', $text ) ) {
-			return __( 'I don’t know who you are from this chat alone. I can use store context when you ask about orders, customers, or operations.', 'yoro-agent-core' );
+			return __( 'I don’t know who you are from this chat alone. I can use store context when you ask about orders, customers, or operations.', 'yoro-ai-core' );
 		}
 
 		if ( preg_match( '/\bcasual conversation\b|\bchat mode\b|\bclassifier\b/i', $text ) ) {
@@ -525,7 +578,7 @@ class YoRo_AI_Parser {
 		}
 
 		if ( $had_classifier_intro && preg_match( '/^I can help with WooCommerce store operations\.?$/i', $text ) ) {
-			return __( 'Hi. I can help with WooCommerce store operations.', 'yoro-agent-core' );
+			return __( 'Hi. I can help with WooCommerce store operations.', 'yoro-ai-core' );
 		}
 
 		return sanitize_text_field( $text );
@@ -535,7 +588,7 @@ class YoRo_AI_Parser {
 		if ( ! YoRo_AI_Settings::get_openai_api_key() ) {
 			return new WP_Error(
 				'yoro_ai_missing_api_key',
-				__( 'OpenAI API key is missing.', 'yoro-agent-core' )
+				__( 'The AI service is not configured yet.', 'yoro-ai-core' )
 			);
 		}
 
@@ -550,7 +603,42 @@ class YoRo_AI_Parser {
 		if ( empty( $output_text ) ) {
 			return new WP_Error(
 				'yoro_ai_workflow_empty_response',
-				__( 'AI workflow planner returned an empty response.', 'yoro-agent-core' )
+				__( 'I could not build a workflow from the AI response.', 'yoro-ai-core' )
+			);
+		}
+
+		return $output_text;
+	}
+
+	private static function parse_workflow_plan_yoro_ai_api( $prompt ) {
+		$payload = json_decode( (string) $prompt, true );
+
+		if ( ! is_array( $payload ) ) {
+			return new WP_Error(
+				'yoro_ai_workflow_invalid_payload',
+				__( 'I could not prepare a workflow planning request.', 'yoro-ai-core' )
+			);
+		}
+
+		$client = YoRo_AI_Provider_Resolver::get_client();
+
+		if ( ! $client instanceof YoRo_AI_API_Client ) {
+			return new WP_Error(
+				'yoro_ai_workflow_client_unavailable',
+				__( 'YoRo AI API workflow planner is not available.', 'yoro-ai-core' )
+			);
+		}
+
+		$output_text = $client->plan_workflow( $payload );
+
+		if ( is_wp_error( $output_text ) ) {
+			return $output_text;
+		}
+
+		if ( empty( $output_text ) ) {
+			return new WP_Error(
+				'yoro_ai_workflow_empty_response',
+				__( 'I could not build a workflow from the AI response.', 'yoro-ai-core' )
 			);
 		}
 
@@ -561,7 +649,7 @@ class YoRo_AI_Parser {
 		if ( ! YoRo_AI_Settings::get_openai_api_key() ) {
 			return new WP_Error(
 				'yoro_ai_missing_api_key',
-				__( 'OpenAI API key is missing.', 'yoro-agent-core' )
+				__( 'The AI service is not configured yet.', 'yoro-ai-core' )
 			);
 		}
 
@@ -575,17 +663,17 @@ class YoRo_AI_Parser {
 		if ( empty( $output_text ) ) {
 			return new WP_Error(
 				'yoro_ai_action_decomposition_empty_response',
-				__( 'AI action decomposition returned an empty response.', 'yoro-agent-core' )
+				__( 'I could not break this request into usable steps from the AI response.', 'yoro-ai-core' )
 			);
 		}
 
 		return YoRo_AI_Workflow_Result_Normalizer::decode( $output_text );
 	}
 
-	private static function parse_with_yoro_cloud( $command ) {
+	private static function parse_with_yoro_ai_api( $command ) {
 		$client = YoRo_AI_Provider_Resolver::get_client();
 
-		if ( ! $client instanceof YoRo_Cloud_Client ) {
+		if ( ! $client instanceof YoRo_AI_API_Client ) {
 			return self::parse_with_openai_direct( $command );
 		}
 
@@ -600,7 +688,7 @@ class YoRo_AI_Parser {
 		);
 	}
 
-	private static function clean_params_for_action( $action, $params ) {
+	private static function clean_params_for_action( $action, $params, $command = '' ) {
 		switch ( $action ) {
 			case 'orders.search':
 				$clean = [
@@ -632,8 +720,16 @@ class YoRo_AI_Parser {
 					$clean['date_to'] = sanitize_text_field( $params['date_to'] );
 				}
 
+				if ( ! empty( $params['min_age_hours'] ) ) {
+					$clean['min_age_hours'] = min( max( absint( $params['min_age_hours'] ), 1 ), 8760 );
+				}
+
 				if ( ! empty( $params['order_id'] ) ) {
 					$clean['order_id'] = absint( $params['order_id'] );
+				}
+
+				if ( ! empty( $params['customer_id'] ) ) {
+					$clean['customer_id'] = absint( $params['customer_id'] );
 				}
 
 				if ( ! empty( $params['customer_name'] ) ) {
@@ -644,11 +740,17 @@ class YoRo_AI_Parser {
 					$clean['billing_country'] = strtoupper( sanitize_text_field( $params['billing_country'] ) );
 				}
 
-				if ( isset( $params['total_min'] ) && '' !== $params['total_min'] ) {
+				if ( ! empty( $params['shipping_state'] ) ) {
+					$clean['shipping_state'] = strtoupper( sanitize_text_field( $params['shipping_state'] ) );
+				}
+
+				$has_total_filter_text = self::command_appears_to_request_order_total_filter( $command );
+
+				if ( $has_total_filter_text && isset( $params['total_min'] ) && '' !== $params['total_min'] ) {
 					$clean['total_min'] = (float) $params['total_min'];
 				}
 
-				if ( isset( $params['total_max'] ) && '' !== $params['total_max'] ) {
+				if ( $has_total_filter_text && isset( $params['total_max'] ) && '' !== $params['total_max'] ) {
 					$clean['total_max'] = (float) $params['total_max'];
 				}
 
@@ -936,6 +1038,15 @@ class YoRo_AI_Parser {
 
 		return (bool) preg_match(
 			'/\b(refund|refundable|refunded|payment|paid|amount|total|money)\b/i',
+			$normalized
+		);
+	}
+
+	private static function command_appears_to_request_order_total_filter( $command ) {
+		$normalized = strtolower( (string) $command );
+
+		return (bool) preg_match(
+			'/\\$|\\b(?:usd|dollars?|order\\s+total|total|amount|money|value|between|over|above|under|below|less\\s+than|more\\s+than|greater\\s+than|at\\s+least|at\\s+most)\\b/i',
 			$normalized
 		);
 	}

@@ -556,33 +556,56 @@ class YoRo_AI_Workflow_Planner {
 			) &&
 			in_array( 'orders.compose_customer_email', $actions, true )
 		) {
-			return __( 'Hold, verify, and draft customer email', 'yoro-agent-core' );
+			return __( 'Hold, verify, and draft customer email', 'yoro-ai-core' );
 		}
 
 		if (
 			in_array( 'orders.compose_customer_email', $actions, true ) &&
 			in_array( 'orders.save_customer_email_draft', $actions, true )
 		) {
-			return __( 'Draft and save customer email', 'yoro-agent-core' );
+			return __( 'Draft and save customer email', 'yoro-ai-core' );
 		}
 
 		if ( in_array( 'orders.refund_preview', $actions, true ) ) {
-			return __( 'Refund review workflow', 'yoro-agent-core' );
+			return __( 'Refund review workflow', 'yoro-ai-core' );
 		}
 
 		if ( in_array( 'orders.find_by_identity', $actions, true ) ) {
-			return __( 'Suspicious order review', 'yoro-agent-core' );
+			return __( 'Suspicious order review', 'yoro-ai-core' );
 		}
 
 		if ( in_array( 'orders.update_status', $actions, true ) ) {
-			return __( 'Update order status workflow', 'yoro-agent-core' );
+			return __( 'Update order status workflow', 'yoro-ai-core' );
 		}
 
-		return __( 'Order management workflow', 'yoro-agent-core' );
+		return __( 'Order management workflow', 'yoro-ai-core' );
 	}
 
 	private static function detect_workflow_scope( $command, $client_context = [] ) {
 		$normalized = strtolower( (string) $command );
+
+		$order_write_markers = [
+			'add note',
+			'internal note',
+			'private note',
+			'order note',
+			'note to',
+			'note for',
+			'write a note',
+			'leave a note',
+			'put on hold',
+			'place on hold',
+			'hold order',
+			'update status',
+			'change status',
+			'mark as',
+		];
+
+		foreach ( $order_write_markers as $marker ) {
+			if ( false !== strpos( $normalized, $marker ) ) {
+				return 'order_single';
+			}
+		}
 
 		$email_markers = [
 			'email',
@@ -665,6 +688,14 @@ class YoRo_AI_Workflow_Planner {
 				'orders.save_customer_email_draft',
 				'orders.add_note',
 				'orders.hold',
+			],
+
+			'order_single' => [
+				'orders.get_details',
+				'orders.add_note',
+				'orders.add_private_note_template',
+				'orders.hold',
+				'orders.update_status',
 			],
 
 			'general' => $common,
