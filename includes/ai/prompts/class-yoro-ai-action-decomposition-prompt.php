@@ -6,10 +6,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_AI_Action_Decomposition_Prompt {
 
-	public static function build_request( array $payload ) {
-		return [
-			'model' => YoRo_AI_Settings::get_openai_model(),
-			'input' => [
+		public static function build_request( array $payload ) {
+			return [
+				'input' => [
 				[
 					'role'    => 'system',
 					'content' => implode(

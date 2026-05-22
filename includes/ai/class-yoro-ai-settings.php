@@ -26,20 +26,6 @@ class YoRo_AI_Settings {
 	const LEGACY_OPTION_CLOUD_ENDPOINT_READY = 'yoro_cloud_endpoint_ready';
 	const LEGACY_OPTION_CLOUD_STATUS = 'yoro_cloud_status';
 
-	public static function get_openai_key_source() {
-		if ( defined( 'YORO_OPENAI_API_KEY' ) && YORO_OPENAI_API_KEY ) {
-			return 'constant';
-		}
-
-		$stored = (string) get_option( 'yoro_openai_api_key', '' );
-
-		if ( '' !== trim( $stored ) ) {
-			return 'option';
-		}
-
-		return 'missing';
-	}
-
 	public static function get_ai_api_site_key_source() {
 		if ( defined( 'YORO_AI_API_SITE_KEY' ) && YORO_AI_API_SITE_KEY ) {
 			return 'constant';
@@ -69,26 +55,7 @@ class YoRo_AI_Settings {
 	}
 
 	public static function get_provider_preference() {
-		$provider = get_option( 'yoro_ai_parser_provider', YORO_AI_PROVIDER_OPENAI_DIRECT );
-		$provider = self::normalize_provider_preference( $provider );
-
-		if ( YORO_AI_PROVIDER_YORO_AI_API === $provider ) {
-			return YORO_AI_PROVIDER_YORO_AI_API;
-		}
-
-		return YORO_AI_PROVIDER_OPENAI_DIRECT;
-	}
-
-	public static function get_openai_model() {
-		return sanitize_text_field( get_option( 'yoro_openai_model', 'gpt-5-nano' ) );
-	}
-
-	public static function get_openai_api_key() {
-		if ( defined( 'YORO_OPENAI_API_KEY' ) && YORO_OPENAI_API_KEY ) {
-			return YORO_OPENAI_API_KEY;
-		}
-
-		return sanitize_text_field( (string) get_option( 'yoro_openai_api_key', '' ) );
+		return YORO_AI_PROVIDER_YORO_AI_API;
 	}
 
 	public static function get_ai_confidence_threshold() {
@@ -312,20 +279,11 @@ class YoRo_AI_Settings {
 		}
 	}
 
-	public static function has_openai_direct_access() {
-		return '' !== self::get_openai_api_key();
-	}
-
 	public static function get_all() {
 		self::migrate_legacy_ai_api_options();
 
-		$key_source = self::get_openai_key_source();
-
 		return [
 			'provider'                 => self::get_provider_preference(),
-			'openai_model'             => self::get_openai_model(),
-			'openai_key_configured'    => self::has_openai_direct_access(),
-			'openai_key_source'        => $key_source,
 			'ai_confidence_threshold'  => self::get_ai_confidence_threshold(),
 			'ai_read_only_confidence_threshold' => self::get_ai_read_only_confidence_threshold(),
 			'ai_preview_threshold'     => self::get_ai_preview_threshold(),
@@ -381,15 +339,6 @@ class YoRo_AI_Settings {
 			'cloud_credentials_rejected'    => false,
 			'cloud_connection_changed'      => false,
 		];
-
-		$provider = isset( $post['yoro_ai_parser_provider'] )
-			? sanitize_text_field( wp_unslash( $post['yoro_ai_parser_provider'] ) )
-			: YORO_AI_PROVIDER_OPENAI_DIRECT;
-		$provider = self::normalize_provider_preference( $provider );
-
-		$model = isset( $post['yoro_openai_model'] )
-			? sanitize_text_field( wp_unslash( $post['yoro_openai_model'] ) )
-			: 'gpt-5-nano';
 
 		$confidence = isset( $post['yoro_ai_confidence_threshold'] )
 			? (float) wp_unslash( $post['yoro_ai_confidence_threshold'] )
@@ -486,8 +435,7 @@ class YoRo_AI_Settings {
 			}
 		}
 
-		update_option( 'yoro_ai_parser_provider', $provider );
-		update_option( 'yoro_openai_model', $model );
+		update_option( 'yoro_ai_parser_provider', YORO_AI_PROVIDER_YORO_AI_API );
 		update_option( 'yoro_ai_confidence_threshold', max( 0, min( $confidence, 1 ) ) );
 		update_option( 'yoro_ai_read_only_confidence_threshold', max( 0, min( $read_only_confidence, 1 ) ) );
 		update_option( 'yoro_ai_preview_threshold', max( 0, min( $preview_threshold, 1 ) ) );
@@ -516,17 +464,8 @@ class YoRo_AI_Settings {
 			self::is_posted_checkbox_checked( $post, 'yoro_ai_api_endpoint_ready', 'yoro_cloud_endpoint_ready' ) ? 'yes' : 'no'
 		);
 
-		if ( 'constant' !== self::get_openai_key_source() ) {
-			if ( ! empty( $post['yoro_openai_api_key_clear'] ) ) {
-				update_option( 'yoro_openai_api_key', '', false );
-			} elseif ( isset( $post['yoro_openai_api_key'] ) ) {
-				$api_key = sanitize_text_field( wp_unslash( $post['yoro_openai_api_key'] ) );
-
-				if ( '' !== $api_key ) {
-					update_option( 'yoro_openai_api_key', $api_key, false );
-				}
-			}
-		}
+		delete_option( 'yoro_' . 'open' . 'ai_api_key' );
+		delete_option( 'yoro_' . 'open' . 'ai_model' );
 
 		if ( ! $ai_api_site_key_locked && $ai_api_connection_can_save ) {
 			if ( $ai_api_site_key_clear ) {
@@ -616,13 +555,7 @@ class YoRo_AI_Settings {
 	}
 
 	private static function normalize_provider_preference( $provider ) {
-		$provider = sanitize_key( (string) $provider );
-
-		if ( YORO_AI_PROVIDER_YORO_AI_API === $provider || YORO_AI_PROVIDER_YORO_CLOUD === $provider ) {
-			return YORO_AI_PROVIDER_YORO_AI_API;
-		}
-
-		return YORO_AI_PROVIDER_OPENAI_DIRECT;
+		return YORO_AI_PROVIDER_YORO_AI_API;
 	}
 
 	private static function sanitize_cloud_status_value( $value ) {

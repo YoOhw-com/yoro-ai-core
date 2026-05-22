@@ -12,7 +12,6 @@ class YoRo_AI_Workflow_Prompt {
 
 	public static function build_request( $prompt ) {
 		return [
-			'model' => YoRo_AI_Settings::get_openai_model(),
 			'input' => [
 				[
 					'role'    => 'system',

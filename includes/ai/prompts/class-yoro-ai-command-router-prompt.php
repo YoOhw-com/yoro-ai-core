@@ -8,11 +8,10 @@ class YoRo_AI_Command_Router_Prompt {
 
 	public static function build( $command, $context, $action_catalog, $router_hints = [] ) {
 		$prompt_catalog = self::compact_action_catalog_for_prompt( $action_catalog, $router_hints );
-		$system_prompt  = self::system_prompt( $router_hints );
+			$system_prompt  = self::system_prompt( $router_hints );
 
-		return [
-			'model' => YoRo_AI_Settings::get_openai_model(),
-			'input' => [
+			return [
+				'input' => [
 				[
 					'role'    => 'system',
 					'content' => $system_prompt,

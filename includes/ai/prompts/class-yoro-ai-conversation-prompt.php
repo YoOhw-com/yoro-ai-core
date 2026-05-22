@@ -209,11 +209,10 @@ class YoRo_AI_Conversation_Prompt {
 					],
 				],
 			]
-		);
+			);
 
-		return [
-			'model' => YoRo_AI_Settings::get_openai_model(),
-			'input' => [
+			return [
+				'input' => [
 				[
 					'role'    => 'system',
 					'content' => $system,

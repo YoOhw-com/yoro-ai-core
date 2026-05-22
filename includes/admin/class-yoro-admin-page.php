@@ -1934,8 +1934,6 @@ class YoRo_Admin_Page {
 
 	public static function render_settings_page() {
 		$settings = class_exists( 'YoRo_AI_Settings' ) ? YoRo_AI_Settings::get_all() : [];
-		$provider = $settings['provider'] ?? YORO_AI_PROVIDER_OPENAI_DIRECT;
-		$model = $settings['openai_model'] ?? 'gpt-5-nano';
 		$confidence = $settings['ai_confidence_threshold'] ?? 0.75;
 		$read_only_confidence = $settings['ai_read_only_confidence_threshold'] ?? 0.6;
 		$preview_threshold = $settings['ai_preview_threshold'] ?? 0.8;
@@ -1962,7 +1960,6 @@ class YoRo_Admin_Page {
 		$ai_api_status = isset( $settings['ai_api_status'] ) && is_array( $settings['ai_api_status'] )
 			? $settings['ai_api_status']
 			: ( isset( $settings['cloud_status'] ) && is_array( $settings['cloud_status'] ) ? $settings['cloud_status'] : [] );
-		$openai_key_source = $settings['openai_key_source'] ?? 'missing';
 
 		?>
 		<div class="wrap yoro-ai-wrap">
@@ -2008,68 +2005,14 @@ class YoRo_Admin_Page {
 				</div>
 
 				<div class="yoro-ai-card">
-					<h2><?php esc_html_e( 'AI Provider', 'yoro-ai-core' ); ?></h2>
+					<h2><?php esc_html_e( 'AI Routing', 'yoro-ai-core' ); ?></h2>
 
 					<table class="form-table" role="presentation">
 						<tr>
-							<th scope="row"><label for="yoro_ai_parser_provider"><?php esc_html_e( 'AI routing provider', 'yoro-ai-core' ); ?></label></th>
+							<th scope="row"><?php esc_html_e( 'Provider', 'yoro-ai-core' ); ?></th>
 							<td>
-								<select name="yoro_ai_parser_provider" id="yoro_ai_parser_provider">
-									<option value="<?php echo esc_attr( YORO_AI_PROVIDER_OPENAI_DIRECT ); ?>" <?php selected( $provider, YORO_AI_PROVIDER_OPENAI_DIRECT ); ?>>
-										<?php esc_html_e( 'OpenAI Direct', 'yoro-ai-core' ); ?>
-									</option>
-									<option value="<?php echo esc_attr( YORO_AI_PROVIDER_YORO_AI_API ); ?>" <?php selected( $provider, YORO_AI_PROVIDER_YORO_AI_API ); ?>>
-										<?php esc_html_e( 'YoRo AI API', 'yoro-ai-core' ); ?>
-									</option>
-								</select>
-							</td>
-						</tr>
-
-						<tr>
-							<th scope="row"><label for="yoro_openai_model"><?php esc_html_e( 'OpenAI model', 'yoro-ai-core' ); ?></label></th>
-							<td>
-								<input type="text" name="yoro_openai_model" id="yoro_openai_model" value="<?php echo esc_attr( $model ); ?>" class="regular-text" />
-								<p class="description"><?php esc_html_e( 'Current fallback is gpt-5-nano. For most stores, gpt-5-mini is a better plugin-wide default unless you later split models by feature.', 'yoro-ai-core' ); ?></p>
-							</td>
-						</tr>
-
-						<tr>
-							<th scope="row"><?php esc_html_e( 'OpenAI direct key', 'yoro-ai-core' ); ?></th>
-							<td>
-								<?php if ( 'constant' === $openai_key_source ) : ?>
-									<span class="dashicons dashicons-yes-alt" style="color:#00a32a;"></span>
-									<?php esc_html_e( 'Configured by constant. The saved field below is ignored while the constant is present.', 'yoro-ai-core' ); ?>
-								<?php elseif ( 'option' === $openai_key_source ) : ?>
-									<span class="dashicons dashicons-yes-alt" style="color:#00a32a;"></span>
-									<?php esc_html_e( 'Configured in plugin settings.', 'yoro-ai-core' ); ?>
-								<?php else : ?>
-									<span class="dashicons dashicons-warning" style="color:#dba617;"></span>
-									<?php esc_html_e( 'Not configured. Direct OpenAI mode will not run.', 'yoro-ai-core' ); ?>
-								<?php endif; ?>
-
-								<p style="margin-top:12px;">
-									<input
-										type="password"
-										name="yoro_openai_api_key"
-										id="yoro_openai_api_key"
-										value=""
-										class="regular-text"
-										autocomplete="new-password"
-										placeholder="<?php esc_attr_e( 'Paste a new OpenAI API key to save', 'yoro-ai-core' ); ?>"
-										<?php disabled( 'constant' === $openai_key_source ); ?>
-									/>
-								</p>
-
-								<?php if ( 'constant' !== $openai_key_source ) : ?>
-									<p>
-										<label>
-											<input type="checkbox" name="yoro_openai_api_key_clear" value="yes" />
-											<?php esc_html_e( 'Clear saved API key', 'yoro-ai-core' ); ?>
-										</label>
-									</p>
-								<?php endif; ?>
-
-								<p class="description"><?php esc_html_e( 'Leave the field blank to keep the current saved key unchanged.', 'yoro-ai-core' ); ?></p>
+								<strong><?php esc_html_e( 'YoRo AI API', 'yoro-ai-core' ); ?></strong>
+								<p class="description"><?php esc_html_e( 'All AI requests are routed through YoRo AI API. Direct third-party API keys are no longer accepted in the plugin.', 'yoro-ai-core' ); ?></p>
 							</td>
 						</tr>
 

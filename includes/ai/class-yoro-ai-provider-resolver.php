@@ -15,10 +15,7 @@ if ( ! defined( 'YORO_AI_PROVIDER_YORO_CLOUD' ) ) {
 class YoRo_AI_Provider_Resolver {
 
 	public static function resolve_provider() {
-		$preferred = YoRo_AI_Settings::get_provider_preference();
-
 		if (
-			YORO_AI_PROVIDER_YORO_AI_API === $preferred &&
 			YoRo_AI_Settings::is_ai_api_enabled() &&
 			YoRo_AI_Settings::is_ai_api_endpoint_ready() &&
 			YoRo_AI_Settings::get_ai_api_url() &&
@@ -27,46 +24,32 @@ class YoRo_AI_Provider_Resolver {
 			return YORO_AI_PROVIDER_YORO_AI_API;
 		}
 
-		return YORO_AI_PROVIDER_OPENAI_DIRECT;
+		return '';
 	}
 
 	public static function supports( $capability ) {
 		$capability = sanitize_key( $capability );
 		$provider   = self::resolve_provider();
 
-		if ( YORO_AI_PROVIDER_YORO_AI_API === $provider ) {
-			if (
-				! in_array(
-					$capability,
-					[ 'parse', 'intent', 'workflow_plan', 'suggestions', 'email_compose' ],
-					true
-				)
-			) {
-				return false;
-			}
-
-			return YoRo_AI_Settings::ai_api_allows_feature( $capability ) &&
-				YoRo_AI_Settings::ai_api_has_quota_remaining();
-		}
-
-		if ( ! YoRo_AI_Settings::has_openai_direct_access() ) {
+		if ( YORO_AI_PROVIDER_YORO_AI_API !== $provider ) {
 			return false;
 		}
 
-		return in_array(
-			$capability,
-			[ 'parse', 'intent', 'workflow_plan', 'suggestions', 'email_compose' ],
-			true
-		);
+		if (
+			! in_array(
+				$capability,
+				[ 'parse', 'intent', 'workflow_plan', 'suggestions', 'email_compose' ],
+				true
+			)
+		) {
+			return false;
+		}
+
+		return YoRo_AI_Settings::ai_api_allows_feature( $capability ) &&
+			YoRo_AI_Settings::ai_api_has_quota_remaining();
 	}
 
 	public static function get_client() {
-		$provider = self::resolve_provider();
-
-		if ( YORO_AI_PROVIDER_YORO_AI_API === $provider ) {
-			return new YoRo_AI_API_Client();
-		}
-
-		return new YoRo_OpenAI_Client();
+		return new YoRo_AI_API_Client();
 	}
 }

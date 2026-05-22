@@ -30,10 +30,6 @@ define( 'YORO_AI_CORE_FILE', __FILE__ );
 define( 'YORO_AI_CORE_PATH', plugin_dir_path( __FILE__ ) );
 define( 'YORO_AI_CORE_URL', plugin_dir_url( __FILE__ ) );
 
-if ( ! defined( 'YORO_AI_PROVIDER_OPENAI_DIRECT' ) ) {
-	define( 'YORO_AI_PROVIDER_OPENAI_DIRECT', 'openai_direct' );
-}
-
 if ( ! defined( 'YORO_AI_PROVIDER_YORO_AI_API' ) ) {
 	define( 'YORO_AI_PROVIDER_YORO_AI_API', 'yoro_ai_api' );
 }

@@ -46,7 +46,6 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-settings.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-request-tracker.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-provider-resolver.php';
-		require_once YORO_AI_CORE_PATH . 'includes/ai/clients/class-yoro-openai-client.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/clients/class-yoro-ai-api-client.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-semantic-frame-normalizer.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-semantic-frame-validator.php';

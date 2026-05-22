@@ -1270,7 +1270,7 @@ class YoRo_Real_Command_Eval_Pack {
 			'Confirmation required',
 			'Decision route',
 			'If you want',
-			'OpenAI API key',
+			'third-party API key',
 			'The user wants',
 			'User asked',
 			'Workflow completed with errors',

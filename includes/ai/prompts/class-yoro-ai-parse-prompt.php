@@ -16,13 +16,12 @@ class YoRo_AI_Parse_Prompt {
 		$ai_param_properties = isset( $ai_param_schema['properties'] ) && is_array( $ai_param_schema['properties'] )
 			? $ai_param_schema['properties']
 			: [];
-		$ai_param_required = isset( $ai_param_schema['required'] ) && is_array( $ai_param_schema['required'] )
-			? $ai_param_schema['required']
-			: array_keys( $ai_param_properties );
+			$ai_param_required = isset( $ai_param_schema['required'] ) && is_array( $ai_param_schema['required'] )
+				? $ai_param_schema['required']
+				: array_keys( $ai_param_properties );
 
-		return [
-			'model' => YoRo_AI_Settings::get_openai_model(),
-			'input' => [
+			return [
+				'input' => [
 				[
 					'role'    => 'system',
 					'content' => self::get_system_prompt(),

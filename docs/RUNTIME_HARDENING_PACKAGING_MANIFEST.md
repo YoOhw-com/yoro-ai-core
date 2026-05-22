@@ -30,7 +30,7 @@ Package only the runtime/router/security hardening changes. The worktree contain
 - Settings hardening:
   - Secret fields are not rendered back into admin forms.
   - Blank secret inputs preserve existing values unless clear is explicit.
-  - Constants can own OpenAI/cloud keys and cloud API URL.
+  - Constants can own YoRo AI API keys and API URL.
   - Stored secret options are updated with autoload disabled.
 
 - Risk/confirmation consistency:
