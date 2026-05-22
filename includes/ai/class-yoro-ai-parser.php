@@ -30,7 +30,11 @@ class YoRo_AI_Parser {
 
 	public static function parse_freeform( $prompt ) {
 		if ( YORO_AI_PROVIDER_YORO_AI_API === self::get_provider() ) {
-			return new WP_Error( 'not_ready', 'YoRo AI API parse endpoint is not ready.' );
+			return YoRo_AI_Provider_Resolver::get_client()->generate_suggestions(
+				[
+					'prompt' => $prompt,
+				]
+			);
 		}
 
 		return self::parse_freeform_openai( $prompt );
@@ -460,7 +464,7 @@ class YoRo_AI_Parser {
 			]
 		);
 		$body = YoRo_AI_Conversation_Prompt::build_request( $command, $client_context );
-		$output_text = YoRo_AI_Provider_Resolver::get_client()->generate_suggestions( $body );
+		$output_text = ( new YoRo_OpenAI_Client() )->generate_suggestions( $body );
 
 		if ( is_wp_error( $output_text ) ) {
 			return $output_text;
