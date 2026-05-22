@@ -440,7 +440,6 @@ class YoRo_REST_API {
 				'site_key_present' => class_exists( 'YoRo_AI_Settings' ) ? '' !== YoRo_AI_Settings::get_ai_api_site_key() : false,
 				'site_key_source'  => class_exists( 'YoRo_AI_Settings' ) ? YoRo_AI_Settings::get_ai_api_site_key_source() : 'missing',
 				'enabled'          => class_exists( 'YoRo_AI_Settings' ) ? YoRo_AI_Settings::is_ai_api_enabled() : false,
-				'endpoint_ready'   => class_exists( 'YoRo_AI_Settings' ) ? YoRo_AI_Settings::is_ai_api_endpoint_ready() : false,
 			],
 			'connection'          => [
 				'connected'  => ! empty( $status['connected'] ),

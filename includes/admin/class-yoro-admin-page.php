@@ -1956,7 +1956,6 @@ class YoRo_Admin_Page {
 		$ai_api_site_key_source = $settings['ai_api_site_key_source'] ?? 'missing';
 		$ai_api_site_key_constant = $settings['ai_api_site_key_constant'] ?? '';
 		$ai_api_enabled = $settings['ai_api_enabled'] ?? 'no';
-		$ai_api_endpoint_ready = $settings['ai_api_endpoint_ready'] ?? 'no';
 		$ai_api_status = isset( $settings['ai_api_status'] ) && is_array( $settings['ai_api_status'] ) ? $settings['ai_api_status'] : [];
 
 		?>
@@ -2149,11 +2148,11 @@ class YoRo_Admin_Page {
 
 					<table class="form-table" role="presentation">
 						<tr>
-							<th scope="row"><?php esc_html_e( 'API command router', 'yoro-ai-core' ); ?></th>
+							<th scope="row"><?php esc_html_e( 'YoRo AI API access', 'yoro-ai-core' ); ?></th>
 							<td>
 								<label>
 									<input type="checkbox" name="yoro_ai_api_enabled" value="yes" <?php checked( $ai_api_enabled, 'yes' ); ?> />
-									<?php esc_html_e( 'Enable YoRo AI API command routing when provider is set to YoRo AI API.', 'yoro-ai-core' ); ?>
+									<?php esc_html_e( 'Route commands, workflows, suggestions, and email drafts through YoRo AI API.', 'yoro-ai-core' ); ?>
 								</label>
 							</td>
 						</tr>
@@ -2221,18 +2220,6 @@ class YoRo_Admin_Page {
 								<p class="description"><?php esc_html_e( 'Leave blank to keep the current saved key unchanged.', 'yoro-ai-core' ); ?></p>
 							</td>
 						</tr>
-
-						<?php if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) : ?>
-							<tr>
-								<th scope="row"><?php esc_html_e( 'API endpoint ready', 'yoro-ai-core' ); ?></th>
-								<td>
-									<label>
-										<input type="checkbox" name="yoro_ai_api_endpoint_ready" value="yes" <?php checked( $ai_api_endpoint_ready, 'yes' ); ?> />
-										<?php esc_html_e( 'Developer only. Enable only when the YoRo AI API command routing endpoint is actually available.', 'yoro-ai-core' ); ?>
-									</label>
-								</td>
-							</tr>
-						<?php endif; ?>
 
 						<tr>
 							<th scope="row"><?php esc_html_e( 'Connection status', 'yoro-ai-core' ); ?></th>

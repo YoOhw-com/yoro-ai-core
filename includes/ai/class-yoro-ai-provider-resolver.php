@@ -13,7 +13,6 @@ class YoRo_AI_Provider_Resolver {
 	public static function resolve_provider() {
 		if (
 			YoRo_AI_Settings::is_ai_api_enabled() &&
-			YoRo_AI_Settings::is_ai_api_endpoint_ready() &&
 			YoRo_AI_Settings::get_ai_api_url() &&
 			YoRo_AI_Settings::get_ai_api_site_key()
 		) {

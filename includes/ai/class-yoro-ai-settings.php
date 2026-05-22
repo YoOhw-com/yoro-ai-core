@@ -13,7 +13,6 @@ class YoRo_AI_Settings {
 	const OPTION_AI_API_URL = 'yoro_ai_api_url';
 	const OPTION_AI_API_SITE_KEY = 'yoro_ai_api_site_key';
 	const OPTION_AI_API_ENABLED = 'yoro_ai_api_enabled';
-	const OPTION_AI_API_ENDPOINT_READY = 'yoro_ai_api_endpoint_ready';
 	const OPTION_AI_API_STATUS = 'yoro_ai_api_status';
 
 	public static function get_ai_api_site_key_source() {
@@ -64,10 +63,6 @@ class YoRo_AI_Settings {
 
 	public static function is_ai_api_enabled() {
 		return 'yes' === get_option( self::OPTION_AI_API_ENABLED, 'no' );
-	}
-
-	public static function is_ai_api_endpoint_ready() {
-		return 'yes' === get_option( self::OPTION_AI_API_ENDPOINT_READY, 'no' );
 	}
 
 	public static function get_ai_api_status() {
@@ -183,7 +178,6 @@ class YoRo_AI_Settings {
 			'ai_api_site_key_locked'   => self::is_ai_api_site_key_locked(),
 			'ai_api_site_key_constant' => self::get_ai_api_site_key_constant_name(),
 			'ai_api_enabled'           => self::is_ai_api_enabled() ? 'yes' : 'no',
-			'ai_api_endpoint_ready'    => self::is_ai_api_endpoint_ready() ? 'yes' : 'no',
 			'ai_api_status'            => self::get_ai_api_status(),
 		];
 	}
@@ -302,10 +296,6 @@ class YoRo_AI_Settings {
 		update_option(
 			self::OPTION_AI_API_ENABLED,
 			! empty( $post['yoro_ai_api_enabled'] ) ? 'yes' : 'no'
-		);
-		update_option(
-			self::OPTION_AI_API_ENDPOINT_READY,
-			! empty( $post['yoro_ai_api_endpoint_ready'] ) ? 'yes' : 'no'
 		);
 
 		delete_option( 'yoro_' . 'open' . 'ai_api_key' );

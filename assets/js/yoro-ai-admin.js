@@ -684,8 +684,8 @@
 			html += renderAiApiFeatureBadge('Suggestions', capabilities.suggestions, entitlements.suggestions);
 			html += '</div>';
 
-			if (!configured.enabled || !configured.endpoint_ready) {
-				html += '<p class="yoro-ai-api-status-note">YoRo AI API is configured but not fully enabled in plugin settings.</p>';
+			if (!configured.enabled) {
+				html += '<p class="yoro-ai-api-status-note">YoRo AI API is configured but disabled in plugin settings.</p>';
 			}
 
 			aiApiStatusBody.innerHTML = html;

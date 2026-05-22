@@ -21,7 +21,7 @@
 - Local third-party AI direct support from plugin settings and runtime.
 - Local command-router prompt runtime from the plugin.
 - Pre-release API compatibility aliases and settings migration code.
-- Pre-release YoRo Agent table/option migration code.
+- Pre-release table/option migration code.
 
 ### Verified
 - PHP syntax lint passes across all plugin PHP files using Local PHP 8.4.18.
