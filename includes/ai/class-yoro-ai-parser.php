@@ -23,7 +23,10 @@ class YoRo_AI_Parser {
 	const PROMPT_VERSION_COMMAND_ROUTER = 'command_router.v2';
 
 	public static function parse( $command ) {
-		return self::parse_with_yoro_ai_api( $command );
+		return new WP_Error(
+			'yoro_ai_legacy_parse_removed',
+			__( 'Legacy AI parse is no longer available in the plugin. Use YoRo AI API command routing instead.', 'yoro-ai-core' )
+		);
 	}
 
 	public static function parse_freeform( $prompt ) {
@@ -278,27 +281,6 @@ class YoRo_AI_Parser {
 		return $output_text;
 	}
 
-	private static function parse_with_yoro_ai_api( $command ) {
-		$client = YoRo_AI_Provider_Resolver::get_client();
-
-		if ( ! $client instanceof YoRo_AI_API_Client ) {
-			return new WP_Error(
-				'yoro_ai_api_client_unavailable',
-				__( 'YoRo AI API client is not available.', 'yoro-ai-core' )
-			);
-		}
-
-		return $client->parse_action(
-			YoRo_AI_Parse_Prompt::build(
-				$command,
-				[],
-				[],
-				[ 'intents' => [], 'actions' => [] ],
-				self::get_available_order_statuses_for_ai()
-			)
-		);
-	}
-
 	public static function get_confidence_threshold() {
 		$threshold = get_option( 'yoro_ai_confidence_threshold', 0.75 );
 
@@ -311,11 +293,4 @@ class YoRo_AI_Parser {
 		return max( 0, min( (float) $threshold, 1 ) );
 	}
 
-	private static function get_available_order_statuses_for_ai() {
-		if ( ! class_exists( 'YoRo_Order_Helper' ) ) {
-			return [];
-		}
-
-		return array_values( YoRo_Order_Helper::get_order_status_options() );
-	}
 }

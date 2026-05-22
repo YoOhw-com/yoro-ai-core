@@ -6,8 +6,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 interface YoRo_AI_Client_Interface {
 
-	public function parse_action( array $payload );
-
 	public function parse_intent( array $payload );
 
 	public function plan_workflow( array $payload );

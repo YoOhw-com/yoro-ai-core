@@ -44,7 +44,7 @@ These layers still contain too much English-centric understanding:
 - semantic fallback in [class-yoro-parser-engine.php](../includes/parsing/class-yoro-parser-engine.php)
 - workflow continuation and follow-up parsing in [class-yoro-email-command-parser.php](../includes/parsing/class-yoro-email-command-parser.php)
 - action-composition clarify flows in [class-yoro-action-composition-planner.php](../includes/execution/class-yoro-action-composition-planner.php)
-- semantic examples in [class-yoro-ai-command-router-prompt.php](../includes/ai/prompts/class-yoro-ai-command-router-prompt.php)
+- semantic examples in the Laravel YoRo AI API command-router prompt
 - regression coverage in [class-yoro-parser-test-suite.php](../includes/dev/class-yoro-parser-test-suite.php)
 
 That is why multilingual quality degrades exactly when the route leaves `ai_primary`.
@@ -152,7 +152,7 @@ Files:
 
 - `includes/ai/class-yoro-ai-command-router.php`
 - `includes/ai/normalizers/class-yoro-command-decision-normalizer.php`
-- `includes/ai/prompts/class-yoro-ai-command-router-prompt.php`
+- Laravel YoRo AI API command-router prompt
 
 Changes:
 
@@ -227,7 +227,7 @@ Why:
 
 Files:
 
-- `includes/ai/prompts/class-yoro-ai-command-router-prompt.php`
+- Laravel YoRo AI API command-router prompt
 
 Changes:
 

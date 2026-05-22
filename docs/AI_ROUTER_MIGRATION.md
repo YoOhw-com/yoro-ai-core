@@ -41,7 +41,6 @@ YoRo command handling is moving to this flow:
 - `includes/actions/class-yoro-action-registry.php`
 - `includes/actions/class-yoro-action-catalog-builder.php`
 - `includes/ai/class-yoro-ai-command-router.php`
-- `includes/ai/prompts/class-yoro-ai-command-router-prompt.php`
 - `includes/ai/normalizers/class-yoro-command-decision-normalizer.php`
 - `includes/parsing/class-yoro-parser-engine.php`
 - `includes/rest/class-yoro-rest-run-handler.php`

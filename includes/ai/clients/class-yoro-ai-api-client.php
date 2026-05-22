@@ -98,10 +98,6 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return $status;
 	}
 
-	public function parse_action( array $payload ) {
-		return $this->not_ready( 'yoro_ai_api_not_ready', __( 'YoRo AI API parser endpoint is reserved for the next phase.', 'yoro-ai-core' ) );
-	}
-
 	public function parse_intent( array $payload ) {
 		return $this->request_route(
 			$this->build_route_payload( $payload ),
@@ -462,39 +458,19 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	}
 
 	private function build_route_payload( array $payload ) {
-		if ( isset( $payload['feature'], $payload['command'] ) ) {
-			return [
-				'feature'        => sanitize_key( $payload['feature'] ),
-				'command'        => sanitize_textarea_field( $payload['command'] ),
-				'site_url'       => esc_url_raw( $payload['site_url'] ?? home_url() ),
-				'plugin_version' => sanitize_text_field( $payload['plugin_version'] ?? ( defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '' ) ),
-				'context'        => isset( $payload['context'] ) && is_array( $payload['context'] )
-					? $payload['context']
-					: [],
-				'router_hints'   => isset( $payload['router_hints'] ) && is_array( $payload['router_hints'] )
-					? $payload['router_hints']
-					: [],
-				'action_catalog' => isset( $payload['action_catalog'] ) && is_array( $payload['action_catalog'] )
-					? $payload['action_catalog']
-					: [],
-			];
-		}
-
-		$user_payload = $this->extract_user_payload( $payload );
-
 		return [
-			'feature'        => 'command_router',
-			'command'        => sanitize_textarea_field( $user_payload['command'] ?? '' ),
-			'site_url'       => home_url(),
-			'plugin_version' => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
-			'context'        => isset( $user_payload['context'] ) && is_array( $user_payload['context'] )
-				? $user_payload['context']
+			'feature'        => sanitize_key( $payload['feature'] ?? 'command_router' ),
+			'command'        => sanitize_textarea_field( $payload['command'] ?? '' ),
+			'site_url'       => esc_url_raw( $payload['site_url'] ?? home_url() ),
+			'plugin_version' => sanitize_text_field( $payload['plugin_version'] ?? ( defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '' ) ),
+			'context'        => isset( $payload['context'] ) && is_array( $payload['context'] )
+				? $payload['context']
 				: [],
-			'router_hints'   => isset( $user_payload['router_hints'] ) && is_array( $user_payload['router_hints'] )
-				? $user_payload['router_hints']
+			'router_hints'   => isset( $payload['router_hints'] ) && is_array( $payload['router_hints'] )
+				? $payload['router_hints']
 				: [],
-			'action_catalog' => isset( $user_payload['action_catalog'] ) && is_array( $user_payload['action_catalog'] )
-				? $user_payload['action_catalog']
+			'action_catalog' => isset( $payload['action_catalog'] ) && is_array( $payload['action_catalog'] )
+				? $payload['action_catalog']
 				: [],
 		];
 	}
@@ -944,7 +920,4 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		}
 	}
 
-	private function not_ready( $code, $message ) {
-		return new WP_Error( $code, $message );
-	}
 }

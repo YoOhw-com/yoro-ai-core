@@ -56,16 +56,7 @@ class YoRo_AI_Command_Router {
 			is_array( $router_hints ) ? $router_hints : []
 		);
 
-		if ( YORO_AI_PROVIDER_YORO_AI_API === YoRo_AI_Provider_Resolver::resolve_provider() ) {
-			$payload = self::build_yoro_ai_api_route_payload( $command, $context, $catalog, $router_hints );
-		} else {
-			$payload = YoRo_AI_Command_Router_Prompt::build(
-				$command,
-				$context,
-				$catalog,
-				$router_hints
-			);
-		}
+		$payload = self::build_yoro_ai_api_route_payload( $command, $context, $catalog, $router_hints );
 		$output_text = YoRo_AI_Provider_Resolver::get_client()->parse_intent( $payload );
 
 		if ( is_wp_error( $output_text ) ) {

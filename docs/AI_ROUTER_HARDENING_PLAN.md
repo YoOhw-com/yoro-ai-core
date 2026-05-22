@@ -80,7 +80,7 @@ Acceptance criteria:
 Files:
 
 - `includes/ai/class-yoro-ai-command-router.php`
-- `includes/ai/prompts/class-yoro-ai-command-router-prompt.php`
+- Laravel YoRo AI API command-router prompt
 - `includes/ai/normalizers/class-yoro-command-decision-normalizer.php`
 
 Actions:
@@ -287,7 +287,7 @@ This hardening phase is complete when all of the following are true:
 - [ ] Keep action whitelist failure as a hard error.
 - [ ] Review whether action-scoped param validation can be introduced without changing the external runtime contract.
 
-`includes/ai/prompts/class-yoro-ai-command-router-prompt.php`
+Laravel YoRo AI API command-router prompt
 
 - [ ] Reduce action-specific policy text if the same information now exists in catalog metadata.
 - [ ] Keep only stable routing policy in prompt:
