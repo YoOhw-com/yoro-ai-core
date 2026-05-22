@@ -387,7 +387,7 @@ class YoRo_Orders_Command_Parser {
 				'matched'            => false,
 				'stage'              => 'clarify',
 				'action'             => 'workflow.business_summary_preview',
-				'message'            => __( 'Open the business summary first so I can choose the right business signal before preparing the next review step.', 'yoro-agent-core' ),
+				'message'            => __( 'Open the business summary first so I can choose the right business signal before preparing the next review step.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 				'parser_rule'        => 'rule.workflow.business_summary_preview',
@@ -434,7 +434,7 @@ class YoRo_Orders_Command_Parser {
 				'matched'            => false,
 				'stage'              => 'clarify',
 				'action'             => 'workflow.fulfillment_followup_preview',
-				'message'            => __( 'Open the fulfillment queue first so I can choose the right fulfillment item before preparing a follow-up.', 'yoro-agent-core' ),
+				'message'            => __( 'Open the fulfillment queue first so I can choose the right fulfillment item before preparing a follow-up.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 				'parser_rule'        => 'rule.workflow.fulfillment_followup_preview',
@@ -482,7 +482,7 @@ class YoRo_Orders_Command_Parser {
 				'matched'            => false,
 				'stage'              => 'clarify',
 				'action'             => 'workflow.customer_followup_preview',
-				'message'            => __( 'Open the customer service queue first so I can choose the right follow-up item before preparing a reply.', 'yoro-agent-core' ),
+				'message'            => __( 'Open the customer service queue first so I can choose the right follow-up item before preparing a reply.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 				'parser_rule'        => 'rule.workflow.customer_followup_preview',
@@ -526,7 +526,7 @@ class YoRo_Orders_Command_Parser {
 				'matched'            => false,
 				'stage'              => 'clarify',
 				'action'             => 'workflow.operations_attention_preview',
-				'message'            => __( 'Open the operations attention queue first so I can choose the right attention item before preparing the next review step.', 'yoro-agent-core' ),
+				'message'            => __( 'Open the operations attention queue first so I can choose the right attention item before preparing the next review step.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 				'parser_rule'        => 'rule.workflow.operations_attention_preview',
@@ -570,7 +570,7 @@ class YoRo_Orders_Command_Parser {
 				'matched'            => false,
 				'stage'              => 'clarify',
 				'action'             => 'workflow.inventory_pressure_preview',
-				'message'            => __( 'Open the inventory queue first so I can choose the right stock issue before preparing the next review step.', 'yoro-agent-core' ),
+				'message'            => __( 'Open the inventory queue first so I can choose the right stock issue before preparing the next review step.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 				'parser_rule'        => 'rule.workflow.inventory_pressure_preview',
@@ -879,7 +879,7 @@ class YoRo_Orders_Command_Parser {
 				'matched'            => true,
 				'stage'              => 'clarify',
 				'action'             => 'orders.update_status',
-				'message'            => __( 'Which order should I update?', 'yoro-agent-core' ),
+				'message'            => __( 'Which order should I update?', 'yoro-ai-core' ),
 				'params'             => [
 					'status' => '',
 				],
@@ -896,7 +896,7 @@ class YoRo_Orders_Command_Parser {
 			[
 				'order_ids' => $order_ids,
 				'status'    => '',
-				'note'      => __( 'Order status updated by YoRo Agent.', 'yoro-agent-core' ),
+				'note'      => __( 'Order status updated by YoRo AI.', 'yoro-ai-core' ),
 			]
 		);
 
@@ -915,7 +915,7 @@ class YoRo_Orders_Command_Parser {
 			'matched'            => true,
 			'stage'              => 'clarify',
 			'action'             => 'orders.update_status',
-			'message'            => __( 'What status should I update to?', 'yoro-agent-core' ),
+			'message'            => __( 'What status should I update to?', 'yoro-ai-core' ),
 			'params'             => $params,
 			'missing'            => $missing,
 			'parser_source'      => 'rule',
@@ -983,7 +983,7 @@ class YoRo_Orders_Command_Parser {
 			return self::clarification_response(
 				$command,
 				$normalized,
-				__( 'Which orders should I update and add the note to?', 'yoro-agent-core' ),
+				__( 'Which orders should I update and add the note to?', 'yoro-ai-core' ),
 				self::build_order_reference_options( $client_context, $note )
 			);
 		}
@@ -1048,7 +1048,7 @@ class YoRo_Orders_Command_Parser {
 			return self::clarification_response(
 				$command,
 				$normalized,
-				__( 'Which order should I hold and add the note to?', 'yoro-agent-core' ),
+				__( 'Which order should I hold and add the note to?', 'yoro-ai-core' ),
 				self::build_order_reference_options( $client_context, $note )
 			);
 		}
@@ -1141,7 +1141,7 @@ class YoRo_Orders_Command_Parser {
 					[
 						'order_ids' => $order_ids,
 						'status'    => '',
-						'note'      => __( 'Order status updated by YoRo Agent.', 'yoro-agent-core' ),
+						'note'      => __( 'Order status updated by YoRo AI.', 'yoro-ai-core' ),
 					]
 				);
 
@@ -1160,7 +1160,7 @@ class YoRo_Orders_Command_Parser {
 					'matched'            => true,
 					'stage'              => 'clarify',
 					'action'             => 'orders.update_status',
-					'message'            => __( 'What status should I update to?', 'yoro-agent-core' ),
+					'message'            => __( 'What status should I update to?', 'yoro-ai-core' ),
 					'params'             => $params,
 					'missing'            => $missing,
 					'parser_source'      => 'rule',
@@ -1176,7 +1176,7 @@ class YoRo_Orders_Command_Parser {
 				'matched'            => true,
 				'stage'              => 'clarify',
 				'action'             => 'orders.update_status',
-				'message'            => __( 'Which order should I update?', 'yoro-agent-core' ),
+				'message'            => __( 'Which order should I update?', 'yoro-ai-core' ),
 				'params'             => [
 					'status' => '',
 				],
@@ -1195,7 +1195,7 @@ class YoRo_Orders_Command_Parser {
 				'stage'              => 'clarify',
 				'action'             => 'orders.update_status',
 				'message'            => sprintf(
-					__( 'The order status "%s" is not available on this store.', 'yoro-agent-core' ),
+					__( 'The order status "%s" is not available on this store.', 'yoro-ai-core' ),
 					$status
 				),
 				'original_command'   => $command,
@@ -1209,7 +1209,7 @@ class YoRo_Orders_Command_Parser {
 				'matched'            => true,
 				'stage'              => 'clarify',
 				'action'             => 'orders.update_status',
-				'message'            => __( 'Please provide at least one order ID or open an order first.', 'yoro-agent-core' ),
+				'message'            => __( 'Please provide at least one order ID or open an order first.', 'yoro-ai-core' ),
 				'params'             => [
 					'status' => $status,
 				],
@@ -1224,7 +1224,7 @@ class YoRo_Orders_Command_Parser {
 			[
 				'order_ids' => $order_ids,
 				'status'    => $status,
-				'note'      => __( 'Order status updated by YoRo Agent.', 'yoro-agent-core' ),
+				'note'      => __( 'Order status updated by YoRo AI.', 'yoro-ai-core' ),
 			],
 			$command,
 			$normalized,
@@ -1269,7 +1269,7 @@ class YoRo_Orders_Command_Parser {
 				'success'            => false,
 				'matched'            => true,
 				'action'             => 'orders.hold',
-				'message'            => __( 'Please provide at least one order ID to hold or open an order first.', 'yoro-agent-core' ),
+				'message'            => __( 'Please provide at least one order ID to hold or open an order first.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -1320,7 +1320,7 @@ class YoRo_Orders_Command_Parser {
 				'success'            => false,
 				'matched'            => true,
 				'action'             => 'orders.add_private_note_template',
-				'message'            => __( 'Please provide at least one order ID or open an order first.', 'yoro-agent-core' ),
+				'message'            => __( 'Please provide at least one order ID or open an order first.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -1381,7 +1381,7 @@ class YoRo_Orders_Command_Parser {
 				'matched'            => true,
 				'stage'              => 'clarify',
 				'action'             => 'orders.add_note',
-				'message'            => __( 'What note should I add?', 'yoro-agent-core' ),
+				'message'            => __( 'What note should I add?', 'yoro-ai-core' ),
 				'params'             => $params,
 				'missing'            => $missing,
 				'parser_source'      => 'rule',
@@ -1406,7 +1406,7 @@ class YoRo_Orders_Command_Parser {
 					'matched'            => true,
 					'stage'              => 'clarify',
 					'action'             => 'orders.add_note',
-					'message'            => __( 'Which order should I add the note to?', 'yoro-agent-core' ),
+					'message'            => __( 'Which order should I add the note to?', 'yoro-ai-core' ),
 					'params'             => [
 						'note' => '',
 					],
@@ -1438,7 +1438,7 @@ class YoRo_Orders_Command_Parser {
 				'matched'            => true,
 				'stage'              => 'clarify',
 				'action'             => 'orders.add_note',
-				'message'            => __( 'What note should I add?', 'yoro-agent-core' ),
+				'message'            => __( 'What note should I add?', 'yoro-ai-core' ),
 				'params'             => $params,
 				'missing'            => $missing,
 				'parser_source'      => 'rule',
@@ -1472,7 +1472,7 @@ class YoRo_Orders_Command_Parser {
 				'matched'            => true,
 				'stage'              => 'clarify',
 				'action'             => 'orders.add_note',
-				'message'            => __( 'Please provide valid order IDs and note, or open an order first.', 'yoro-agent-core' ),
+				'message'            => __( 'Please provide valid order IDs and note, or open an order first.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -1610,14 +1610,15 @@ class YoRo_Orders_Command_Parser {
 			return null;
 		}
 
-		if (
-			false === strpos( $normalized, 'refund' ) &&
-			false === strpos( $normalized, 'refundable' )
-		) {
+		if ( ! preg_match( '/\b(?:refund|refundable)\b/i', $normalized ) ) {
 			return null;
 		}
 
 		$order_ids = self::extract_order_ids( $command );
+
+		if ( empty( $order_ids ) && self::looks_like_refunded_order_search_request( $normalized ) ) {
+			return null;
+		}
 
 		if ( empty( $order_ids ) ) {
 			$order_ids = self::resolve_current_order_ids_from_context( $client_context );
@@ -1628,7 +1629,7 @@ class YoRo_Orders_Command_Parser {
 				'success'            => false,
 				'matched'            => true,
 				'action'             => 'orders.refund_preview',
-				'message'            => __( 'Please provide an order ID or open an order first for refund preview.', 'yoro-agent-core' ),
+				'message'            => __( 'Please provide an order ID or open an order first for refund preview.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -1766,11 +1767,16 @@ class YoRo_Orders_Command_Parser {
 		if (
 			false === strpos( $normalized, 'search' ) &&
 			false === strpos( $normalized, 'show' ) &&
+			false === strpos( $normalized, 'view' ) &&
 			false === strpos( $normalized, 'find' ) &&
 			false === strpos( $normalized, 'list' ) &&
+			false === strpos( $normalized, 'get' ) &&
+			false === strpos( $normalized, 'open' ) &&
 			false === strpos( $normalized, 'latest' ) &&
 			false === strpos( $normalized, 'recent' ) &&
-			false === strpos( $normalized, 'last' )
+			false === strpos( $normalized, 'last' ) &&
+			false === strpos( $normalized, 'new' ) &&
+			false === strpos( $normalized, 'newest' )
 		) {
 			return null;
 		}
@@ -1782,12 +1788,12 @@ class YoRo_Orders_Command_Parser {
 			return null;
 		}
 
-		$status = [ 'pending', 'processing', 'on-hold' ];
+		$status = [];
 
 		if ( false !== strpos( $normalized, 'all status' ) || false !== strpos( $normalized, 'all orders' ) ) {
 			$status = [];
 		} else {
-			$detected_status = YoRo_Order_Helper::detect_status_from_text( $normalized );
+			$detected_status = YoRo_Order_Helper::detect_status_from_search_semantics( $normalized );
 
 			if ( ! empty( $detected_status ) ) {
 				$status = [ $detected_status ];
@@ -1795,6 +1801,18 @@ class YoRo_Orders_Command_Parser {
 		}
 
 		$limit = self::extract_requested_limit_from_command( $command, 10, 50 );
+
+		if (
+			1 === substr_count( $normalized, ' order' ) &&
+			1 !== substr_count( $normalized, ' orders' ) &&
+			! empty( $status ) &&
+			preg_match(
+				'/\b(?:show|view|get|find|open|review)\b.*\b(?:a|an|one)\s+(?:[a-z][a-z-]*\s+)?order\b/i',
+				$normalized
+			)
+		) {
+			$limit = 1;
+		}
 
 		$params = [
 			'status' => $status,
@@ -1848,6 +1866,23 @@ class YoRo_Orders_Command_Parser {
 		);
 	}
 
+	private static function looks_like_refunded_order_search_request( $normalized ) {
+		$normalized = strtolower( trim( (string) $normalized ) );
+
+		if ( '' === $normalized || false === strpos( $normalized, 'order' ) ) {
+			return false;
+		}
+
+		if ( preg_match( '/\border\s*#?\s*\d+\b/i', $normalized ) ) {
+			return false;
+		}
+
+		return (bool) preg_match(
+			'/\b(?:show|open|view|get|list|find|search|review)\b.*\b(?:a|an|one|\d{1,2}|some)?\s*(?:refund|refunded)\s+orders?\b/i',
+			$normalized
+		);
+	}
+
 	private static function normalize_payment_method( $value ) {
 		$value = strtolower( trim( wp_strip_all_tags( (string) $value ) ) );
 
@@ -1885,6 +1920,8 @@ class YoRo_Orders_Command_Parser {
 			'/\b(?:limit|top|latest|recent|last|newest|lestet)\s+(\d{1,2})\b/i',
 			'/\b(?:show|get|open|list|find|search|load|browse|review)\s+(\d{1,2})\s+(?:latest|recent|last|newest|lestet)\b/i',
 			'/\b(\d{1,2})\s+(?:latest|recent|last|newest|lestet)\b/i',
+			'/\b(\d{1,2})\s+(?:pending|processing|completed|complete|cancelled|canceled|refund|refunded|failed|on[- ]hold)\s+orders?\b/i',
+			'/\b(?:show|get|open|list|find|search|load|browse|review)\s+(?:me\s+)?(\d{1,2})\s+(?:pending|processing|completed|complete|cancelled|canceled|refund|refunded|failed|on[- ]hold)\s+orders?\b/i',
 			'/\bfirst\s+(\d{1,2})\s+orders?\b/i',
 		];
 

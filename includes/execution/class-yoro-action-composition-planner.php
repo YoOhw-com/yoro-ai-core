@@ -6,6 +6,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Action_Composition_Planner {
 
+	const COMPOSITION_SOURCE_GUARD = 'guard_action_composition';
+	const PARSER_RULE_GUARD        = 'guard.action_composition';
+
 	public static function maybe_build_parsed( $command, $normalized, $client_context = [], $hint = [] ) {
 		if ( ! class_exists( 'YoRo_Action_Intent_Extractor' ) ) {
 			return null;
@@ -92,9 +95,13 @@ class YoRo_Action_Composition_Planner {
 			$requested,
 			$unavailable,
 			[
-				'parser_rule'        => sanitize_text_field( $params['_yoro_composed_parser_rule'] ?? 'ai.action_decomposition' ),
+				'parser_rule'        => sanitize_text_field( $params['_yoro_composed_parser_rule'] ?? self::PARSER_RULE_GUARD ),
 				'confidence'         => (float) ( $params['_yoro_composed_confidence'] ?? 0.85 ),
-				'composition_source' => sanitize_key( $params['_yoro_composed_source'] ?? 'rule_merge' ),
+				'composition_source' => sanitize_key(
+					$params['_yoro_composed_source'] ??
+					self::default_composition_source_for_parser_rule( $params['_yoro_composed_parser_rule'] ?? self::PARSER_RULE_GUARD )
+				),
+				'parser_source'      => sanitize_text_field( $params['_yoro_composed_parser_source'] ?? 'guard' ),
 			],
 			[]
 		);
@@ -130,9 +137,13 @@ class YoRo_Action_Composition_Planner {
 			$requested,
 			$unavailable,
 			[
-				'parser_rule'        => sanitize_text_field( $params['_yoro_composed_parser_rule'] ?? 'ai.action_decomposition' ),
+				'parser_rule'        => sanitize_text_field( $params['_yoro_composed_parser_rule'] ?? self::PARSER_RULE_GUARD ),
 				'confidence'         => (float) ( $params['_yoro_composed_confidence'] ?? 0.85 ),
-				'composition_source' => sanitize_key( $params['_yoro_composed_source'] ?? 'rule_merge' ),
+				'composition_source' => sanitize_key(
+					$params['_yoro_composed_source'] ??
+					self::default_composition_source_for_parser_rule( $params['_yoro_composed_parser_rule'] ?? self::PARSER_RULE_GUARD )
+				),
+				'parser_source'      => sanitize_text_field( $params['_yoro_composed_parser_source'] ?? 'guard' ),
 			],
 			[]
 		);
@@ -144,7 +155,7 @@ class YoRo_Action_Composition_Planner {
 		if ( $order_id > 0 && self::should_load_order_first( $requested ) ) {
 			$steps[] = [
 				'id'     => 'load_order',
-				'label'  => __( 'Load order details', 'yoro-agent-core' ),
+				'label'  => __( 'Load order details', 'yoro-ai-core' ),
 				'action' => 'orders.get_details',
 				'params' => [
 					'order_ids' => [ $order_id ],
@@ -160,7 +171,7 @@ class YoRo_Action_Composition_Planner {
 				case 'hold':
 					$steps[] = [
 						'id'     => 'hold_order',
-						'label'  => __( 'Put order on hold', 'yoro-agent-core' ),
+						'label'  => __( 'Put order on hold', 'yoro-ai-core' ),
 						'action' => 'orders.hold',
 						'params' => [
 							'order_ids' => [ $order_id ],
@@ -171,7 +182,7 @@ class YoRo_Action_Composition_Planner {
 				case 'add_note':
 					$steps[] = [
 						'id'     => 'add_note',
-						'label'  => __( 'Add internal note', 'yoro-agent-core' ),
+						'label'  => __( 'Add internal note', 'yoro-ai-core' ),
 						'action' => 'orders.add_note',
 						'params' => [
 							'order_ids' => [ $order_id ],
@@ -183,7 +194,7 @@ class YoRo_Action_Composition_Planner {
 				case 'update_status':
 					$steps[] = [
 						'id'     => 'update_status',
-						'label'  => __( 'Update order status', 'yoro-agent-core' ),
+						'label'  => __( 'Update order status', 'yoro-ai-core' ),
 						'action' => 'orders.update_status',
 						'params' => [
 							'order_ids' => [ $order_id ],
@@ -195,7 +206,7 @@ class YoRo_Action_Composition_Planner {
 				case 'status_with_note':
 					$steps[] = [
 						'id'     => 'update_status_with_note',
-						'label'  => __( 'Update order status with note', 'yoro-agent-core' ),
+						'label'  => __( 'Update order status with note', 'yoro-ai-core' ),
 						'action' => 'orders.bulk_update_status_with_note',
 						'params' => [
 							'order_ids' => [ $order_id ],
@@ -211,7 +222,7 @@ class YoRo_Action_Composition_Planner {
 
 					$steps[] = [
 						'id'      => 'compose_email',
-						'label'   => __( 'Compose customer email', 'yoro-agent-core' ),
+						'label'   => __( 'Compose customer email', 'yoro-ai-core' ),
 						'action'  => 'orders.compose_customer_email',
 						'params'  => [
 							'order_id'    => $order_id,
@@ -226,7 +237,7 @@ class YoRo_Action_Composition_Planner {
 					if ( 'save_draft' === $delivery ) {
 						$steps[] = [
 							'id'     => 'save_draft',
-							'label'  => __( 'Save email draft', 'yoro-agent-core' ),
+							'label'  => __( 'Save email draft', 'yoro-ai-core' ),
 							'action' => 'orders.save_customer_email_draft',
 							'params' => [
 								'order_id' => $order_id,
@@ -237,7 +248,7 @@ class YoRo_Action_Composition_Planner {
 					} elseif ( 'send' === $delivery ) {
 						$steps[] = [
 							'id'     => 'send_email',
-							'label'  => __( 'Send customer email', 'yoro-agent-core' ),
+							'label'  => __( 'Send customer email', 'yoro-ai-core' ),
 							'action' => 'orders.send_customer_email',
 							'params' => [
 								'order_id' => $order_id,
@@ -284,7 +295,7 @@ class YoRo_Action_Composition_Planner {
 				$command,
 				[
 					'label'       => self::build_workflow_label( $requested, $unavailable ),
-					'description' => __( 'YoRo assembled this workflow from the actions it recognized in your request.', 'yoro-agent-core' ),
+					'description' => __( 'YoRo assembled this workflow from the actions it recognized in your request.', 'yoro-ai-core' ),
 					'artifacts'   => $artifacts,
 				]
 			)
@@ -300,7 +311,7 @@ class YoRo_Action_Composition_Planner {
 				'id'            => 'composed_actions',
 				'definition_id' => 'composed_actions',
 				'label'         => self::build_workflow_label( $requested, $unavailable ),
-				'description'   => __( 'YoRo assembled this workflow from the actions it recognized in your request.', 'yoro-agent-core' ),
+				'description'   => __( 'YoRo assembled this workflow from the actions it recognized in your request.', 'yoro-ai-core' ),
 				'category'      => 'workflow',
 				'risk_level'    => 'medium',
 				'artifacts'     => $artifacts,
@@ -309,9 +320,9 @@ class YoRo_Action_Composition_Planner {
 			'actions'           => $steps,
 			'current_workflow'  => $current_workflow,
 			'composition'       => $artifacts['composition'],
-			'composition_source'=> sanitize_key( $extracted['composition_source'] ?? 'rule_merge' ),
-			'parser_source'     => sanitize_text_field( $hint['parser_source'] ?? 'rule' ),
-			'parser_rule'       => sanitize_text_field( $extracted['parser_rule'] ?? 'rule.action_composition' ),
+			'composition_source'=> sanitize_key( $extracted['composition_source'] ?? self::COMPOSITION_SOURCE_GUARD ),
+			'parser_source'     => sanitize_text_field( $extracted['parser_source'] ?? ( $hint['parser_source'] ?? 'guard' ) ),
+			'parser_rule'       => sanitize_text_field( $extracted['parser_rule'] ?? self::PARSER_RULE_GUARD ),
 			'confidence'        => max( 0.85, (float) ( $extracted['confidence'] ?? $hint['confidence'] ?? 0 ) ),
 			'original_command'  => $command,
 			'normalized_command'=> $normalized,
@@ -346,6 +357,13 @@ class YoRo_Action_Composition_Planner {
 				$rule_result['unavailable_requests'] ?? []
 			);
 			$merged_missing = self::filter_missing_params_from_requested_actions( $merged_missing, $merged_requested, $command );
+			$note_repair = self::repair_requested_note_params(
+				$merged_requested,
+				$merged_missing,
+				$command
+			);
+			$merged_requested = $note_repair['requested'];
+			$merged_missing   = $note_repair['missing'];
 			$merged_requested = self::collapse_conflicting_requested_actions(
 				self::sanitize_requested_actions_for_missing_params(
 					$merged_requested,
@@ -373,11 +391,14 @@ class YoRo_Action_Composition_Planner {
 				'confidence'           => (float) ( $ai_result['confidence'] ?? 0 ),
 				'parser_rule'          => 'ai.action_decomposition',
 				'composition_source'   => 'ai_decomposition',
+				'parser_source'        => sanitize_text_field( $hint['parser_source'] ?? 'guard' ),
 			];
 		}
 
 		if ( is_array( $rule_result ) && ! empty( $rule_result['matched'] ) ) {
-			$rule_result['composition_source'] = 'rule_merge';
+			$rule_result['composition_source'] = self::COMPOSITION_SOURCE_GUARD;
+			$rule_result['parser_rule']        = self::PARSER_RULE_GUARD;
+			$rule_result['parser_source']      = sanitize_text_field( $hint['parser_source'] ?? 'guard' );
 		}
 
 		return $rule_result;
@@ -402,6 +423,23 @@ class YoRo_Action_Composition_Planner {
 		}
 
 		return $has_multi_step_cues;
+	}
+
+	private static function composition_parser_source( $extracted ) {
+		$extracted = is_array( $extracted ) ? $extracted : [];
+		$parser_source = sanitize_text_field( $extracted['parser_source'] ?? '' );
+
+		return '' !== $parser_source ? $parser_source : 'guard';
+	}
+
+	private static function default_composition_source_for_parser_rule( $parser_rule ) {
+		$parser_rule = sanitize_text_field( (string) $parser_rule );
+
+		if ( 0 === strpos( $parser_rule, 'ai.action_decomposition' ) ) {
+			return 'ai_decomposition';
+		}
+
+		return self::COMPOSITION_SOURCE_GUARD;
 	}
 
 	private static function is_composition_eligible_action( $action ) {
@@ -540,7 +578,7 @@ class YoRo_Action_Composition_Planner {
 				$requested[ $index ] = [
 					'kind'     => 'update_status',
 					'action'   => 'orders.update_status',
-					'label'    => __( 'Update order status', 'yoro-agent-core' ),
+					'label'    => __( 'Update order status', 'yoro-ai-core' ),
 					'position' => $item['position'] ?? $index,
 					'params'   => [
 						'status' => sanitize_key( $params['status'] ?? '' ),
@@ -555,6 +593,49 @@ class YoRo_Action_Composition_Planner {
 		}
 
 		return array_values( $requested );
+	}
+
+	private static function repair_requested_note_params( $requested, $missing, $command ) {
+		$requested = is_array( $requested ) ? array_values( $requested ) : [];
+		$missing   = is_array( $missing ) ? array_values( array_filter( array_map( 'sanitize_key', $missing ) ) ) : [];
+		$note      = self::infer_note_from_command_context( $command, $requested );
+		$needs_note = false;
+
+		foreach ( $requested as $index => $item ) {
+			$kind   = sanitize_key( $item['kind'] ?? '' );
+			$params = isset( $item['params'] ) && is_array( $item['params'] ) ? $item['params'] : [];
+
+			if ( ! in_array( $kind, [ 'add_note', 'status_with_note' ], true ) ) {
+				continue;
+			}
+
+			$current_note = sanitize_textarea_field( $params['note'] ?? '' );
+
+			if ( '' !== $current_note && ! self::is_placeholder_note_text( $current_note, $params['status'] ?? '' ) ) {
+				continue;
+			}
+
+			if ( '' !== $note ) {
+				$params['note'] = $note;
+				$requested[ $index ]['params'] = $params;
+				continue;
+			}
+
+			$needs_note = true;
+		}
+
+		if ( $needs_note && ! in_array( 'note', $missing, true ) ) {
+			$missing[] = 'note';
+		}
+
+		if ( ! $needs_note && '' !== $note ) {
+			$missing = array_values( array_diff( $missing, [ 'note' ] ) );
+		}
+
+		return [
+			'requested' => $requested,
+			'missing'   => array_values( array_unique( $missing ) ),
+		];
 	}
 
 	private static function collapse_conflicting_requested_actions( $requested, $missing = [] ) {
@@ -656,7 +737,7 @@ class YoRo_Action_Composition_Planner {
 			$normalized[] = [
 				'key'     => sanitize_key( $item['key'] ?? '' ),
 				'label'   => sanitize_text_field( $item['label'] ?? '' ),
-				'message' => sanitize_text_field( $item['reason'] ?? __( 'Not available yet in YoRo.', 'yoro-agent-core' ) ),
+				'message' => sanitize_text_field( $item['reason'] ?? __( 'Not available yet in YoRo.', 'yoro-ai-core' ) ),
 			];
 		}
 
@@ -742,13 +823,65 @@ class YoRo_Action_Composition_Planner {
 	}
 
 	private static function command_contains_explicit_note_content( $command ) {
-		$command = (string) $command;
+		return '' !== self::infer_note_from_command_context( $command, [] );
+	}
 
-		if ( '' === trim( $command ) ) {
-			return false;
+	private static function infer_note_from_command_context( $command, $requested ) {
+		$texts = [ (string) $command ];
+		$requested = is_array( $requested ) ? $requested : [];
+
+		foreach ( $requested as $item ) {
+			$params = isset( $item['params'] ) && is_array( $item['params'] ) ? $item['params'] : [];
+
+			foreach ( [ 'note', 'instruction' ] as $key ) {
+				if ( ! empty( $params[ $key ] ) && is_string( $params[ $key ] ) ) {
+					$texts[] = $params[ $key ];
+				}
+			}
 		}
 
-		return (bool) preg_match( '/(?:add\s+note|with\s+note|note)\s*:?\s*[A-Za-z0-9][^\\n]*$/i', $command );
+		foreach ( $texts as $text ) {
+			$note = self::extract_note_topic_from_text( $text );
+
+			if ( '' !== $note ) {
+				return $note;
+			}
+		}
+
+		return '';
+	}
+
+	private static function extract_note_topic_from_text( $text ) {
+		$text = trim( wp_strip_all_tags( (string) $text ) );
+
+		if ( '' === $text ) {
+			return '';
+		}
+
+		if ( preg_match( '/\b(?:about|regarding|re:)\s+([^,.;!?\\n]+)/i', $text, $matches ) ) {
+			return self::clean_inferred_note_topic( $matches[1] );
+		}
+
+		if ( preg_match( '/\b(payment\s+confirmation|payment\s+confirmed|payment\s+received|address\s+confirmation|refund\s+follow[- ]?up|shipping\s+delay)\b/i', $text, $matches ) ) {
+			return self::clean_inferred_note_topic( $matches[1] );
+		}
+
+		return '';
+	}
+
+	private static function clean_inferred_note_topic( $text ) {
+		$text = trim( wp_strip_all_tags( (string) $text ) );
+		$text = preg_replace( '/\s+(?:and|then|also)\s+(?:write|draft|compose|prepare|create|save|send)\b.*$/i', '', $text );
+		$text = preg_replace( '/\s+to\s+the\s+customer\b.*$/i', '', (string) $text );
+		$text = trim( preg_replace( '/[\s,;:.-]+$/', '', (string) $text ) );
+
+		if ( '' === $text || preg_match( '/^(?:it|this|that|the order)$/i', $text ) ) {
+			return '';
+		}
+
+		$text = substr( $text, 0, 180 );
+
+		return ucfirst( sanitize_textarea_field( $text ) );
 	}
 
 	private static function is_placeholder_note_text( $note, $status = '' ) {
@@ -763,7 +896,8 @@ class YoRo_Action_Composition_Planner {
 			return true;
 		}
 
-		return (bool) preg_match( '/^status updated to [a-z0-9 _-]+$/i', $note );
+		return (bool) preg_match( '/^status (?:updated|changed) to [a-z0-9 _-]+(?:;?\s*added note per user request\.?)?$/i', $note )
+			|| (bool) preg_match( '/^added note per user request\.?$/i', $note );
 	}
 
 	private static function merge_unavailable_requests( $primary, $fallback ) {
@@ -909,9 +1043,10 @@ class YoRo_Action_Composition_Planner {
 			'_yoro_composed_requested_actions'    => $requested,
 			'_yoro_composed_unavailable_requests' => $unavailable,
 			'_yoro_composed_original_command'     => $command,
-			'_yoro_composed_parser_rule'          => sanitize_text_field( $extracted['parser_rule'] ?? 'ai.action_decomposition' ),
+			'_yoro_composed_parser_rule'          => sanitize_text_field( $extracted['parser_rule'] ?? self::PARSER_RULE_GUARD ),
+			'_yoro_composed_parser_source'        => self::composition_parser_source( $extracted ),
 			'_yoro_composed_confidence'           => (float) ( $extracted['confidence'] ?? 0.85 ),
-			'_yoro_composed_source'               => sanitize_key( $extracted['composition_source'] ?? 'rule_merge' ),
+			'_yoro_composed_source'               => sanitize_key( $extracted['composition_source'] ?? self::COMPOSITION_SOURCE_GUARD ),
 		];
 
 		YoRo_Conversation_Memory::start_workflow(
@@ -927,13 +1062,13 @@ class YoRo_Action_Composition_Planner {
 			'matched'            => true,
 			'stage'              => 'clarify',
 			'action'             => 'orders.add_note',
-			'message'            => __( 'What note should I add?', 'yoro-agent-core' ),
+			'message'            => __( 'What note should I add?', 'yoro-ai-core' ),
 			'params'             => $params,
 			'missing'            => [ 'note' ],
 			'clarify_reason'     => 'missing_note',
-			'composition_source' => sanitize_key( $extracted['composition_source'] ?? 'rule_merge' ),
-			'parser_source'      => 'rule',
-			'parser_rule'        => sanitize_text_field( $extracted['parser_rule'] ?? 'ai.action_decomposition' ) . '.missing_note',
+			'composition_source' => sanitize_key( $extracted['composition_source'] ?? self::COMPOSITION_SOURCE_GUARD ),
+			'parser_source'      => self::composition_parser_source( $extracted ),
+			'parser_rule'        => sanitize_text_field( $extracted['parser_rule'] ?? self::PARSER_RULE_GUARD ) . '.missing_note',
 			'confidence'         => max( 0.85, (float) ( $extracted['confidence'] ?? 0.85 ) ),
 			'original_command'   => $command,
 			'normalized_command' => $normalized,
@@ -967,9 +1102,10 @@ class YoRo_Action_Composition_Planner {
 				'_yoro_composed_requested_actions'    => $requested,
 				'_yoro_composed_unavailable_requests' => $unavailable,
 				'_yoro_composed_original_command'     => $command,
-				'_yoro_composed_parser_rule'          => sanitize_text_field( $extracted['parser_rule'] ?? 'ai.action_decomposition' ),
+				'_yoro_composed_parser_rule'          => sanitize_text_field( $extracted['parser_rule'] ?? self::PARSER_RULE_GUARD ),
+				'_yoro_composed_parser_source'        => self::composition_parser_source( $extracted ),
 				'_yoro_composed_confidence'           => (float) ( $extracted['confidence'] ?? 0.85 ),
-				'_yoro_composed_source'               => sanitize_key( $extracted['composition_source'] ?? 'rule_merge' ),
+				'_yoro_composed_source'               => sanitize_key( $extracted['composition_source'] ?? self::COMPOSITION_SOURCE_GUARD ),
 			];
 
 			YoRo_Conversation_Memory::start_workflow(
@@ -987,15 +1123,15 @@ class YoRo_Action_Composition_Planner {
 				'action'             => 'orders.compose_customer_email',
 				'message'            => sprintf(
 					/* translators: %d: order id */
-					__( 'Order #%d does not require shipping. What should the customer email say instead?', 'yoro-agent-core' ),
+					__( 'Order #%d does not require shipping. What should the customer email say instead?', 'yoro-ai-core' ),
 					$order_id
 				),
 				'params'             => $clarify_params,
 				'missing'            => [ 'instruction' ],
 				'clarify_reason'     => 'missing_instruction',
-				'composition_source' => sanitize_key( $extracted['composition_source'] ?? 'rule_merge' ),
-				'parser_source'      => 'rule',
-				'parser_rule'        => sanitize_text_field( $extracted['parser_rule'] ?? 'ai.action_decomposition' ) . '.invalid_email_instruction',
+				'composition_source' => sanitize_key( $extracted['composition_source'] ?? self::COMPOSITION_SOURCE_GUARD ),
+				'parser_source'      => self::composition_parser_source( $extracted ),
+				'parser_rule'        => sanitize_text_field( $extracted['parser_rule'] ?? self::PARSER_RULE_GUARD ) . '.invalid_email_instruction',
 				'confidence'         => max( 0.85, (float) ( $extracted['confidence'] ?? 0.85 ) ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
@@ -1024,7 +1160,7 @@ class YoRo_Action_Composition_Planner {
 				[
 					'kind'     => 'add_note',
 					'action'   => 'orders.add_note',
-					'label'    => __( 'Add internal note', 'yoro-agent-core' ),
+					'label'    => __( 'Add internal note', 'yoro-ai-core' ),
 					'position' => $insert_at,
 					'params'   => [
 						'note' => $note,
@@ -1107,17 +1243,17 @@ class YoRo_Action_Composition_Planner {
 		$unavailable_count = is_array( $unavailable ) ? count( $unavailable ) : 0;
 
 		if ( $requested_count >= 3 && $unavailable_count > 0 ) {
-			return __( 'Composed workflow with partial support', 'yoro-agent-core' );
+			return __( 'Composed workflow with partial support', 'yoro-ai-core' );
 		}
 
 		if ( $requested_count >= 3 ) {
-			return __( 'Composed workflow', 'yoro-agent-core' );
+			return __( 'Composed workflow', 'yoro-ai-core' );
 		}
 
 		if ( $unavailable_count > 0 ) {
-			return __( 'Partial workflow plan', 'yoro-agent-core' );
+			return __( 'Partial workflow plan', 'yoro-ai-core' );
 		}
 
-		return __( 'Assembled workflow', 'yoro-agent-core' );
+		return __( 'Assembled workflow', 'yoro-ai-core' );
 	}
 }

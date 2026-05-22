@@ -139,7 +139,7 @@ class YoRo_Context_Provider {
 			'woocommerce/woocommerce.php'                    => 'WooCommerce',
 			'wc-blacklist-manager/wc-blacklist-manager.php'  => 'Blacklist Manager',
 			'wc-blacklist-manager-premium/wc-blacklist-manager-premium.php' => 'Blacklist Manager Premium',
-			'yoro-agent-core/yoro-agent-core.php'            => 'YoRo Agent Core',
+			'yoro-ai-core/yoro-ai-core.php'            => 'YoRo AI Core',
 		];
 
 		$data = [];

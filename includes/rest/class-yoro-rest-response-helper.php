@@ -6,6 +6,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_REST_Response_Helper {
 
+	private static function stale_workflow_message() {
+		return __( 'This workflow preview has expired. Please generate a new preview before confirming.', 'yoro-ai-core' );
+	}
+
 	public static function maybe_build_semantic_validation_response_from_result( $trace_id, $parsed, $plan, $risk, $policy, $result ) {
 		$result = is_array( $result ) ? $result : [];
 		$error  = isset( $result['error'] ) && is_array( $result['error'] ) ? $result['error'] : [];
@@ -78,16 +82,18 @@ class YoRo_REST_Response_Helper {
 	}
 
 	public static function build_stale_workflow_confirmation_response( $trace_id ) {
+		$message = self::stale_workflow_message();
+
 		return [
 			'success' => false,
 			'stage'   => 'error',
 			'trace_id' => $trace_id,
-			'message' => __( 'This workflow confirmation is stale. Please generate a new preview before confirming.', 'yoro-agent-core' ),
+			'message' => $message,
 			'result'  => [
 				'success'      => false,
 				'action'       => 'workflow.confirm',
-				'summary'      => __( 'This workflow confirmation is stale. Please generate a new preview before confirming.', 'yoro-agent-core' ),
-				'message'      => __( 'This workflow confirmation is stale. Please generate a new preview before confirming.', 'yoro-agent-core' ),
+				'summary'      => $message,
+				'message'      => $message,
 				'data'         => [],
 				'meta'         => [],
 				'processed'    => [],
@@ -95,7 +101,7 @@ class YoRo_REST_Response_Helper {
 				'errors'       => [
 					[
 						'code'    => 'yoro_workflow_stale',
-						'message' => __( 'This workflow confirmation is stale. Please generate a new preview before confirming.', 'yoro-agent-core' ),
+						'message' => $message,
 					],
 				],
 				'count'        => 0,
@@ -106,7 +112,7 @@ class YoRo_REST_Response_Helper {
 				'display_type' => 'error',
 				'error'        => [
 					'code'    => 'yoro_workflow_stale',
-					'message' => __( 'This workflow confirmation is stale. Please generate a new preview before confirming.', 'yoro-agent-core' ),
+					'message' => $message,
 					'data'    => null,
 				],
 			],
@@ -114,14 +120,20 @@ class YoRo_REST_Response_Helper {
 	}
 
 	public static function normalize_error_result( $action, WP_Error $error ) {
+		$message = $error->get_error_message();
+
+		if ( class_exists( 'YoRo_Response_UX_Formatter' ) ) {
+			$message = YoRo_Response_UX_Formatter::clean_user_facing_copy( $message );
+		}
+
 		return [
 			'success'      => false,
 			'action'       => $action,
 			'summary'      => '',
-			'message'      => $error->get_error_message(),
+			'message'      => $message,
 			'error'        => [
 				'code'    => $error->get_error_code(),
-				'message' => $error->get_error_message(),
+				'message' => $message,
 				'data'    => $error->get_error_data(),
 			],
 			'processed'    => [],
@@ -129,7 +141,7 @@ class YoRo_REST_Response_Helper {
 			'errors'       => [
 				[
 					'code'    => $error->get_error_code(),
-					'message' => $error->get_error_message(),
+					'message' => $message,
 				],
 			],
 			'count'        => 0,
@@ -181,25 +193,25 @@ class YoRo_REST_Response_Helper {
 		if ( false !== stripos( $error->get_error_message(), 'does not require shipping' ) ) {
 			$message = sprintf(
 				/* translators: %d: order id */
-				__( 'Order #%d does not require shipping. What should the customer email say instead?', 'yoro-agent-core' ),
+				__( 'Order #%d does not require shipping. What should the customer email say instead?', 'yoro-ai-core' ),
 				$order_id
 			);
 		} elseif ( self::looks_like_shipping_email_text( $text ) ) {
 			$message = sprintf(
 				/* translators: %d: order id */
-				__( 'That shipping or delivery email does not match order #%d. What should the customer email say instead?', 'yoro-agent-core' ),
+				__( 'That shipping or delivery email does not match order #%d. What should the customer email say instead?', 'yoro-ai-core' ),
 				$order_id
 			);
 		} elseif ( self::looks_like_payment_email_text( $text ) ) {
 			$message = sprintf(
 				/* translators: %d: order id */
-				__( 'That payment-verification email does not match order #%d. What should the customer email say instead?', 'yoro-agent-core' ),
+				__( 'That payment-verification email does not match order #%d. What should the customer email say instead?', 'yoro-ai-core' ),
 				$order_id
 			);
 		} elseif ( self::looks_like_refund_email_text( $text ) ) {
 			$message = sprintf(
 				/* translators: %d: order id */
-				__( 'That refund-related email does not match order #%d. What should the customer email say instead?', 'yoro-agent-core' ),
+				__( 'That refund-related email does not match order #%d. What should the customer email say instead?', 'yoro-ai-core' ),
 				$order_id
 			);
 		}
@@ -243,7 +255,7 @@ class YoRo_REST_Response_Helper {
 				'normalized_command' => sanitize_text_field( $parsed['normalized_command'] ?? '' ),
 				'options'            => [
 					[
-						'label'   => __( 'Cancel', 'yoro-agent-core' ),
+						'label'   => __( 'Cancel', 'yoro-ai-core' ),
 						'command' => 'workflow.cancel',
 					],
 				],
@@ -402,19 +414,19 @@ class YoRo_REST_Response_Helper {
 		if ( in_array( $action, [ 'workflow.fulfillment_followup_preview', 'workflow.verify_customer_before_fulfillment' ], true ) ) {
 			if ( 'yoro_invalid_action_plan_entity' === $error->get_error_code() ) {
 				return $order_id > 0
-					? sprintf( __( 'Order #%d is not eligible for fulfillment handling in this workflow.', 'yoro-agent-core' ), $order_id )
-					: __( 'This order is not eligible for fulfillment handling in this workflow.', 'yoro-agent-core' );
+					? sprintf( __( 'Order #%d is not eligible for fulfillment handling in this workflow.', 'yoro-ai-core' ), $order_id )
+					: __( 'This order is not eligible for fulfillment handling in this workflow.', 'yoro-ai-core' );
 			}
 
 			return $order_id > 0
-				? sprintf( __( 'Order #%d is not in a valid fulfillment state for this workflow.', 'yoro-agent-core' ), $order_id )
-				: __( 'This order is not in a valid fulfillment state for this workflow.', 'yoro-agent-core' );
+				? sprintf( __( 'Order #%d is not in a valid fulfillment state for this workflow.', 'yoro-ai-core' ), $order_id )
+				: __( 'This order is not in a valid fulfillment state for this workflow.', 'yoro-ai-core' );
 		}
 
 		if ( in_array( $action, [ 'workflow.refund_review', 'orders.refund_preview' ], true ) ) {
 			return $order_id > 0
-				? sprintf( __( 'Order #%d cannot continue with that refund workflow as requested.', 'yoro-agent-core' ), $order_id )
-				: __( 'That refund workflow cannot continue as requested.', 'yoro-agent-core' );
+				? sprintf( __( 'Order #%d cannot continue with that refund workflow as requested.', 'yoro-ai-core' ), $order_id )
+				: __( 'That refund workflow cannot continue as requested.', 'yoro-ai-core' );
 		}
 
 		return $error->get_error_message();

@@ -456,7 +456,7 @@ class YoRo_Conversation_Memory {
 		}
 
 		if (
-			'rule.follow_up.briefing.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			self::is_parser_rule( $parsed, 'rule.follow_up.briefing.recommendation', 'guard.follow_up.briefing.recommendation' ) &&
 			isset( $conversation['last_briefing'] ) &&
 			is_array( $conversation['last_briefing'] ) &&
 			! empty( $conversation['last_briefing']['recommended_sequence'] ) &&
@@ -487,7 +487,7 @@ class YoRo_Conversation_Memory {
 		}
 
 		if (
-			'rule.follow_up.business.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			self::is_parser_rule( $parsed, 'rule.follow_up.business.recommendation', 'guard.follow_up.business.recommendation' ) &&
 			isset( $conversation['last_business_followup'] ) &&
 			is_array( $conversation['last_business_followup'] ) &&
 			! empty( $conversation['last_business_followup']['recommended_sequence'] ) &&
@@ -518,7 +518,7 @@ class YoRo_Conversation_Memory {
 		}
 
 		if (
-			'rule.follow_up.attention.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			self::is_parser_rule( $parsed, 'rule.follow_up.attention.recommendation', 'guard.follow_up.attention.recommendation' ) &&
 			isset( $conversation['last_attention_followup'] ) &&
 			is_array( $conversation['last_attention_followup'] ) &&
 			! empty( $conversation['last_attention_followup']['recommended_sequence'] ) &&
@@ -549,7 +549,7 @@ class YoRo_Conversation_Memory {
 		}
 
 		if (
-			'rule.follow_up.service.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			self::is_parser_rule( $parsed, 'rule.follow_up.service.recommendation', 'guard.follow_up.service.recommendation' ) &&
 			isset( $conversation['last_service_followup'] ) &&
 			is_array( $conversation['last_service_followup'] ) &&
 			! empty( $conversation['last_service_followup']['recommended_sequence'] ) &&
@@ -580,7 +580,7 @@ class YoRo_Conversation_Memory {
 		}
 
 		if (
-			'rule.follow_up.fulfillment.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			self::is_parser_rule( $parsed, 'rule.follow_up.fulfillment.recommendation', 'guard.follow_up.fulfillment.recommendation' ) &&
 			isset( $conversation['last_fulfillment_followup'] ) &&
 			is_array( $conversation['last_fulfillment_followup'] ) &&
 			! empty( $conversation['last_fulfillment_followup']['recommended_sequence'] ) &&
@@ -611,7 +611,7 @@ class YoRo_Conversation_Memory {
 		}
 
 		if (
-			'rule.follow_up.inventory.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			self::is_parser_rule( $parsed, 'rule.follow_up.inventory.recommendation', 'guard.follow_up.inventory.recommendation' ) &&
 			isset( $conversation['last_inventory_followup'] ) &&
 			is_array( $conversation['last_inventory_followup'] ) &&
 			! empty( $conversation['last_inventory_followup']['recommended_sequence'] ) &&
@@ -754,7 +754,7 @@ class YoRo_Conversation_Memory {
 		}
 
 		if (
-			'rule.follow_up.briefing.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			self::is_parser_rule( $parsed, 'rule.follow_up.briefing.recommendation', 'guard.follow_up.briefing.recommendation' ) &&
 			isset( $conversation['last_briefing'] ) &&
 			is_array( $conversation['last_briefing'] ) &&
 			! empty( $conversation['last_briefing']['recommended_sequence'] ) &&
@@ -785,7 +785,7 @@ class YoRo_Conversation_Memory {
 		}
 
 		if (
-			'rule.follow_up.business.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			self::is_parser_rule( $parsed, 'rule.follow_up.business.recommendation', 'guard.follow_up.business.recommendation' ) &&
 			isset( $conversation['last_business_followup'] ) &&
 			is_array( $conversation['last_business_followup'] ) &&
 			! empty( $conversation['last_business_followup']['recommended_sequence'] ) &&
@@ -816,7 +816,7 @@ class YoRo_Conversation_Memory {
 		}
 
 		if (
-			'rule.follow_up.attention.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			self::is_parser_rule( $parsed, 'rule.follow_up.attention.recommendation', 'guard.follow_up.attention.recommendation' ) &&
 			isset( $conversation['last_attention_followup'] ) &&
 			is_array( $conversation['last_attention_followup'] ) &&
 			! empty( $conversation['last_attention_followup']['recommended_sequence'] ) &&
@@ -847,7 +847,7 @@ class YoRo_Conversation_Memory {
 		}
 
 		if (
-			'rule.follow_up.service.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			self::is_parser_rule( $parsed, 'rule.follow_up.service.recommendation', 'guard.follow_up.service.recommendation' ) &&
 			isset( $conversation['last_service_followup'] ) &&
 			is_array( $conversation['last_service_followup'] ) &&
 			! empty( $conversation['last_service_followup']['recommended_sequence'] ) &&
@@ -878,7 +878,7 @@ class YoRo_Conversation_Memory {
 		}
 
 		if (
-			'rule.follow_up.fulfillment.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			self::is_parser_rule( $parsed, 'rule.follow_up.fulfillment.recommendation', 'guard.follow_up.fulfillment.recommendation' ) &&
 			isset( $conversation['last_fulfillment_followup'] ) &&
 			is_array( $conversation['last_fulfillment_followup'] ) &&
 			! empty( $conversation['last_fulfillment_followup']['recommended_sequence'] ) &&
@@ -909,7 +909,7 @@ class YoRo_Conversation_Memory {
 		}
 
 		if (
-			'rule.follow_up.inventory.recommendation' === sanitize_text_field( $parsed['parser_rule'] ?? '' ) &&
+			self::is_parser_rule( $parsed, 'rule.follow_up.inventory.recommendation', 'guard.follow_up.inventory.recommendation' ) &&
 			isset( $conversation['last_inventory_followup'] ) &&
 			is_array( $conversation['last_inventory_followup'] ) &&
 			! empty( $conversation['last_inventory_followup']['recommended_sequence'] ) &&
@@ -1539,6 +1539,20 @@ class YoRo_Conversation_Memory {
 			'expires_at'    => '',
 			'required'      => false,
 		];
+	}
+
+	private static function is_parser_rule( $parsed, $legacy_rule, $guard_rule ) {
+		$parsed = is_array( $parsed ) ? $parsed : [];
+		$parser_rule = sanitize_text_field( $parsed['parser_rule'] ?? '' );
+
+		return in_array(
+			$parser_rule,
+			[
+				sanitize_text_field( $legacy_rule ),
+				sanitize_text_field( $guard_rule ),
+			],
+			true
+		);
 	}
 
 	private static function default_state() {

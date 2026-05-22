@@ -11,7 +11,7 @@ class YoRo_Plan_Executor {
 		if ( ! is_array( $plan ) || empty( $plan['type'] ) ) {
 			return new WP_Error(
 				'yoro_invalid_plan',
-				__( 'Invalid execution plan.', 'yoro-agent-core' )
+				__( 'Invalid execution plan.', 'yoro-ai-core' )
 			);
 		}
 
@@ -37,7 +37,7 @@ class YoRo_Plan_Executor {
 
 		return new WP_Error(
 			'yoro_unknown_plan_type',
-			__( 'Unknown plan type.', 'yoro-agent-core' )
+			__( 'Unknown plan type.', 'yoro-ai-core' )
 		);
 	}
 
@@ -115,7 +115,7 @@ class YoRo_Plan_Executor {
 		if ( empty( $steps ) ) {
 			return new WP_Error(
 				'yoro_empty_plan',
-				__( 'Plan has no steps.', 'yoro-agent-core' )
+				__( 'Plan has no steps.', 'yoro-ai-core' )
 			);
 		}
 
@@ -171,8 +171,8 @@ class YoRo_Plan_Executor {
 				'multi_action' => true,
 				'action'       => $plan['action'] ?? 'multi_action',
 				'workflow'     => $workflow,
-				'summary'      => __( 'Multi-step preview generated.', 'yoro-agent-core' ),
-				'message'      => __( 'Multi-step preview generated.', 'yoro-agent-core' ),
+				'summary'      => __( 'Multi-step preview generated.', 'yoro-ai-core' ),
+				'message'      => __( 'Multi-step preview generated.', 'yoro-ai-core' ),
 				'actions'      => $results,
 				'processed'    => [],
 				'skipped'      => [],
@@ -211,7 +211,7 @@ class YoRo_Plan_Executor {
 				'action'                => $plan['action'] ?? 'multi_action',
 				'workflow'              => $workflow,
 				'summary'               => sanitize_text_field( $confirmation_copy['summary'] ?? '' ),
-				'message'               => sanitize_text_field( $confirmation_copy['message'] ?? __( 'This multi-step action requires confirmation.', 'yoro-agent-core' ) ),
+				'message'               => sanitize_text_field( $confirmation_copy['message'] ?? __( 'This multi-step action requires confirmation.', 'yoro-ai-core' ) ),
 				'actions'               => $steps,
 				'processed'             => [],
 				'skipped'               => [],
@@ -258,12 +258,12 @@ class YoRo_Plan_Executor {
 					'on_error' => $step['on_error'] ?? 'stop',
 					'retry'    => $step['retry'] ?? [ 'max_attempts' => 1 ],
 					'skipped'  => true,
-					'reason'   => __( 'Step condition was not met.', 'yoro-agent-core' ),
+					'reason'   => __( 'Step condition was not met.', 'yoro-ai-core' ),
 					'result'   => [
 						'success'      => true,
 						'skipped'      => true,
 						'action'       => $action,
-						'message'      => __( 'Step skipped because its condition was not met.', 'yoro-agent-core' ),
+						'message'      => __( 'Step skipped because its condition was not met.', 'yoro-ai-core' ),
 						'display_type' => 'workflow_step_skipped',
 						'read_only'    => true,
 					],
@@ -278,6 +278,37 @@ class YoRo_Plan_Executor {
 				$context,
 				$plan['parsed'] ?? []
 			);
+			$params = self::repair_missing_note_params_for_sequence_step(
+				$action,
+				$params,
+				$step,
+				$steps,
+				$plan
+			);
+
+			if ( self::should_defer_manual_email_send_step( $step, $params, $plan ) ) {
+				$result = self::build_manual_email_send_deferred_result( $params );
+
+				$context['previous_success'] = true;
+				$context['previous_action']  = $action;
+
+				$results[] = [
+					'id'       => $step['id'] ?? '',
+					'label'    => $step['label'] ?? $action,
+					'action'   => $action,
+					'params'   => $params,
+					'when'     => $step['when'] ?? [],
+					'capture'  => $step['capture'] ?? [],
+					'on_error' => $step['on_error'] ?? 'stop',
+					'retry'    => $step['retry'] ?? [ 'max_attempts' => 1 ],
+					'attempts' => 0,
+					'skipped'  => true,
+					'manual_action_required' => true,
+					'result'   => $result,
+				];
+
+				continue;
+			}
 
 			if ( ! empty( $workflow ) && class_exists( 'YoRo_Workflow_Runner' ) ) {
 				$workflow = YoRo_Workflow_Runner::mark_step_executing( $workflow, $step, $index );
@@ -318,7 +349,7 @@ class YoRo_Plan_Executor {
 			if ( self::is_step_failure( $result ) ) {
 				$error_message = is_wp_error( $result )
 					? $result->get_error_message()
-					: ( $result['message'] ?? __( 'Workflow step failed.', 'yoro-agent-core' ) );
+					: ( $result['message'] ?? __( 'I could not complete one workflow step.', 'yoro-ai-core' ) );
 
 				$error_code = is_wp_error( $result )
 					? $result->get_error_code()
@@ -382,8 +413,8 @@ class YoRo_Plan_Executor {
 						'multi_action'   => true,
 						'action'         => $plan['action'] ?? 'multi_action',
 						'workflow'       => $workflow,
-						'summary'        => __( 'Workflow stopped after a failed step.', 'yoro-agent-core' ),
-						'message'        => __( 'A workflow step failed, so remaining steps were skipped.', 'yoro-agent-core' ),
+						'summary'        => __( 'Workflow paused because a step needs attention.', 'yoro-ai-core' ),
+						'message'        => __( 'I could not complete one step, so I skipped the remaining steps.', 'yoro-ai-core' ),
 						'failed_action'  => $action,
 						'step_attempts'  => $attempt,
 						'actions'        => $results,
@@ -522,7 +553,7 @@ class YoRo_Plan_Executor {
 			);
 		}
 
-		$completion_copy = self::describe_sequence_completion( $workflow, $workflow_errors );
+		$completion_copy = self::describe_sequence_completion( $workflow, $workflow_errors, $results );
 
 		return [
 			'success'      => true,
@@ -551,18 +582,24 @@ class YoRo_Plan_Executor {
 		$delivery_mode = sanitize_key( $branch['delivery_mode'] ?? '' );
 		$email_mode    = sanitize_key( $branch['email_delivery_mode'] ?? '' );
 
-		if ( 'write_email_for_order' === $definition_id ) {
+		if ( in_array( $definition_id, [ 'write_email_for_order', 'write_email_for_orders', 'write_and_save_email_drafts_for_orders', 'write_and_send_emails_for_orders' ], true ) ) {
+			$plural = in_array( $definition_id, [ 'write_email_for_orders', 'write_and_save_email_drafts_for_orders', 'write_and_send_emails_for_orders' ], true );
+
 			if ( 'save_draft' === $delivery_mode ) {
 				return [
-					'summary' => __( 'Confirm draft save', 'yoro-agent-core' ),
-					'message' => __( 'Review this email workflow before YoRo saves the draft to the order.', 'yoro-agent-core' ),
+					'summary' => __( 'Confirm draft save', 'yoro-ai-core' ),
+					'message' => $plural
+						? __( 'Review this email workflow before YoRo saves drafts to the selected orders.', 'yoro-ai-core' )
+						: __( 'Review this email workflow before YoRo saves the draft to the order.', 'yoro-ai-core' ),
 				];
 			}
 
 			if ( 'send' === $delivery_mode ) {
 				return [
-					'summary' => __( 'Confirm email send', 'yoro-agent-core' ),
-					'message' => __( 'Review this email workflow before YoRo sends the message to the customer.', 'yoro-agent-core' ),
+					'summary' => __( 'Confirm email send', 'yoro-ai-core' ),
+					'message' => $plural
+						? __( 'Review this email workflow before YoRo sends the messages to the selected customers.', 'yoro-ai-core' )
+						: __( 'Review this email workflow before YoRo sends the message to the customer.', 'yoro-ai-core' ),
 				];
 			}
 		}
@@ -570,15 +607,15 @@ class YoRo_Plan_Executor {
 		if ( 'verify_customer_before_fulfillment' === $definition_id ) {
 			if ( 'save_draft' === $email_mode ) {
 				return [
-					'summary' => __( 'Confirm verification workflow', 'yoro-agent-core' ),
-					'message' => __( 'Review this verification workflow before YoRo holds the order, adds the note, and saves the verification email draft.', 'yoro-agent-core' ),
+					'summary' => __( 'Confirm verification workflow', 'yoro-ai-core' ),
+					'message' => __( 'Review this verification workflow before YoRo holds the order, adds the note, and saves the verification email draft.', 'yoro-ai-core' ),
 				];
 			}
 
 			if ( 'send' === $email_mode ) {
 				return [
-					'summary' => __( 'Confirm verification workflow', 'yoro-agent-core' ),
-					'message' => __( 'Review this verification workflow before YoRo holds the order, adds the note, and sends the verification email.', 'yoro-agent-core' ),
+					'summary' => __( 'Confirm verification workflow', 'yoro-ai-core' ),
+					'message' => __( 'Review this verification workflow before YoRo holds the order, adds the note, and sends the verification email.', 'yoro-ai-core' ),
 				];
 			}
 		}
@@ -586,73 +623,98 @@ class YoRo_Plan_Executor {
 		if ( 'refund_review' === $definition_id ) {
 			if ( 'save_draft' === $delivery_mode ) {
 				return [
-					'summary' => __( 'Confirm refund review workflow', 'yoro-agent-core' ),
-					'message' => __( 'Review this refund workflow before YoRo saves the refund follow-up email draft.', 'yoro-agent-core' ),
+					'summary' => __( 'Confirm refund review workflow', 'yoro-ai-core' ),
+					'message' => __( 'Review this refund workflow before YoRo saves the refund follow-up email draft.', 'yoro-ai-core' ),
 				];
 			}
 
 			if ( 'send' === $delivery_mode ) {
 				return [
-					'summary' => __( 'Confirm refund review workflow', 'yoro-agent-core' ),
-					'message' => __( 'Review this refund workflow before YoRo sends the refund follow-up email.', 'yoro-agent-core' ),
+					'summary' => __( 'Confirm refund review workflow', 'yoro-ai-core' ),
+					'message' => __( 'Review this refund workflow before YoRo sends the refund follow-up email.', 'yoro-ai-core' ),
 				];
 			}
 		}
 
 		return [
 			'summary' => '',
-			'message' => __( 'This multi-step action requires confirmation.', 'yoro-agent-core' ),
+			'message' => __( 'This multi-step action requires confirmation.', 'yoro-ai-core' ),
 		];
 	}
 
-	private static function describe_sequence_completion( $workflow, $workflow_errors ) {
+	private static function describe_sequence_completion( $workflow, $workflow_errors, $results = [] ) {
 		$workflow      = is_array( $workflow ) ? $workflow : [];
 		$definition_id = sanitize_key( $workflow['definition_id'] ?? $workflow['type'] ?? '' );
 		$branch        = isset( $workflow['branch'] ) && is_array( $workflow['branch'] ) ? $workflow['branch'] : [];
 		$delivery_mode = sanitize_key( $branch['delivery_mode'] ?? '' );
 		$email_mode    = sanitize_key( $branch['email_delivery_mode'] ?? '' );
 		$has_errors    = ! empty( $workflow_errors );
+		$manual_email_send = self::results_contain_manual_email_send_deferred( $results );
 
 		if ( $has_errors ) {
 			return [
-				'summary' => __( 'Workflow completed with errors.', 'yoro-agent-core' ),
-				'message' => __( 'Workflow completed, but one or more steps failed.', 'yoro-agent-core' ),
+				'summary' => __( 'Workflow completed with issues.', 'yoro-ai-core' ),
+				'message' => __( 'The workflow finished, but one or more steps need attention.', 'yoro-ai-core' ),
 			];
 		}
 
-		if ( 'write_email_for_order' === $definition_id ) {
+		if ( in_array( $definition_id, [ 'write_email_for_order', 'write_email_for_orders', 'write_and_save_email_drafts_for_orders', 'write_and_send_emails_for_orders' ], true ) ) {
+			$plural = in_array( $definition_id, [ 'write_email_for_orders', 'write_and_save_email_drafts_for_orders', 'write_and_send_emails_for_orders' ], true );
+
 			if ( 'save_draft' === $delivery_mode ) {
 				return [
-					'summary' => __( 'Email draft saved.', 'yoro-agent-core' ),
-					'message' => __( 'YoRo wrote the email and saved the draft on the order.', 'yoro-agent-core' ),
+					'summary' => $plural ? __( 'Email drafts saved.', 'yoro-ai-core' ) : __( 'Email draft saved.', 'yoro-ai-core' ),
+					'message' => $plural
+						? __( 'YoRo wrote the emails and saved drafts on the selected orders.', 'yoro-ai-core' )
+						: __( 'YoRo wrote the email and saved the draft on the order.', 'yoro-ai-core' ),
 				];
 			}
 
 			if ( 'send' === $delivery_mode ) {
+				if ( $manual_email_send ) {
+					return [
+						'summary' => $plural ? __( 'Emails prepared.', 'yoro-ai-core' ) : __( 'Email prepared.', 'yoro-ai-core' ),
+						'message' => $plural
+							? __( 'YoRo wrote the emails and left them ready for you to send manually.', 'yoro-ai-core' )
+							: __( 'YoRo wrote the email and left it ready for you to send manually.', 'yoro-ai-core' ),
+					];
+				}
+
 				return [
-					'summary' => __( 'Email sent.', 'yoro-agent-core' ),
-					'message' => __( 'YoRo wrote the email and sent it to the customer.', 'yoro-agent-core' ),
+					'summary' => $plural ? __( 'Emails sent.', 'yoro-ai-core' ) : __( 'Email sent.', 'yoro-ai-core' ),
+					'message' => $plural
+						? __( 'YoRo wrote the emails and sent them to the selected customers.', 'yoro-ai-core' )
+						: __( 'YoRo wrote the email and sent it to the customer.', 'yoro-ai-core' ),
 				];
 			}
 
 			return [
-				'summary' => __( 'Email prepared.', 'yoro-agent-core' ),
-				'message' => __( 'YoRo wrote the email and left it ready for review.', 'yoro-agent-core' ),
+				'summary' => $plural ? __( 'Emails prepared.', 'yoro-ai-core' ) : __( 'Email prepared.', 'yoro-ai-core' ),
+				'message' => $plural
+					? __( 'YoRo wrote the emails and left them ready for review.', 'yoro-ai-core' )
+					: __( 'YoRo wrote the email and left it ready for review.', 'yoro-ai-core' ),
 			];
 		}
 
 		if ( 'verify_customer_before_fulfillment' === $definition_id ) {
 			if ( 'save_draft' === $email_mode ) {
 				return [
-					'summary' => __( 'Verification workflow completed.', 'yoro-agent-core' ),
-					'message' => __( 'YoRo held the order, added the verification note, and saved the verification email draft.', 'yoro-agent-core' ),
+					'summary' => __( 'Verification workflow completed.', 'yoro-ai-core' ),
+					'message' => __( 'YoRo held the order, added the verification note, and saved the verification email draft.', 'yoro-ai-core' ),
 				];
 			}
 
 			if ( 'send' === $email_mode ) {
+				if ( $manual_email_send ) {
+					return [
+						'summary' => __( 'Verification workflow completed.', 'yoro-ai-core' ),
+						'message' => __( 'YoRo held the order, added the verification note, and prepared the verification email for you to send manually.', 'yoro-ai-core' ),
+					];
+				}
+
 				return [
-					'summary' => __( 'Verification workflow completed.', 'yoro-agent-core' ),
-					'message' => __( 'YoRo held the order, added the verification note, and sent the verification email.', 'yoro-agent-core' ),
+					'summary' => __( 'Verification workflow completed.', 'yoro-ai-core' ),
+					'message' => __( 'YoRo held the order, added the verification note, and sent the verification email.', 'yoro-ai-core' ),
 				];
 			}
 		}
@@ -660,28 +722,215 @@ class YoRo_Plan_Executor {
 		if ( 'refund_review' === $definition_id ) {
 			if ( 'save_draft' === $delivery_mode ) {
 				return [
-					'summary' => __( 'Refund review completed.', 'yoro-agent-core' ),
-					'message' => __( 'YoRo reviewed the refund and saved the follow-up email draft.', 'yoro-agent-core' ),
+					'summary' => __( 'Refund review completed.', 'yoro-ai-core' ),
+					'message' => __( 'YoRo reviewed the refund and saved the follow-up email draft.', 'yoro-ai-core' ),
 				];
 			}
 
 			if ( 'send' === $delivery_mode ) {
+				if ( $manual_email_send ) {
+					return [
+						'summary' => __( 'Refund review completed.', 'yoro-ai-core' ),
+						'message' => __( 'YoRo reviewed the refund and prepared the follow-up email for you to send manually.', 'yoro-ai-core' ),
+					];
+				}
+
 				return [
-					'summary' => __( 'Refund review completed.', 'yoro-agent-core' ),
-					'message' => __( 'YoRo reviewed the refund and sent the follow-up email.', 'yoro-agent-core' ),
+					'summary' => __( 'Refund review completed.', 'yoro-ai-core' ),
+					'message' => __( 'YoRo reviewed the refund and sent the follow-up email.', 'yoro-ai-core' ),
 				];
 			}
 
 			return [
-				'summary' => __( 'Refund review completed.', 'yoro-agent-core' ),
-				'message' => __( 'YoRo reviewed the refundable amount and order details.', 'yoro-agent-core' ),
+				'summary' => __( 'Refund review completed.', 'yoro-ai-core' ),
+				'message' => __( 'YoRo reviewed the refundable amount and order details.', 'yoro-ai-core' ),
 			];
 		}
 
 		return [
-			'summary' => __( 'Multi-step action completed.', 'yoro-agent-core' ),
-			'message' => __( 'Multi-step action completed.', 'yoro-agent-core' ),
+			'summary' => $manual_email_send ? __( 'Multi-step action completed. Email is ready to send.', 'yoro-ai-core' ) : __( 'Multi-step action completed.', 'yoro-ai-core' ),
+			'message' => $manual_email_send ? __( 'The workflow completed and the email is ready for you to send manually.', 'yoro-ai-core' ) : __( 'Multi-step action completed.', 'yoro-ai-core' ),
 		];
+	}
+
+	private static function should_defer_manual_email_send_step( $step, $params, $plan ) {
+		$step = is_array( $step ) ? $step : [];
+		$params = is_array( $params ) ? $params : [];
+		$plan = is_array( $plan ) ? $plan : [];
+		$action = sanitize_text_field( $step['action'] ?? '' );
+
+		if ( 'orders.send_customer_email' !== $action ) {
+			return false;
+		}
+
+		$meta = isset( $step['meta'] ) && is_array( $step['meta'] ) ? $step['meta'] : [];
+
+		if ( ! empty( $meta['allow_auto_send'] ) ) {
+			return false;
+		}
+
+		$plan_action = sanitize_text_field( $plan['action'] ?? '' );
+
+		if ( 'orders.send_customer_email' === $plan_action ) {
+			return false;
+		}
+
+		return ! empty( $params['order_id'] ) && ! empty( $params['subject'] ) && ! empty( $params['body'] );
+	}
+
+	private static function build_manual_email_send_deferred_result( $params ) {
+		$params = is_array( $params ) ? $params : [];
+		$order_id = absint( $params['order_id'] ?? 0 );
+		$subject = sanitize_text_field( $params['subject'] ?? '' );
+		$body    = sanitize_textarea_field( $params['body'] ?? '' );
+
+		return [
+			'success'                => true,
+			'skipped'                => true,
+			'manual_action_required' => true,
+			'action'                 => 'orders.send_customer_email',
+			'summary'                => __( 'Email is ready to send manually.', 'yoro-ai-core' ),
+			'message'                => __( 'Use the Send this email button after reviewing the email.', 'yoro-ai-core' ),
+			'processed'              => [],
+			'skipped_ids'            => $order_id > 0 ? [ $order_id ] : [],
+			'errors'                 => [],
+			'count'                  => 0,
+			'read_only'              => true,
+			'undoable'               => false,
+			'undo_plan'              => [],
+			'result_type'            => 'customer_email',
+			'display_type'           => 'manual_email_send',
+			'order_id'               => $order_id,
+			'send_payload'           => [
+				'order_id' => $order_id,
+				'subject'  => $subject,
+				'body'     => $body,
+			],
+			'assistant_summary'      => __( 'Email is ready to send manually.', 'yoro-ai-core' ),
+			'assistant_followup'     => '',
+			'suggestions'            => [],
+		];
+	}
+
+	private static function results_contain_manual_email_send_deferred( $results ) {
+		$results = is_array( $results ) ? $results : [];
+
+		foreach ( $results as $result ) {
+			if ( ! empty( $result['manual_action_required'] ) ) {
+				return true;
+			}
+
+			if ( ! empty( $result['result']['manual_action_required'] ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static function repair_missing_note_params_for_sequence_step( $action, $params, $step, $steps, $plan ) {
+		$params = is_array( $params ) ? $params : [];
+		$action = sanitize_text_field( $action );
+
+		if ( ! in_array( $action, [ 'orders.add_note', 'orders.bulk_update_status_with_note' ], true ) ) {
+			return $params;
+		}
+
+		if ( ! empty( $params['note'] ) && ! self::is_placeholder_note_text( $params['note'], $params['status'] ?? '' ) ) {
+			return $params;
+		}
+
+		$note = self::infer_note_from_sequence_context( $step, $steps, $plan );
+
+		if ( '' !== $note ) {
+			$params['note'] = $note;
+		}
+
+		return $params;
+	}
+
+	private static function infer_note_from_sequence_context( $step, $steps, $plan ) {
+		$texts = [];
+		$plan = is_array( $plan ) ? $plan : [];
+
+		if ( ! empty( $plan['parsed']['original_command'] ) ) {
+			$texts[] = $plan['parsed']['original_command'];
+		}
+
+		if ( ! empty( $plan['params']['original_command'] ) ) {
+			$texts[] = $plan['params']['original_command'];
+		}
+
+		$steps = is_array( $steps ) ? $steps : [];
+
+		foreach ( $steps as $candidate ) {
+			$candidate_params = isset( $candidate['params'] ) && is_array( $candidate['params'] ) ? $candidate['params'] : [];
+
+			foreach ( [ 'note', 'instruction' ] as $key ) {
+				if ( ! empty( $candidate_params[ $key ] ) && is_string( $candidate_params[ $key ] ) ) {
+					$texts[] = $candidate_params[ $key ];
+				}
+			}
+		}
+
+		foreach ( $texts as $text ) {
+			$note = self::extract_note_topic_from_text( $text );
+
+			if ( '' !== $note ) {
+				return $note;
+			}
+		}
+
+		return '';
+	}
+
+	private static function extract_note_topic_from_text( $text ) {
+		$text = trim( wp_strip_all_tags( (string) $text ) );
+
+		if ( '' === $text ) {
+			return '';
+		}
+
+		if ( preg_match( '/\b(?:about|regarding|re:)\s+([^,.;!?\\n]+)/i', $text, $matches ) ) {
+			return self::clean_inferred_note_topic( $matches[1] );
+		}
+
+		if ( preg_match( '/\b(payment\s+confirmation|payment\s+confirmed|payment\s+received|address\s+confirmation|refund\s+follow[- ]?up|shipping\s+delay)\b/i', $text, $matches ) ) {
+			return self::clean_inferred_note_topic( $matches[1] );
+		}
+
+		return '';
+	}
+
+	private static function clean_inferred_note_topic( $text ) {
+		$text = trim( wp_strip_all_tags( (string) $text ) );
+		$text = preg_replace( '/\s+(?:and|then|also)\s+(?:write|draft|compose|prepare|create|save|send)\b.*$/i', '', $text );
+		$text = preg_replace( '/\s+to\s+the\s+customer\b.*$/i', '', (string) $text );
+		$text = trim( preg_replace( '/[\s,;:.-]+$/', '', (string) $text ) );
+
+		if ( '' === $text || preg_match( '/^(?:it|this|that|the order)$/i', $text ) ) {
+			return '';
+		}
+
+		$text = substr( $text, 0, 180 );
+
+		return ucfirst( sanitize_textarea_field( $text ) );
+	}
+
+	private static function is_placeholder_note_text( $note, $status = '' ) {
+		$note = strtolower( trim( sanitize_textarea_field( $note ) ) );
+		$status = strtolower( trim( sanitize_key( $status ) ) );
+
+		if ( '' === $note ) {
+			return true;
+		}
+
+		if ( '' !== $status && $note === 'status updated to ' . str_replace( '-', ' ', $status ) ) {
+			return true;
+		}
+
+		return (bool) preg_match( '/^status (?:updated|changed) to [a-z0-9 _-]+(?:;?\s*added note per user request\.?)?$/i', $note )
+			|| (bool) preg_match( '/^added note per user request\.?$/i', $note );
 	}
 
 	private static function rollback( $undo_steps ) {

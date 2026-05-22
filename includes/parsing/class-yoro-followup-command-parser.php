@@ -104,7 +104,7 @@ class YoRo_Followup_Command_Parser {
 				'success'            => false,
 				'matched'            => false,
 				'stage'              => 'clarify',
-				'message'            => __( 'I do not have enough order context yet. Please open or select an order first.', 'yoro-agent-core' ),
+				'message'            => __( 'I do not have enough order context yet. Please open or select an order first.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -327,15 +327,15 @@ class YoRo_Followup_Command_Parser {
 			return null;
 		}
 
-		$resolved['parser_rule'] = 'rule.follow_up.business.recommendation';
-		$resolved['parser_source'] = 'rule';
+		$resolved['parser_rule'] = 'guard.follow_up.business.recommendation';
+		$resolved['parser_source'] = 'guard';
 		$resolved['original_command'] = $command;
 		$resolved['normalized_command'] = $normalized;
 		$resolved['resolved_followup_command'] = $resolved_command;
 		$resolved['business_sequence_index'] = $index;
 
 		if ( ! empty( $resolved['intent'] ) && is_array( $resolved['intent'] ) ) {
-			$resolved['intent']['source'] = 'rule';
+			$resolved['intent']['source'] = 'guard';
 		}
 
 		return $resolved;
@@ -416,15 +416,15 @@ class YoRo_Followup_Command_Parser {
 			return null;
 		}
 
-		$resolved['parser_rule'] = 'rule.follow_up.attention.recommendation';
-		$resolved['parser_source'] = 'rule';
+		$resolved['parser_rule'] = 'guard.follow_up.attention.recommendation';
+		$resolved['parser_source'] = 'guard';
 		$resolved['original_command'] = $command;
 		$resolved['normalized_command'] = $normalized;
 		$resolved['resolved_followup_command'] = $resolved_command;
 		$resolved['attention_sequence_index'] = $index;
 
 		if ( ! empty( $resolved['intent'] ) && is_array( $resolved['intent'] ) ) {
-			$resolved['intent']['source'] = 'rule';
+			$resolved['intent']['source'] = 'guard';
 		}
 
 		return $resolved;
@@ -505,15 +505,15 @@ class YoRo_Followup_Command_Parser {
 			return null;
 		}
 
-		$resolved['parser_rule'] = 'rule.follow_up.fulfillment.recommendation';
-		$resolved['parser_source'] = 'rule';
+		$resolved['parser_rule'] = 'guard.follow_up.fulfillment.recommendation';
+		$resolved['parser_source'] = 'guard';
 		$resolved['original_command'] = $command;
 		$resolved['normalized_command'] = $normalized;
 		$resolved['resolved_followup_command'] = $resolved_command;
 		$resolved['fulfillment_sequence_index'] = $index;
 
 		if ( ! empty( $resolved['intent'] ) && is_array( $resolved['intent'] ) ) {
-			$resolved['intent']['source'] = 'rule';
+			$resolved['intent']['source'] = 'guard';
 		}
 
 		return $resolved;
@@ -594,15 +594,15 @@ class YoRo_Followup_Command_Parser {
 			return null;
 		}
 
-		$resolved['parser_rule'] = 'rule.follow_up.inventory.recommendation';
-		$resolved['parser_source'] = 'rule';
+		$resolved['parser_rule'] = 'guard.follow_up.inventory.recommendation';
+		$resolved['parser_source'] = 'guard';
 		$resolved['original_command'] = $command;
 		$resolved['normalized_command'] = $normalized;
 		$resolved['resolved_followup_command'] = $resolved_command;
 		$resolved['inventory_sequence_index'] = $index;
 
 		if ( ! empty( $resolved['intent'] ) && is_array( $resolved['intent'] ) ) {
-			$resolved['intent']['source'] = 'rule';
+			$resolved['intent']['source'] = 'guard';
 		}
 
 		return $resolved;
@@ -687,15 +687,15 @@ class YoRo_Followup_Command_Parser {
 			return null;
 		}
 
-		$resolved['parser_rule'] = 'rule.follow_up.service.recommendation';
-		$resolved['parser_source'] = 'rule';
+		$resolved['parser_rule'] = 'guard.follow_up.service.recommendation';
+		$resolved['parser_source'] = 'guard';
 		$resolved['original_command'] = $command;
 		$resolved['normalized_command'] = $normalized;
 		$resolved['resolved_followup_command'] = $resolved_command;
 		$resolved['service_sequence_index'] = $index;
 
 		if ( ! empty( $resolved['intent'] ) && is_array( $resolved['intent'] ) ) {
-			$resolved['intent']['source'] = 'rule';
+			$resolved['intent']['source'] = 'guard';
 		}
 
 		return $resolved;
@@ -766,15 +766,15 @@ class YoRo_Followup_Command_Parser {
 			return null;
 		}
 
-		$resolved['parser_rule'] = 'rule.follow_up.briefing.recommendation';
-		$resolved['parser_source'] = 'rule';
+		$resolved['parser_rule'] = 'guard.follow_up.briefing.recommendation';
+		$resolved['parser_source'] = 'guard';
 		$resolved['original_command'] = $command;
 		$resolved['normalized_command'] = $normalized;
 		$resolved['resolved_followup_command'] = $resolved_command;
 		$resolved['briefing_sequence_index'] = $index;
 
 		if ( ! empty( $resolved['intent'] ) && is_array( $resolved['intent'] ) ) {
-			$resolved['intent']['source'] = 'rule';
+			$resolved['intent']['source'] = 'guard';
 		}
 
 		return $resolved;
@@ -831,14 +831,14 @@ class YoRo_Followup_Command_Parser {
 			return null;
 		}
 
-		$resolved['parser_rule'] = 'rule.follow_up.briefing.drilldown';
-		$resolved['parser_source'] = 'rule';
+		$resolved['parser_rule'] = 'guard.follow_up.briefing.drilldown';
+		$resolved['parser_source'] = 'guard';
 		$resolved['original_command'] = $command;
 		$resolved['normalized_command'] = $normalized;
 		$resolved['resolved_followup_command'] = $resolved_command;
 
 		if ( ! empty( $resolved['intent'] ) && is_array( $resolved['intent'] ) ) {
-			$resolved['intent']['source'] = 'rule';
+			$resolved['intent']['source'] = 'guard';
 		}
 
 		return $resolved;
@@ -865,7 +865,7 @@ class YoRo_Followup_Command_Parser {
 			return self::clarification_response(
 				$command,
 				$normalized,
-				__( 'Which orders should I add the note to?', 'yoro-agent-core' ),
+				__( 'Which orders should I add the note to?', 'yoro-ai-core' ),
 				self::build_order_reference_options( $client_context, $note )
 			);
 		}
@@ -904,7 +904,7 @@ class YoRo_Followup_Command_Parser {
 				'success'            => false,
 				'matched'            => false,
 				'stage'              => 'clarify',
-				'message'            => __( 'Which order should I add the note to?', 'yoro-agent-core' ),
+				'message'            => __( 'Which order should I add the note to?', 'yoro-ai-core' ),
 				'options'            => self::build_order_reference_options( $client_context, $note ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
@@ -948,7 +948,7 @@ class YoRo_Followup_Command_Parser {
 			return self::clarification_response(
 				$command,
 				$normalized,
-				__( 'Which orders should I update?', 'yoro-agent-core' ),
+				__( 'Which orders should I update?', 'yoro-ai-core' ),
 				self::build_order_reference_options( $client_context )
 			);
 		}
@@ -958,7 +958,7 @@ class YoRo_Followup_Command_Parser {
 			[
 				'order_ids' => $order_ids,
 				'status'    => $status,
-				'note'      => __( 'Order status updated by YoRo Agent.', 'yoro-agent-core' ),
+				'note'      => __( 'Order status updated by YoRo AI.', 'yoro-ai-core' ),
 			],
 			$command,
 			$normalized,
@@ -1039,7 +1039,7 @@ class YoRo_Followup_Command_Parser {
 				'success'            => false,
 				'matched'            => false,
 				'stage'              => 'clarify',
-				'message'            => __( 'I do not have enough customer context yet. Please open or select an order first.', 'yoro-agent-core' ),
+				'message'            => __( 'I do not have enough customer context yet. Please open or select an order first.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -1439,6 +1439,8 @@ class YoRo_Followup_Command_Parser {
 
 	private static function parsed_action( $action, $params, $command, $normalized, $parser_rule ) {
 		$registered_action = YoRo_Action_Registry::get( $action );
+		$parser_rule       = self::normalize_followup_parser_rule( $parser_rule );
+		$parser_source     = 0 === strpos( $parser_rule, 'guard.' ) ? 'guard' : 'rule';
 
 		return [
 			'success'              => true,
@@ -1450,6 +1452,7 @@ class YoRo_Followup_Command_Parser {
 			],
 			'params'               => $params,
 			'parser_rule'          => $parser_rule,
+			'parser_source'        => $parser_source,
 			'action_meta'          => [
 				'label'                 => $registered_action['label'] ?? '',
 				'risk_level'            => $registered_action['risk_level'] ?? 'low',
@@ -1459,6 +1462,16 @@ class YoRo_Followup_Command_Parser {
 			'original_command'     => $command,
 			'normalized_command'   => $normalized,
 		];
+	}
+
+	private static function normalize_followup_parser_rule( $parser_rule ) {
+		$parser_rule = sanitize_text_field( (string) $parser_rule );
+
+		if ( 0 === strpos( $parser_rule, 'rule.follow_up.' ) ) {
+			return 'guard.follow_up.' . substr( $parser_rule, strlen( 'rule.follow_up.' ) );
+		}
+
+		return $parser_rule;
 	}
 
 	private static function intent_name_from_action( $action ) {
@@ -1482,6 +1495,8 @@ class YoRo_Followup_Command_Parser {
 			'stage'              => 'clarify',
 			'message'            => $message,
 			'options'            => $options,
+			'parser_source'      => 'guard',
+			'parser_rule'        => 'guard.follow_up.clarify',
 			'original_command'   => $command,
 			'normalized_command' => $normalized,
 		];

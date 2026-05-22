@@ -32,6 +32,8 @@ class YoRo_Memory_Context_Resolver {
 					1.0,
 					'The command explicitly names the target order.'
 				);
+			} elseif ( self::looks_like_contextual_order_list_reference( $normalized ) ) {
+				$reference = self::resolve_contextual_order_list_reference( $context );
 			} elseif ( self::looks_like_contextual_order_reference( $normalized ) ) {
 				$reference = self::resolve_contextual_order_reference( $context );
 			}
@@ -136,6 +138,55 @@ class YoRo_Memory_Context_Resolver {
 		}
 
 		return self::build_empty_reference();
+	}
+
+	private static function resolve_contextual_order_list_reference( $context ) {
+		$order_ids = isset( $context['last_order_ids'] ) && is_array( $context['last_order_ids'] )
+			? array_values(
+				array_filter(
+					array_unique(
+						array_map( 'absint', $context['last_order_ids'] )
+					)
+				)
+			)
+			: [];
+
+		if ( empty( $order_ids ) && ! empty( $context['last_orders'] ) && is_array( $context['last_orders'] ) ) {
+			$order_ids = array_values(
+				array_filter(
+					array_unique(
+						array_map(
+							static function( $order ) {
+								return is_array( $order ) ? absint( $order['id'] ?? 0 ) : 0;
+							},
+							$context['last_orders']
+						)
+					)
+				)
+			);
+		}
+
+		if ( empty( $order_ids ) ) {
+			return self::build_empty_reference();
+		}
+
+		return self::order_reference(
+			$order_ids,
+			'last_order_list',
+			0.92,
+			'The command uses a plural contextual order reference and there is a recent order list in memory.'
+		);
+	}
+
+	private static function looks_like_contextual_order_list_reference( $normalized ) {
+		if ( '' === $normalized ) {
+			return false;
+		}
+
+		return (bool) preg_match(
+			'/\b(?:all\s+(?:of\s+)?(?:them|these|those)|them|these|those|these\s+orders|those\s+orders|selected\s+orders|all\s+orders)\b/i',
+			$normalized
+		);
 	}
 
 	private static function looks_like_contextual_order_reference( $normalized ) {

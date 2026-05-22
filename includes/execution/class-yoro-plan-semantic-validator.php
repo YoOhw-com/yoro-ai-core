@@ -29,6 +29,12 @@ class YoRo_Plan_Semantic_Validator {
 		$warnings          = [];
 		$status_history    = [];
 
+		$recipient_validation = self::validate_customer_email_recipient_coherence( $steps, $order_facts );
+
+		if ( is_wp_error( $recipient_validation ) ) {
+			return $recipient_validation;
+		}
+
 		foreach ( $steps as $index => $step ) {
 			$step       = is_array( $step ) ? $step : [];
 			$step_id    = sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) );
@@ -38,7 +44,7 @@ class YoRo_Plan_Semantic_Validator {
 			if ( '' === $action ) {
 				return new WP_Error(
 					'yoro_invalid_action_plan_step',
-					__( 'Plan step is missing its action name.', 'yoro-agent-core' ),
+					__( 'Plan step is missing its action name.', 'yoro-ai-core' ),
 					[
 						'step_id'    => $step_id,
 						'step_index' => $index,
@@ -51,7 +57,7 @@ class YoRo_Plan_Semantic_Validator {
 					'yoro_invalid_action_plan_step',
 					sprintf(
 						/* translators: 1: step label, 2: action name */
-						__( 'Plan step "%1$s" uses unknown action "%2$s".', 'yoro-agent-core' ),
+						__( 'The workflow step "%1$s" uses an action YoRo does not support yet: %2$s.', 'yoro-ai-core' ),
 						$step_label,
 						$action
 					),
@@ -134,7 +140,7 @@ class YoRo_Plan_Semantic_Validator {
 						'code'    => 'capture_key_overwritten',
 						'message' => sprintf(
 							/* translators: 1: capture key, 2: current step id, 3: previous step id */
-							__( 'Capture key "%1$s" is overwritten by step "%2$s" after being produced by "%3$s".', 'yoro-agent-core' ),
+							__( 'Capture key "%1$s" is overwritten by step "%2$s" after being produced by "%3$s".', 'yoro-ai-core' ),
 							$key,
 							$step_id,
 							$capture_producers[ $key ]['step_id']
@@ -180,6 +186,63 @@ class YoRo_Plan_Semantic_Validator {
 				'warnings' => array_values( $warnings ),
 			],
 		];
+	}
+
+	private static function validate_customer_email_recipient_coherence( $steps, $order_facts ) {
+		$steps             = is_array( $steps ) ? array_values( $steps ) : [];
+		$order_facts       = is_array( $order_facts ) ? $order_facts : [];
+		$email_order_ids   = [];
+		$first_email_step  = null;
+		$recipient_emails  = [];
+
+		foreach ( $steps as $index => $step ) {
+			$step   = is_array( $step ) ? $step : [];
+			$action = sanitize_text_field( $step['action'] ?? '' );
+
+			if ( ! in_array( $action, [ 'orders.compose_customer_email', 'orders.send_customer_email', 'orders.save_customer_email_draft' ], true ) ) {
+				continue;
+			}
+
+			if ( null === $first_email_step ) {
+				$first_email_step = [
+					'id'    => sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
+					'index' => $index,
+				];
+			}
+
+			foreach ( self::get_step_order_ids( $step ) as $order_id ) {
+				$email_order_ids[ $order_id ] = true;
+			}
+		}
+
+		if ( count( $email_order_ids ) <= 1 ) {
+			return true;
+		}
+
+		foreach ( array_keys( $email_order_ids ) as $order_id ) {
+			$email = sanitize_email( $order_facts[ $order_id ]['email'] ?? '' );
+
+			if ( '' === $email ) {
+				continue;
+			}
+
+			$recipient_emails[ strtolower( $email ) ] = true;
+		}
+
+		if ( count( $recipient_emails ) <= 1 ) {
+			return true;
+		}
+
+		return new WP_Error(
+			'yoro_invalid_action_plan_entity',
+			__( 'This customer-email workflow targets orders with different recipient emails. Split the workflow by customer before composing, drafting, or sending emails.', 'yoro-ai-core' ),
+			[
+				'step_id'        => $first_email_step['id'] ?? 'step_1',
+				'step_index'     => $first_email_step['index'] ?? 0,
+				'recipient_count'=> count( $recipient_emails ),
+				'order_ids'      => array_map( 'absint', array_keys( $email_order_ids ) ),
+			]
+		);
 	}
 
 	private static function validate_single_plan_semantics( $plan, $parsed, $order_facts ) {
@@ -274,7 +337,7 @@ class YoRo_Plan_Semantic_Validator {
 				'yoro_invalid_action_plan_dependency',
 				sprintf(
 					/* translators: 1: placeholder name, 2: step id */
-					__( 'Plan step "%2$s" depends on unresolved placeholder "%1$s".', 'yoro-agent-core' ),
+					__( 'Plan step "%2$s" depends on unresolved placeholder "%1$s".', 'yoro-ai-core' ),
 					$key,
 					sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) )
 				),
@@ -340,7 +403,7 @@ class YoRo_Plan_Semantic_Validator {
 			'yoro_invalid_action_plan_dependency',
 			sprintf(
 				/* translators: 1: step id */
-				__( 'Plan step "%s" sends or saves an email before a compose step has produced the email subject and body.', 'yoro-agent-core' ),
+				__( 'Plan step "%s" sends or saves an email before a compose step has produced the email subject and body.', 'yoro-ai-core' ),
 				sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) )
 			),
 			[
@@ -403,7 +466,7 @@ class YoRo_Plan_Semantic_Validator {
 					'yoro_invalid_action_plan_entity',
 					sprintf(
 						/* translators: 1: step id, 2: order id */
-						__( 'Plan step "%1$s" sends shipping or delivery messaging for order #%2$d, but that order does not require shipping.', 'yoro-agent-core' ),
+						__( 'Plan step "%1$s" sends shipping or delivery messaging for order #%2$d, but that order does not require shipping.', 'yoro-ai-core' ),
 						sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
 						$order_id
 					),
@@ -421,7 +484,7 @@ class YoRo_Plan_Semantic_Validator {
 					'yoro_invalid_action_plan_contradiction',
 					sprintf(
 						/* translators: 1: step id, 2: status */
-						__( 'Plan step "%1$s" uses shipping or delivery messaging even though the workflow status intent is "%2$s". Align the email with the order state first.', 'yoro-agent-core' ),
+						__( 'Plan step "%1$s" uses shipping or delivery messaging even though the workflow status intent is "%2$s". Align the email with the order state first.', 'yoro-ai-core' ),
 						sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
 						$effective_status
 					),
@@ -443,7 +506,7 @@ class YoRo_Plan_Semantic_Validator {
 					'code'    => 'shipping_message_without_tracking',
 					'message' => sprintf(
 						/* translators: 1: order id */
-						__( 'Order #%1$d does not have a tracking signal yet, so shipping or delivery messaging may overstate fulfillment progress.', 'yoro-agent-core' ),
+						__( 'Order #%1$d does not have a tracking signal yet, so shipping or delivery messaging may overstate fulfillment progress.', 'yoro-ai-core' ),
 						$order_id
 					),
 					'step_id' => sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
@@ -455,7 +518,7 @@ class YoRo_Plan_Semantic_Validator {
 					'code'    => 'shipping_message_without_shipping_method',
 					'message' => sprintf(
 						/* translators: 1: order id */
-						__( 'Order #%1$d does not have a shipping method yet, so shipping or delivery messaging may be premature.', 'yoro-agent-core' ),
+						__( 'Order #%1$d does not have a shipping method yet, so shipping or delivery messaging may be premature.', 'yoro-ai-core' ),
 						$order_id
 					),
 					'step_id' => sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
@@ -468,7 +531,7 @@ class YoRo_Plan_Semantic_Validator {
 						'yoro_invalid_action_plan_contradiction',
 						sprintf(
 							/* translators: 1: step id, 2: status */
-							__( 'Plan step "%1$s" asks for payment verification even though the order is already "%2$s". Align the payment message with the order lifecycle first.', 'yoro-agent-core' ),
+							__( 'Plan step "%1$s" asks for payment verification even though the order is already "%2$s". Align the payment message with the order lifecycle first.', 'yoro-ai-core' ),
 							sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
 							$effective_status
 						),
@@ -487,7 +550,7 @@ class YoRo_Plan_Semantic_Validator {
 						'code'    => 'payment_review_on_paid_order',
 						'message' => sprintf(
 							/* translators: 1: order id */
-							__( 'Order #%1$d already looks paid and active, so payment-verification messaging may confuse the customer.', 'yoro-agent-core' ),
+							__( 'Order #%1$d already looks paid and active, so payment-verification messaging may confuse the customer.', 'yoro-ai-core' ),
 							$order_id
 						),
 						'step_id' => sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
@@ -501,7 +564,7 @@ class YoRo_Plan_Semantic_Validator {
 						'code'    => 'refund_message_without_refund_state',
 						'message' => sprintf(
 							/* translators: 1: order id, 2: status */
-							__( 'Order #%1$d is still "%2$s", so refund-oriented messaging may contradict the current lifecycle.', 'yoro-agent-core' ),
+							__( 'Order #%1$d is still "%2$s", so refund-oriented messaging may contradict the current lifecycle.', 'yoro-ai-core' ),
 							$order_id,
 							$effective_status
 						),
@@ -514,7 +577,7 @@ class YoRo_Plan_Semantic_Validator {
 						'code'    => 'refund_message_on_unpaid_order',
 						'message' => sprintf(
 							/* translators: 1: order id */
-							__( 'Order #%1$d does not look paid yet, so refund-oriented messaging may be premature.', 'yoro-agent-core' ),
+							__( 'Order #%1$d does not look paid yet, so refund-oriented messaging may be premature.', 'yoro-ai-core' ),
 							$order_id
 						),
 						'step_id' => sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
@@ -526,7 +589,7 @@ class YoRo_Plan_Semantic_Validator {
 						'code'    => 'refund_message_without_remaining_refund',
 						'message' => sprintf(
 							/* translators: 1: order id */
-							__( 'Order #%1$d does not appear to have any remaining refundable amount, so refund messaging may misstate what can still be returned.', 'yoro-agent-core' ),
+							__( 'Order #%1$d does not appear to have any remaining refundable amount, so refund messaging may misstate what can still be returned.', 'yoro-ai-core' ),
 							$order_id
 						),
 						'step_id' => sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
@@ -563,7 +626,7 @@ class YoRo_Plan_Semantic_Validator {
 				'yoro_invalid_action_plan_entity',
 				sprintf(
 					/* translators: 1: step id, 2: order id */
-					__( 'Plan step "%1$s" cannot send or save a customer email because order #%2$d does not have a billing email address.', 'yoro-agent-core' ),
+					__( 'Plan step "%1$s" cannot send or save a customer email because order #%2$d does not have a billing email address.', 'yoro-ai-core' ),
 					sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
 					$order_id
 				),
@@ -625,7 +688,7 @@ class YoRo_Plan_Semantic_Validator {
 				'yoro_invalid_action_plan_contradiction',
 				sprintf(
 					/* translators: 1: status, 2: current step id, 3: previous step id */
-					__( 'Plan step "%2$s" repeats status "%1$s" for the same order scope after "%3$s". Remove the redundant status change.', 'yoro-agent-core' ),
+					__( 'Plan step "%2$s" repeats status "%1$s" for the same order scope after "%3$s". Remove the redundant status change.', 'yoro-ai-core' ),
 					$status,
 					sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
 					$previous['step_id']
@@ -644,7 +707,7 @@ class YoRo_Plan_Semantic_Validator {
 			'yoro_invalid_action_plan_contradiction',
 			sprintf(
 				/* translators: 1: previous status, 2: new status, 3: current step id, 4: previous step id */
-				__( 'Step "%3$s" changes the same order scope from "%1$s" to "%2$s" after "%4$s". Choose one target status before running this workflow.', 'yoro-agent-core' ),
+				__( 'Step "%3$s" changes the same order scope from "%1$s" to "%2$s" after "%4$s". Choose one target status before running this workflow.', 'yoro-ai-core' ),
 				$previous['status'],
 				$status,
 				sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
@@ -686,7 +749,7 @@ class YoRo_Plan_Semantic_Validator {
 				'code'    => 'reopening_terminal_order',
 				'message' => sprintf(
 					/* translators: 1: order id, 2: current status, 3: next status */
-					__( 'Order #%1$d is currently "%2$s" but this workflow changes it to "%3$s". Review whether reopening a terminal order is intentional.', 'yoro-agent-core' ),
+					__( 'Order #%1$d is currently "%2$s" but this workflow changes it to "%3$s". Review whether reopening a terminal order is intentional.', 'yoro-ai-core' ),
 					$order_id,
 					$current_status,
 					$next_status
@@ -727,7 +790,7 @@ class YoRo_Plan_Semantic_Validator {
 					'yoro_invalid_action_plan_entity',
 					sprintf(
 						/* translators: 1: step id, 2: order id */
-						__( 'Plan step "%1$s" expects a shippable order, but order #%2$d does not require shipping.', 'yoro-agent-core' ),
+						__( 'Plan step "%1$s" expects a shippable order, but order #%2$d does not require shipping.', 'yoro-ai-core' ),
 						sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
 						$order_id
 					),
@@ -748,7 +811,7 @@ class YoRo_Plan_Semantic_Validator {
 					'yoro_invalid_action_plan_contradiction',
 					sprintf(
 						/* translators: 1: step id, 2: order id, 3: status */
-						__( 'Plan step "%1$s" expects active fulfillment work, but order #%2$d is already "%3$s".', 'yoro-agent-core' ),
+						__( 'Plan step "%1$s" expects active fulfillment work, but order #%2$d is already "%3$s".', 'yoro-ai-core' ),
 						sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
 						$order_id,
 						$current_status
@@ -768,7 +831,7 @@ class YoRo_Plan_Semantic_Validator {
 					'code'    => 'fulfillment_with_incomplete_shipping_address',
 					'message' => sprintf(
 						/* translators: 1: order id */
-						__( 'Order #%1$d still has an incomplete shipping address, so fulfillment work may block until the address is confirmed.', 'yoro-agent-core' ),
+						__( 'Order #%1$d still has an incomplete shipping address, so fulfillment work may block until the address is confirmed.', 'yoro-ai-core' ),
 						$order_id
 					),
 					'step_id' => sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
@@ -780,7 +843,7 @@ class YoRo_Plan_Semantic_Validator {
 					'code'    => 'fulfillment_on_not_ready_order',
 					'message' => sprintf(
 						/* translators: 1: order id */
-						__( 'Order #%1$d is not fully ready to fulfill yet, so this fulfillment-oriented step may be premature.', 'yoro-agent-core' ),
+						__( 'Order #%1$d is not fully ready to fulfill yet, so this fulfillment-oriented step may be premature.', 'yoro-ai-core' ),
 						$order_id
 					),
 					'step_id' => sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
@@ -1021,7 +1084,7 @@ class YoRo_Plan_Semantic_Validator {
 						'yoro_invalid_action_plan_entity',
 						sprintf(
 							/* translators: 1: action name, 2: order id */
-							__( 'Action "%1$s" expects a shippable order, but order #%2$d does not require shipping.', 'yoro-agent-core' ),
+							__( 'Action "%1$s" expects a shippable order, but order #%2$d does not require shipping.', 'yoro-ai-core' ),
 							$action,
 							$order_id
 						),
@@ -1037,7 +1100,7 @@ class YoRo_Plan_Semantic_Validator {
 						'yoro_invalid_action_plan_contradiction',
 						sprintf(
 							/* translators: 1: action name, 2: order id, 3: status */
-							__( 'Action "%1$s" assumes fulfillment is still in progress, but order #%2$d is already "%3$s".', 'yoro-agent-core' ),
+							__( 'Action "%1$s" assumes fulfillment is still in progress, but order #%2$d is already "%3$s".', 'yoro-ai-core' ),
 							$action,
 							$order_id,
 							$current_status
@@ -1055,7 +1118,7 @@ class YoRo_Plan_Semantic_Validator {
 						'code'    => 'fulfillment_without_shipping_method',
 						'message' => sprintf(
 							/* translators: 1: order id */
-							__( 'Order #%1$d still has no shipping method, so fulfillment follow-up may need a shipping-method check first.', 'yoro-agent-core' ),
+							__( 'Order #%1$d still has no shipping method, so fulfillment follow-up may need a shipping-method check first.', 'yoro-ai-core' ),
 							$order_id
 						),
 						'step_id' => 'single_action',
@@ -1067,7 +1130,7 @@ class YoRo_Plan_Semantic_Validator {
 						'code'    => 'fulfillment_with_incomplete_shipping_address',
 						'message' => sprintf(
 							/* translators: 1: order id */
-							__( 'Order #%1$d still has an incomplete shipping address, so fulfillment work may block until the address is confirmed.', 'yoro-agent-core' ),
+							__( 'Order #%1$d still has an incomplete shipping address, so fulfillment work may block until the address is confirmed.', 'yoro-ai-core' ),
 							$order_id
 						),
 						'step_id' => 'single_action',
@@ -1081,7 +1144,7 @@ class YoRo_Plan_Semantic_Validator {
 						'code'    => 'refund_review_on_unpaid_order',
 						'message' => sprintf(
 							/* translators: 1: order id */
-							__( 'Order #%1$d does not look paid yet, so refund review may not lead to an actual refundable amount.', 'yoro-agent-core' ),
+							__( 'Order #%1$d does not look paid yet, so refund review may not lead to an actual refundable amount.', 'yoro-ai-core' ),
 							$order_id
 						),
 						'step_id' => 'single_action',
@@ -1093,7 +1156,7 @@ class YoRo_Plan_Semantic_Validator {
 						'code'    => 'refund_review_without_remaining_refund',
 						'message' => sprintf(
 							/* translators: 1: order id */
-							__( 'Order #%1$d does not appear to have any remaining refundable amount, so refund review may be informational only.', 'yoro-agent-core' ),
+							__( 'Order #%1$d does not appear to have any remaining refundable amount, so refund review may be informational only.', 'yoro-ai-core' ),
 							$order_id
 						),
 						'step_id' => 'single_action',
@@ -1214,7 +1277,7 @@ class YoRo_Plan_Semantic_Validator {
 					'yoro_invalid_action_plan_contradiction',
 					sprintf(
 						/* translators: 1: order id */
-						__( 'This workflow mixes refund-oriented and fulfillment-oriented steps for order #%1$d. Split those goals before running it.', 'yoro-agent-core' ),
+						__( 'This workflow mixes refund-oriented and fulfillment-oriented steps for order #%1$d. Split those goals before running it.', 'yoro-ai-core' ),
 						$order_id
 					),
 					[
@@ -1230,7 +1293,7 @@ class YoRo_Plan_Semantic_Validator {
 					'code'    => 'payment_review_mixed_with_fulfillment_goal',
 					'message' => sprintf(
 						/* translators: 1: order id */
-						__( 'Order #%1$d mixes payment-review and fulfillment-oriented goals in one workflow. Confirm the workflow order and customer messaging carefully.', 'yoro-agent-core' ),
+						__( 'Order #%1$d mixes payment-review and fulfillment-oriented goals in one workflow. Confirm the workflow order and customer messaging carefully.', 'yoro-ai-core' ),
 						$order_id
 					),
 					'step_id' => $families['payment_review']['step_id'],

@@ -10,11 +10,11 @@ class YoRo_Action_Executor {
 		$action = YoRo_Action_Registry::get( $action_name );
 
 		if ( ! $action ) {
-			return new WP_Error( 'yoro_invalid_action', __( 'Action not found.', 'yoro-agent-core' ) );
+			return new WP_Error( 'yoro_invalid_action', __( 'Action not found.', 'yoro-ai-core' ) );
 		}
 
 		if ( ! current_user_can( $action['permission'] ) ) {
-			return new WP_Error( 'yoro_permission_denied', __( 'Permission denied.', 'yoro-agent-core' ) );
+			return new WP_Error( 'yoro_permission_denied', __( 'Permission denied.', 'yoro-ai-core' ) );
 		}
 
 		$limit_check = self::check_action_limits( $action_name, $action, $params );
@@ -44,7 +44,7 @@ class YoRo_Action_Executor {
 					'requires_confirmation' => true,
 					'action'                => $action_name,
 					'risk_level'            => $action['risk_level'],
-					'message'               => __( 'Confirmation is required before changing store data.', 'yoro-agent-core' ),
+					'message'               => __( 'Confirmation is required before changing store data.', 'yoro-ai-core' ),
 					'result_type'           => 'confirmation',
 					'display_type'          => 'confirmation',
 					'read_only'             => true,
@@ -59,7 +59,7 @@ class YoRo_Action_Executor {
 		}
 
 		if ( empty( $action['callback'] ) || ! is_callable( $action['callback'] ) ) {
-			return new WP_Error( 'yoro_invalid_callback', __( 'Action callback is not callable.', 'yoro-agent-core' ) );
+			return new WP_Error( 'yoro_invalid_callback', __( 'Action callback is not callable.', 'yoro-ai-core' ) );
 		}
 
 		do_action(
@@ -168,7 +168,7 @@ class YoRo_Action_Executor {
 				'yoro_action_limit_exceeded',
 				sprintf(
 					/* translators: 1: action name, 2: item count, 3: max items */
-					__( 'Action "%1$s" cannot process %2$d items. Maximum allowed is %3$d.', 'yoro-agent-core' ),
+					__( 'Action "%1$s" cannot process %2$d items. Maximum allowed is %3$d.', 'yoro-ai-core' ),
 					$action_name,
 					$item_count,
 					$max_items
@@ -321,11 +321,11 @@ class YoRo_Action_Executor {
 			$result['meta'] = [];
 		}
 
-		if ( empty( $result['assistant_summary'] ) ) {
-			$result['assistant_summary'] = self::build_assistant_summary(
-				$action_name,
-				$result,
-				$is_write_action
+			if ( empty( $result['assistant_summary'] ) ) {
+				$result['assistant_summary'] = self::build_assistant_summary(
+					$action_name,
+					$result,
+					$is_write_action
 			);
 		}
 
@@ -333,12 +333,28 @@ class YoRo_Action_Executor {
 			$result['assistant_followup'] = self::build_assistant_followup(
 				$action_name,
 				$result,
-				$is_write_action
-			);
+					$is_write_action
+				);
+			}
+
+			$result = self::clean_user_facing_response_copy( $result );
+
+			return $result;
 		}
 
-		return $result;
-	}
+		private static function clean_user_facing_response_copy( $result ) {
+			if ( ! is_array( $result ) || ! class_exists( 'YoRo_Response_UX_Formatter' ) ) {
+				return $result;
+			}
+
+			foreach ( [ 'summary', 'message', 'assistant_summary', 'assistant_followup' ] as $key ) {
+				if ( array_key_exists( $key, $result ) ) {
+					$result[ $key ] = YoRo_Response_UX_Formatter::clean_user_facing_copy( $result[ $key ] );
+				}
+			}
+
+			return $result;
+		}
 
 	private static function build_assistant_summary( $action_name, $result, $is_write_action ) {
 		$summary = sanitize_text_field( $result['summary'] ?? '' );
@@ -369,13 +385,13 @@ class YoRo_Action_Executor {
 				if ( 'quiet' === $business_state ) {
 					$window_line = sprintf(
 						/* translators: %s: window label */
-						__( '%s I have not seen any new orders yet, so gross sales and active customers are still at zero.', 'yoro-agent-core' ),
+						__( '%s I have not seen any new orders yet, so gross sales and active customers are still at zero.', 'yoro-ai-core' ),
 						$window_phrase
 					);
 				} elseif ( 'soft' === $business_state ) {
 					$window_line = sprintf(
 						/* translators: 1: window label, 2: new orders, 3: gross sales, 4: active customers */
-						__( '%1$s I am only seeing light commercial activity so far: %2$d new orders, %3$s in gross sales, and %4$d active customers.', 'yoro-agent-core' ),
+						__( '%1$s I am only seeing light commercial activity so far: %2$d new orders, %3$s in gross sales, and %4$d active customers.', 'yoro-ai-core' ),
 						$window_phrase,
 						$window_orders,
 						$gross_sales,
@@ -384,7 +400,7 @@ class YoRo_Action_Executor {
 				} else {
 					$window_line = sprintf(
 						/* translators: 1: window label, 2: new orders, 3: gross sales, 4: active customers */
-						__( '%1$s I found %2$d new orders, %3$s in gross sales, and %4$d active customers.', 'yoro-agent-core' ),
+						__( '%1$s I found %2$d new orders, %3$s in gross sales, and %4$d active customers.', 'yoro-ai-core' ),
 						$window_phrase,
 						$window_orders,
 						$gross_sales,
@@ -397,14 +413,14 @@ class YoRo_Action_Executor {
 						if ( 'quiet' === $business_state || 'soft' === $business_state ) {
 							return sprintf(
 								/* translators: 1: window line, 2: top priority */
-								__( 'Commercial activity is quiet, but the store is still carrying heavy operating pressure. %1$s %2$s', 'yoro-agent-core' ),
+								__( 'Commercial activity is quiet, but the store is still carrying heavy operating pressure. %1$s %2$s', 'yoro-ai-core' ),
 								$window_line,
 								$top_priority
 							);
 						}
 						return sprintf(
 							/* translators: 1: window line, 2: top priority */
-							__( 'The store is carrying heavy operating pressure right now. %1$s %2$s', 'yoro-agent-core' ),
+							__( 'The store is carrying heavy operating pressure right now. %1$s %2$s', 'yoro-ai-core' ),
 							$window_line,
 							$top_priority
 						);
@@ -412,7 +428,7 @@ class YoRo_Action_Executor {
 					case 'focused_pressure':
 						return sprintf(
 							/* translators: 1: window line, 2: top priority */
-							__( 'One queue stands out as the main operational priority today. %1$s %2$s', 'yoro-agent-core' ),
+							__( 'One queue stands out as the main operational priority today. %1$s %2$s', 'yoro-ai-core' ),
 							$window_line,
 							$top_priority
 						);
@@ -420,7 +436,7 @@ class YoRo_Action_Executor {
 					case 'split_pressure':
 						return sprintf(
 							/* translators: 1: window line, 2: top priority */
-							__( 'The store picture is split across more than one active pressure point. %1$s %2$s', 'yoro-agent-core' ),
+							__( 'The store picture is split across more than one active pressure point. %1$s %2$s', 'yoro-ai-core' ),
 							$window_line,
 							$top_priority
 						);
@@ -428,14 +444,14 @@ class YoRo_Action_Executor {
 					case 'active_controlled':
 						return sprintf(
 							/* translators: %s: window line */
-							__( 'The store looks active overall, and the main queues appear relatively controlled. %s', 'yoro-agent-core' ),
+							__( 'The store looks active overall, and the main queues appear relatively controlled. %s', 'yoro-ai-core' ),
 							$window_line
 						);
 
 					case 'quiet_controlled':
 						return sprintf(
 							/* translators: %s: window line */
-							__( 'The store looks fairly quiet right now, with no major queue standing out. %s', 'yoro-agent-core' ),
+							__( 'The store looks fairly quiet right now, with no major queue standing out. %s', 'yoro-ai-core' ),
 							$window_line
 						);
 				}
@@ -443,7 +459,7 @@ class YoRo_Action_Executor {
 				if ( '' !== $top_priority ) {
 					return sprintf(
 						/* translators: 1: window line, 2: top priority */
-						__( 'Here is the store briefing. %1$s %2$s', 'yoro-agent-core' ),
+						__( 'Here is the store briefing. %1$s %2$s', 'yoro-ai-core' ),
 						$window_line,
 						$top_priority
 					);
@@ -451,7 +467,7 @@ class YoRo_Action_Executor {
 
 				return sprintf(
 					/* translators: %s: window line */
-					__( 'Here is the store briefing. %s', 'yoro-agent-core' ),
+					__( 'Here is the store briefing. %s', 'yoro-ai-core' ),
 					$window_line
 				);
 
@@ -468,13 +484,13 @@ class YoRo_Action_Executor {
 				$window_phrase = self::format_window_sentence_prefix( $window_label );
 				$window_summary = sprintf(
 					/* translators: 1: window label, 2: new orders */
-					__( '%1$s I found %2$d new orders.', 'yoro-agent-core' ),
+					__( '%1$s I found %2$d new orders.', 'yoro-ai-core' ),
 					$window_phrase,
 					$window_orders
 				);
 				$pressure_summary = sprintf(
 					/* translators: 1: backlog total, 2: attention total */
-					__( 'The live queue currently shows %1$d backlog items and %2$d items that may need attention.', 'yoro-agent-core' ),
+					__( 'The live queue currently shows %1$d backlog items and %2$d items that may need attention.', 'yoro-ai-core' ),
 					$backlog_total,
 					$attention_total
 				);
@@ -483,7 +499,7 @@ class YoRo_Action_Executor {
 					case 'quiet_but_loaded':
 						return sprintf(
 							/* translators: 1: window summary, 2: pressure summary */
-							__( 'Order intake looks fairly quiet, but operational load is still heavy. %1$s %2$s', 'yoro-agent-core' ),
+							__( 'Order intake looks fairly quiet, but operational load is still heavy. %1$s %2$s', 'yoro-ai-core' ),
 							$window_summary,
 							$pressure_summary
 						);
@@ -491,7 +507,7 @@ class YoRo_Action_Executor {
 					case 'active_and_loaded':
 						return sprintf(
 							/* translators: 1: window summary, 2: pressure summary */
-							__( 'The store looks active, and the queue is still carrying meaningful pressure. %1$s %2$s', 'yoro-agent-core' ),
+							__( 'The store looks active, and the queue is still carrying meaningful pressure. %1$s %2$s', 'yoro-ai-core' ),
 							$window_summary,
 							$pressure_summary
 						);
@@ -499,14 +515,14 @@ class YoRo_Action_Executor {
 					case 'active_and_controlled':
 						return sprintf(
 							/* translators: %s: window summary */
-							__( 'The store looks active and relatively under control. %s', 'yoro-agent-core' ),
+							__( 'The store looks active and relatively under control. %s', 'yoro-ai-core' ),
 							$window_summary
 						);
 				}
 
 				return sprintf(
 					/* translators: 1: window summary, 2: pressure summary */
-					__( 'The operations picture is mixed. %1$s %2$s', 'yoro-agent-core' ),
+					__( 'The operations picture is mixed. %1$s %2$s', 'yoro-ai-core' ),
 					$window_summary,
 					$pressure_summary
 				);
@@ -514,7 +530,7 @@ class YoRo_Action_Executor {
 			case 'operations.get_attention_queue':
 				return sprintf(
 					/* translators: %d: count */
-					__( 'I found %d operational items that look like the highest-priority issues to review next.', 'yoro-agent-core' ),
+					__( 'I found %d operational items that look like the highest-priority issues to review next.', 'yoro-ai-core' ),
 					absint( $result['count'] ?? 0 )
 				);
 
@@ -527,7 +543,7 @@ class YoRo_Action_Executor {
 				if ( $tracking_count > 0 && $aging_count > 0 ) {
 					return sprintf(
 						/* translators: 1: total items, 2: tracking count, 3: aging count */
-						__( 'Fulfillment pressure is concentrated in missing tracking and aging processing orders. I found %1$d queue items, including %2$d orders without tracking signals and %3$d older processing orders.', 'yoro-agent-core' ),
+						__( 'Fulfillment pressure is concentrated in missing tracking and aging processing orders. I found %1$d queue items, including %2$d orders without tracking signals and %3$d older processing orders.', 'yoro-ai-core' ),
 						$total_items,
 						$tracking_count,
 						$aging_count
@@ -537,7 +553,7 @@ class YoRo_Action_Executor {
 				if ( $tracking_count > 0 ) {
 					return sprintf(
 						/* translators: 1: total items, 2: tracking count */
-						__( 'The main fulfillment watchpoint is missing tracking coverage. I found %1$d queue items, including %2$d orders without a tracking signal.', 'yoro-agent-core' ),
+						__( 'The main fulfillment watchpoint is missing tracking coverage. I found %1$d queue items, including %2$d orders without a tracking signal.', 'yoro-ai-core' ),
 						$total_items,
 						$tracking_count
 					);
@@ -546,7 +562,7 @@ class YoRo_Action_Executor {
 				if ( $aging_count > 0 ) {
 					return sprintf(
 						/* translators: 1: total items, 2: aging count */
-						__( 'The main fulfillment pressure is older processing orders that still need movement. I found %1$d queue items, including %2$d aging processing orders.', 'yoro-agent-core' ),
+						__( 'The main fulfillment pressure is older processing orders that still need movement. I found %1$d queue items, including %2$d aging processing orders.', 'yoro-ai-core' ),
 						$total_items,
 						$aging_count
 					);
@@ -554,7 +570,7 @@ class YoRo_Action_Executor {
 
 				return sprintf(
 					/* translators: %d: count */
-					__( 'I pulled the fulfillment queue and found %d orders that may be waiting on shipping or tracking follow-up.', 'yoro-agent-core' ),
+					__( 'I pulled the fulfillment queue and found %d orders that may be waiting on shipping or tracking follow-up.', 'yoro-ai-core' ),
 					$total_items
 				);
 
@@ -568,7 +584,7 @@ class YoRo_Action_Executor {
 				if ( $hold_followups > 0 && $payment_followups > 0 ) {
 					return sprintf(
 						/* translators: 1: total items, 2: on-hold follow-up count, 3: pending payment follow-up count */
-						__( 'Customer follow-up load is concentrated in on-hold orders and pending payment cases. I found %1$d items, including %2$d on-hold follow-ups and %3$d pending payment follow-ups.', 'yoro-agent-core' ),
+						__( 'Customer follow-up load is concentrated in on-hold orders and pending payment cases. I found %1$d items, including %2$d on-hold follow-ups and %3$d pending payment follow-ups.', 'yoro-ai-core' ),
 						$total_items,
 						$hold_followups,
 						$payment_followups
@@ -578,7 +594,7 @@ class YoRo_Action_Executor {
 				if ( $drafts_waiting > 0 ) {
 					return sprintf(
 						/* translators: 1: total items, 2: saved draft count */
-						__( 'There is active customer follow-up work, with saved drafts already waiting for review. I found %1$d items, including %2$d saved email drafts.', 'yoro-agent-core' ),
+						__( 'There is active customer follow-up work, with saved drafts already waiting for review. I found %1$d items, including %2$d saved email drafts.', 'yoro-ai-core' ),
 						$total_items,
 						$drafts_waiting
 					);
@@ -586,7 +602,7 @@ class YoRo_Action_Executor {
 
 				return sprintf(
 					/* translators: %d: count */
-					__( 'I found %d customer-facing items that may need a reply or follow-up from the team.', 'yoro-agent-core' ),
+					__( 'I found %d customer-facing items that may need a reply or follow-up from the team.', 'yoro-ai-core' ),
 					$total_items
 				);
 
@@ -599,17 +615,17 @@ class YoRo_Action_Executor {
 
 				if ( $out_of_stock > 0 || $backorder > 0 ) {
 					$out_of_stock_label = sprintf(
-						_n( '%d out-of-stock product', '%d out-of-stock products', $out_of_stock, 'yoro-agent-core' ),
+						_n( '%d out-of-stock product', '%d out-of-stock products', $out_of_stock, 'yoro-ai-core' ),
 						$out_of_stock
 					);
 					$backorder_label = sprintf(
-						_n( '%d backorder item', '%d backorder items', $backorder, 'yoro-agent-core' ),
+						_n( '%d backorder item', '%d backorder items', $backorder, 'yoro-ai-core' ),
 						$backorder
 					);
 
 					return sprintf(
 						/* translators: 1: total items, 2: out of stock label, 3: backorder label */
-						__( 'Inventory pressure is showing up most clearly in stockouts and backorders. I found %1$d items, including %2$s and %3$s.', 'yoro-agent-core' ),
+						__( 'Inventory pressure is showing up most clearly in stockouts and backorders. I found %1$d items, including %2$s and %3$s.', 'yoro-ai-core' ),
 						$total_items,
 						$out_of_stock_label,
 						$backorder_label
@@ -619,7 +635,7 @@ class YoRo_Action_Executor {
 				if ( $low_stock > 0 ) {
 					return sprintf(
 						/* translators: 1: total items, 2: low stock count */
-						__( 'Inventory risk is concentrated in low-stock products that may need replenishment soon. I found %1$d items, including %2$d low-stock products.', 'yoro-agent-core' ),
+						__( 'Inventory risk is concentrated in low-stock products that may need replenishment soon. I found %1$d items, including %2$d low-stock products.', 'yoro-ai-core' ),
 						$total_items,
 						$low_stock
 					);
@@ -627,14 +643,14 @@ class YoRo_Action_Executor {
 
 				return sprintf(
 					/* translators: %d: count */
-					__( 'I found %d products that may need inventory attention, including low-stock, out-of-stock, or backorder risks.', 'yoro-agent-core' ),
+					__( 'I found %d products that may need inventory attention, including low-stock, out-of-stock, or backorder risks.', 'yoro-ai-core' ),
 					$total_items
 				);
 
 			case 'store.get_insights':
 				return sprintf(
 					/* translators: %d: count */
-					__( 'I summarized %d store insights across orders, customers, and products for this request.', 'yoro-agent-core' ),
+					__( 'I summarized %d store insights across orders, customers, and products for this request.', 'yoro-ai-core' ),
 					absint( $result['count'] ?? 0 )
 				);
 
@@ -644,7 +660,7 @@ class YoRo_Action_Executor {
 				$currency     = sanitize_text_field( $result['meta']['currency'] ?? '' );
 				$customer_count = absint( $result['business_metrics']['unique_customers'] ?? 0 );
 				$customer_label = sprintf(
-					_n( '%d active customer', '%d active customers', $customer_count, 'yoro-agent-core' ),
+					_n( '%d active customer', '%d active customers', $customer_count, 'yoro-ai-core' ),
 					$customer_count
 				);
 				$narrative_context = isset( $result['narrative_context'] ) && is_array( $result['narrative_context'] )
@@ -656,7 +672,7 @@ class YoRo_Action_Executor {
 				$window_phrase = self::format_window_sentence_prefix( $window_label );
 				$window_summary  = sprintf(
 					/* translators: 1: window label, 2: order count, 3: gross sales, 4: currency, 5: customer label */
-					__( '%1$s I found %2$d orders, %3$s %4$s in gross sales, and %5$s.', 'yoro-agent-core' ),
+					__( '%1$s I found %2$d orders, %3$s %4$s in gross sales, and %5$s.', 'yoro-ai-core' ),
 					$window_phrase,
 					absint( $result['business_metrics']['order_count'] ?? 0 ),
 					$gross_sales,
@@ -665,7 +681,7 @@ class YoRo_Action_Executor {
 				);
 				$pressure_summary = sprintf(
 					/* translators: 1: attention total, 2: backlog total */
-					__( 'Separately, the live store queue still shows %1$d time-sensitive items and %2$d backlog orders.', 'yoro-agent-core' ),
+					__( 'Separately, the live store queue still shows %1$d time-sensitive items and %2$d backlog orders.', 'yoro-ai-core' ),
 					$attention_total,
 					$backlog_total
 				);
@@ -674,7 +690,7 @@ class YoRo_Action_Executor {
 					case 'quiet_but_under_pressure':
 						return sprintf(
 							/* translators: 1: window summary, 2: pressure summary */
-							__( 'This period looks commercially quiet, while the live store is still under heavy operational pressure. %1$s %2$s', 'yoro-agent-core' ),
+							__( 'This period looks commercially quiet, while the live store is still under heavy operational pressure. %1$s %2$s', 'yoro-ai-core' ),
 							$window_summary,
 							$pressure_summary
 						);
@@ -682,7 +698,7 @@ class YoRo_Action_Executor {
 					case 'strong_but_under_pressure':
 						return sprintf(
 							/* translators: 1: window summary, 2: pressure summary */
-							__( 'This period looks commercially strong, while the live store is still carrying meaningful operational pressure. %1$s %2$s', 'yoro-agent-core' ),
+							__( 'This period looks commercially strong, while the live store is still carrying meaningful operational pressure. %1$s %2$s', 'yoro-ai-core' ),
 							$window_summary,
 							$pressure_summary
 						);
@@ -690,14 +706,14 @@ class YoRo_Action_Executor {
 					case 'strong_and_controlled':
 						return sprintf(
 							/* translators: %s: window summary */
-							__( 'Commercial performance looks healthy and the live store appears relatively controlled. %s', 'yoro-agent-core' ),
+							__( 'Commercial performance looks healthy and the live store appears relatively controlled. %s', 'yoro-ai-core' ),
 							$window_summary
 						);
 
 					case 'steady_but_under_pressure':
 						return sprintf(
 							/* translators: 1: window summary, 2: pressure summary */
-							__( 'This period looks commercially steady, while the live store is still under heavy operational pressure. %1$s %2$s', 'yoro-agent-core' ),
+							__( 'This period looks commercially steady, while the live store is still under heavy operational pressure. %1$s %2$s', 'yoro-ai-core' ),
 							$window_summary,
 							$pressure_summary
 						);
@@ -705,7 +721,7 @@ class YoRo_Action_Executor {
 					case 'steady_with_watchpoints':
 						return sprintf(
 							/* translators: 1: window summary, 2: pressure summary */
-							__( 'This period looks steady overall, with a few operational watchpoints still open in the live store. %1$s %2$s', 'yoro-agent-core' ),
+							__( 'This period looks steady overall, with a few operational watchpoints still open in the live store. %1$s %2$s', 'yoro-ai-core' ),
 							$window_summary,
 							$pressure_summary
 						);
@@ -713,7 +729,7 @@ class YoRo_Action_Executor {
 					case 'quiet_with_pressure':
 						return sprintf(
 							/* translators: 1: window summary, 2: pressure summary */
-							__( 'This period looks commercially quiet, and the live store is still carrying noticeable operational pressure. %1$s %2$s', 'yoro-agent-core' ),
+							__( 'This period looks commercially quiet, and the live store is still carrying noticeable operational pressure. %1$s %2$s', 'yoro-ai-core' ),
 							$window_summary,
 							$pressure_summary
 						);
@@ -721,14 +737,14 @@ class YoRo_Action_Executor {
 					case 'quiet_and_controlled':
 						return sprintf(
 							/* translators: %s: window summary */
-							__( 'This period looks quiet overall, and the live store appears relatively under control. %s', 'yoro-agent-core' ),
+							__( 'This period looks quiet overall, and the live store appears relatively under control. %s', 'yoro-ai-core' ),
 							$window_summary
 						);
 				}
 
 				return sprintf(
 					/* translators: 1: window summary, 2: pressure summary */
-					__( 'The business picture is mixed. %1$s %2$s', 'yoro-agent-core' ),
+					__( 'The business picture is mixed. %1$s %2$s', 'yoro-ai-core' ),
 					$window_summary,
 					$pressure_summary
 				);
@@ -736,7 +752,7 @@ class YoRo_Action_Executor {
 			case 'customers.get_summary':
 				return sprintf(
 					/* translators: %d: count */
-					__( 'I pulled this customer summary and found %d related orders in the available history.', 'yoro-agent-core' ),
+					__( 'I pulled this customer summary and found %d related orders in the available history.', 'yoro-ai-core' ),
 					absint( $result['count'] ?? 0 )
 				);
 		}
@@ -762,87 +778,87 @@ class YoRo_Action_Executor {
 
 				switch ( $top_topic ) {
 					case 'operations_attention':
-						return __( 'If you want, I can open the attention queue first, then break down fulfillment or customer follow-up.', 'yoro-agent-core' );
+						return __( 'Next, I can open the attention queue or break this into fulfillment and customer follow-up.', 'yoro-ai-core' );
 
 					case 'fulfillment':
-						return __( 'If you want, I can drill into the fulfillment queue first, or focus on missing tracking and aging processing orders.', 'yoro-agent-core' );
+						return __( 'Next, I can open fulfillment or focus on missing tracking and aging processing orders.', 'yoro-ai-core' );
 
 					case 'customer_service':
-						return __( 'If you want, I can drill into customer follow-up first, or focus on saved drafts and the oldest unresolved cases.', 'yoro-agent-core' );
+						return __( 'Next, I can open customer follow-up or focus on saved drafts and the oldest unresolved cases.', 'yoro-ai-core' );
 
 					case 'inventory':
-						return __( 'If you want, I can drill into inventory first, or focus just on stockouts and backorders.', 'yoro-agent-core' );
+						return __( 'Next, I can open inventory or focus on stockouts and backorders.', 'yoro-ai-core' );
 				}
 
-				return __( 'If you want, I can drill into attention, fulfillment, customer follow-up, or inventory next.', 'yoro-agent-core' );
+				return __( 'Next, I can open attention, fulfillment, customer follow-up, or inventory.', 'yoro-ai-core' );
 
 			case 'operations.get_summary':
 				$attention_total = absint( $result['attention_total'] ?? 0 );
 				$backlog_total = absint( $result['backlog_total'] ?? 0 );
 
 				if ( $attention_total > 0 && $backlog_total > 0 ) {
-					return __( 'If you want, I can break this into the attention queue, fulfillment blockers, customer follow-up, or inventory pressure next.', 'yoro-agent-core' );
+					return __( 'Next, I can break this into attention, fulfillment blockers, customer follow-up, or inventory.', 'yoro-ai-core' );
 				}
 
-				return __( 'If you want, I can break this down into attention, fulfillment, customer follow-up, or inventory next.', 'yoro-agent-core' );
+				return __( 'Next, I can break this down into attention, fulfillment, customer follow-up, or inventory.', 'yoro-ai-core' );
 
 			case 'operations.get_attention_queue':
-				return __( 'If you want, I can narrow this down to the exact orders that should be checked first.', 'yoro-agent-core' );
+				return __( 'Next, I can narrow this to the orders that should be checked first.', 'yoro-ai-core' );
 
 			case 'operations.get_fulfillment_queue':
 				$fulfillment_summary = self::summarize_fulfillment_queue( $result );
 
 				if ( ! empty( $fulfillment_summary['tracking_gap_count'] ) && ! empty( $fulfillment_summary['aging_processing_count'] ) ) {
-					return __( 'If you want, I can narrow this to missing tracking first, older processing orders first, or draft the next delay email.', 'yoro-agent-core' );
+					return __( 'Next, I can focus on missing tracking, older processing orders, or the next delay email.', 'yoro-ai-core' );
 				}
 
-				return __( 'If you want, I can open the shipping queue in more detail or focus on orders missing tracking.', 'yoro-agent-core' );
+				return __( 'Next, I can open the shipping queue in more detail or focus on orders missing tracking.', 'yoro-ai-core' );
 
 			case 'customers.get_service_queue':
 				$service_summary = self::summarize_customer_service_queue( $result );
 
 				if ( ! empty( $service_summary['saved_email_drafts'] ) ) {
-					return __( 'If you want, I can focus on saved drafts, the oldest on-hold follow-ups, or the next customer reply.', 'yoro-agent-core' );
+					return __( 'Next, I can focus on saved drafts, the oldest on-hold follow-ups, or the next customer reply.', 'yoro-ai-core' );
 				}
 
-				return __( 'If you want, I can narrow this to the most urgent customer follow-ups or help draft the next reply.', 'yoro-agent-core' );
+				return __( 'Next, I can narrow this to the most urgent follow-ups or draft the next reply.', 'yoro-ai-core' );
 
 			case 'products.get_inventory_queue':
 				$inventory_summary = self::summarize_inventory_queue( $result );
 
 				if ( ! empty( $inventory_summary['out_of_stock'] ) || ! empty( $inventory_summary['on_backorder'] ) ) {
-					return __( 'If you want, I can focus just on stockouts, backorders, or the next replenishment priorities.', 'yoro-agent-core' );
+					return __( 'Next, I can focus on stockouts, backorders, or replenishment priorities.', 'yoro-ai-core' );
 				}
 
-				return __( 'If you want, I can narrow this to low stock, out of stock, or backorder items only.', 'yoro-agent-core' );
+				return __( 'Next, I can narrow this to low stock, out of stock, or backorder items.', 'yoro-ai-core' );
 
 			case 'store.get_insights':
-				return __( 'If you want, I can turn these insights into a more operational summary or drill into a specific area.', 'yoro-agent-core' );
+				return __( 'Next, I can turn these insights into an operating summary or drill into one area.', 'yoro-ai-core' );
 
 			case 'store.get_business_summary':
 				$headline_insights = isset( $result['headline_insights'] ) && is_array( $result['headline_insights'] )
 					? $result['headline_insights']
 					: [];
 				$topic = sanitize_key( $headline_insights[1]['topic'] ?? $headline_insights[0]['topic'] ?? '' );
-				switch ( $topic ) {
-					case 'state_summary':
-						return __( 'If you want, I can break this into the live backlog pressure, order mix, top customers, or top products next.', 'yoro-agent-core' );
+					switch ( $topic ) {
+						case 'state_summary':
+							return __( 'Next, I can break this into live backlog, order mix, top customers, or top products.', 'yoro-ai-core' );
 
-					case 'operations_pressure':
-						return __( 'If you want, I can break down the backlog pressure, top customers, top products, or the store attention queue next.', 'yoro-agent-core' );
+						case 'operations_pressure':
+							return __( 'Next, I can break down backlog, top customers, top products, or the attention queue.', 'yoro-ai-core' );
 
-					case 'fulfillment_velocity':
-					case 'open_order_mix':
-						return __( 'If you want, I can break down the order mix, top customers, top products, or the store attention queue next.', 'yoro-agent-core' );
+						case 'fulfillment_velocity':
+						case 'open_order_mix':
+							return __( 'Next, I can break down order mix, top customers, top products, or the attention queue.', 'yoro-ai-core' );
 
-					case 'top_customers':
-						return __( 'If you want, I can drill into the top customers, top products, or the store attention queue next.', 'yoro-agent-core' );
+						case 'top_customers':
+							return __( 'Next, I can open top customers, top products, or the attention queue.', 'yoro-ai-core' );
 
-					case 'top_products':
-						return __( 'If you want, I can drill into the top products, top customers, or the store attention queue next.', 'yoro-agent-core' );
-				}
+						case 'top_products':
+							return __( 'Next, I can open top products, top customers, or the attention queue.', 'yoro-ai-core' );
+					}
 
-				return __( 'If you want, I can drill into operations pressure, top customers, top products, or the store attention queue next.', 'yoro-agent-core' );
+				return __( 'Next, I can open operations pressure, top customers, top products, or the attention queue.', 'yoro-ai-core' );
 		}
 
 		return '';
@@ -873,24 +889,24 @@ class YoRo_Action_Executor {
 		$normalized = strtolower( trim( $window_label ) );
 
 		if ( 'today' === $normalized ) {
-			return __( 'Today,', 'yoro-agent-core' );
+			return __( 'Today,', 'yoro-ai-core' );
 		}
 
 		if ( 'yesterday' === $normalized ) {
-			return __( 'Yesterday,', 'yoro-agent-core' );
+			return __( 'Yesterday,', 'yoro-ai-core' );
 		}
 
 		if ( 'last 7 days' === $normalized ) {
-			return __( 'Over the last 7 days,', 'yoro-agent-core' );
+			return __( 'Over the last 7 days,', 'yoro-ai-core' );
 		}
 
 		if ( 'last 30 days' === $normalized ) {
-			return __( 'Over the last 30 days,', 'yoro-agent-core' );
+			return __( 'Over the last 30 days,', 'yoro-ai-core' );
 		}
 
 		return sprintf(
 			/* translators: %s: window label */
-			__( 'In %s,', 'yoro-agent-core' ),
+			__( 'In %s,', 'yoro-ai-core' ),
 			$window_label
 		);
 	}

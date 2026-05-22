@@ -8,7 +8,7 @@ class YoRo_Logger {
 
 	public static function log( $data ) {
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			error_log( '[YoRo Agent] ' . wp_json_encode( $data ) );
+			error_log( '[YoRo AI] ' . wp_json_encode( $data ) );
 		}
 
 		return self::log_to_db( $data );
@@ -17,7 +17,7 @@ class YoRo_Logger {
 	private static function log_to_db( $data ) {
 		global $wpdb;
 
-		$table = $wpdb->prefix . 'yoro_agent_logs';
+		$table = YoRo_DB::logs_table_name();
 		$columns = self::get_table_columns( $table );
 		$telemetry = self::normalize_telemetry( $data );
 
@@ -158,6 +158,13 @@ class YoRo_Logger {
 			'ai_provider'           => sanitize_key( $ai_meta['provider'] ?? '' ),
 			'ai_model'              => sanitize_text_field( $ai_meta['model'] ?? '' ),
 			'prompt_version'        => sanitize_text_field( $ai_meta['prompt_version'] ?? '' ),
+			'routing_provider'      => sanitize_key( $ai_meta['routing_provider'] ?? '' ),
+			'yoro_ai_api_request_id' => sanitize_text_field( $ai_meta['yoro_ai_api_request_id'] ?? '' ),
+			'yoro_ai_api_plan'      => sanitize_key( $ai_meta['yoro_ai_api_plan'] ?? '' ),
+			'yoro_ai_api_usage_period' => sanitize_text_field( $ai_meta['yoro_ai_api_usage_period'] ?? '' ),
+			'yoro_ai_api_usage_limit' => isset( $ai_meta['yoro_ai_api_usage_limit'] ) ? absint( $ai_meta['yoro_ai_api_usage_limit'] ) : null,
+			'yoro_ai_api_usage_used' => isset( $ai_meta['yoro_ai_api_usage_used'] ) ? absint( $ai_meta['yoro_ai_api_usage_used'] ) : null,
+			'yoro_ai_api_usage_remaining' => isset( $ai_meta['yoro_ai_api_usage_remaining'] ) ? absint( $ai_meta['yoro_ai_api_usage_remaining'] ) : null,
 			'retrieved_examples'    => $retrieved_examples,
 			'route_candidates'      => $route_candidates,
 			'plan_type'             => sanitize_key( $plan['type'] ?? '' ),
@@ -192,6 +199,14 @@ class YoRo_Logger {
 			'model'          => sanitize_text_field( $meta['model'] ?? '' ),
 			'prompt_version' => sanitize_text_field( $meta['prompt_version'] ?? '' ),
 			'trace_id'       => sanitize_text_field( $meta['trace_id'] ?? '' ),
+			'routing_provider' => sanitize_key( $meta['routing_provider'] ?? '' ),
+			'yoro_ai_api_parser_source' => sanitize_key( $meta['yoro_ai_api_parser_source'] ?? '' ),
+			'yoro_ai_api_request_id' => sanitize_text_field( $meta['yoro_ai_api_request_id'] ?? '' ),
+			'yoro_ai_api_plan' => sanitize_key( $meta['yoro_ai_api_plan'] ?? '' ),
+			'yoro_ai_api_usage_period' => sanitize_text_field( $meta['yoro_ai_api_usage_period'] ?? '' ),
+			'yoro_ai_api_usage_limit' => isset( $meta['yoro_ai_api_usage_limit'] ) ? absint( $meta['yoro_ai_api_usage_limit'] ) : null,
+			'yoro_ai_api_usage_used' => isset( $meta['yoro_ai_api_usage_used'] ) ? absint( $meta['yoro_ai_api_usage_used'] ) : null,
+			'yoro_ai_api_usage_remaining' => isset( $meta['yoro_ai_api_usage_remaining'] ) ? absint( $meta['yoro_ai_api_usage_remaining'] ) : null,
 		];
 	}
 
@@ -297,7 +312,7 @@ class YoRo_Logger {
 	public static function get_last_executed( $user_id ) {
 		global $wpdb;
 
-		$table = $wpdb->prefix . 'yoro_agent_logs';
+		$table = YoRo_DB::logs_table_name();
 
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
@@ -332,7 +347,7 @@ class YoRo_Logger {
 	public static function get_executed_by_id( $log_id, $user_id ) {
 		global $wpdb;
 
-		$table = $wpdb->prefix . 'yoro_agent_logs';
+		$table = YoRo_DB::logs_table_name();
 
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
@@ -375,7 +390,7 @@ class YoRo_Logger {
 			return [];
 		}
 
-		$table   = $wpdb->prefix . 'yoro_agent_logs';
+		$table   = YoRo_DB::logs_table_name();
 		$columns = self::get_table_columns( $table );
 
 		if ( ! is_array( $columns ) || ! in_array( 'telemetry', $columns, true ) ) {
@@ -443,7 +458,7 @@ class YoRo_Logger {
 	public static function mark_undone( $log_id ) {
 		global $wpdb;
 
-		$table = $wpdb->prefix . 'yoro_agent_logs';
+		$table = YoRo_DB::logs_table_name();
 
 		return $wpdb->update(
 			$table,
@@ -467,7 +482,7 @@ class YoRo_Logger {
 	public static function build_real_query_evaluation_pack( $limit = 100 ) {
 		global $wpdb;
 
-		$table   = $wpdb->prefix . 'yoro_agent_logs';
+		$table   = YoRo_DB::logs_table_name();
 		$limit   = min( max( absint( $limit ), 20 ), 300 );
 		$columns = self::get_table_columns( $table );
 

@@ -5,7 +5,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'YORO_AI_PROVIDER_YORO_AI_API' ) ) {
-	define( 'YORO_AI_PROVIDER_YORO_AI_API', defined( 'YORO_AI_PROVIDER_YORO_CLOUD' ) ? YORO_AI_PROVIDER_YORO_CLOUD : 'yoro_cloud' );
+	define( 'YORO_AI_PROVIDER_YORO_AI_API', 'yoro_ai_api' );
+}
+
+if ( ! defined( 'YORO_AI_PROVIDER_YORO_CLOUD' ) ) {
+	define( 'YORO_AI_PROVIDER_YORO_CLOUD', 'yoro_cloud' );
 }
 
 class YoRo_AI_Provider_Resolver {
@@ -15,10 +19,10 @@ class YoRo_AI_Provider_Resolver {
 
 		if (
 			YORO_AI_PROVIDER_YORO_AI_API === $preferred &&
-			YoRo_AI_Settings::is_cloud_enabled() &&
-			YoRo_AI_Settings::is_cloud_endpoint_ready() &&
-			YoRo_AI_Settings::get_cloud_api_url() &&
-			YoRo_AI_Settings::get_cloud_site_key()
+			YoRo_AI_Settings::is_ai_api_enabled() &&
+			YoRo_AI_Settings::is_ai_api_endpoint_ready() &&
+			YoRo_AI_Settings::get_ai_api_url() &&
+			YoRo_AI_Settings::get_ai_api_site_key()
 		) {
 			return YORO_AI_PROVIDER_YORO_AI_API;
 		}
@@ -41,8 +45,8 @@ class YoRo_AI_Provider_Resolver {
 				return false;
 			}
 
-			return YoRo_AI_Settings::cloud_allows_feature( $capability ) &&
-				YoRo_AI_Settings::cloud_has_quota_remaining();
+			return YoRo_AI_Settings::ai_api_allows_feature( $capability ) &&
+				YoRo_AI_Settings::ai_api_has_quota_remaining();
 		}
 
 		if ( ! YoRo_AI_Settings::has_openai_direct_access() ) {

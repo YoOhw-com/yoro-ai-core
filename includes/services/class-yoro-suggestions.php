@@ -84,39 +84,39 @@ class YoRo_Suggestions {
 		switch ( $top_topic ) {
 			case 'operations_attention':
 				return [
-					self::action_suggestion( __( 'Open attention queue', 'yoro-agent-core' ), 'operations.get_attention_queue' ),
-					self::action_suggestion( __( 'Check fulfillment pressure', 'yoro-agent-core' ), 'operations.get_fulfillment_queue' ),
-					self::action_suggestion( __( 'Check customer follow-up', 'yoro-agent-core' ), 'customers.get_service_queue' ),
-					self::action_suggestion( __( 'Review operations summary', 'yoro-agent-core' ), 'operations.get_summary', [ 'window' => 'today' ] ),
+					self::action_suggestion( __( 'Open attention queue', 'yoro-ai-core' ), 'operations.get_attention_queue' ),
+					self::action_suggestion( __( 'Check fulfillment pressure', 'yoro-ai-core' ), 'operations.get_fulfillment_queue' ),
+					self::action_suggestion( __( 'Check customer follow-up', 'yoro-ai-core' ), 'customers.get_service_queue' ),
+					self::action_suggestion( __( 'Review operations summary', 'yoro-ai-core' ), 'operations.get_summary', [ 'window' => 'today' ] ),
 				];
 
 			case 'fulfillment':
 				return [
-					self::action_suggestion( __( 'Open fulfillment queue', 'yoro-agent-core' ), 'operations.get_fulfillment_queue' ),
-					self::action_suggestion( __( 'Check attention queue', 'yoro-agent-core' ), 'operations.get_attention_queue' ),
-					self::action_suggestion( __( 'Check customer follow-up', 'yoro-agent-core' ), 'customers.get_service_queue' ),
+					self::action_suggestion( __( 'Open fulfillment queue', 'yoro-ai-core' ), 'operations.get_fulfillment_queue' ),
+					self::action_suggestion( __( 'Check attention queue', 'yoro-ai-core' ), 'operations.get_attention_queue' ),
+					self::action_suggestion( __( 'Check customer follow-up', 'yoro-ai-core' ), 'customers.get_service_queue' ),
 				];
 
 			case 'customer_service':
 				return [
-					self::action_suggestion( __( 'Open customer follow-up', 'yoro-agent-core' ), 'customers.get_service_queue' ),
-					self::action_suggestion( __( 'Check attention queue', 'yoro-agent-core' ), 'operations.get_attention_queue' ),
-					self::action_suggestion( __( 'Check fulfillment queue', 'yoro-agent-core' ), 'operations.get_fulfillment_queue' ),
+					self::action_suggestion( __( 'Open customer follow-up', 'yoro-ai-core' ), 'customers.get_service_queue' ),
+					self::action_suggestion( __( 'Check attention queue', 'yoro-ai-core' ), 'operations.get_attention_queue' ),
+					self::action_suggestion( __( 'Check fulfillment queue', 'yoro-ai-core' ), 'operations.get_fulfillment_queue' ),
 				];
 
 			case 'inventory':
 				return [
-					self::action_suggestion( __( 'Open inventory queue', 'yoro-agent-core' ), 'products.get_inventory_queue' ),
-					self::action_suggestion( __( 'Check attention queue', 'yoro-agent-core' ), 'operations.get_attention_queue' ),
-					self::action_suggestion( __( 'Check fulfillment queue', 'yoro-agent-core' ), 'operations.get_fulfillment_queue' ),
+					self::action_suggestion( __( 'Open inventory queue', 'yoro-ai-core' ), 'products.get_inventory_queue' ),
+					self::action_suggestion( __( 'Check attention queue', 'yoro-ai-core' ), 'operations.get_attention_queue' ),
+					self::action_suggestion( __( 'Check fulfillment queue', 'yoro-ai-core' ), 'operations.get_fulfillment_queue' ),
 				];
 		}
 
 		return [
-			self::action_suggestion( __( 'Open attention queue', 'yoro-agent-core' ), 'operations.get_attention_queue' ),
-			self::action_suggestion( __( 'Open fulfillment queue', 'yoro-agent-core' ), 'operations.get_fulfillment_queue' ),
-			self::action_suggestion( __( 'Open customer follow-up', 'yoro-agent-core' ), 'customers.get_service_queue' ),
-			self::action_suggestion( __( 'Open inventory queue', 'yoro-agent-core' ), 'products.get_inventory_queue' ),
+			self::action_suggestion( __( 'Open attention queue', 'yoro-ai-core' ), 'operations.get_attention_queue' ),
+			self::action_suggestion( __( 'Open fulfillment queue', 'yoro-ai-core' ), 'operations.get_fulfillment_queue' ),
+			self::action_suggestion( __( 'Open customer follow-up', 'yoro-ai-core' ), 'customers.get_service_queue' ),
+			self::action_suggestion( __( 'Open inventory queue', 'yoro-ai-core' ), 'products.get_inventory_queue' ),
 		];
 	}
 
@@ -129,7 +129,7 @@ class YoRo_Suggestions {
 			if ( ! empty( $order_ids ) ) {
 				$id = absint( reset( $order_ids ) );
 
-				$suggestions[] = self::open_order_suggestion( __( 'Open order details', 'yoro-agent-core' ), $id );
+				$suggestions[] = self::open_order_suggestion( __( 'Open order details', 'yoro-ai-core' ), $id );
 			}
 		}
 
@@ -142,7 +142,7 @@ class YoRo_Suggestions {
 			if ( ! empty( $order_ids ) ) {
 				$id = absint( reset( $order_ids ) );
 
-				$suggestions[] = self::open_order_suggestion( __( 'Open emailed order', 'yoro-agent-core' ), $id );
+				$suggestions[] = self::open_order_suggestion( __( 'Open emailed order', 'yoro-ai-core' ), $id );
 			}
 		}
 
@@ -154,7 +154,7 @@ class YoRo_Suggestions {
 
 				$suggestions[] = [
 					'type'  => 'command',
-					'label' => __( 'View drafts', 'yoro-agent-core' ),
+					'label' => __( 'View drafts', 'yoro-ai-core' ),
 					'value' => 'Show email drafts for order #' . $id,
 				];
 			}
@@ -172,13 +172,13 @@ class YoRo_Suggestions {
 
 		if ( $order_id > 0 ) {
 			$suggestions[] = self::open_order_suggestion(
-				sprintf( __( 'Open order #%d details', 'yoro-agent-core' ), $order_id ),
+				sprintf( __( 'Open order #%d details', 'yoro-ai-core' ), $order_id ),
 				$order_id
 			);
 		}
 
-		$suggestions[] = self::action_suggestion( __( 'Open morning briefing', 'yoro-agent-core' ), 'store.get_morning_briefing' );
-		$suggestions[] = self::action_suggestion( __( 'Open operations attention queue', 'yoro-agent-core' ), 'operations.get_attention_queue' );
+		$suggestions[] = self::action_suggestion( __( 'Open morning briefing', 'yoro-ai-core' ), 'store.get_morning_briefing' );
+		$suggestions[] = self::action_suggestion( __( 'Open operations attention queue', 'yoro-ai-core' ), 'operations.get_attention_queue' );
 
 		return $suggestions;
 	}
@@ -237,7 +237,7 @@ class YoRo_Suggestions {
 		}
 
 		$suggestions = [
-			self::open_order_suggestion( __( 'Open first order', 'yoro-agent-core' ), $id ),
+			self::open_order_suggestion( __( 'Open first order', 'yoro-ai-core' ), $id ),
 		];
 
 		if ( 'on-hold' !== $status ) {
@@ -285,7 +285,7 @@ class YoRo_Suggestions {
 		}
 
 		$suggestions = [
-			self::open_order_suggestion( __( 'Open order details', 'yoro-agent-core' ), $id ),
+			self::open_order_suggestion( __( 'Open order details', 'yoro-ai-core' ), $id ),
 		];
 
 		if ( 'on-hold' !== $status ) {
@@ -332,7 +332,7 @@ class YoRo_Suggestions {
 		$id = reset( $processed );
 
 		return [
-			self::open_order_suggestion( __( 'Open updated order', 'yoro-agent-core' ), $id ),
+			self::open_order_suggestion( __( 'Open updated order', 'yoro-ai-core' ), $id ),
 		];
 	}
 
@@ -352,7 +352,7 @@ class YoRo_Suggestions {
 		$id = reset( $order_ids );
 
 		return [
-			self::open_order_suggestion( __( 'Open order details', 'yoro-agent-core' ), $id ),
+			self::open_order_suggestion( __( 'Open order details', 'yoro-ai-core' ), $id ),
 		];
 	}
 
@@ -388,7 +388,7 @@ class YoRo_Suggestions {
 		) {
 			$suggestions[] = [
 				'type'  => 'command',
-				'label' => __( 'Find same customer orders', 'yoro-agent-core' ),
+				'label' => __( 'Find same customer orders', 'yoro-ai-core' ),
 				'value' => 'Find other orders from this customer',
 			];
 		}
@@ -413,7 +413,7 @@ class YoRo_Suggestions {
 					'type'  => 'command',
 					'label' => sprintf(
 						/* translators: %s: drilldown label */
-						__( 'Open top briefing view: %s', 'yoro-agent-core' ),
+						__( 'Open top briefing view: %s', 'yoro-ai-core' ),
 						sanitize_text_field( $briefing_drilldowns[0]['label'] )
 					),
 					'value' => sanitize_text_field( $briefing_drilldowns[0]['command'] ),
@@ -425,7 +425,7 @@ class YoRo_Suggestions {
 					'type'  => 'command',
 					'label' => sprintf(
 						/* translators: %s: drilldown label */
-						__( 'Open next briefing view: %s', 'yoro-agent-core' ),
+						__( 'Open next briefing view: %s', 'yoro-ai-core' ),
 						sanitize_text_field( $briefing_drilldowns[1]['label'] )
 					),
 					'value' => sanitize_text_field( $briefing_drilldowns[1]['command'] ),
@@ -452,7 +452,7 @@ class YoRo_Suggestions {
 		if ( $has_email_draft_context ) {
 			$suggestions[] = [
 				'type'  => 'command',
-				'label' => __( 'Send that draft', 'yoro-agent-core' ),
+				'label' => __( 'Send that draft', 'yoro-ai-core' ),
 				'value' => 'Send that draft',
 			];
 		}
@@ -466,7 +466,7 @@ class YoRo_Suggestions {
 		) {
 			$suggestions[] = [
 				'type'  => 'command',
-				'label' => __( 'Retry failed step', 'yoro-agent-core' ),
+				'label' => __( 'Retry failed step', 'yoro-ai-core' ),
 				'value' => 'Retry failed step',
 			];
 		}
@@ -482,7 +482,7 @@ class YoRo_Suggestions {
 		) {
 			$suggestions[] = [
 				'type'  => 'command',
-				'label' => __( 'Continue workflow', 'yoro-agent-core' ),
+				'label' => __( 'Continue workflow', 'yoro-ai-core' ),
 				'value' => 'Continue previous workflow',
 			];
 		}
@@ -493,7 +493,7 @@ class YoRo_Suggestions {
 		if ( count( $last_order_ids ) > 1 ) {
 			$suggestions[] = [
 				'type'  => 'command',
-				'label' => __( 'Do same for other orders', 'yoro-agent-core' ),
+				'label' => __( 'Do same for other orders', 'yoro-ai-core' ),
 				'value' => 'Do the same for the other orders',
 			];
 		}

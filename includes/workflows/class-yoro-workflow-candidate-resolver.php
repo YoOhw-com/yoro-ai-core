@@ -42,7 +42,7 @@ class YoRo_Workflow_Candidate_Resolver {
 		$trigger_action = sanitize_text_field( $hint['action'] ?? '' );
 		$trigger_source = sanitize_key( $hint['parser_source'] ?? '' );
 
-		$parsed['workflow_promotion_source'] = '' !== $trigger_source ? $trigger_source : 'rule';
+		$parsed['workflow_promotion_source'] = self::normalize_promotion_source( $trigger_source );
 		$parsed['workflow_promotion_reason'] = 'post_router_workflow_candidate';
 
 		if ( '' !== $trigger_action ) {
@@ -58,6 +58,16 @@ class YoRo_Workflow_Candidate_Resolver {
 		}
 
 		return $parsed;
+	}
+
+	private static function normalize_promotion_source( $trigger_source ) {
+		$trigger_source = sanitize_key( (string) $trigger_source );
+
+		if ( 'ai_router' === $trigger_source ) {
+			return 'ai_router';
+		}
+
+		return 'guard';
 	}
 
 	private static function detect_template_id( $command, $normalized, $client_context, $hint ) {
@@ -76,7 +86,20 @@ class YoRo_Workflow_Candidate_Resolver {
 		}
 
 		if ( self::looks_like_email_authoring_request( $normalized, $client_context, $command, $hint ) ) {
+			$order_ids = self::resolve_order_ids( $command, $client_context, isset( $hint['params'] ) && is_array( $hint['params'] ) ? $hint['params'] : [] );
 			$delivery_mode = self::resolve_email_delivery_mode( $normalized, $hint );
+
+			if ( count( $order_ids ) > 1 ) {
+				if ( 'save_draft' === $delivery_mode ) {
+					return 'write_and_save_email_drafts_for_orders';
+				}
+
+				if ( 'send' === $delivery_mode ) {
+					return 'write_and_send_emails_for_orders';
+				}
+
+				return 'write_email_for_orders';
+			}
 
 			if ( 'save_draft' === $delivery_mode ) {
 				return 'write_and_save_email_draft_for_order';
@@ -94,19 +117,25 @@ class YoRo_Workflow_Candidate_Resolver {
 
 	private static function build_template_params( $template_id, $command, $normalized, $client_context, $hint ) {
 		$params    = isset( $hint['params'] ) && is_array( $hint['params'] ) ? $hint['params'] : [];
-		$order_id  = self::resolve_order_id( $command, $client_context, $params );
+		$order_ids = self::resolve_order_ids( $command, $client_context, $params );
+		$order_id  = ! empty( $order_ids[0] ) ? absint( $order_ids[0] ) : 0;
 		$template_params = [];
 
 		if ( $order_id > 0 ) {
 			$template_params['order_id'] = $order_id;
 		}
 
-		if ( in_array( $template_id, [ 'write_email_for_order', 'write_and_save_email_draft_for_order', 'write_and_send_email_for_order' ], true ) ) {
+		if ( in_array( $template_id, [ 'write_email_for_order', 'write_and_save_email_draft_for_order', 'write_and_send_email_for_order', 'write_email_for_orders', 'write_and_save_email_drafts_for_orders', 'write_and_send_emails_for_orders' ], true ) ) {
 			$instruction = self::extract_email_instruction( $command, $normalized, $params );
 			$delivery_mode = self::resolve_email_delivery_mode( $normalized, $hint );
 
 			if ( '' !== $instruction ) {
 				$template_params['instruction'] = $instruction;
+			}
+
+			if ( in_array( $template_id, [ 'write_email_for_orders', 'write_and_save_email_drafts_for_orders', 'write_and_send_emails_for_orders' ], true ) && ! empty( $order_ids ) ) {
+				$template_params['order_ids'] = $order_ids;
+				unset( $template_params['order_id'] );
 			}
 
 			$template_params['delivery_mode'] = $delivery_mode;
@@ -149,31 +178,45 @@ class YoRo_Workflow_Candidate_Resolver {
 	}
 
 	private static function resolve_order_id( $command, $client_context, $params ) {
-		$order_ids = class_exists( 'YoRo_Order_Helper' )
-			? YoRo_Order_Helper::extract_order_ids_from_text( $command )
-			: [];
+		$order_ids = self::resolve_order_ids( $command, $client_context, $params );
 
 		if ( ! empty( $order_ids[0] ) ) {
 			return absint( $order_ids[0] );
 		}
 
-		if ( ! empty( $params['order_id'] ) ) {
-			return absint( $params['order_id'] );
+		return 0;
+	}
+
+	private static function resolve_order_ids( $command, $client_context, $params ) {
+		$order_ids = class_exists( 'YoRo_Order_Helper' )
+			? YoRo_Order_Helper::extract_order_ids_from_text( $command )
+			: [];
+
+		if ( ! empty( $order_ids ) ) {
+			return array_values( array_filter( array_unique( array_map( 'absint', $order_ids ) ) ) );
 		}
 
-		if ( ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) && ! empty( $params['order_ids'][0] ) ) {
-			return absint( $params['order_ids'][0] );
+		if ( ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
+			return array_values( array_filter( array_unique( array_map( 'absint', $params['order_ids'] ) ) ) );
+		}
+
+		if ( ! empty( $params['order_id'] ) ) {
+			return [ absint( $params['order_id'] ) ];
+		}
+
+		if ( ! empty( $client_context['resolved_order_ids'] ) && is_array( $client_context['resolved_order_ids'] ) ) {
+			return array_values( array_filter( array_unique( array_map( 'absint', $client_context['resolved_order_ids'] ) ) ) );
 		}
 
 		if ( ! empty( $client_context['current_order_id'] ) ) {
-			return absint( $client_context['current_order_id'] );
+			return [ absint( $client_context['current_order_id'] ) ];
 		}
 
 		if ( ! empty( $client_context['last_referenced_order_id'] ) ) {
-			return absint( $client_context['last_referenced_order_id'] );
+			return [ absint( $client_context['last_referenced_order_id'] ) ];
 		}
 
-		return 0;
+		return [];
 	}
 
 	private static function looks_like_refund_review_request( $normalized, $action ) {
@@ -311,17 +354,24 @@ class YoRo_Workflow_Candidate_Resolver {
 	}
 
 	private static function looks_like_email_authoring_request( $normalized, $client_context, $command, $hint ) {
-		$has_order_reference = self::resolve_order_id(
+		$action = sanitize_text_field( $hint['action'] ?? '' );
+
+		if ( in_array( $action, [ 'orders.email_customer_template', 'orders.use_email_template' ], true ) ) {
+			return false;
+		}
+
+		$resolved_order_ids = self::resolve_order_ids(
 			$command,
 			$client_context,
 			isset( $hint['params'] ) && is_array( $hint['params'] ) ? $hint['params'] : []
-		) > 0;
+		);
+		$has_order_reference = ! empty( $resolved_order_ids );
 
 		if ( ! $has_order_reference ) {
 			return false;
 		}
 
-		return preg_match( '/\b(?:write|draft|compose|prepare|create)\b/i', $normalized )
+		return preg_match( '/\b(?:write|draft|compose|prepare|create|send)\b/i', $normalized )
 			&& preg_match( '/\b(?:email|reply|message)\b/i', $normalized );
 	}
 
@@ -358,6 +408,8 @@ class YoRo_Workflow_Candidate_Resolver {
 	}
 
 	private static function extract_email_instruction( $command, $normalized, $params ) {
+		$source = (string) $command;
+
 		if ( ! empty( $params['instruction'] ) ) {
 			$hint_instruction = sanitize_textarea_field( $params['instruction'] );
 
@@ -366,14 +418,14 @@ class YoRo_Workflow_Candidate_Resolver {
 				strtolower( $hint_instruction ) !== strtolower( trim( (string) $command ) ) &&
 				strtolower( $hint_instruction ) !== strtolower( trim( (string) $normalized ) )
 			) {
-				return $hint_instruction;
+				$source = $hint_instruction;
 			}
 		}
 
 		$instruction = preg_replace(
 			'/\bfor\s+order\s+#?\d+\b/i',
 			'',
-			(string) $command
+			$source
 		);
 
 		$instruction = preg_replace(
@@ -383,13 +435,31 @@ class YoRo_Workflow_Candidate_Resolver {
 		);
 
 		$instruction = preg_replace(
-			'/^\s*(?:write|draft|compose|prepare|create)\b\s*(?:a|an)?\s*/i',
+			'/^\s*(?:write|draft|compose|prepare|create|send)\b\s*(?:(?:a|an|the)\b\s*)?/i',
 			'',
 			$instruction
 		);
 
 		$instruction = preg_replace(
 			'/^\s*(?:me|us)\s+(?:an?\s+)?(?:customer\s+)?(?:email|reply|message)\b[:\s-]*/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/^\s*(?:(?:all\s+(?:of\s+)?(?:them|these|those))|them|these|those)\s+(?=(?:about|regarding|for)\b)/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/^\s*(?:(?:all\s+(?:of\s+)?(?:them|these|those))|them|these|those)\s+(?:the\s+)?(?:customer\s+)?(?:email|reply|message)\b[:\s-]*/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/^\s*(?:(?:all\s+(?:of\s+)?(?:them|these|those))|them|these|those)\s+(?:an?\s+)?(?:customer\s+)?(?:email|reply|message)\b[:\s-]*/i',
 			'',
 			$instruction
 		);
@@ -420,6 +490,18 @@ class YoRo_Workflow_Candidate_Resolver {
 
 		$instruction = preg_replace(
 			'/^\s*for\b[:\s-]*/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/^\s*(?:for|regarding|about)\b[\s:,-]*/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/\s+(?:to|for)\s+(?:(?:all\s+(?:of\s+)?(?:them|these|those))|them|these|those)\s*$/i',
 			'',
 			$instruction
 		);

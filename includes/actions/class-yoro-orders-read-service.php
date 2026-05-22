@@ -8,7 +8,7 @@ class YoRo_Orders_Read_Service {
 
 	public static function search_orders( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-agent-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
 		}
 
 		$limit = isset( $params['limit'] )
@@ -23,7 +23,7 @@ class YoRo_Orders_Read_Service {
 			$global_limit = 20;
 		}
 
-		$status = $params['status'] ?? [ 'pending', 'processing', 'on-hold' ];
+		$status = $params['status'] ?? [];
 
 		if ( is_string( $status ) ) {
 			$status = '' !== trim( $status ) ? [ $status ] : [];
@@ -35,29 +35,36 @@ class YoRo_Orders_Read_Service {
 			)
 		);
 
-		if ( empty( $status ) ) {
-			$status = [ 'pending', 'processing', 'on-hold' ];
-		}
+		$result_limit = min(
+			max( $limit, 1 ),
+			$global_limit,
+			50
+		);
 
 		$args = [
-			'limit' => min(
-				max( $limit, 1 ),
-				$global_limit,
-				50
-			),
-			'status'  => array_map( 'sanitize_key', (array) $status ),
+			'limit' => $result_limit,
+			'type' => 'shop_order',
 			'orderby' => 'date',
 			'order'   => 'DESC',
 		];
 
+		if ( ! empty( $status ) ) {
+			$args['status'] = array_map( 'sanitize_key', (array) $status );
+		}
+
 		if ( ! empty( $params['order_id'] ) ) {
 			$args['include'] = [ absint( $params['order_id'] ) ];
 			$args['limit']   = 1;
+			$result_limit    = 1;
 			unset( $args['status'] );
 		}
 
 		if ( ! empty( $params['email'] ) ) {
 			$args['billing_email'] = sanitize_email( $params['email'] );
+		}
+
+		if ( ! empty( $params['customer_id'] ) ) {
+			$args['customer_id'] = absint( $params['customer_id'] );
 		}
 
 		if ( ! empty( $params['payment_method'] ) ) {
@@ -68,12 +75,22 @@ class YoRo_Orders_Read_Service {
 			$args['billing_country'] = strtoupper( sanitize_text_field( $params['billing_country'] ) );
 		}
 
+		if ( ! empty( $params['shipping_state'] ) ) {
+			$args['shipping_state'] = strtoupper( sanitize_text_field( $params['shipping_state'] ) );
+		}
+
+		$min_age_hours = ! empty( $params['min_age_hours'] )
+			? min( max( absint( $params['min_age_hours'] ), 1 ), 8760 )
+			: 0;
 		$date_window = ! empty( $params['date_window'] )
 			? YoRo_Date_Helper::normalize_window_key( $params['date_window'] )
 			: YoRo_Date_Helper::infer_window_key_from_text( $params['original_command'] ?? '' );
 		$resolved_window = $date_window ? YoRo_Date_Helper::resolve_window( $date_window ) : [];
 
-		if ( ! empty( $resolved_window ) ) {
+		if ( $min_age_hours > 0 ) {
+			$args['date_created'] = '<=' . self::build_relative_cutoff( '-' . $min_age_hours . ' hours' );
+			$resolved_window = [];
+		} elseif ( ! empty( $resolved_window ) ) {
 			$args['date_created'] = $resolved_window['query'];
 		} elseif ( ! empty( $params['date_from'] ) || ! empty( $params['date_to'] ) ) {
 			$date_from = ! empty( $params['date_from'] ) ? sanitize_text_field( $params['date_from'] ) : '';
@@ -96,12 +113,198 @@ class YoRo_Orders_Read_Service {
 			}
 		}
 
-		$orders = wc_get_orders( $args );
+		$post_filter_scan = [];
+		$orders = self::query_filtered_orders( $args, $params, $result_limit, $post_filter_scan );
 
-		/*
-		* WooCommerce does not provide a simple direct `billing_phone`
-		* query arg in all versions/storage modes, so filter phone after query.
-		*/
+		$data = [];
+
+		foreach ( $orders as $order ) {
+			if ( $order instanceof WC_Order ) {
+				$data[] = YoRo_Order_Presenter::format_order_summary( $order );
+			}
+		}
+
+		$response = [
+			'success'      => true,
+			'action'       => 'orders.search',
+			'summary'      => self::build_search_summary( count( $data ), $params, $resolved_window ),
+			'count'        => count( $data ),
+			'read_only'    => true,
+			'orders'       => $data,
+			'result_type'  => 'orders',
+			'display_type' => 'orders_list',
+			'processed'    => [],
+			'skipped'      => [],
+			'errors'       => [],
+		];
+
+		if ( ! empty( $post_filter_scan ) ) {
+			$response['post_filter_scan'] = $post_filter_scan;
+		}
+
+		if ( empty( $data ) ) {
+			$response['empty_state'] = self::build_orders_search_empty_state( $params, $resolved_window );
+		}
+
+		if ( ! empty( $resolved_window ) ) {
+			$response['date_window'] = YoRo_Date_Helper::build_window_payload( $resolved_window );
+		}
+
+		if ( $min_age_hours > 0 ) {
+			$is_vietnamese = YoRo_Date_Helper::is_likely_vietnamese(
+				strtolower( sanitize_text_field( (string) ( $params['original_command'] ?? '' ) ) )
+			);
+			$response['min_age_hours'] = $min_age_hours;
+			$response['age_filter_label'] = class_exists( 'YoRo_Response_UX_Formatter' )
+				? YoRo_Response_UX_Formatter::age_threshold_label(
+					$min_age_hours,
+					[
+						'command' => $params['original_command'] ?? '',
+					],
+					$is_vietnamese ? 'vi' : 'en'
+				)
+				: '';
+		}
+
+		return $response;
+	}
+
+	private static function query_filtered_orders( $args, $params, $result_limit, &$scan_meta = [] ) {
+		$args         = is_array( $args ) ? $args : [];
+		$params       = is_array( $params ) ? $params : [];
+		$result_limit = min( max( absint( $result_limit ), 1 ), 50 );
+		$scan_meta    = [];
+
+		if ( ! self::has_post_query_filters( $params ) || ! empty( $args['include'] ) ) {
+			$orders = wc_get_orders( $args );
+			$orders = self::apply_post_query_filters( $orders, $params );
+
+			return array_slice( array_values( $orders ), 0, $result_limit );
+		}
+
+		$page_size  = min( 50, max( $result_limit * 3, 20 ) );
+		$scan_limit = self::get_post_filter_scan_limit( $result_limit );
+		$matched    = [];
+		$seen_ids   = [];
+		$scanned    = 0;
+		$page       = 1;
+		$base_args  = $args;
+
+		unset( $base_args['offset'] );
+
+		while ( $scanned < $scan_limit && count( $matched ) < $result_limit ) {
+			$query_args = $base_args;
+			$query_args['limit']  = min( $page_size, $scan_limit - $scanned );
+			$query_args['offset'] = ( $page - 1 ) * $page_size;
+
+			if ( $query_args['limit'] <= 0 ) {
+				break;
+			}
+
+			$page_orders = wc_get_orders( $query_args );
+			$page_orders = is_array( $page_orders ) ? $page_orders : [];
+			$page_count  = count( $page_orders );
+
+			if ( 0 === $page_count ) {
+				break;
+			}
+
+			$scanned += $page_count;
+
+			foreach ( self::apply_post_query_filters( $page_orders, $params ) as $order ) {
+				if ( ! $order instanceof WC_Order ) {
+					continue;
+				}
+
+				$order_id = $order->get_id();
+
+				if ( isset( $seen_ids[ $order_id ] ) ) {
+					continue;
+				}
+
+				$seen_ids[ $order_id ] = true;
+				$matched[] = $order;
+
+				if ( count( $matched ) >= $result_limit ) {
+					break;
+				}
+			}
+
+			if ( $page_count < $page_size ) {
+				break;
+			}
+
+			$page++;
+		}
+
+		$scan_meta = [
+			'applied'       => true,
+			'scanned'       => $scanned,
+			'limit'         => $scan_limit,
+			'matched'       => count( $matched ),
+			'result_limit'  => $result_limit,
+			'filters'       => self::post_query_filter_keys( $params ),
+		];
+
+		return array_slice( array_values( $matched ), 0, $result_limit );
+	}
+
+	private static function has_post_query_filters( $params ) {
+		return ! empty( self::post_query_filter_keys( $params ) );
+	}
+
+	private static function post_query_filter_keys( $params ) {
+		$params = is_array( $params ) ? $params : [];
+		$keys   = [];
+
+		if ( ! empty( $params['shipping_state'] ) ) {
+			$keys[] = 'shipping_state';
+		}
+
+		if ( ! empty( $params['phone'] ) ) {
+			$keys[] = 'phone';
+		}
+
+		if ( ! empty( $params['customer_name'] ) ) {
+			$keys[] = 'customer_name';
+		}
+
+		if ( isset( $params['total_min'] ) || isset( $params['total_max'] ) ) {
+			$keys[] = 'order_total';
+		}
+
+		return $keys;
+	}
+
+	private static function get_post_filter_scan_limit( $result_limit ) {
+		$configured = absint( get_option( 'yoro_order_search_post_filter_scan_limit', 500 ) );
+
+		if ( $configured <= 0 ) {
+			$configured = 500;
+		}
+
+		return min( max( $configured, max( absint( $result_limit ) * 20, 100 ) ), 1000 );
+	}
+
+	private static function apply_post_query_filters( $orders, $params ) {
+		$orders = is_array( $orders ) ? $orders : [];
+		$params = is_array( $params ) ? $params : [];
+
+		if ( ! empty( $params['shipping_state'] ) ) {
+			$shipping_state = strtoupper( sanitize_text_field( $params['shipping_state'] ) );
+
+			$orders = array_filter(
+				$orders,
+				function( $order ) use ( $shipping_state ) {
+					if ( ! $order instanceof WC_Order ) {
+						return false;
+					}
+
+					return strtoupper( (string) $order->get_shipping_state() ) === $shipping_state;
+				}
+			);
+		}
+
 		if ( ! empty( $params['phone'] ) ) {
 			$needle = preg_replace( '/\D+/', '', (string) $params['phone'] );
 
@@ -180,57 +383,128 @@ class YoRo_Orders_Read_Service {
 			);
 		}
 
-		$data = [];
+		return array_values( $orders );
+	}
 
-		foreach ( $orders as $order ) {
-			if ( $order instanceof WC_Order ) {
-				$data[] = YoRo_Order_Presenter::format_order_summary( $order );
-			}
+	private static function build_orders_search_empty_state( $params, $resolved_window = [] ) {
+		$params = is_array( $params ) ? $params : [];
+		$command = strtolower( sanitize_text_field( (string) ( $params['original_command'] ?? '' ) ) );
+		$is_vietnamese = YoRo_Date_Helper::is_likely_vietnamese( $command );
+		$locale = $is_vietnamese ? 'vi' : 'en';
+		$phrases = class_exists( 'YoRo_Response_UX_Formatter' )
+			? YoRo_Response_UX_Formatter::order_search_filter_phrases(
+				$params,
+				$resolved_window,
+				[
+					'command' => $params['original_command'] ?? '',
+				],
+				$locale
+			)
+			: [];
+		$criteria = ! empty( $phrases ) ? implode( ', ', $phrases ) : '';
+
+		if ( $is_vietnamese ) {
+			return [
+				'title'       => __( 'Không tìm thấy đơn hàng phù hợp.', 'yoro-ai-core' ),
+				'description' => '' !== $criteria
+					? sprintf( __( 'Không có đơn hàng nào khớp với bộ lọc: %s.', 'yoro-ai-core' ), $criteria )
+					: __( 'Không có đơn hàng nào khớp với yêu cầu này.', 'yoro-ai-core' ),
+				'actions'     => [
+					[
+						'label'   => __( 'Xem 5 đơn mới nhất', 'yoro-ai-core' ),
+						'command' => 'Show latest 5 orders',
+					],
+				],
+			];
 		}
 
-		$response = [
-			'success'      => true,
-			'action'       => 'orders.search',
-			'summary'      => self::build_search_summary( count( $data ), $params, $resolved_window ),
-			'count'        => count( $data ),
-			'read_only'    => true,
-			'orders'       => $data,
-			'result_type'  => 'orders',
-			'display_type' => 'orders_list',
-			'processed'    => [],
-			'skipped'      => [],
-			'errors'       => [],
+		return [
+			'title'       => __( 'No matching orders found.', 'yoro-ai-core' ),
+			'description' => '' !== $criteria
+				? sprintf( __( 'No orders matched these filters: %s.', 'yoro-ai-core' ), $criteria )
+				: __( 'No orders matched this request.', 'yoro-ai-core' ),
+			'actions'     => [
+				[
+					'label'   => __( 'Show latest 5 orders', 'yoro-ai-core' ),
+					'command' => 'Show latest 5 orders',
+				],
+			],
 		];
-
-		if ( ! empty( $resolved_window ) ) {
-			$response['date_window'] = YoRo_Date_Helper::build_window_payload( $resolved_window );
-		}
-
-		return $response;
 	}
 
 	private static function build_search_summary( $count, $params, $resolved_window = [] ) {
 		$count = absint( $count );
 		$command = strtolower( sanitize_text_field( (string) ( $params['original_command'] ?? '' ) ) );
 		$is_vietnamese = YoRo_Date_Helper::is_likely_vietnamese( $command );
+		$min_age_hours = isset( $params['min_age_hours'] ) ? absint( $params['min_age_hours'] ) : 0;
+		$locale = $is_vietnamese ? 'vi' : 'en';
+
+		if ( class_exists( 'YoRo_Response_UX_Formatter' ) ) {
+			return YoRo_Response_UX_Formatter::order_search_summary(
+				'found',
+				$count,
+				$params,
+				$resolved_window,
+				[
+					'command' => $params['original_command'] ?? '',
+				],
+				$locale
+			);
+		}
 
 		if ( $is_vietnamese ) {
-			$status = ! empty( $params['status'] ) && is_scalar( $params['status'] )
-				? sanitize_text_field( $params['status'] )
-				: '';
+			$status = self::first_status_filter( $params );
 			$status_text = $status ? ' ' . $status : '';
 			$window_text = ! empty( $resolved_window['key'] )
 				? ' trong ' . YoRo_Date_Helper::get_window_label( $resolved_window['key'], 'vi' )
 				: '';
+			$age_text = $min_age_hours > 0 && class_exists( 'YoRo_Response_UX_Formatter' )
+				? ' ' . YoRo_Response_UX_Formatter::age_threshold_phrase(
+					$min_age_hours,
+					[
+						'command' => $params['original_command'] ?? '',
+					],
+					'vi'
+				)
+				: '';
 
-			return sprintf( 'Tìm thấy %d đơn%s%s.', $count, $status_text, $window_text );
+			return sprintf( 'Tìm thấy %d đơn%s%s%s.', $count, $status_text, $window_text, $age_text );
 		}
 
 		if ( ! empty( $resolved_window['label'] ) ) {
 			return sprintf( 'Found %d orders in %s.', $count, strtolower( $resolved_window['label'] ) );
 		}
 
+		if ( $min_age_hours > 0 ) {
+			$status = self::first_status_filter( $params );
+			$status_text = $status ? ' ' . str_replace( '-', ' ', $status ) : '';
+			$age_phrase = class_exists( 'YoRo_Response_UX_Formatter' )
+				? YoRo_Response_UX_Formatter::age_threshold_phrase(
+					$min_age_hours,
+					[
+						'command' => $params['original_command'] ?? '',
+					],
+					'en'
+				)
+				: sprintf( 'older than %d hours', $min_age_hours );
+
+			return sprintf( 'Found %1$d%2$s orders %3$s.', $count, $status_text, $age_phrase );
+		}
+
 		return sprintf( 'Found %d orders.', $count );
+	}
+
+	private static function first_status_filter( $params ) {
+		$params = is_array( $params ) ? $params : [];
+
+		if ( empty( $params['status'] ) ) {
+			return '';
+		}
+
+		$status_values = is_array( $params['status'] ) ? $params['status'] : [ $params['status'] ];
+		$status = reset( $status_values );
+
+		return sanitize_key( $status );
 	}
 
 	public static function get_order_details( $params ) {
@@ -239,7 +513,7 @@ class YoRo_Orders_Read_Service {
 		if ( empty( $order_ids ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Order ID is required.', 'yoro-agent-core' )
+				__( 'Order ID is required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -258,7 +532,7 @@ class YoRo_Orders_Read_Service {
 		if ( empty( $data ) ) {
 			return new WP_Error(
 				'order_not_found',
-				__( 'Order not found.', 'yoro-agent-core' )
+				__( 'Order not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -295,7 +569,7 @@ class YoRo_Orders_Read_Service {
 
 	public static function get_store_insights( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) || ! function_exists( 'wc_get_products' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-agent-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
 		}
 
 		$window_key = self::normalize_operations_window_key( $params['window'] ?? 'last_7_days' );
@@ -410,7 +684,7 @@ class YoRo_Orders_Read_Service {
 		$insights = [
 			[
 				'key'     => 'orders',
-				'label'   => __( 'Orders', 'yoro-agent-core' ),
+				'label'   => __( 'Orders', 'yoro-ai-core' ),
 				'metrics' => [
 					'order_count'         => $order_count,
 					'gross_sales'         => wc_format_decimal( $order_total, 2 ),
@@ -420,7 +694,7 @@ class YoRo_Orders_Read_Service {
 			],
 			[
 				'key'     => 'customers',
-				'label'   => __( 'Customers', 'yoro-agent-core' ),
+				'label'   => __( 'Customers', 'yoro-ai-core' ),
 				'metrics' => [
 					'unique_customers' => count( $customer_map ),
 				],
@@ -428,7 +702,7 @@ class YoRo_Orders_Read_Service {
 			],
 			[
 				'key'     => 'products',
-				'label'   => __( 'Products', 'yoro-agent-core' ),
+				'label'   => __( 'Products', 'yoro-ai-core' ),
 				'metrics' => $inventory_counts,
 				'items'   => $top_products,
 			],
@@ -490,7 +764,7 @@ class YoRo_Orders_Read_Service {
 		if ( ! $order_id ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Order ID is required.', 'yoro-agent-core' )
+				__( 'Order ID is required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -499,7 +773,7 @@ class YoRo_Orders_Read_Service {
 		if ( ! $order ) {
 			return new WP_Error(
 				'order_not_found',
-				__( 'Order not found.', 'yoro-agent-core' )
+				__( 'Order not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -633,7 +907,7 @@ class YoRo_Orders_Read_Service {
 		}
 
 		if ( empty( $email ) && empty( $phone ) && empty( $customer_name ) ) {
-			return new WP_Error( 'invalid_params', __( 'Email, phone, or customer name is required.', 'yoro-agent-core' ) );
+			return new WP_Error( 'invalid_params', __( 'Email, phone, or customer name is required.', 'yoro-ai-core' ) );
 		}
 
 		$orders           = self::get_customer_orders( $email, $phone, $limit, $customer_name );
@@ -726,7 +1000,7 @@ class YoRo_Orders_Read_Service {
 
 	public static function find_orders_by_customer( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-agent-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
 		}
 
 		$email       = ! empty( $params['email'] ) ? sanitize_email( $params['email'] ) : '';
@@ -761,7 +1035,7 @@ class YoRo_Orders_Read_Service {
 		if ( empty( $email ) && empty( $phone ) && empty( $customer_id ) && empty( $customer_name ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Email, phone, customer ID, or customer name is required.', 'yoro-agent-core' )
+				__( 'Email, phone, customer ID, or customer name is required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -864,13 +1138,13 @@ class YoRo_Orders_Read_Service {
 		$limit    = ! empty( $params['limit'] ) ? min( max( absint( $params['limit'] ), 1 ), 50 ) : 20;
 
 		if ( ! $order_id ) {
-			return new WP_Error( 'invalid_params', __( 'Order ID is required.', 'yoro-agent-core' ) );
+			return new WP_Error( 'invalid_params', __( 'Order ID is required.', 'yoro-ai-core' ) );
 		}
 
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
-			return new WP_Error( 'order_not_found', __( 'Order not found.', 'yoro-agent-core' ) );
+			return new WP_Error( 'order_not_found', __( 'Order not found.', 'yoro-ai-core' ) );
 		}
 
 		$identity = self::build_order_identity( $order );
@@ -950,7 +1224,17 @@ class YoRo_Orders_Read_Service {
 
 	public static function preview_search_orders( $params ) {
 		$limit  = isset( $params['limit'] ) ? absint( $params['limit'] ) : 10;
-		$status = $params['status'] ?? [ 'pending', 'processing', 'on-hold' ];
+		$status = $params['status'] ?? [];
+
+		if ( is_string( $status ) ) {
+			$status = '' !== trim( $status ) ? [ $status ] : [];
+		}
+
+		$status = array_values(
+			array_filter(
+				array_map( 'sanitize_key', (array) $status )
+			)
+		);
 
 		return [
 			'type'            => 'read',
@@ -965,6 +1249,7 @@ class YoRo_Orders_Read_Service {
 			'date_window'     => ! empty( $params['date_window'] ) ? YoRo_Date_Helper::normalize_window_key( $params['date_window'] ) : '',
 			'date_from'       => ! empty( $params['date_from'] ) ? sanitize_text_field( $params['date_from'] ) : '',
 			'date_to'         => ! empty( $params['date_to'] ) ? sanitize_text_field( $params['date_to'] ) : '',
+			'min_age_hours'   => ! empty( $params['min_age_hours'] ) ? min( max( absint( $params['min_age_hours'] ), 1 ), 8760 ) : 0,
 			'changes_store'   => false,
 			'customer_name'   => ! empty( $params['customer_name'] ) ? sanitize_text_field( $params['customer_name'] ) : '',
 			'billing_country' => ! empty( $params['billing_country'] ) ? strtoupper( sanitize_text_field( $params['billing_country'] ) ) : '',
@@ -1082,7 +1367,7 @@ class YoRo_Orders_Read_Service {
 			'type'          => 'read',
 			'will_execute'  => false,
 			'action'        => 'Get morning briefing',
-			'window'        => __( 'Yesterday and this morning', 'yoro-agent-core' ),
+			'window'        => __( 'Yesterday and this morning', 'yoro-ai-core' ),
 			'changes_store' => false,
 		];
 	}
@@ -1478,8 +1763,8 @@ class YoRo_Orders_Read_Service {
 
 		return [
 			'key'         => 'low_stock_in_processing_orders',
-			'label'       => __( 'Low stock in processing orders', 'yoro-agent-core' ),
-			'description' => __( 'Low-stock products that appear in recent processing orders.', 'yoro-agent-core' ),
+			'label'       => __( 'Low stock in processing orders', 'yoro-ai-core' ),
+			'description' => __( 'Low-stock products that appear in recent processing orders.', 'yoro-ai-core' ),
 			'count'       => $count,
 			'products'    => array_values( $products ),
 		];
@@ -1569,7 +1854,7 @@ class YoRo_Orders_Read_Service {
 			if ( count( $orders ) < $limit ) {
 				$item                = self::format_customer_service_order(
 					$order,
-					__( 'Saved email draft is waiting for review or send.', 'yoro-agent-core' )
+					__( 'Saved email draft is waiting for review or send.', 'yoro-ai-core' )
 				);
 				$item['draft_count'] = count( $drafts );
 				$orders[]            = $item;
@@ -1578,8 +1863,8 @@ class YoRo_Orders_Read_Service {
 
 		return [
 			'key'         => 'saved_email_drafts',
-			'label'       => __( 'Saved email drafts', 'yoro-agent-core' ),
-			'description' => __( 'Orders with saved customer email drafts that have not been sent by YoRo.', 'yoro-agent-core' ),
+			'label'       => __( 'Saved email drafts', 'yoro-ai-core' ),
+			'description' => __( 'Orders with saved customer email drafts that have not been sent by YoRo.', 'yoro-ai-core' ),
 			'count'       => $count,
 			'orders'      => $orders,
 		];
@@ -1612,10 +1897,10 @@ class YoRo_Orders_Read_Service {
 
 		return [
 			'key'         => 'high_value_open_orders',
-			'label'       => __( 'High-value open orders', 'yoro-agent-core' ),
+			'label'       => __( 'High-value open orders', 'yoro-ai-core' ),
 			'description' => sprintf(
 				/* translators: %s: order total threshold. */
-				__( 'Open orders with total greater than or equal to %s. This is an operations threshold, not fraud scoring.', 'yoro-agent-core' ),
+				__( 'Open orders with total greater than or equal to %s. This is an operations threshold, not fraud scoring.', 'yoro-ai-core' ),
 				get_woocommerce_currency_symbol() . wc_format_decimal( $threshold, wc_get_price_decimals() )
 			),
 			'count'       => $count,

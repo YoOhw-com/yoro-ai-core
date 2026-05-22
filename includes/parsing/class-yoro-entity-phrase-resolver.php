@@ -59,7 +59,12 @@ class YoRo_Entity_Phrase_Resolver {
 		// THOSE / THESE ORDERS
 		if (
 			false !== strpos( $normalized, 'those orders' ) ||
-			false !== strpos( $normalized, 'these orders' )
+			false !== strpos( $normalized, 'these orders' ) ||
+			false !== strpos( $normalized, 'all of them' ) ||
+			false !== strpos( $normalized, 'all these' ) ||
+			false !== strpos( $normalized, 'all those' ) ||
+			false !== strpos( $normalized, 'selected orders' ) ||
+			preg_match( '/\b(?:them|these|those)\b/i', $normalized )
 		) {
 			return $order_ids;
 		}

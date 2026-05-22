@@ -296,6 +296,111 @@ class YoRo_Workflow_Actions {
 		);
 
 		YoRo_Action_Registry::register(
+			'workflow.write_email_for_orders',
+			[
+				'label'       => 'Write emails for orders workflow',
+				'description' => 'Load each selected order, compose a customer email for each one, then continue through the guided email workflow.',
+				'category'    => 'workflow',
+				'permission'  => 'manage_woocommerce',
+				'risk_level'  => 'medium',
+				'write_action'=> false,
+				'input_schema'=> [
+					'order_ids'        => 'array<int>',
+					'instruction'      => 'string',
+					'delivery_mode'    => 'string',
+					'original_command' => 'string',
+				],
+				'max_items'      => 20,
+				'ai_description' => 'Start the guided workflow that loads several orders, composes a customer email for each one, and then previews, saves drafts, or sends them depending on delivery_mode.',
+				'ai_examples'    => [
+					'Write a shipping update email for these orders',
+					'Draft the same customer email for all of them',
+				],
+				'required_params' => [ 'order_ids', 'instruction' ],
+				'param_hints'     => [
+					'instruction'   => 'Summarize the shared email goal in a short natural-language phrase.',
+					'delivery_mode' => 'Use preview by default unless the person clearly asks to save as draft or send.',
+				],
+				'capabilities' => [
+					'workflow',
+					'orders',
+					'email',
+					'multi_order',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'workflow.write_and_save_email_drafts_for_orders',
+			[
+				'label'       => 'Write and save email drafts for orders workflow',
+				'description' => 'Load each selected order, compose a customer email for each one, and save each result as a draft on the order.',
+				'category'    => 'workflow',
+				'permission'  => 'manage_woocommerce',
+				'risk_level'  => 'medium',
+				'write_action'=> false,
+				'input_schema'=> [
+					'order_ids'        => 'array<int>',
+					'instruction'      => 'string',
+					'delivery_mode'    => 'string',
+					'original_command' => 'string',
+				],
+				'max_items'      => 20,
+				'ai_description' => 'Start the guided workflow that loads several orders, composes a customer email for each one, and saves each email as a draft.',
+				'ai_examples'    => [
+					'Write a delay apology for these orders and save drafts',
+				],
+				'required_params' => [ 'order_ids', 'instruction' ],
+				'param_hints'     => [
+					'instruction'   => 'Summarize the shared email goal in a short natural-language phrase.',
+					'delivery_mode' => 'Set to save_draft when the person explicitly asks to save the authored emails as drafts.',
+				],
+				'capabilities' => [
+					'workflow',
+					'orders',
+					'email',
+					'draft',
+					'multi_order',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'workflow.write_and_send_emails_for_orders',
+			[
+				'label'       => 'Write and send emails for orders workflow',
+				'description' => 'Load each selected order, compose a customer email for each one, and send each email to the customer.',
+				'category'    => 'workflow',
+				'permission'  => 'manage_woocommerce',
+				'risk_level'  => 'high',
+				'write_action'=> false,
+				'input_schema'=> [
+					'order_ids'        => 'array<int>',
+					'instruction'      => 'string',
+					'delivery_mode'    => 'string',
+					'original_command' => 'string',
+				],
+				'max_items'      => 20,
+				'ai_description' => 'Start the guided workflow that loads several orders, composes a customer email for each one, and sends each email after confirmation.',
+				'ai_examples'    => [
+					'Write a shipping update for these orders and send it',
+				],
+				'required_params' => [ 'order_ids', 'instruction' ],
+				'param_hints'     => [
+					'instruction'   => 'Summarize the shared email goal in a short natural-language phrase.',
+					'delivery_mode' => 'Set to send when the person explicitly asks to send the authored emails.',
+				],
+				'capabilities' => [
+					'workflow',
+					'orders',
+					'email',
+					'send',
+					'multi_order',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
 			'workflow.verify_customer_before_fulfillment',
 			[
 				'label'       => 'Verify customer before fulfillment workflow',
@@ -417,7 +522,7 @@ class YoRo_Workflow_Actions {
 		if ( ! $user_id ) {
 			return new WP_Error(
 				'yoro_missing_user',
-				__( 'User context is required to prepare this workflow.', 'yoro-agent-core' )
+				__( 'User context is required to prepare this workflow.', 'yoro-ai-core' )
 			);
 		}
 
@@ -429,7 +534,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $followup['queues'] ) || ! is_array( $followup['queues'] ) ) {
 			return new WP_Error(
 				'yoro_missing_fulfillment_context',
-				__( 'Open the fulfillment queue first so I can select the right follow-up item.', 'yoro-agent-core' )
+				__( 'Open the fulfillment queue first so I can select the right follow-up item.', 'yoro-ai-core' )
 			);
 		}
 
@@ -448,7 +553,7 @@ class YoRo_Workflow_Actions {
 		if ( ! empty( $params['_yoro_confirmed'] ) ) {
 			return new WP_Error(
 				'yoro_workflow_stale',
-				__( 'This fulfillment follow-up preview is stale. Please generate a new preview before confirming.', 'yoro-agent-core' )
+				__( 'This fulfillment follow-up preview has expired. Please generate a new preview before confirming.', 'yoro-ai-core' )
 			);
 		}
 
@@ -466,13 +571,13 @@ class YoRo_Workflow_Actions {
 		$email_body        = sanitize_textarea_field( $email_preview['email']['body'] ?? '' );
 		$confirmation_scope = sprintf(
 			/* translators: %s: order number */
-			__( 'Create or update a shipping-delay draft for order #%s.', 'yoro-agent-core' ),
+			__( 'Create or update a shipping-delay draft for order #%s.', 'yoro-ai-core' ),
 			$selected_item['order_number']
 		);
 
 		$next_after_confirm = [
 			'action' => 'orders.save_customer_email_draft',
-			'label'  => __( 'Save reviewed customer email draft', 'yoro-agent-core' ),
+			'label'  => __( 'Save reviewed customer email draft', 'yoro-ai-core' ),
 			'params' => [
 				'order_id' => $selected_item['order_id'],
 				'subject'  => $email_subject,
@@ -493,7 +598,7 @@ class YoRo_Workflow_Actions {
 				'original_command' => $params['original_command'] ?? '',
 				'proposed_action'  => [
 					'action' => 'orders.save_customer_email_draft',
-					'label'  => __( 'Save reviewed customer email draft', 'yoro-agent-core' ),
+					'label'  => __( 'Save reviewed customer email draft', 'yoro-ai-core' ),
 				],
 				'draft_summary'    => [
 					'template'     => 'shipping_delay',
@@ -511,12 +616,12 @@ class YoRo_Workflow_Actions {
 			'action'       => 'workflow.fulfillment_followup_preview',
 			'summary'      => sprintf(
 				/* translators: %s: order number */
-				__( 'Fulfillment follow-up preview prepared for order #%s.', 'yoro-agent-core' ),
+				__( 'Fulfillment follow-up preview prepared for order #%s.', 'yoro-ai-core' ),
 				$selected_item['order_number']
 			),
 			'message'      => sprintf(
 				/* translators: %s: order number */
-				__( 'Fulfillment follow-up preview prepared for order #%s.', 'yoro-agent-core' ),
+				__( 'Fulfillment follow-up preview prepared for order #%s.', 'yoro-ai-core' ),
 				$selected_item['order_number']
 			),
 			'read_only'    => true,
@@ -540,7 +645,7 @@ class YoRo_Workflow_Actions {
 			'queue_source'    => $queue_source,
 			'proposed_action' => [
 				'action' => 'orders.save_customer_email_draft',
-				'label'  => __( 'Save reviewed customer email draft', 'yoro-agent-core' ),
+				'label'  => __( 'Save reviewed customer email draft', 'yoro-ai-core' ),
 				'template' => 'shipping_delay',
 			],
 			'draft_summary' => [
@@ -552,8 +657,8 @@ class YoRo_Workflow_Actions {
 			'next_after_confirm' => $next_after_confirm,
 			'risk_level'         => 'medium',
 			'risk_reasons'       => [
-				__( 'This workflow will prepare customer-facing follow-up content for a live order.', 'yoro-agent-core' ),
-				__( 'A later execution step should require confirmation before any draft is saved.', 'yoro-agent-core' ),
+				__( 'This workflow will prepare customer-facing follow-up content for a live order.', 'yoro-ai-core' ),
+				__( 'A later execution step should require confirmation before any draft is saved.', 'yoro-ai-core' ),
 			],
 			'email_preview' => [
 				'template'  => sanitize_key( $email_preview['email']['template'] ?? 'shipping_delay' ),
@@ -597,7 +702,7 @@ class YoRo_Workflow_Actions {
 		if ( ! $user_id ) {
 			return new WP_Error(
 				'yoro_missing_user',
-				__( 'User context is required to prepare this workflow.', 'yoro-agent-core' )
+				__( 'User context is required to prepare this workflow.', 'yoro-ai-core' )
 			);
 		}
 
@@ -621,14 +726,14 @@ class YoRo_Workflow_Actions {
 		if ( ! empty( $params['_yoro_confirmed'] ) ) {
 			return new WP_Error(
 				'yoro_workflow_stale',
-				__( 'This customer follow-up preview is stale. Please generate a new preview before confirming.', 'yoro-agent-core' )
+				__( 'This customer follow-up preview has expired. Please generate a new preview before confirming.', 'yoro-ai-core' )
 			);
 		}
 
 		if ( empty( $followup['queues'] ) || ! is_array( $followup['queues'] ) ) {
 			return new WP_Error(
 				'yoro_missing_customer_service_context',
-				__( 'Open the customer service queue first so I can select the right follow-up item.', 'yoro-agent-core' )
+				__( 'Open the customer service queue first so I can select the right follow-up item.', 'yoro-ai-core' )
 			);
 		}
 
@@ -648,19 +753,19 @@ class YoRo_Workflow_Actions {
 		$is_existing_draft  = '' !== $existing_draft_id;
 		$confirmation_scope = $is_existing_draft
 			? sprintf(
-				__( 'Update the saved customer draft for order #%s.', 'yoro-agent-core' ),
+				__( 'Update the saved customer draft for order #%s.', 'yoro-ai-core' ),
 				$selected_item['order_number']
 			)
 			: sprintf(
-				__( 'Create a customer follow-up draft for order #%s.', 'yoro-agent-core' ),
+				__( 'Create a customer follow-up draft for order #%s.', 'yoro-ai-core' ),
 				$selected_item['order_number']
 			);
 
 		$next_after_confirm = [
 			'action' => $is_existing_draft ? 'orders.update_customer_email_draft' : 'orders.save_customer_email_draft',
 			'label'  => $is_existing_draft
-				? __( 'Update reviewed customer email draft', 'yoro-agent-core' )
-				: __( 'Save reviewed customer email draft', 'yoro-agent-core' ),
+				? __( 'Update reviewed customer email draft', 'yoro-ai-core' )
+				: __( 'Save reviewed customer email draft', 'yoro-ai-core' ),
 			'params' => [
 				'order_id' => $selected_item['order_id'],
 				'subject'  => $email_subject,
@@ -703,11 +808,11 @@ class YoRo_Workflow_Actions {
 			'success'      => true,
 			'action'       => 'workflow.customer_followup_preview',
 			'summary'      => sprintf(
-				__( 'Customer follow-up preview prepared for order #%s.', 'yoro-agent-core' ),
+				__( 'Customer follow-up preview prepared for order #%s.', 'yoro-ai-core' ),
 				$selected_item['order_number']
 			),
 			'message'      => sprintf(
-				__( 'Customer follow-up preview prepared for order #%s.', 'yoro-agent-core' ),
+				__( 'Customer follow-up preview prepared for order #%s.', 'yoro-ai-core' ),
 				$selected_item['order_number']
 			),
 			'read_only'    => true,
@@ -743,8 +848,8 @@ class YoRo_Workflow_Actions {
 			'next_after_confirm' => $next_after_confirm,
 			'risk_level'         => 'medium',
 			'risk_reasons'       => [
-				__( 'This workflow will prepare customer-facing follow-up content for a live order.', 'yoro-agent-core' ),
-				__( 'A later execution step should require confirmation before any draft is created or updated.', 'yoro-agent-core' ),
+				__( 'This workflow will prepare customer-facing follow-up content for a live order.', 'yoro-ai-core' ),
+				__( 'A later execution step should require confirmation before any draft is created or updated.', 'yoro-ai-core' ),
 			],
 			'email_preview' => [
 				'template'  => sanitize_key( $email_preview['email']['template'] ?? 'ai_custom' ),
@@ -788,7 +893,7 @@ class YoRo_Workflow_Actions {
 		if ( ! $user_id ) {
 			return new WP_Error(
 				'yoro_missing_user',
-				__( 'User context is required to prepare this workflow.', 'yoro-agent-core' )
+				__( 'User context is required to prepare this workflow.', 'yoro-ai-core' )
 			);
 		}
 
@@ -800,7 +905,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $followup['queues'] ) || ! is_array( $followup['queues'] ) ) {
 			return new WP_Error(
 				'yoro_missing_operations_attention_context',
-				__( 'Open the operations attention queue first so I can select the right attention item.', 'yoro-agent-core' )
+				__( 'Open the operations attention queue first so I can select the right attention item.', 'yoro-ai-core' )
 			);
 		}
 
@@ -837,11 +942,11 @@ class YoRo_Workflow_Actions {
 			'success'        => true,
 			'action'         => 'workflow.operations_attention_preview',
 			'summary'        => sprintf(
-				__( 'Operations attention preview prepared for order #%s.', 'yoro-agent-core' ),
+				__( 'Operations attention preview prepared for order #%s.', 'yoro-ai-core' ),
 				$selected_item['order_number']
 			),
 			'message'        => sprintf(
-				__( 'Operations attention preview prepared for order #%s.', 'yoro-agent-core' ),
+				__( 'Operations attention preview prepared for order #%s.', 'yoro-ai-core' ),
 				$selected_item['order_number']
 			),
 			'read_only'      => true,
@@ -897,7 +1002,7 @@ class YoRo_Workflow_Actions {
 		if ( ! $user_id ) {
 			return new WP_Error(
 				'yoro_missing_user',
-				__( 'User context is required to prepare this workflow.', 'yoro-agent-core' )
+				__( 'User context is required to prepare this workflow.', 'yoro-ai-core' )
 			);
 		}
 
@@ -909,7 +1014,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $followup['queues'] ) || ! is_array( $followup['queues'] ) ) {
 			return new WP_Error(
 				'yoro_missing_inventory_context',
-				__( 'Open the inventory queue first so I can select the right stock issue.', 'yoro-agent-core' )
+				__( 'Open the inventory queue first so I can select the right stock issue.', 'yoro-ai-core' )
 			);
 		}
 
@@ -946,11 +1051,11 @@ class YoRo_Workflow_Actions {
 			'success'          => true,
 			'action'           => 'workflow.inventory_pressure_preview',
 			'summary'          => sprintf(
-				__( 'Inventory pressure preview prepared for product #%s.', 'yoro-agent-core' ),
+				__( 'Inventory pressure preview prepared for product #%s.', 'yoro-ai-core' ),
 				$selected_item['product_id']
 			),
 			'message'          => sprintf(
-				__( 'Inventory pressure preview prepared for product #%s.', 'yoro-agent-core' ),
+				__( 'Inventory pressure preview prepared for product #%s.', 'yoro-ai-core' ),
 				$selected_item['product_id']
 			),
 			'read_only'        => true,
@@ -997,7 +1102,7 @@ class YoRo_Workflow_Actions {
 		if ( ! $user_id ) {
 			return new WP_Error(
 				'yoro_missing_user',
-				__( 'User context is required to prepare this workflow.', 'yoro-agent-core' )
+				__( 'User context is required to prepare this workflow.', 'yoro-ai-core' )
 			);
 		}
 
@@ -1009,7 +1114,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $followup['recommended_sequence'] ) || ! is_array( $followup['recommended_sequence'] ) ) {
 			return new WP_Error(
 				'yoro_missing_business_context',
-				__( 'Open the business summary first so I can choose the right business signal.', 'yoro-agent-core' )
+				__( 'Open the business summary first so I can choose the right business signal.', 'yoro-ai-core' )
 			);
 		}
 
@@ -1044,13 +1149,13 @@ class YoRo_Workflow_Actions {
 			'action'           => 'workflow.business_summary_preview',
 			'summary'          => sanitize_text_field(
 				sprintf(
-					__( 'Business summary preview prepared for signal: %s.', 'yoro-agent-core' ),
+					__( 'Business summary preview prepared for signal: %s.', 'yoro-ai-core' ),
 					$selected_item['title']
 				)
 			),
 			'message'          => sanitize_text_field(
 				sprintf(
-					__( 'Business summary preview prepared for signal: %s.', 'yoro-agent-core' ),
+					__( 'Business summary preview prepared for signal: %s.', 'yoro-ai-core' ),
 					$selected_item['title']
 				)
 			),
@@ -1098,7 +1203,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $workflow ) ) {
 			return [
 				'success' => false,
-				'message' => __( 'No active workflow to cancel.', 'yoro-agent-core' ),
+				'message' => __( 'No active workflow to cancel.', 'yoro-ai-core' ),
 			];
 		}
 
@@ -1111,8 +1216,8 @@ class YoRo_Workflow_Actions {
 		return [
 			'success'      => true,
 			'action'       => 'workflow.cancel',
-			'summary'      => __( 'Workflow cancelled.', 'yoro-agent-core' ),
-			'message'      => __( 'Workflow cancelled.', 'yoro-agent-core' ),
+			'summary'      => __( 'Workflow cancelled.', 'yoro-ai-core' ),
+			'message'      => __( 'Workflow cancelled.', 'yoro-ai-core' ),
 			'workflow'     => $workflow,
 			'result_type'  => 'assistant_message',
 			'display_type' => 'assistant_message',
@@ -1136,7 +1241,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $queues ) ) {
 			return new WP_Error(
 				'yoro_missing_fulfillment_queue_data',
-				__( 'Fulfillment queue data is missing. Open the fulfillment queue again and retry.', 'yoro-agent-core' )
+				__( 'Fulfillment queue data is missing. Open the fulfillment queue again and retry.', 'yoro-ai-core' )
 			);
 		}
 
@@ -1279,7 +1384,7 @@ class YoRo_Workflow_Actions {
 
 		return new WP_Error(
 			'yoro_no_fulfillment_candidate',
-			__( 'I could not find a fulfillment item that is ready for a follow-up preview yet.', 'yoro-agent-core' )
+			__( 'I could not find a fulfillment item that is ready for a follow-up preview yet.', 'yoro-ai-core' )
 		);
 	}
 
@@ -1290,26 +1395,26 @@ class YoRo_Workflow_Actions {
 			case 'processing_without_tracking':
 				return sprintf(
 					/* translators: %s: order number */
-					__( 'Order #%s was selected because it is processing, has no tracking signal, and is the top fulfillment risk in the current queue.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because it is processing, has no tracking signal, and is the top fulfillment risk in the current queue.', 'yoro-ai-core' ),
 					$order_number
 				);
 			case 'processing_older_than_48h':
 				return sprintf(
 					/* translators: %s: order number */
-					__( 'Order #%s was selected because it has been processing for more than 48 hours and still appears in the aging fulfillment backlog.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because it has been processing for more than 48 hours and still appears in the aging fulfillment backlog.', 'yoro-ai-core' ),
 					$order_number
 				);
 			case 'missing_shipping_address':
 				return sprintf(
 					/* translators: %s: order number */
-					__( 'Order #%s was selected because its shipping address still looks incomplete and blocks normal fulfillment follow-up.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because its shipping address still looks incomplete and blocks normal fulfillment follow-up.', 'yoro-ai-core' ),
 					$order_number
 				);
 			case 'recent_ready_to_fulfill':
 			default:
 				return sprintf(
 					/* translators: %s: order number */
-					__( 'Order #%s was selected because it is one of the newest fulfillment candidates still waiting for an outbound shipping follow-up.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because it is one of the newest fulfillment candidates still waiting for an outbound shipping follow-up.', 'yoro-ai-core' ),
 					$order_number
 				);
 		}
@@ -1327,7 +1432,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $queues ) ) {
 			return new WP_Error(
 				'yoro_missing_customer_service_queue_data',
-				__( 'Customer service queue data is missing. Open the customer service queue again and retry.', 'yoro-agent-core' )
+				__( 'Customer service queue data is missing. Open the customer service queue again and retry.', 'yoro-ai-core' )
 			);
 		}
 
@@ -1400,7 +1505,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $selected_queue ) || empty( $selected_order['id'] ) ) {
 			return new WP_Error(
 				'yoro_no_customer_followup_candidate',
-				__( 'I could not find a customer follow-up item that is ready for a guided preview yet.', 'yoro-agent-core' )
+				__( 'I could not find a customer follow-up item that is ready for a guided preview yet.', 'yoro-ai-core' )
 			);
 		}
 
@@ -1446,23 +1551,23 @@ class YoRo_Workflow_Actions {
 		switch ( $queue_key ) {
 			case 'saved_email_drafts':
 				return sprintf(
-					__( 'Order #%s was selected because a saved customer email draft is already waiting for review, making it the fastest follow-up to complete next.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because a saved customer email draft is already waiting for review, making it the fastest follow-up to complete next.', 'yoro-ai-core' ),
 					$order_number
 				);
 			case 'on_hold_followup':
 				return sprintf(
-					__( 'Order #%s was selected because it has been on hold for more than 48 hours and is still part of the heaviest customer follow-up backlog.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because it has been on hold for more than 48 hours and is still part of the heaviest customer follow-up backlog.', 'yoro-ai-core' ),
 					$order_number
 				);
 			case 'pending_payment_followup':
 				return sprintf(
-					__( 'Order #%s was selected because payment is still pending and it remains in the pending-payment outreach queue.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because payment is still pending and it remains in the pending-payment outreach queue.', 'yoro-ai-core' ),
 					$order_number
 				);
 			case 'failed_checkout_followup':
 			default:
 				return sprintf(
-					__( 'Order #%s was selected because it is part of the recent failed checkout support queue and may need proactive customer help.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because it is part of the recent failed checkout support queue and may need proactive customer help.', 'yoro-ai-core' ),
 					$order_number
 				);
 		}
@@ -1488,35 +1593,35 @@ class YoRo_Workflow_Actions {
 		switch ( $queue_key ) {
 			case 'pending_payment_followup':
 				$subject = sprintf(
-					__( 'Payment reminder for order #%s', 'yoro-agent-core' ),
+					__( 'Payment reminder for order #%s', 'yoro-ai-core' ),
 					$order_number
 				);
 				$body = sprintf(
-					__( 'Hi %1$s, we are following up on order #%2$s from YoPlay because payment is still pending. If you still want this order, please complete payment when convenient, or reply if you need help finishing checkout.', 'yoro-agent-core' ),
-					$customer_name ? $customer_name : __( 'there', 'yoro-agent-core' ),
+					__( 'Hi %1$s, we are following up on order #%2$s from YoPlay because payment is still pending. If you still want this order, please complete payment when convenient, or reply if you need help finishing checkout.', 'yoro-ai-core' ),
+					$customer_name ? $customer_name : __( 'there', 'yoro-ai-core' ),
 					$order_number
 				);
 				break;
 			case 'failed_checkout_followup':
 				$subject = sprintf(
-					__( 'Need help with order #%s?', 'yoro-agent-core' ),
+					__( 'Need help with order #%s?', 'yoro-ai-core' ),
 					$order_number
 				);
 				$body = sprintf(
-					__( 'Hi %1$s, we noticed checkout did not complete for order #%2$s. If you still want the order, reply here and our team can help you finish the purchase.', 'yoro-agent-core' ),
-					$customer_name ? $customer_name : __( 'there', 'yoro-agent-core' ),
+					__( 'Hi %1$s, we noticed checkout did not complete for order #%2$s. If you still want the order, reply here and our team can help you finish the purchase.', 'yoro-ai-core' ),
+					$customer_name ? $customer_name : __( 'there', 'yoro-ai-core' ),
 					$order_number
 				);
 				break;
 			case 'on_hold_followup':
 			default:
 				$subject = sprintf(
-					__( 'Update on your order #%s', 'yoro-agent-core' ),
+					__( 'Update on your order #%s', 'yoro-ai-core' ),
 					$order_number
 				);
 				$body = sprintf(
-					__( 'Hi %1$s, we are following up about order #%2$s from YoPlay. The order is still on hold, and we wanted to check whether you need anything from us to move it forward. If you have questions, just reply and we will help.', 'yoro-agent-core' ),
-					$customer_name ? $customer_name : __( 'there', 'yoro-agent-core' ),
+					__( 'Hi %1$s, we are following up about order #%2$s from YoPlay. The order is still on hold, and we wanted to check whether you need anything from us to move it forward. If you have questions, just reply and we will help.', 'yoro-ai-core' ),
+					$customer_name ? $customer_name : __( 'there', 'yoro-ai-core' ),
 					$order_number
 				);
 				break;
@@ -1580,7 +1685,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $queues ) ) {
 			return new WP_Error(
 				'yoro_missing_operations_attention_queue_data',
-				__( 'Operations attention queue data is missing. Open the attention queue again and retry.', 'yoro-agent-core' )
+				__( 'Operations attention queue data is missing. Open the attention queue again and retry.', 'yoro-ai-core' )
 			);
 		}
 
@@ -1629,7 +1734,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $selected_queue ) || empty( $selected_order['id'] ) ) {
 			return new WP_Error(
 				'yoro_no_operations_attention_candidate',
-				__( 'I could not find an operations attention item that is ready for a guided preview yet.', 'yoro-agent-core' )
+				__( 'I could not find an operations attention item that is ready for a guided preview yet.', 'yoro-ai-core' )
 			);
 		}
 
@@ -1673,28 +1778,28 @@ class YoRo_Workflow_Actions {
 		switch ( $queue_key ) {
 			case 'pending_payment_older_than_24h':
 				return sprintf(
-					__( 'Order #%s was selected because payment is still pending and it is the clearest attention item to resolve first.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because payment is still pending and it is the clearest attention item to resolve first.', 'yoro-ai-core' ),
 					$order_number
 				);
 			case 'processing_older_than_72h':
 				return sprintf(
-					__( 'Order #%s was selected because it has remained in processing long enough to indicate operational follow-through risk.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because it has remained in processing long enough to indicate operational follow-through risk.', 'yoro-ai-core' ),
 					$order_number
 				);
 			case 'on_hold_older_than_48h':
 				return sprintf(
-					__( 'Order #%s was selected because it has been on hold for more than 48 hours and likely needs customer follow-up next.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because it has been on hold for more than 48 hours and likely needs customer follow-up next.', 'yoro-ai-core' ),
 					$order_number
 				);
 			case 'recent_failed_orders':
 				return sprintf(
-					__( 'Order #%s was selected because it is part of the recent failed-order queue and may need customer recovery next.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because it is part of the recent failed-order queue and may need customer recovery next.', 'yoro-ai-core' ),
 					$order_number
 				);
 			case 'high_value_open_orders':
 			default:
 				return sprintf(
-					__( 'Order #%s was selected because it is a high-value open order that still sits inside the operations attention backlog.', 'yoro-agent-core' ),
+					__( 'Order #%s was selected because it is a high-value open order that still sits inside the operations attention backlog.', 'yoro-ai-core' ),
 					$order_number
 				);
 		}
@@ -1705,32 +1810,32 @@ class YoRo_Workflow_Actions {
 			case 'pending_payment_older_than_24h':
 				return [
 					'action'  => 'customers.get_service_queue',
-					'label'   => __( 'Open customer service queue', 'yoro-agent-core' ),
+					'label'   => __( 'Open customer service queue', 'yoro-ai-core' ),
 					'command' => 'Show customer service queue',
-					'summary' => __( 'Open the customer service queue next so YoRo can review pending-payment outreach candidates from the customer side.', 'yoro-agent-core' ),
+					'summary' => __( 'Open the customer service queue next so YoRo can review pending-payment outreach candidates from the customer side.', 'yoro-ai-core' ),
 				];
 			case 'processing_older_than_72h':
 				return [
 					'action'  => 'operations.get_fulfillment_queue',
-					'label'   => __( 'Open fulfillment queue', 'yoro-agent-core' ),
+					'label'   => __( 'Open fulfillment queue', 'yoro-ai-core' ),
 					'command' => 'Show fulfillment queue',
-					'summary' => __( 'Open the fulfillment queue next to confirm whether this attention item is turning into a shipping or aging-processing follow-up.', 'yoro-agent-core' ),
+					'summary' => __( 'Open the fulfillment queue next to confirm whether this attention item is turning into a shipping or aging-processing follow-up.', 'yoro-ai-core' ),
 				];
 			case 'on_hold_older_than_48h':
 			case 'recent_failed_orders':
 				return [
 					'action'  => 'customers.get_service_queue',
-					'label'   => __( 'Review customer follow-up queue', 'yoro-agent-core' ),
+					'label'   => __( 'Review customer follow-up queue', 'yoro-ai-core' ),
 					'command' => 'Show customer service queue',
-					'summary' => __( 'Open the customer service queue next so YoRo can continue from the customer follow-up owner instead of staying at the attention layer.', 'yoro-agent-core' ),
+					'summary' => __( 'Open the customer service queue next so YoRo can continue from the customer follow-up owner instead of staying at the attention layer.', 'yoro-ai-core' ),
 				];
 			case 'high_value_open_orders':
 			default:
 				return [
 					'action'  => 'operations.get_summary',
-					'label'   => __( 'Review operations summary', 'yoro-agent-core' ),
+					'label'   => __( 'Review operations summary', 'yoro-ai-core' ),
 					'command' => 'Show operations summary for today',
-					'summary' => __( 'Open the operations summary next to review the broader store impact before choosing a narrower workflow owner.', 'yoro-agent-core' ),
+					'summary' => __( 'Open the operations summary next to review the broader store impact before choosing a narrower workflow owner.', 'yoro-ai-core' ),
 				];
 		}
 	}
@@ -1747,7 +1852,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $queues ) && empty( $case_rankings ) ) {
 			return new WP_Error(
 				'yoro_missing_inventory_queue_data',
-				__( 'Inventory queue data is missing. Open the inventory queue again and retry.', 'yoro-agent-core' )
+				__( 'Inventory queue data is missing. Open the inventory queue again and retry.', 'yoro-ai-core' )
 			);
 		}
 
@@ -1852,7 +1957,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $selected_queue ) || empty( $selected_product['id'] ) ) {
 			return new WP_Error(
 				'yoro_no_inventory_pressure_candidate',
-				__( 'I could not find an inventory item that is ready for a guided preview yet.', 'yoro-agent-core' )
+				__( 'I could not find an inventory item that is ready for a guided preview yet.', 'yoro-ai-core' )
 			);
 		}
 
@@ -1896,23 +2001,23 @@ class YoRo_Workflow_Actions {
 		switch ( $queue_key ) {
 			case 'out_of_stock':
 				return sprintf(
-					__( '%s was selected because it is already out of stock and represents the clearest inventory pressure to review first.', 'yoro-agent-core' ),
+					__( '%s was selected because it is already out of stock and represents the clearest inventory pressure to review first.', 'yoro-ai-core' ),
 					$product_name
 				);
 			case 'on_backorder':
 				return sprintf(
-					__( '%s was selected because it is already on backorder and may now be feeding directly into fulfillment pressure.', 'yoro-agent-core' ),
+					__( '%s was selected because it is already on backorder and may now be feeding directly into fulfillment pressure.', 'yoro-ai-core' ),
 					$product_name
 				);
 			case 'low_stock_in_processing_orders':
 				return sprintf(
-					__( '%s was selected because recent processing demand is already consuming the remaining stock and makes it the most actionable inventory follow-up next.', 'yoro-agent-core' ),
+					__( '%s was selected because recent processing demand is already consuming the remaining stock and makes it the most actionable inventory follow-up next.', 'yoro-ai-core' ),
 					$product_name
 				);
 			case 'low_stock':
 			default:
 				return sprintf(
-					__( '%s was selected because its stock is already low and it is the cleanest candidate for the next inventory review step.', 'yoro-agent-core' ),
+					__( '%s was selected because its stock is already low and it is the cleanest candidate for the next inventory review step.', 'yoro-ai-core' ),
 					$product_name
 				);
 		}
@@ -1923,25 +2028,25 @@ class YoRo_Workflow_Actions {
 			case 'out_of_stock':
 				return [
 					'action'  => 'products.get_inventory_queue',
-					'label'   => __( 'Review restock priorities', 'yoro-agent-core' ),
+					'label'   => __( 'Review restock priorities', 'yoro-ai-core' ),
 					'command' => 'What should we restock first?',
-					'summary' => __( 'Review the restock priorities next so YoRo can stay inside inventory pressure without simply reopening the same queue view.', 'yoro-agent-core' ),
+					'summary' => __( 'Review the restock priorities next so YoRo can stay inside inventory pressure without simply reopening the same queue view.', 'yoro-ai-core' ),
 				];
 			case 'on_backorder':
 			case 'low_stock_in_processing_orders':
 				return [
 					'action'  => 'operations.get_fulfillment_queue',
-					'label'   => __( 'Check fulfillment pressure', 'yoro-agent-core' ),
+					'label'   => __( 'Check fulfillment pressure', 'yoro-ai-core' ),
 					'command' => 'What seems blocked in fulfillment?',
-					'summary' => __( 'Check fulfillment pressure next so YoRo can confirm whether inventory risk is already turning into shipping or aging-processing backlog.', 'yoro-agent-core' ),
+					'summary' => __( 'Check fulfillment pressure next so YoRo can confirm whether inventory risk is already turning into shipping or aging-processing backlog.', 'yoro-ai-core' ),
 				];
 			case 'low_stock':
 			default:
 				return [
 					'action'  => 'store.get_business_summary',
-					'label'   => __( 'Review broader store picture', 'yoro-agent-core' ),
+					'label'   => __( 'Review broader store picture', 'yoro-ai-core' ),
 					'command' => 'Can you give me a monthly store picture?',
-					'summary' => __( 'Review the broader store picture next so YoRo can weigh this low-stock signal against the wider commercial and operating context.', 'yoro-agent-core' ),
+					'summary' => __( 'Review the broader store picture next so YoRo can weigh this low-stock signal against the wider commercial and operating context.', 'yoro-ai-core' ),
 				];
 		}
 	}
@@ -1960,7 +2065,7 @@ class YoRo_Workflow_Actions {
 		if ( empty( $priority_items ) || empty( $sequence ) ) {
 			return new WP_Error(
 				'yoro_missing_business_summary_data',
-				__( 'Business summary data is missing. Open the business summary again and retry.', 'yoro-agent-core' )
+				__( 'Business summary data is missing. Open the business summary again and retry.', 'yoro-ai-core' )
 			);
 		}
 
@@ -1969,7 +2074,7 @@ class YoRo_Workflow_Actions {
 
 		$selected_item = [
 			'topic_key'    => sanitize_key( $selected_priority['topic'] ?? $context['top_topic'] ?? 'overview' ),
-			'title'        => sanitize_text_field( $selected_priority['title'] ?? __( 'Business signal', 'yoro-agent-core' ) ),
+			'title'        => sanitize_text_field( $selected_priority['title'] ?? __( 'Business signal', 'yoro-ai-core' ) ),
 			'message'      => sanitize_text_field( $selected_priority['message'] ?? '' ),
 			'tone'         => sanitize_key( $selected_priority['tone'] ?? 'neutral' ),
 			'window_key'   => sanitize_key( $context['window_key'] ?? 'last_7_days' ),
@@ -1999,25 +2104,25 @@ class YoRo_Workflow_Actions {
 	}
 
 	private static function build_business_summary_selection_reason( $selected_item ) {
-		$title = sanitize_text_field( $selected_item['title'] ?? __( 'Business signal', 'yoro-agent-core' ) );
+		$title = sanitize_text_field( $selected_item['title'] ?? __( 'Business signal', 'yoro-ai-core' ) );
 		$topic = sanitize_key( $selected_item['topic_key'] ?? '' );
 
 		if ( 'operations_pressure' === $topic ) {
 			return sprintf(
-				__( '%s was selected because live queue pressure is currently the strongest force shaping the business picture.', 'yoro-agent-core' ),
+				__( '%s was selected because live queue pressure is currently the strongest force shaping the business picture.', 'yoro-ai-core' ),
 				$title
 			);
 		}
 
 		if ( 'in_flight_activity' === $topic ) {
 			return sprintf(
-				__( '%s was selected because a large share of current activity is still unresolved and needs operational follow-through before revenue fully converts.', 'yoro-agent-core' ),
+				__( '%s was selected because a large share of current activity is still unresolved and needs operational follow-through before revenue fully converts.', 'yoro-ai-core' ),
 				$title
 			);
 		}
 
 		return sprintf(
-			__( '%s was selected because it is the clearest business signal to review before drilling into the next owner queue.', 'yoro-agent-core' ),
+			__( '%s was selected because it is the clearest business signal to review before drilling into the next owner queue.', 'yoro-ai-core' ),
 			$title
 		);
 	}

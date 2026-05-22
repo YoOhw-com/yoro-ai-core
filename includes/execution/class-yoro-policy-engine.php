@@ -16,7 +16,7 @@ class YoRo_Policy_Engine {
 		if ( empty( $action ) ) {
 			return new WP_Error(
 				'yoro_policy_empty_action',
-				__( 'Action is missing for policy evaluation.', 'yoro-agent-core' )
+				__( 'Action is missing for policy evaluation.', 'yoro-ai-core' )
 			);
 		}
 
@@ -25,7 +25,7 @@ class YoRo_Policy_Engine {
 		if ( ! $registered ) {
 			return new WP_Error(
 				'yoro_policy_unknown_action',
-				__( 'This action is not registered.', 'yoro-agent-core' )
+				__( 'This action is not registered.', 'yoro-ai-core' )
 			);
 		}
 
@@ -44,7 +44,7 @@ class YoRo_Policy_Engine {
 		if ( isset( $policy['allow'] ) && ! absint( $policy['allow'] ) ) {
 			return new WP_Error(
 				'yoro_policy_blocked',
-				__( 'This action is blocked by policy.', 'yoro-agent-core' )
+				__( 'This action is blocked by policy.', 'yoro-ai-core' )
 			);
 		}
 
@@ -53,14 +53,14 @@ class YoRo_Policy_Engine {
 		if ( 'ai' === $source && isset( $policy['allow_ai'] ) && ! absint( $policy['allow_ai'] ) ) {
 			return new WP_Error(
 				'yoro_policy_ai_blocked',
-				__( 'This action is not allowed from AI-interpreted commands by policy.', 'yoro-agent-core' )
+				__( 'Store policy blocks this action from chat commands.', 'yoro-ai-core' )
 			);
 		}
 
 		if ( 'direct' === $source && isset( $policy['allow_direct'] ) && ! absint( $policy['allow_direct'] ) ) {
 			return new WP_Error(
 				'yoro_policy_direct_blocked',
-				__( 'This action is not allowed from direct execution by policy.', 'yoro-agent-core' )
+				__( 'Store policy blocks direct execution for this action.', 'yoro-ai-core' )
 			);
 		}
 
@@ -71,7 +71,7 @@ class YoRo_Policy_Engine {
 		) {
 			return new WP_Error(
 				'yoro_policy_write_blocked',
-				__( 'Write actions are blocked by policy for your role.', 'yoro-agent-core' )
+				__( 'Write actions are blocked by policy for your role.', 'yoro-ai-core' )
 			);
 		}
 
@@ -84,7 +84,7 @@ class YoRo_Policy_Engine {
 				return new WP_Error(
 					'yoro_policy_risk_blocked',
 					sprintf(
-						__( 'This action risk level "%s" is not allowed by policy.', 'yoro-agent-core' ),
+						__( 'Store policy blocks this %s-risk action for your role.', 'yoro-ai-core' ),
 						$risk_level
 					)
 				);
@@ -100,7 +100,7 @@ class YoRo_Policy_Engine {
 				return new WP_Error(
 					'yoro_policy_limit',
 					sprintf(
-						__( 'Policy limit exceeded: max %d items allowed for your role.', 'yoro-agent-core' ),
+						__( 'Store policy allows at most %d items for your role.', 'yoro-ai-core' ),
 						$max_items
 					)
 				);
@@ -114,7 +114,7 @@ class YoRo_Policy_Engine {
 		if ( ! is_array( $plan ) || empty( $plan['type'] ) ) {
 			return new WP_Error(
 				'yoro_invalid_policy_plan',
-				__( 'Invalid policy plan.', 'yoro-agent-core' )
+				__( 'Invalid policy plan.', 'yoro-ai-core' )
 			);
 		}
 
@@ -148,14 +148,14 @@ class YoRo_Policy_Engine {
 
 		return new WP_Error(
 			'yoro_unknown_policy_plan_type',
-			__( 'Unknown policy plan type.', 'yoro-agent-core' )
+			__( 'Unknown policy plan type.', 'yoro-ai-core' )
 		);
 	}
 
 	private static function get_policy_for_roles( $action, $roles ) {
 		global $wpdb;
 
-		$table = $wpdb->prefix . 'yoro_agent_policies';
+		$table = YoRo_DB::policies_table_name();
 
 		foreach ( $roles as $role ) {
 			$row = $wpdb->get_row(
@@ -247,7 +247,7 @@ class YoRo_Policy_Engine {
 			if ( ! empty( $policy['requires_preview'] ) ) {
 				$runtime['requires_preview'] = 1;
 				$runtime['reasons'][] = sprintf(
-					__( 'Policy requires preview for action "%s".', 'yoro-agent-core' ),
+					__( 'Policy requires preview for action "%s".', 'yoro-ai-core' ),
 					$action
 				);
 			}
@@ -255,7 +255,7 @@ class YoRo_Policy_Engine {
 			if ( ! empty( $policy['requires_confirmation'] ) ) {
 				$runtime['requires_confirmation'] = 1;
 				$runtime['reasons'][] = sprintf(
-					__( 'Policy requires confirmation for action "%s".', 'yoro-agent-core' ),
+					__( 'Policy requires confirmation for action "%s".', 'yoro-ai-core' ),
 					$action
 				);
 			}

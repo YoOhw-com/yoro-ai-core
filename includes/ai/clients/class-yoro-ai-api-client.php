@@ -7,8 +7,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 
 	public function handshake() {
-		$api_url  = YoRo_AI_Settings::get_cloud_api_url();
-		$site_key = YoRo_AI_Settings::get_cloud_site_key();
+		$api_url  = YoRo_AI_Settings::get_ai_api_url();
+		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
 
 		return $this->handshake_with_credentials( $api_url, $site_key );
 	}
@@ -16,7 +16,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	public function handshake_with_credentials( $api_url, $site_key, $record_status = true ) {
 		if ( '' === $api_url || '' === $site_key ) {
 			$error = new WP_Error(
-				'yoro_cloud_missing_config',
+				'yoro_ai_api_missing_config',
 				__( 'YoRo AI API is not configured yet.', 'yoro-ai-core' )
 			);
 
@@ -72,7 +72,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 				$this->record_handshake_status( false, $message );
 			}
 
-			return new WP_Error( 'yoro_cloud_handshake_error', $message );
+			return new WP_Error( 'yoro_ai_api_handshake_error', $message );
 		}
 
 		if ( ! is_array( $json ) ) {
@@ -84,7 +84,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 				$this->record_handshake_status( false, $message );
 			}
 
-			return new WP_Error( 'yoro_cloud_invalid_handshake', $message );
+			return new WP_Error( 'yoro_ai_api_invalid_handshake', $message );
 		}
 
 		$status = $this->normalize_handshake_response( $json );
@@ -99,14 +99,14 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	}
 
 	public function parse_action( array $payload ) {
-		return $this->not_ready( 'yoro_cloud_not_ready', __( 'YoRo AI API parser endpoint is reserved for the next phase.', 'yoro-ai-core' ) );
+		return $this->not_ready( 'yoro_ai_api_not_ready', __( 'YoRo AI API parser endpoint is reserved for the next phase.', 'yoro-ai-core' ) );
 	}
 
 	public function parse_intent( array $payload ) {
 		return $this->request_route(
 			$this->build_route_payload( $payload ),
 			'parse_intent',
-			'yoro_cloud_intent_api_error',
+			'yoro_ai_api_intent_error',
 			__( 'I could not reach the YoRo AI API routing service.', 'yoro-ai-core' )
 		);
 	}
@@ -115,7 +115,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return $this->request_workflow_plan(
 			$this->build_workflow_plan_payload( $payload ),
 			'plan_workflow',
-			'yoro_cloud_workflow_api_error',
+			'yoro_ai_api_workflow_error',
 			__( 'I could not reach the YoRo AI API workflow planner.', 'yoro-ai-core' )
 		);
 	}
@@ -124,7 +124,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return $this->request_suggestions(
 			$this->build_suggestions_payload( $payload ),
 			'generate_suggestions',
-			'yoro_cloud_suggestions_api_error',
+			'yoro_ai_api_suggestions_error',
 			__( 'I could not reach the YoRo AI API suggestions service.', 'yoro-ai-core' )
 		);
 	}
@@ -133,33 +133,33 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return $this->request_email_compose(
 			$this->build_email_compose_payload( $payload ),
 			'compose_email',
-			'yoro_cloud_email_api_error',
+			'yoro_ai_api_email_error',
 			__( 'I could not reach the YoRo AI API email composer.', 'yoro-ai-core' )
 		);
 	}
 
 	private function request_route( array $payload, $operation, $error_code, $default_message ) {
-		$api_url  = YoRo_AI_Settings::get_cloud_api_url();
-		$site_key = YoRo_AI_Settings::get_cloud_site_key();
+		$api_url  = YoRo_AI_Settings::get_ai_api_url();
+		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
 		$feature  = sanitize_key( $payload['feature'] ?? '' );
 
 		if ( '' === $api_url || '' === $site_key ) {
 			return new WP_Error(
-				'yoro_cloud_missing_config',
+				'yoro_ai_api_missing_config',
 				__( 'YoRo AI API is not configured yet.', 'yoro-ai-core' )
 			);
 		}
 
-		if ( '' !== $feature && ! YoRo_AI_Settings::cloud_allows_feature( $feature ) ) {
+		if ( '' !== $feature && ! YoRo_AI_Settings::ai_api_allows_feature( $feature ) ) {
 			return new WP_Error(
-				'yoro_cloud_feature_not_in_plan',
+				'yoro_ai_api_feature_not_in_plan',
 				__( 'This YoRo AI API feature is not available on the current plan.', 'yoro-ai-core' )
 			);
 		}
 
-		if ( ! YoRo_AI_Settings::cloud_has_quota_remaining() ) {
+		if ( ! YoRo_AI_Settings::ai_api_has_quota_remaining() ) {
 			return new WP_Error(
-				'yoro_cloud_quota_exhausted',
+				'yoro_ai_api_quota_exhausted',
 				__( 'The current YoRo AI API monthly request quota is exhausted.', 'yoro-ai-core' )
 			);
 		}
@@ -205,7 +205,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->record_request( $operation, $duration_ms, 'error' );
 
 			return new WP_Error(
-				'yoro_cloud_invalid_response',
+				'yoro_ai_api_invalid_response',
 				__( 'YoRo AI API returned an invalid response.', 'yoro-ai-core' )
 			);
 		}
@@ -217,26 +217,26 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	}
 
 	private function request_workflow_plan( array $payload, $operation, $error_code, $default_message ) {
-		$api_url  = YoRo_AI_Settings::get_cloud_api_url();
-		$site_key = YoRo_AI_Settings::get_cloud_site_key();
+		$api_url  = YoRo_AI_Settings::get_ai_api_url();
+		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
 
 		if ( '' === $api_url || '' === $site_key ) {
 			return new WP_Error(
-				'yoro_cloud_missing_config',
+				'yoro_ai_api_missing_config',
 				__( 'YoRo AI API is not configured yet.', 'yoro-ai-core' )
 			);
 		}
 
-		if ( ! YoRo_AI_Settings::cloud_allows_feature( 'workflow_plan' ) ) {
+		if ( ! YoRo_AI_Settings::ai_api_allows_feature( 'workflow_plan' ) ) {
 			return new WP_Error(
-				'yoro_cloud_feature_not_in_plan',
+				'yoro_ai_api_feature_not_in_plan',
 				__( 'This YoRo AI API feature is not available on the current plan.', 'yoro-ai-core' )
 			);
 		}
 
-		if ( ! YoRo_AI_Settings::cloud_has_quota_remaining() ) {
+		if ( ! YoRo_AI_Settings::ai_api_has_quota_remaining() ) {
 			return new WP_Error(
-				'yoro_cloud_quota_exhausted',
+				'yoro_ai_api_quota_exhausted',
 				__( 'The current YoRo AI API monthly request quota is exhausted.', 'yoro-ai-core' )
 			);
 		}
@@ -282,7 +282,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->record_request( $operation, $duration_ms, 'error' );
 
 			return new WP_Error(
-				'yoro_cloud_invalid_response',
+				'yoro_ai_api_invalid_response',
 				__( 'YoRo AI API returned an invalid response.', 'yoro-ai-core' )
 			);
 		}
@@ -294,26 +294,26 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	}
 
 	private function request_email_compose( array $payload, $operation, $error_code, $default_message ) {
-		$api_url  = YoRo_AI_Settings::get_cloud_api_url();
-		$site_key = YoRo_AI_Settings::get_cloud_site_key();
+		$api_url  = YoRo_AI_Settings::get_ai_api_url();
+		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
 
 		if ( '' === $api_url || '' === $site_key ) {
 			return new WP_Error(
-				'yoro_cloud_missing_config',
+				'yoro_ai_api_missing_config',
 				__( 'YoRo AI API is not configured yet.', 'yoro-ai-core' )
 			);
 		}
 
-		if ( ! YoRo_AI_Settings::cloud_allows_feature( 'email_compose' ) ) {
+		if ( ! YoRo_AI_Settings::ai_api_allows_feature( 'email_compose' ) ) {
 			return new WP_Error(
-				'yoro_cloud_feature_not_in_plan',
+				'yoro_ai_api_feature_not_in_plan',
 				__( 'This YoRo AI API feature is not available on the current plan.', 'yoro-ai-core' )
 			);
 		}
 
-		if ( ! YoRo_AI_Settings::cloud_has_quota_remaining() ) {
+		if ( ! YoRo_AI_Settings::ai_api_has_quota_remaining() ) {
 			return new WP_Error(
-				'yoro_cloud_quota_exhausted',
+				'yoro_ai_api_quota_exhausted',
 				__( 'The current YoRo AI API monthly request quota is exhausted.', 'yoro-ai-core' )
 			);
 		}
@@ -359,7 +359,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->record_request( $operation, $duration_ms, 'error' );
 
 			return new WP_Error(
-				'yoro_cloud_invalid_response',
+				'yoro_ai_api_invalid_response',
 				__( 'YoRo AI API returned an invalid response.', 'yoro-ai-core' )
 			);
 		}
@@ -371,26 +371,26 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	}
 
 	private function request_suggestions( array $payload, $operation, $error_code, $default_message ) {
-		$api_url  = YoRo_AI_Settings::get_cloud_api_url();
-		$site_key = YoRo_AI_Settings::get_cloud_site_key();
+		$api_url  = YoRo_AI_Settings::get_ai_api_url();
+		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
 
 		if ( '' === $api_url || '' === $site_key ) {
 			return new WP_Error(
-				'yoro_cloud_missing_config',
+				'yoro_ai_api_missing_config',
 				__( 'YoRo AI API is not configured yet.', 'yoro-ai-core' )
 			);
 		}
 
-		if ( ! YoRo_AI_Settings::cloud_allows_feature( 'suggestions' ) ) {
+		if ( ! YoRo_AI_Settings::ai_api_allows_feature( 'suggestions' ) ) {
 			return new WP_Error(
-				'yoro_cloud_feature_not_in_plan',
+				'yoro_ai_api_feature_not_in_plan',
 				__( 'This YoRo AI API feature is not available on the current plan.', 'yoro-ai-core' )
 			);
 		}
 
-		if ( ! YoRo_AI_Settings::cloud_has_quota_remaining() ) {
+		if ( ! YoRo_AI_Settings::ai_api_has_quota_remaining() ) {
 			return new WP_Error(
-				'yoro_cloud_quota_exhausted',
+				'yoro_ai_api_quota_exhausted',
 				__( 'The current YoRo AI API monthly request quota is exhausted.', 'yoro-ai-core' )
 			);
 		}
@@ -436,7 +436,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->record_request( $operation, $duration_ms, 'error' );
 
 			return new WP_Error(
-				'yoro_cloud_invalid_response',
+				'yoro_ai_api_invalid_response',
 				__( 'YoRo AI API returned an invalid response.', 'yoro-ai-core' )
 			);
 		}
@@ -898,7 +898,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			return;
 		}
 
-		YoRo_AI_Settings::update_cloud_status(
+		YoRo_AI_Settings::update_ai_api_status(
 			array_merge(
 				$status,
 				[
@@ -916,7 +916,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		}
 
 		$usage = $response['usage'];
-		$status = YoRo_AI_Settings::get_cloud_status();
+		$status = YoRo_AI_Settings::get_ai_api_status();
 		$status['connected'] = true;
 		$status['checked_at'] = current_time( 'mysql' );
 		$status['message'] = '';
@@ -931,13 +931,13 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$status['site']['plan'] = sanitize_key( $usage['plan'] );
 		}
 
-		YoRo_AI_Settings::update_cloud_status( $status );
+		YoRo_AI_Settings::update_ai_api_status( $status );
 	}
 
 	private function record_request( $operation, $duration_ms, $status ) {
 		if ( class_exists( 'YoRo_AI_Request_Tracker' ) ) {
 			YoRo_AI_Request_Tracker::record(
-				sanitize_key( 'cloud_' . $operation ),
+				sanitize_key( 'yoro_ai_api_' . $operation ),
 				absint( $duration_ms ),
 				sanitize_key( $status )
 			);
@@ -947,8 +947,4 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	private function not_ready( $code, $message ) {
 		return new WP_Error( $code, $message );
 	}
-}
-
-if ( ! class_exists( 'YoRo_Cloud_Client', false ) ) {
-	class_alias( 'YoRo_AI_API_Client', 'YoRo_Cloud_Client' );
 }

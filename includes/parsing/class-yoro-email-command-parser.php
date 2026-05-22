@@ -128,7 +128,7 @@ class YoRo_Email_Command_Parser {
 					'success'            => false,
 					'matched'            => false,
 					'stage'              => 'clarify',
-					'message'            => __( 'This workflow has expired. Please start again.', 'yoro-agent-core' ),
+					'message'            => __( 'This workflow has expired. Please start again.', 'yoro-ai-core' ),
 					'clarify_reason'     => 'workflow_expired',
 					'original_command'   => $command,
 					'normalized_command' => $normalized,
@@ -611,7 +611,7 @@ class YoRo_Email_Command_Parser {
 					'success'            => false,
 					'matched'            => false,
 					'stage'              => 'clarify',
-					'message'            => __( 'This email workflow has expired. Please compose the email again.', 'yoro-agent-core' ),
+					'message'            => __( 'This email workflow has expired. Please compose the email again.', 'yoro-ai-core' ),
 					'clarify_reason'     => 'workflow_expired',
 					'original_command'   => $command,
 					'normalized_command' => $normalized,
@@ -628,7 +628,7 @@ class YoRo_Email_Command_Parser {
 				'success'            => false,
 				'matched'            => false,
 				'stage'              => 'clarify',
-				'message'            => __( 'No email draft is ready to save. Please compose or preview an email first.', 'yoro-agent-core' ),
+				'message'            => __( 'No email draft is ready to save. Please compose or preview an email first.', 'yoro-ai-core' ),
 				'clarify_reason'     => 'missing_instruction',
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
@@ -644,7 +644,7 @@ class YoRo_Email_Command_Parser {
 				'success'            => false,
 				'matched'            => false,
 				'stage'              => 'clarify',
-				'message'            => __( 'The current email draft is missing order, subject, or body. Please preview the email again before saving.', 'yoro-agent-core' ),
+				'message'            => __( 'The current email draft is missing order, subject, or body. Please preview the email again before saving.', 'yoro-ai-core' ),
 				'clarify_reason'     => 'missing_instruction',
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
@@ -692,7 +692,7 @@ class YoRo_Email_Command_Parser {
 				'matched'            => true,
 				'stage'              => 'clarify',
 				'action'             => 'email_templates.save',
-				'message'            => __( 'What should I name this template?', 'yoro-agent-core' ),
+				'message'            => __( 'What should I name this template?', 'yoro-ai-core' ),
 				'clarify_reason'     => 'missing_target',
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
@@ -733,7 +733,7 @@ class YoRo_Email_Command_Parser {
 				'success'            => false,
 				'matched'            => false,
 				'stage'              => 'clarify',
-				'message'            => __( 'No saved draft is ready to delete. Please save or open a draft first.', 'yoro-agent-core' ),
+				'message'            => __( 'No saved draft is ready to delete. Please save or open a draft first.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -906,7 +906,7 @@ class YoRo_Email_Command_Parser {
 				'success'            => false,
 				'matched'            => true,
 				'action'             => 'orders.get_customer_email_drafts',
-				'message'            => __( 'Please provide an order ID or open an order first to load email drafts.', 'yoro-agent-core' ),
+				'message'            => __( 'Please provide an order ID or open an order first to load email drafts.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -948,7 +948,7 @@ class YoRo_Email_Command_Parser {
 				'success'            => false,
 				'matched'            => true,
 				'action'             => 'orders.compose_customer_email',
-				'message'            => __( 'Please provide an order ID or open an order first for the email draft.', 'yoro-agent-core' ),
+				'message'            => __( 'Please provide an order ID or open an order first for the email draft.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -1001,7 +1001,7 @@ class YoRo_Email_Command_Parser {
 					'success'            => false,
 					'matched'            => false,
 					'stage'              => 'clarify',
-					'message'            => __( 'This email workflow has expired. Please compose again.', 'yoro-agent-core' ),
+					'message'            => __( 'This email workflow has expired. Please compose again.', 'yoro-ai-core' ),
 					'original_command'   => $command,
 					'normalized_command' => $normalized,
 				];
@@ -1033,7 +1033,7 @@ class YoRo_Email_Command_Parser {
 			'success'            => false,
 			'matched'            => false,
 			'stage'              => 'clarify',
-			'message'            => __( 'No email is ready to send. Please compose or preview an email first.', 'yoro-agent-core' ),
+			'message'            => __( 'No email is ready to send. Please compose or preview an email first.', 'yoro-ai-core' ),
 			'original_command'   => $command,
 			'normalized_command' => $normalized,
 		];
@@ -1077,7 +1077,7 @@ class YoRo_Email_Command_Parser {
 				'success'            => false,
 				'matched'            => true,
 				'action'             => 'orders.email_customer_template',
-				'message'            => __( 'Please provide an order ID or open an order first for the customer email.', 'yoro-agent-core' ),
+				'message'            => __( 'Please provide an order ID or open an order first for the customer email.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -1126,7 +1126,7 @@ class YoRo_Email_Command_Parser {
 				'success'            => false,
 				'matched'            => true,
 				'action'             => 'orders.email_customer_preview',
-				'message'            => __( 'Please provide an order ID or open an order first for the email preview.', 'yoro-agent-core' ),
+				'message'            => __( 'Please provide an order ID or open an order first for the email preview.', 'yoro-ai-core' ),
 				'original_command'   => $command,
 				'normalized_command' => $normalized,
 			];
@@ -1245,20 +1245,20 @@ class YoRo_Email_Command_Parser {
 		}
 
 		if ( 'orders.add_note' === $action ) {
-			return __( 'What note should I add?', 'yoro-agent-core' );
+			return __( 'What note should I add?', 'yoro-ai-core' );
 		}
 
 		if ( 'orders.update_status' === $action ) {
-			return __( 'What status should I update to?', 'yoro-agent-core' );
+			return __( 'What status should I update to?', 'yoro-ai-core' );
 		}
 
 		if ( 'orders.compose_customer_email' === $action ) {
-			return __( 'What should the customer email be about?', 'yoro-agent-core' );
+			return __( 'What should the customer email be about?', 'yoro-ai-core' );
 		}
 
 		return sprintf(
 			/* translators: %s: missing field name */
-			__( 'Please provide %s.', 'yoro-agent-core' ),
+			__( 'Please provide %s.', 'yoro-ai-core' ),
 			$first
 		);
 	}
@@ -1364,6 +1364,8 @@ class YoRo_Email_Command_Parser {
 
 	private static function parsed_action( $action, $params, $command, $normalized, $parser_rule ) {
 		$registered_action = YoRo_Action_Registry::get( $action );
+		$parser_rule       = self::normalize_followup_parser_rule( $parser_rule );
+		$parser_source     = 0 === strpos( $parser_rule, 'guard.' ) ? 'guard' : 'rule';
 
 		return [
 			'success'              => true,
@@ -1375,6 +1377,7 @@ class YoRo_Email_Command_Parser {
 			],
 			'params'               => $params,
 			'parser_rule'          => $parser_rule,
+			'parser_source'        => $parser_source,
 			'action_meta'          => [
 				'label'                 => $registered_action['label'] ?? '',
 				'risk_level'            => $registered_action['risk_level'] ?? 'low',
@@ -1384,6 +1387,16 @@ class YoRo_Email_Command_Parser {
 			'original_command'     => $command,
 			'normalized_command'   => $normalized,
 		];
+	}
+
+	private static function normalize_followup_parser_rule( $parser_rule ) {
+		$parser_rule = sanitize_text_field( (string) $parser_rule );
+
+		if ( 0 === strpos( $parser_rule, 'rule.follow_up.' ) ) {
+			return 'guard.follow_up.' . substr( $parser_rule, strlen( 'rule.follow_up.' ) );
+		}
+
+		return $parser_rule;
 	}
 
 	private static function intent_name_from_action( $action ) {
@@ -1404,18 +1417,18 @@ class YoRo_Email_Command_Parser {
 		$missing = is_array( $missing ) ? $missing : [];
 
 		if ( in_array( 'subject', $missing, true ) && in_array( 'body', $missing, true ) ) {
-			return __( 'Please provide the subject for this email template.', 'yoro-agent-core' );
+			return __( 'Please provide the subject for this email template.', 'yoro-ai-core' );
 		}
 
 		if ( in_array( 'subject', $missing, true ) ) {
-			return __( 'Please provide the subject for this email template.', 'yoro-agent-core' );
+			return __( 'Please provide the subject for this email template.', 'yoro-ai-core' );
 		}
 
 		if ( in_array( 'body', $missing, true ) ) {
-			return __( 'Please provide the body for this email template.', 'yoro-agent-core' );
+			return __( 'Please provide the body for this email template.', 'yoro-ai-core' );
 		}
 
-		return __( 'Please provide the missing template details.', 'yoro-agent-core' );
+		return __( 'Please provide the missing template details.', 'yoro-ai-core' );
 	}
 
 	private static function get_workflow_from_context( $client_context = [] ) {

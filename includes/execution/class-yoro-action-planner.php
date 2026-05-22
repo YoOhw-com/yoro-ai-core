@@ -10,14 +10,14 @@ class YoRo_Action_Planner {
 		if ( ! is_array( $parsed ) ) {
 			return new WP_Error(
 				'yoro_invalid_parsed_action',
-				__( 'Cannot build action plan from invalid parsed result.', 'yoro-agent-core' )
+				__( 'Cannot build action plan from invalid parsed result.', 'yoro-ai-core' )
 			);
 		}
 
 		if ( empty( $parsed['action'] ) ) {
 			return new WP_Error(
 				'yoro_missing_action',
-				__( 'Action is missing after intent resolution.', 'yoro-agent-core' )
+				__( 'Action is missing after intent resolution.', 'yoro-ai-core' )
 			);
 		}
 
@@ -74,7 +74,7 @@ class YoRo_Action_Planner {
 		if ( empty( $steps ) ) {
 			return new WP_Error(
 				'yoro_empty_action_plan',
-				__( 'No valid action steps were found.', 'yoro-agent-core' )
+				__( 'No valid action steps were found.', 'yoro-ai-core' )
 			);
 		}
 

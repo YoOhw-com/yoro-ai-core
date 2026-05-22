@@ -10,8 +10,8 @@ class YoRo_Workflow_Definition_Registry {
 		$definitions = [
 			'composed_actions'     => [
 				'id'             => 'composed_actions',
-				'label'          => __( 'Composed workflow', 'yoro-agent-core' ),
-				'description'    => __( 'YoRo assembled this workflow from the supported actions it recognized in the request.', 'yoro-agent-core' ),
+				'label'          => __( 'Composed workflow', 'yoro-ai-core' ),
+				'description'    => __( 'YoRo assembled this workflow from the supported actions it recognized in the request.', 'yoro-ai-core' ),
 				'category'       => 'workflow',
 				'surface'        => 'admin_copilot',
 				'risk_level'     => 'medium',
@@ -20,8 +20,8 @@ class YoRo_Workflow_Definition_Registry {
 			],
 			'fulfillment_followup' => [
 				'id'             => 'fulfillment_followup',
-				'label'          => __( 'Fulfillment follow-up', 'yoro-agent-core' ),
-				'description'    => __( 'Prepare the next fulfillment follow-up and save the reviewed customer email draft after confirmation.', 'yoro-agent-core' ),
+				'label'          => __( 'Fulfillment follow-up', 'yoro-ai-core' ),
+				'description'    => __( 'Prepare the next fulfillment follow-up and save the reviewed customer email draft after confirmation.', 'yoro-ai-core' ),
 				'category'       => 'workflow',
 				'surface'        => 'admin_copilot',
 				'risk_level'     => 'medium',
@@ -29,14 +29,14 @@ class YoRo_Workflow_Definition_Registry {
 				'steps'          => [
 					[
 						'id'                    => 'preview',
-						'label'                 => __( 'Prepare preview', 'yoro-agent-core' ),
+						'label'                 => __( 'Prepare preview', 'yoro-ai-core' ),
 						'kind'                  => 'preview',
 						'action'                => 'workflow.fulfillment_followup_preview',
 						'requires_confirmation' => false,
 					],
 					[
 						'id'                    => 'save_draft',
-						'label'                 => __( 'Save reviewed customer email draft', 'yoro-agent-core' ),
+						'label'                 => __( 'Save reviewed customer email draft', 'yoro-ai-core' ),
 						'kind'                  => 'write',
 						'action'                => 'orders.save_customer_email_draft',
 						'requires_confirmation' => true,
@@ -45,8 +45,8 @@ class YoRo_Workflow_Definition_Registry {
 			],
 				'customer_followup'    => [
 					'id'             => 'customer_followup',
-				'label'          => __( 'Customer follow-up', 'yoro-agent-core' ),
-				'description'    => __( 'Prepare the next customer follow-up and save or update the reviewed customer email draft after confirmation.', 'yoro-agent-core' ),
+				'label'          => __( 'Customer follow-up', 'yoro-ai-core' ),
+				'description'    => __( 'Prepare the next customer follow-up and save or update the reviewed customer email draft after confirmation.', 'yoro-ai-core' ),
 				'category'       => 'workflow',
 				'surface'        => 'admin_copilot',
 				'risk_level'     => 'medium',
@@ -54,14 +54,14 @@ class YoRo_Workflow_Definition_Registry {
 				'steps'          => [
 					[
 						'id'                    => 'preview',
-						'label'                 => __( 'Prepare preview', 'yoro-agent-core' ),
+						'label'                 => __( 'Prepare preview', 'yoro-ai-core' ),
 						'kind'                  => 'preview',
 						'action'                => 'workflow.customer_followup_preview',
 						'requires_confirmation' => false,
 					],
 					[
 						'id'                    => 'save_or_update_draft',
-						'label'                 => __( 'Save reviewed customer email draft', 'yoro-agent-core' ),
+						'label'                 => __( 'Save reviewed customer email draft', 'yoro-ai-core' ),
 						'kind'                  => 'write',
 						'action'                => 'orders.save_customer_email_draft',
 						'requires_confirmation' => true,
@@ -70,8 +70,8 @@ class YoRo_Workflow_Definition_Registry {
 				],
 				'operations_attention' => [
 					'id'             => 'operations_attention',
-					'label'          => __( 'Operations attention', 'yoro-agent-core' ),
-					'description'    => __( 'Select the next operations attention item and prepare a guided review preview.', 'yoro-agent-core' ),
+					'label'          => __( 'Operations attention', 'yoro-ai-core' ),
+					'description'    => __( 'Select the next operations attention item and prepare a guided review preview.', 'yoro-ai-core' ),
 					'category'       => 'workflow',
 					'surface'        => 'admin_copilot',
 					'risk_level'     => 'low',
@@ -79,7 +79,7 @@ class YoRo_Workflow_Definition_Registry {
 					'steps'          => [
 						[
 							'id'                    => 'preview',
-							'label'                 => __( 'Prepare preview', 'yoro-agent-core' ),
+							'label'                 => __( 'Prepare preview', 'yoro-ai-core' ),
 							'kind'                  => 'preview',
 							'action'                => 'workflow.operations_attention_preview',
 							'requires_confirmation' => false,
@@ -88,8 +88,8 @@ class YoRo_Workflow_Definition_Registry {
 				],
 				'inventory_pressure'   => [
 					'id'             => 'inventory_pressure',
-					'label'          => __( 'Inventory pressure', 'yoro-agent-core' ),
-					'description'    => __( 'Select the next inventory pressure item and prepare a guided review preview.', 'yoro-agent-core' ),
+					'label'          => __( 'Inventory pressure', 'yoro-ai-core' ),
+					'description'    => __( 'Select the next inventory pressure item and prepare a guided review preview.', 'yoro-ai-core' ),
 					'category'       => 'workflow',
 					'surface'        => 'admin_copilot',
 					'risk_level'     => 'low',
@@ -97,7 +97,7 @@ class YoRo_Workflow_Definition_Registry {
 					'steps'          => [
 						[
 							'id'                    => 'preview',
-							'label'                 => __( 'Prepare preview', 'yoro-agent-core' ),
+							'label'                 => __( 'Prepare preview', 'yoro-ai-core' ),
 							'kind'                  => 'preview',
 							'action'                => 'workflow.inventory_pressure_preview',
 							'requires_confirmation' => false,
@@ -106,8 +106,8 @@ class YoRo_Workflow_Definition_Registry {
 				],
 				'business_summary'     => [
 					'id'             => 'business_summary',
-					'label'          => __( 'Business summary', 'yoro-agent-core' ),
-					'description'    => __( 'Select the next business signal and prepare a guided review preview.', 'yoro-agent-core' ),
+					'label'          => __( 'Business summary', 'yoro-ai-core' ),
+					'description'    => __( 'Select the next business signal and prepare a guided review preview.', 'yoro-ai-core' ),
 					'category'       => 'workflow',
 					'surface'        => 'admin_copilot',
 					'risk_level'     => 'low',
@@ -115,7 +115,7 @@ class YoRo_Workflow_Definition_Registry {
 					'steps'          => [
 						[
 							'id'                    => 'preview',
-							'label'                 => __( 'Prepare preview', 'yoro-agent-core' ),
+							'label'                 => __( 'Prepare preview', 'yoro-ai-core' ),
 							'kind'                  => 'preview',
 							'action'                => 'workflow.business_summary_preview',
 							'requires_confirmation' => false,
@@ -148,7 +148,7 @@ class YoRo_Workflow_Definition_Registry {
 		foreach ( (array) ( $template['steps'] ?? [] ) as $index => $step ) {
 			$steps[] = [
 				'id'                    => sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
-				'label'                 => sanitize_text_field( $step['label'] ?? ( $step['action'] ?? __( 'Workflow step', 'yoro-agent-core' ) ) ),
+				'label'                 => sanitize_text_field( $step['label'] ?? ( $step['action'] ?? __( 'Workflow step', 'yoro-ai-core' ) ) ),
 				'kind'                  => sanitize_key( $step['kind'] ?? 'write' ),
 				'action'                => sanitize_text_field( $step['action'] ?? '' ),
 				'requires_confirmation' => true,

@@ -14,6 +14,7 @@ class YoRo_Parser_Test_Suite {
 		$group_runs = [
 			'parser'   => self::run_parser_tests(),
 			'pipeline' => self::run_pipeline_tests(),
+			'real_command_eval' => self::run_real_command_eval_tests(),
 			'evaluation' => self::run_evaluation_tests(),
 			'hardening' => self::run_hardening_tests(),
 			'planner'  => self::run_planner_tests(),
@@ -186,15 +187,17 @@ class YoRo_Parser_Test_Suite {
 		) {
 			return new WP_Error(
 				'yoro_ai_missing_api_key',
-				__( 'AI router fixture intentionally falls back to deterministic rules for multi-step order tests.', 'yoro-agent-core' )
+				__( 'AI router fixture intentionally falls back to deterministic guardrails for multi-step order tests.', 'yoro-ai-core' )
 			);
 		}
 
+		$email_workflow_fixture = self::build_dynamic_email_workflow_fixture( $command );
+
+		if ( is_array( $email_workflow_fixture ) ) {
+			return $email_workflow_fixture;
+		}
+
 		if (
-			(
-				preg_match( '/\bwrite\b/i', $command ) &&
-				preg_match( '/\bemail\b/i', $command )
-			) ||
 			(
 				preg_match( '/\breview\b/i', $command ) &&
 				preg_match( '/\brefund\b/i', $command )
@@ -207,7 +210,7 @@ class YoRo_Parser_Test_Suite {
 		) {
 			return new WP_Error(
 				'yoro_ai_missing_api_key',
-				__( 'AI router fixture intentionally falls back to deterministic workflow rules for workflow branch tests.', 'yoro-agent-core' )
+				__( 'AI router fixture intentionally falls back to deterministic workflow guardrails for workflow branch tests.', 'yoro-ai-core' )
 			);
 		}
 
@@ -250,6 +253,58 @@ class YoRo_Parser_Test_Suite {
 		return null;
 	}
 
+	private static function build_dynamic_email_workflow_fixture( $command ) {
+		$command = trim( (string) $command );
+
+		if (
+			'' === $command ||
+			! preg_match( '/\bwrite\b/i', $command ) ||
+			! preg_match( '/\bemail\b/i', $command ) ||
+			! preg_match( '/\border\s+#?(\d+)\b/i', $command, $matches )
+		) {
+			return null;
+		}
+
+		$order_id = absint( $matches[1] ?? 0 );
+
+		if ( ! $order_id ) {
+			return null;
+		}
+
+		$normalized = strtolower( $command );
+		$action = '';
+		$delivery_mode = '';
+
+		if ( preg_match( '/\b(?:save\s+as\s+draft|save\s+(?:the\s+)?(?:email\s+)?(?:as\s+)?draft|draft)\b/i', $normalized ) ) {
+			$action = 'workflow.write_and_save_email_draft_for_order';
+			$delivery_mode = 'save_draft';
+		} elseif ( preg_match( '/\b(?:send\s+it|and\s+send|send\s+(?:the\s+)?email)\b/i', $normalized ) ) {
+			$action = 'workflow.write_and_send_email_for_order';
+			$delivery_mode = 'send';
+		}
+
+		if ( '' === $action ) {
+			return null;
+		}
+
+		$instruction = preg_replace( '/^\s*write\s+(?:a\s+)?/i', '', $command );
+		$instruction = preg_replace( '/\bemail\s+for\s+order\s+#?\d+\b/i', 'email', (string) $instruction );
+		$instruction = preg_replace( '/\b(?:and\s+)?(?:save\s+as\s+draft|save\s+(?:the\s+)?(?:email\s+)?(?:as\s+)?draft|send\s+it|and\s+send|send\s+(?:the\s+)?email)\b.*$/i', '', (string) $instruction );
+		$instruction = trim( preg_replace( '/\s+/', ' ', (string) $instruction ) );
+
+		return self::base_router_fixture_decision(
+			'task_request',
+			$action,
+			[
+				'order_id'      => $order_id,
+				'order_ids'     => [ $order_id ],
+				'instruction'   => '' !== $instruction ? $instruction : 'customer follow-up',
+				'delivery_mode' => $delivery_mode,
+			],
+			0.95
+		);
+	}
+
 	private static function router_fixture_has_params( $fixture ) {
 		return is_array( $fixture ) && ! empty( $fixture['params'] ) && is_array( $fixture['params'] );
 	}
@@ -261,10 +316,10 @@ class YoRo_Parser_Test_Suite {
 				: $test['router_fixture'];
 		}
 
-		if ( self::should_router_fixture_fallback_to_rules( $test ) ) {
+		if ( self::should_router_fixture_use_deterministic_fallback( $test ) ) {
 			return new WP_Error(
 				'yoro_ai_missing_api_key',
-				__( 'AI router fixture intentionally falls back to deterministic rules for this test.', 'yoro-agent-core' )
+				__( 'AI router fixture intentionally falls back to deterministic guardrails for this test.', 'yoro-ai-core' )
 			);
 		}
 
@@ -293,7 +348,7 @@ class YoRo_Parser_Test_Suite {
 				[],
 				0.9,
 				[ 'details' ],
-				__( 'I need a little more detail before I can run that action.', 'yoro-agent-core' )
+				__( 'I need a little more detail before I can run that action.', 'yoro-ai-core' )
 			);
 		}
 
@@ -307,7 +362,7 @@ class YoRo_Parser_Test_Suite {
 		);
 	}
 
-	private static function should_router_fixture_fallback_to_rules( $test ) {
+	private static function should_router_fixture_use_deterministic_fallback( $test ) {
 		if ( 'rule' === sanitize_key( $test['expected_source'] ?? '' ) ) {
 			return true;
 		}
@@ -444,6 +499,57 @@ class YoRo_Parser_Test_Suite {
 				0.84,
 				[ 'instruction' ],
 				'What exact instruction should I use to compose the email for order 6864?'
+			),
+			'Write an email about shipping on the way for orders 7140, 7139, 7138' => array_merge(
+				self::base_router_fixture_decision(
+					'task_request',
+					'workflow.write_email_for_orders',
+					[
+						'order_ids'       => [ 7140, 7139, 7138 ],
+						'instruction'     => 'shipping on the way',
+						'delivery_mode'   => 'preview',
+					],
+					0.88
+				),
+				[
+					'evidence' => [
+						'referenced_context' => [ 'recent_order_list' ],
+					],
+				]
+			),
+			'Write email about shipping on the way to them' => array_merge(
+				self::base_router_fixture_decision(
+					'task_request',
+					'workflow.write_email_for_orders',
+					[
+						'order_ids'     => [ 7140, 7139, 7138 ],
+						'instruction'   => 'about shipping on the way to them',
+						'delivery_mode' => 'preview',
+					],
+					0.88
+				),
+				[
+					'evidence' => [
+						'referenced_context' => [ 'recent_order_list' ],
+					],
+				]
+			),
+			'Write email about shipping update for these six orders' => array_merge(
+				self::base_router_fixture_decision(
+					'task_request',
+					'workflow.write_email_for_orders',
+					[
+						'order_ids'     => [ 7140, 7139, 7138, 7137, 7136, 7135 ],
+						'instruction'   => 'shipping update',
+						'delivery_mode' => 'preview',
+					],
+					0.88
+				),
+				[
+					'evidence' => [
+						'referenced_context' => [ 'recent_order_list' ],
+					],
+				]
 			),
 			'Add a note to order 6864'                   => self::base_router_fixture_decision(
 				'clarify',
@@ -659,10 +765,14 @@ class YoRo_Parser_Test_Suite {
 		];
 	}
 
-	private static function multilingual_router_fixture( $language, $mode, $action, $params, $intent_family, $confidence, $missing = [], $clarification_question = '' ) {
+	private static function multilingual_router_fixture( $language, $mode, $action, $params, $intent_family, $confidence, $missing = [], $clarification_question = '', $semantic_frame = [] ) {
 		$decision = self::base_router_fixture_decision( $mode, $action, $params, $confidence, $missing, $clarification_question );
 		$decision['language'] = sanitize_key( (string) $language );
 		$decision['intent_family'] = sanitize_key( (string) $intent_family );
+
+		if ( is_array( $semantic_frame ) && ! empty( $semantic_frame ) ) {
+			$decision['semantic_frame'] = $semantic_frame;
+		}
 
 		return $decision;
 	}
@@ -732,6 +842,30 @@ class YoRo_Parser_Test_Suite {
 		}
 
 		return $results;
+	}
+
+	public static function run_real_command_eval_tests() {
+		if ( ! class_exists( 'YoRo_Real_Command_Eval_Pack' ) ) {
+			return [
+				[
+					'name'       => 'Real command eval pack unavailable',
+					'passed'     => false,
+					'assertions' => [
+						'class_exists' => [
+							'expected' => true,
+							'actual'   => false,
+							'passed'   => false,
+						],
+					],
+				],
+			];
+		}
+
+		$eval = YoRo_Real_Command_Eval_Pack::run();
+
+		return isset( $eval['results'] ) && is_array( $eval['results'] )
+			? $eval['results']
+			: [];
 	}
 
 	public static function run_planner_tests() {
@@ -861,9 +995,10 @@ class YoRo_Parser_Test_Suite {
 		}
 
 		return [
-			'pack'    => sanitize_key( (string) $pack ),
-			'summary' => $summary,
-			'failed'  => $failed,
+			'pack'        => sanitize_key( (string) $pack ),
+			'summary'     => $summary,
+			'failed'      => $failed,
+			'report_text' => self::format_evaluation_pack_snapshot_report( sanitize_key( (string) $pack ), $summary, $failed ),
 		];
 	}
 
@@ -907,6 +1042,70 @@ class YoRo_Parser_Test_Suite {
 				}
 			)
 		);
+	}
+
+	private static function format_evaluation_pack_snapshot_report( $pack, $summary, $failed ) {
+		$pack    = sanitize_key( (string) $pack );
+		$summary = is_array( $summary ) ? $summary : [];
+		$failed  = is_array( $failed ) ? $failed : [];
+		$lines   = [
+			'Eval pack: ' . ( '' !== $pack ? $pack : 'all' ),
+			'Summary: total=' . absint( $summary['total'] ?? 0 ) .
+				' passed=' . absint( $summary['passed'] ?? 0 ) .
+				' failed=' . absint( $summary['failed'] ?? 0 ) .
+				' clarify_rate=' . sanitize_text_field( (string) ( $summary['clarify_rate'] ?? '0.0%' ) ) .
+				' wrong_action_rate=' . sanitize_text_field( (string) ( $summary['wrong_action_rate'] ?? '0.0%' ) ) .
+				' wrong_intent_rate=' . sanitize_text_field( (string) ( $summary['wrong_intent_rate'] ?? '0.0%' ) ),
+			'Semantic frame: cases=' . absint( $summary['semantic_frame_cases'] ?? 0 ) .
+				' repaired=' . absint( $summary['semantic_frame_repaired'] ?? 0 ) .
+				' repair_rate=' . sanitize_text_field( (string) ( $summary['semantic_frame_repair_rate'] ?? '0.0%' ) ),
+		];
+
+		$language_lines = self::format_evaluation_language_bucket_lines( $summary['by_language'] ?? [] );
+
+		if ( ! empty( $language_lines ) ) {
+			$lines[] = 'Languages:';
+			$lines = array_merge( $lines, $language_lines );
+		}
+
+		if ( empty( $failed ) ) {
+			$lines[] = 'Failures: none';
+		} else {
+			$lines[] = 'Failures:';
+
+			foreach ( $failed as $case ) {
+				$trace = isset( $case['trace'] ) && is_array( $case['trace'] ) ? $case['trace'] : [];
+				$lines[] = '- ' . sanitize_text_field( $case['name'] ?? '' ) .
+					' [' . sanitize_key( $case['outcome'] ?? 'unknown' ) . ']' .
+					' command="' . sanitize_text_field( $case['command'] ?? '' ) . '"' .
+					' action=' . sanitize_text_field( $trace['action'] ?? '' ) .
+					' source=' . sanitize_key( $trace['source'] ?? '' ) .
+					' language=' . sanitize_key( $trace['language'] ?? '' );
+			}
+		}
+
+		return implode( "\n", $lines );
+	}
+
+	private static function format_evaluation_language_bucket_lines( $by_language ) {
+		$by_language = is_array( $by_language ) ? $by_language : [];
+		$lines       = [];
+
+		ksort( $by_language );
+
+		foreach ( $by_language as $language => $bucket ) {
+			$bucket = is_array( $bucket ) ? $bucket : [];
+			$lines[] = '- ' . sanitize_key( $language ) .
+				': total=' . absint( $bucket['total'] ?? 0 ) .
+				' passed=' . absint( $bucket['passed'] ?? 0 ) .
+				' failed=' . absint( $bucket['failed'] ?? 0 ) .
+				' frame=' . absint( $bucket['semantic_frame_cases'] ?? 0 ) .
+				' repaired=' . absint( $bucket['semantic_frame_repaired'] ?? 0 ) .
+				' repair_events=' . absint( $bucket['semantic_frame_repair_events'] ?? 0 ) .
+				' repair_rate=' . sanitize_text_field( (string) ( $bucket['semantic_frame_repair_rate'] ?? '0.0%' ) );
+		}
+
+		return $lines;
 	}
 
 	private static function run_parser_case( $test ) {
@@ -1116,6 +1315,8 @@ class YoRo_Parser_Test_Suite {
 		$source = self::get_path( $actual, 'parser_source', '' );
 		$stage  = self::get_path( $actual, 'stage', '' );
 		$action = self::get_path( $actual, 'action', '' );
+		$semantic_frame_validator_changes = self::get_path( $actual, 'semantic_frame_validator_changes', [] );
+		$semantic_frame_validator_changes = is_array( $semantic_frame_validator_changes ) ? $semantic_frame_validator_changes : [];
 
 		return [
 			'type'          => 'evaluation',
@@ -1131,13 +1332,15 @@ class YoRo_Parser_Test_Suite {
 			'assertions'    => $assertions,
 			'parsed'        => $actual,
 			'trace'         => [
-				'intent'     => $intent,
-				'intent_family' => $intent_family,
-				'language'   => self::get_path( $actual, 'language', '' ),
-				'action'     => $action,
-				'source'     => $source,
-				'stage'      => $stage,
-				'confidence' => self::get_path( $actual, 'confidence', null ),
+				'intent'                      => $intent,
+				'intent_family'               => $intent_family,
+				'language'                    => self::get_path( $actual, 'language', '' ),
+				'action'                      => $action,
+				'source'                      => $source,
+				'stage'                       => $stage,
+				'confidence'                  => self::get_path( $actual, 'confidence', null ),
+				'semantic_frame_present'      => self::evaluation_semantic_frame_is_informative( self::get_path( $actual, 'semantic_frame', [] ) ),
+				'semantic_frame_repair_count' => count( $semantic_frame_validator_changes ),
 			],
 		];
 	}
@@ -1435,7 +1638,7 @@ class YoRo_Parser_Test_Suite {
 
 		if ( ! empty( $test['rest_callback'] ) && is_callable( $test['rest_callback'] ) ) {
 			$rest_method = sanitize_text_field( $test['rest_method'] ?? 'GET' );
-			$request = new WP_REST_Request( $rest_method, '/yoro-agent/v1/test' );
+			$request = new WP_REST_Request( $rest_method, '/yoro-ai-core/v1/test' );
 			$rest_params = self::resolve_case_value( $test['rest_params'] ?? [], $fixture );
 
 			if ( is_array( $rest_params ) ) {
@@ -1600,6 +1803,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_source' => 'rule',
 				'expect'          => [
 					'response_only'    => true,
+					'parser_source'    => 'rule',
 					'resolution_path'  => 'safety_guard',
 					'fallback_reason'  => 'conversation_route',
 					'result.summary'   => 'Hello. I can help you review the store, open the main queues, or inspect a specific order.',
@@ -2092,6 +2296,477 @@ class YoRo_Parser_Test_Suite {
 			],
 			[
 				'domain'          => 'router_hardening',
+				'name'            => 'AI router drops unsourced zero total filters from latest orders',
+				'command'         => 'Show the latest 5 orders',
+				'expected_action' => 'orders.search',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => self::base_router_fixture_decision(
+					'task_request',
+					'orders.search',
+					[
+						'limit'     => 5,
+						'total_min' => 0,
+						'total_max' => 0,
+					],
+					0.92
+				),
+				'expect'          => [
+					'resolution_path'      => 'ai_primary',
+					'intent_family'        => 'search_orders',
+					'params.limit'         => 5,
+					'params.total_min'     => null,
+					'params.total_max'     => null,
+					'dropped_param_keys.0' => 'total_min',
+					'dropped_param_keys.1' => 'total_max',
+					'params_trimmed_count' => 2,
+					'summary'              => 'Here are the latest 5 orders.',
+				],
+			],
+			[
+				'domain'          => 'router_hardening',
+				'name'            => 'AI router direct hold latest selection normalizes to query and apply',
+				'command'         => 'Hold latest 5 orders',
+				'expected_action' => 'multi.query_and_apply',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => self::base_router_fixture_decision(
+					'task_request',
+					'orders.hold',
+					[],
+					0.92
+				),
+				'expect'          => [
+					'resolution_path'                => 'ai_primary',
+					'parser_source'                  => 'ai_router',
+					'intent_family'                  => 'query_and_apply',
+					'command_shape.target_type'      => 'order_query_selection',
+					'command_shape.operation_hint'   => 'query_and_apply',
+					'command_decision.action'        => 'multi.query_and_apply',
+					'command_decision.catalog_action_count' => 1,
+					'params.limit'                   => 5,
+					'actions.0.action'               => 'orders.search',
+					'actions.0.params.limit'         => 5,
+					'actions.0.params.status.0'      => 'pending',
+					'actions.1.action'               => 'orders.hold',
+				],
+			],
+			[
+				'domain'          => 'router_hardening',
+				'name'            => 'AI router explicit-details misread is normalized into fresh orders search',
+				'command'         => 'Get me 2 new order',
+				'expected_action' => 'orders.search',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => self::base_router_fixture_decision(
+					'task_request',
+					'orders.get_details',
+					[
+						'order_ids' => [ 68470 ],
+					],
+					0.80
+				),
+				'expect'          => [
+					'resolution_path'                => 'ai_primary',
+					'intent_family'                  => 'search_orders',
+					'command_decision.intent_family' => 'search_orders',
+					'command_decision.action'        => 'orders.search',
+					'params.limit'                   => 2,
+				],
+				'assert'          => function( $actual ) {
+					$status = self::get_path( $actual, 'params.status', null );
+					$order_ids = self::get_path( $actual, 'params.order_ids', null );
+					$summary = (string) self::get_path( $actual, 'summary', '' );
+					$reasoning_summary = (string) self::get_path( $actual, 'reasoning_summary', '' );
+					$raw_param_keys = self::get_path( $actual, 'raw_param_keys', [] );
+
+					return [
+						'fresh_orders_misread_drops_fake_order_ids' => [
+							'expected' => 'no explicit order ids',
+							'actual'   => $order_ids,
+							'passed'   => empty( $order_ids ),
+						],
+						'fresh_orders_misread_has_no_status_filter' => [
+							'expected' => 'no status filter',
+							'actual'   => $status,
+							'passed'   => empty( $status ),
+						],
+						'fresh_orders_misread_summary_matches_search' => [
+							'expected' => 'summary mentions latest 2 orders',
+							'actual'   => $summary,
+							'passed'   => false !== stripos( $summary, 'latest 2 orders' ),
+						],
+						'fresh_orders_misread_reasoning_matches_search' => [
+							'expected' => 'reasoning mentions order search',
+							'actual'   => $reasoning_summary,
+							'passed'   => false !== stripos( $reasoning_summary, 'order search' ),
+						],
+						'fresh_orders_misread_raw_param_keys_match_search' => [
+							'expected' => [ 'limit' ],
+							'actual'   => $raw_param_keys,
+							'passed'   => [ 'limit' ] === $raw_param_keys,
+						],
+					];
+				},
+			],
+			[
+				'domain'          => 'router_hardening',
+				'name'            => 'AI router low-confidence fresh orders search bypasses fake clarify',
+				'command'         => 'Get 2 newest orders',
+				'expected_action' => 'orders.search',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => array_merge(
+					self::base_router_fixture_decision(
+						'clarify',
+						'orders.search',
+						[
+							'limit' => 2,
+						],
+						0.0
+					),
+					[
+						'intent_family'          => 'search_orders',
+						'clarification_question' => 'I am not confident enough to run this yet. What did you mean?',
+					]
+				),
+				'expect'          => [
+					'resolution_path'                => 'ai_primary',
+					'parser_rule'                    => 'ai.command_router.v2',
+					'intent_family'                  => 'search_orders',
+					'command_decision.intent_family' => 'search_orders',
+					'params.limit'                   => 2,
+					'confidence'                     => 0.0,
+				],
+				'assert'          => function( $actual ) {
+					return [
+						'fresh_orders_search_not_stuck_in_clarify' => [
+							'expected' => true,
+							'actual'   => empty( $actual['stage'] ),
+							'passed'   => empty( $actual['stage'] ),
+						],
+					];
+				},
+			],
+			[
+				'domain'          => 'router_hardening',
+				'name'            => 'AI router fresh orders search strips inferred pending status',
+				'command'         => 'Get 2 new orders',
+				'expected_action' => 'orders.search',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => self::base_router_fixture_decision(
+					'task_request',
+					'orders.search',
+					[
+						'status' => 'pending',
+						'limit'  => 2,
+					],
+					0.80
+				),
+				'expect'          => [
+					'resolution_path'                => 'ai_primary',
+					'intent_family'                  => 'search_orders',
+					'command_decision.intent_family' => 'search_orders',
+					'command_decision.action'        => 'orders.search',
+					'params.limit'                   => 2,
+				],
+				'assert'          => function( $actual ) {
+					$status = self::get_path( $actual, 'params.status', null );
+					$summary = (string) self::get_path( $actual, 'summary', '' );
+					$reasoning_summary = (string) self::get_path( $actual, 'reasoning_summary', '' );
+					$raw_param_keys = self::get_path( $actual, 'raw_param_keys', [] );
+
+					return [
+						'fresh_orders_search_strips_inferred_pending_status' => [
+							'expected' => 'no status filter',
+							'actual'   => $status,
+							'passed'   => empty( $status ),
+						],
+						'fresh_orders_search_summary_mentions_latest_orders' => [
+							'expected' => 'summary mentions latest 2 orders',
+							'actual'   => $summary,
+							'passed'   => false !== stripos( $summary, 'latest 2 orders' ),
+						],
+						'fresh_orders_search_reasoning_mentions_freshness' => [
+							'expected' => 'reasoning mentions freshness search',
+							'actual'   => $reasoning_summary,
+							'passed'   => false !== stripos( $reasoning_summary, 'freshness' ) || false !== stripos( $reasoning_summary, 'recent order list' ),
+						],
+						'fresh_orders_search_raw_param_keys_drop_status' => [
+							'expected' => [ 'limit' ],
+							'actual'   => $raw_param_keys,
+							'passed'   => [ 'limit' ] === $raw_param_keys,
+						],
+					];
+				},
+			],
+			[
+				'domain'          => 'router_hardening',
+				'name'            => 'AI router search grounds status from semantic summary evidence',
+				'command'         => 'Show 2 refund orders',
+				'expected_action' => 'orders.search',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => array_merge(
+					self::base_router_fixture_decision(
+						'task_request',
+						'orders.search',
+						[
+							'limit' => 2,
+						],
+						0.80
+					),
+					[
+						'summary' => 'Show 2 refunded orders',
+					]
+				),
+				'expect'          => [
+					'resolution_path'                => 'ai_primary',
+					'intent_family'                  => 'search_orders',
+					'command_decision.intent_family' => 'search_orders',
+					'command_decision.action'        => 'orders.search',
+					'params.limit'                   => 2,
+					'params.status.0'                => 'refunded',
+				],
+				'assert'          => function( $actual ) {
+					$entities_status = self::get_path( $actual, 'entities.status', null );
+
+					return [
+						'semantic_status_grounding_updates_entities' => [
+							'expected' => 'refunded',
+							'actual'   => $entities_status,
+							'passed'   => 'refunded' === $entities_status,
+						],
+					];
+				},
+			],
+			[
+				'domain'          => 'router_hardening',
+				'name'            => 'AI router refund preview clarify rewrites to refunded order search',
+				'command'         => 'Open 3 refund orders',
+				'expected_action' => 'orders.search',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => self::base_router_fixture_decision(
+					'clarify',
+					'orders.refund_preview',
+					[],
+					0.60,
+					[ 'order_id' ],
+					'Which order should I preview a refund for?'
+				),
+				'expect'          => [
+					'resolution_path'                => 'ai_primary',
+					'intent_family'                  => 'search_orders',
+					'command_decision.intent_family' => 'search_orders',
+					'command_decision.action'        => 'orders.search',
+					'params.limit'                   => 3,
+					'params.status.0'                => 'refunded',
+				],
+				'assert'          => function( $actual ) {
+					$missing = self::get_path( $actual, 'command_decision.missing', null );
+					$stage = self::get_path( $actual, 'stage', '' );
+
+					return [
+						'refund_order_search_does_not_clarify_for_order_id' => [
+							'expected' => 'task request without missing order_id',
+							'actual'   => [
+								'stage'   => $stage,
+								'missing' => $missing,
+							],
+							'passed'   => empty( $stage ) && empty( $missing ),
+						],
+					];
+				},
+				],
+				[
+					'domain'          => 'router_hardening',
+					'name'            => 'AI router refund status-write clarify rewrites quantity status phrase to search',
+					'command'         => '3 refund orders',
+					'expected_action' => 'orders.search',
+					'expected_source' => 'ai_router',
+					'router_fixture'  => self::base_router_fixture_decision(
+						'clarify',
+						'orders.update_status',
+						[
+							'status' => 'refunded',
+						],
+						0.60,
+						[ 'order_ids' ],
+						'Which order IDs should be refunded?'
+					),
+					'expect'          => [
+						'resolution_path'                => 'ai_primary',
+						'intent_family'                  => 'search_orders',
+						'command_shape.target_type'      => 'order_list',
+						'command_shape.operation_hint'   => 'search',
+						'command_decision.intent_family' => 'search_orders',
+						'command_decision.action'        => 'orders.search',
+						'command_decision.catalog_action_count' => 1,
+						'params.limit'                   => 3,
+						'params.status.0'                => 'refunded',
+					],
+					'assert'          => function( $actual ) {
+						$missing = self::get_path( $actual, 'command_decision.missing', null );
+						$stage = self::get_path( $actual, 'stage', '' );
+
+						return [
+							'quantity_refund_orders_does_not_clarify_for_order_ids' => [
+								'expected' => 'task request without missing order_ids',
+								'actual'   => [
+									'stage'   => $stage,
+									'missing' => $missing,
+								],
+								'passed'   => empty( $stage ) && empty( $missing ),
+							],
+					];
+				},
+			],
+			[
+				'domain'          => 'router_hardening',
+				'name'            => 'AI router verb-first refund count clarifies for missing order ids',
+				'command'         => 'refund 3 orders',
+				'expected_action' => 'orders.update_status',
+				'expected_source' => 'ai_router',
+				'expect_stage'    => 'clarify',
+				'router_fixture'  => self::base_router_fixture_decision(
+					'clarify',
+					'orders.update_status',
+					[
+						'status' => 'refunded',
+					],
+					0.90,
+					[ 'order_ids' ],
+					'Which order IDs should I refund?'
+				),
+				'expect'          => [
+					'stage'                              => 'clarify',
+					'action'                             => 'orders.update_status',
+					'params.status'                      => 'refunded',
+					'missing.0'                          => 'order_ids',
+					'command_shape.target_type'          => 'order_write_missing_target',
+					'command_shape.operation_hint'       => 'write_missing_target',
+					'command_shape.write_intent.action'  => 'orders.update_status',
+					'command_shape.write_intent.quantity' => 3,
+					'command_decision.action'            => 'orders.update_status',
+					'command_decision.catalog_action_count' => 1,
+					'command_decision.missing.0'         => 'order_ids',
+					'options'                            => [],
+				],
+			],
+			[
+				'domain'          => 'router_hardening',
+				'name'            => 'AI router verb-first complete count clarifies for missing order ids',
+				'command'         => 'complete 3 orders',
+				'expected_action' => 'orders.update_status',
+				'expected_source' => 'ai_router',
+				'expect_stage'    => 'clarify',
+				'router_fixture'  => self::base_router_fixture_decision(
+					'clarify',
+					'orders.update_status',
+					[
+						'status' => 'completed',
+					],
+					0.90,
+					[ 'order_ids' ],
+					'Which order IDs should I complete?'
+				),
+				'expect'          => [
+					'stage'                              => 'clarify',
+					'action'                             => 'orders.update_status',
+					'params.status'                      => 'completed',
+					'missing.0'                          => 'order_ids',
+					'command_shape.target_type'          => 'order_write_missing_target',
+					'command_shape.operation_hint'       => 'write_missing_target',
+					'command_shape.write_intent.action'  => 'orders.update_status',
+					'command_shape.write_intent.quantity' => 3,
+					'command_decision.action'            => 'orders.update_status',
+					'command_decision.catalog_action_count' => 1,
+					'command_decision.missing.0'         => 'order_ids',
+					'options'                            => [],
+				],
+			],
+				[
+					'domain'          => 'router_hardening',
+					'name'            => 'AI router status qualified generic order rewrites details into search',
+				'command'         => 'Show a refunded order',
+				'expected_action' => 'orders.search',
+				'expected_source' => 'ai_router',
+				'context'         => [
+					'current_order_id' => 7133,
+				],
+				'router_fixture'  => self::base_router_fixture_decision(
+					'task_request',
+					'orders.get_details',
+					[
+						'order_ids' => [ 7133 ],
+						'order_id'  => 7133,
+						'status'    => 'refunded',
+					],
+					0.92
+				),
+				'expect'          => [
+					'resolution_path'                => 'ai_primary',
+					'intent_family'                  => 'search_orders',
+					'command_decision.intent_family' => 'search_orders',
+					'command_decision.action'        => 'orders.search',
+					'params.limit'                   => 1,
+					'params.status.0'                => 'refunded',
+				],
+				'assert'          => function( $actual ) {
+					$order_ids = self::get_path( $actual, 'params.order_ids', null );
+					$order_id = self::get_path( $actual, 'params.order_id', null );
+					$summary = (string) self::get_path( $actual, 'summary', '' );
+
+					return [
+						'status_qualified_generic_order_search_drops_grounded_order_ids' => [
+							'expected' => 'no grounded order ids',
+							'actual'   => $order_ids,
+							'passed'   => empty( $order_ids ) && empty( $order_id ),
+						],
+						'status_qualified_generic_order_search_summary_mentions_refunded' => [
+							'expected' => 'summary mentions refunded order',
+							'actual'   => $summary,
+							'passed'   => false !== stripos( $summary, 'refunded order' ),
+						],
+					];
+				},
+			],
+			[
+				'domain'          => 'router_hardening',
+				'name'            => 'AI router quantity status order without verb routes as search',
+				'command'         => '3 completed order',
+				'expected_action' => 'orders.search',
+				'expected_source' => 'ai_router',
+				'context'         => [
+					'resolved_order_ids' => [ 6954 ],
+				],
+				'router_fixture'  => self::base_router_fixture_decision(
+					'task_request',
+					'orders.search',
+					[
+						'limit'  => 3,
+						'status' => [ 'completed' ],
+					],
+					0.92
+				),
+				'expect'          => [
+					'resolution_path'                => 'ai_primary',
+					'intent_family'                  => 'search_orders',
+					'command_decision.intent_family' => 'search_orders',
+					'command_decision.action'        => 'orders.search',
+					'params.limit'                   => 3,
+					'params.status.0'                => 'completed',
+				],
+				'assert'          => function( $actual ) {
+					$order_ids = self::get_path( $actual, 'params.order_ids', null );
+					$order_id = self::get_path( $actual, 'params.order_id', null );
+
+					return [
+						'quantity_status_order_search_drops_context_order' => [
+							'expected' => 'no grounded order id',
+							'actual'   => $order_ids ?: $order_id,
+							'passed'   => empty( $order_id ) && empty( $order_ids ),
+						],
+					];
+				},
+			],
+			[
+				'domain'          => 'router_hardening',
 				'name'            => 'AI router narrows customer summary profile catalog',
 				'command'         => 'Show customer summary for john@example.com',
 				'expected_action' => 'customers.get_summary',
@@ -2124,13 +2799,13 @@ class YoRo_Parser_Test_Suite {
 			],
 			[
 				'domain'          => 'router_hardening',
-				'name'            => 'AI router narrows customer orders profile catalog',
+				'name'            => 'AI router narrows customer order search catalog',
 				'command'         => 'Show orders for john@example.com',
-				'expected_action' => 'orders.find_by_customer',
+				'expected_action' => 'orders.search',
 				'expected_source' => 'ai_router',
 				'router_fixture'  => self::base_router_fixture_decision(
 					'task_request',
-					'orders.find_by_customer',
+					'orders.search',
 					[
 						'email' => 'john@example.com',
 					],
@@ -2138,8 +2813,8 @@ class YoRo_Parser_Test_Suite {
 				),
 				'expect'          => [
 					'resolution_path'                => 'ai_primary',
-					'intent_family'                  => 'find_customer_orders',
-					'command_decision.intent_family' => 'find_customer_orders',
+					'intent_family'                  => 'search_orders',
+					'command_decision.intent_family' => 'search_orders',
 					'params.email'                   => 'john@example.com',
 				],
 				'assert'          => function( $actual ) {
@@ -2463,6 +3138,131 @@ class YoRo_Parser_Test_Suite {
 			],
 			[
 				'domain'          => 'write_followup',
+				'name'            => 'Add note to them reuses last order list and only asks for note',
+				'command'         => 'Add note to them',
+				'expected_stage'  => 'clarify',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => static function() {
+					$decision = self::base_router_fixture_decision(
+						'clarify',
+						'orders.add_note',
+						[],
+						0.9,
+						[ 'order_ids', 'note' ],
+						'What note should I save, and which orders should receive it?'
+					);
+					$decision['evidence']['referenced_context'] = [ 'recent_order_list' ];
+
+					return $decision;
+				},
+				'context'         => [
+					'last_orders'    => [
+						[ 'id' => 6847, 'number' => '6847' ],
+						[ 'id' => 6682, 'number' => '6682' ],
+						[ 'id' => 6681, 'number' => '6681' ],
+					],
+					'last_order_ids' => [ 6847, 6682, 6681 ],
+				],
+				'expect'          => [
+					'action'                              => 'orders.add_note',
+					'params.order_ids.0'                  => 6847,
+					'params.order_ids.1'                  => 6682,
+					'params.order_ids.2'                  => 6681,
+					'params.order_id'                     => 6847,
+					'missing.0'                           => 'note',
+					'current_workflow.type'               => 'order_note',
+					'current_workflow.action'             => 'orders.add_note',
+					'current_workflow.order_id'           => 6847,
+					'current_workflow.params.order_ids.0' => 6847,
+					'current_workflow.params.order_ids.1' => 6682,
+					'current_workflow.params.order_ids.2' => 6681,
+					'current_workflow.missing.0'          => 'note',
+				],
+			],
+			[
+				'domain'          => 'write_followup',
+				'name'            => 'Vietnamese add note follow-up reuses recent order list',
+				'command'         => 'Thêm ghi chú cho các đơn đó',
+				'expected_stage'  => 'clarify',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => static function() {
+					$decision = self::multilingual_router_fixture(
+						'vi',
+						'clarify',
+						'orders.add_note',
+						[],
+						'add_note',
+						0.9,
+						[ 'order_ids', 'note' ],
+						'Bạn muốn lưu ghi chú gì cho các đơn đó?'
+					);
+					$decision['evidence']['referenced_context'] = [ 'recent_order_list' ];
+
+					return $decision;
+				},
+				'context'         => [
+					'last_orders'    => [
+						[ 'id' => 6847, 'number' => '6847' ],
+						[ 'id' => 6682, 'number' => '6682' ],
+						[ 'id' => 6681, 'number' => '6681' ],
+					],
+					'last_order_ids' => [ 6847, 6682, 6681 ],
+				],
+				'expect'          => [
+					'language'                            => 'vi',
+					'action'                              => 'orders.add_note',
+					'params.order_ids.0'                  => 6847,
+					'params.order_ids.1'                  => 6682,
+					'params.order_ids.2'                  => 6681,
+					'missing.0'                           => 'note',
+					'current_workflow.params.order_ids.0' => 6847,
+					'current_workflow.params.order_ids.1' => 6682,
+					'current_workflow.params.order_ids.2' => 6681,
+				],
+			],
+			[
+				'domain'          => 'write_followup',
+				'name'            => 'Vietnamese cancel-them follow-up reuses recent order list',
+				'command'         => 'Chuyển chúng sang hủy',
+				'expected_action' => 'orders.update_status',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => static function() {
+					$decision = self::multilingual_router_fixture(
+						'vi',
+						'task_request',
+						'orders.update_status',
+						[
+							'status' => 'cancelled',
+						],
+						'update_order_status',
+						0.92
+					);
+					$decision['evidence']['referenced_context'] = [ 'recent_order_list' ];
+					$decision['summary'] = 'Chuyển các đơn hàng gần đây sang trạng thái hủy.';
+					$decision['reasoning_summary'] = 'Tham chiếu số nhiều bám vào danh sách đơn gần đây trong ngữ cảnh.';
+
+					return $decision;
+				},
+				'context'         => [
+					'current_order_id'         => 6843,
+					'last_referenced_order_id' => 6843,
+					'last_orders'    => [
+						[ 'id' => 6843, 'number' => '6843' ],
+						[ 'id' => 6842, 'number' => '6842' ],
+						[ 'id' => 6841, 'number' => '6841' ],
+					],
+					'last_order_ids' => [ 6843, 6842, 6841 ],
+				],
+				'expect'          => [
+					'language'           => 'vi',
+					'params.order_ids.0' => 6843,
+					'params.order_ids.1' => 6842,
+					'params.order_ids.2' => 6841,
+					'params.status'      => 'cancelled',
+				],
+			],
+			[
+				'domain'          => 'write_followup',
 				'name'            => 'Short note text continues pending add note workflow',
 				'command'         => 'VIP customer',
 				'expected_action' => 'orders.add_note',
@@ -2556,6 +3356,150 @@ class YoRo_Parser_Test_Suite {
 				],
 			],
 			[
+				'domain'          => 'write_followup',
+				'name'            => 'Mark them as completed reuses last order list without extra clarify',
+				'command'         => 'Mark them as completed',
+				'expected_action' => 'orders.update_status',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => static function() {
+					$decision = self::base_router_fixture_decision(
+						'clarify',
+						'orders.update_status',
+						[
+							'status' => 'completed',
+						],
+						0.9,
+						[ 'order_ids' ],
+						'Which orders should I update to completed?'
+					);
+					$decision['evidence']['referenced_context'] = [ 'recent_order_list' ];
+
+					return $decision;
+				},
+				'context'         => [
+					'last_orders'    => [
+						[ 'id' => 6847, 'number' => '6847' ],
+						[ 'id' => 6682, 'number' => '6682' ],
+						[ 'id' => 6681, 'number' => '6681' ],
+					],
+					'last_order_ids' => [ 6847, 6682, 6681 ],
+				],
+				'expect'          => [
+					'params.order_ids.0' => 6847,
+					'params.order_ids.1' => 6682,
+					'params.order_ids.2' => 6681,
+					'params.status'      => 'completed',
+				],
+			],
+			[
+				'domain'          => 'write_followup',
+				'name'            => 'Portuguese status follow-up reuses recent order list',
+				'command'         => 'Marque elas como concluídas',
+				'expected_action' => 'orders.update_status',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => static function() {
+					$decision = self::multilingual_router_fixture(
+						'pt',
+						'clarify',
+						'orders.update_status',
+						[
+							'status' => 'completed',
+						],
+						'update_order_status',
+						0.9,
+						[ 'order_ids' ],
+						'Quais pedidos você quer marcar como concluídos?'
+					);
+					$decision['evidence']['referenced_context'] = [ 'recent_order_list' ];
+
+					return $decision;
+				},
+				'context'         => [
+					'last_orders'    => [
+						[ 'id' => 6847, 'number' => '6847' ],
+						[ 'id' => 6682, 'number' => '6682' ],
+						[ 'id' => 6681, 'number' => '6681' ],
+					],
+					'last_order_ids' => [ 6847, 6682, 6681 ],
+				],
+				'expect'          => [
+					'language'           => 'pt',
+					'params.order_ids.0' => 6847,
+					'params.order_ids.1' => 6682,
+					'params.order_ids.2' => 6681,
+					'params.status'      => 'completed',
+				],
+			],
+			[
+				'domain'          => 'write_followup',
+				'name'            => 'Put them on hold reuses last order list without extra clarify',
+				'command'         => 'Put them on hold',
+				'expected_action' => 'orders.hold',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => static function() {
+					$decision = self::base_router_fixture_decision(
+						'clarify',
+						'orders.hold',
+						[],
+						0.9,
+						[ 'order_ids' ],
+						'Which orders should I put on hold?'
+					);
+					$decision['evidence']['referenced_context'] = [ 'recent_order_list' ];
+
+					return $decision;
+				},
+				'context'         => [
+					'last_orders'    => [
+						[ 'id' => 6847, 'number' => '6847' ],
+						[ 'id' => 6682, 'number' => '6682' ],
+						[ 'id' => 6681, 'number' => '6681' ],
+					],
+					'last_order_ids' => [ 6847, 6682, 6681 ],
+				],
+				'expect'          => [
+					'params.order_ids.0' => 6847,
+					'params.order_ids.1' => 6682,
+					'params.order_ids.2' => 6681,
+				],
+			],
+			[
+				'domain'          => 'write_followup',
+				'name'            => 'Indonesian hold follow-up reuses recent order list',
+				'command'         => 'Tahan pesanan-pesanan itu',
+				'expected_action' => 'orders.hold',
+				'expected_source' => 'ai_router',
+				'router_fixture'  => static function() {
+					$decision = self::multilingual_router_fixture(
+						'id',
+						'clarify',
+						'orders.hold',
+						[],
+						'hold_order',
+						0.9,
+						[ 'order_ids' ],
+						'Pesanan mana yang ingin Anda tahan?'
+					);
+					$decision['evidence']['referenced_context'] = [ 'recent_order_list' ];
+
+					return $decision;
+				},
+				'context'         => [
+					'last_orders'    => [
+						[ 'id' => 6847, 'number' => '6847' ],
+						[ 'id' => 6682, 'number' => '6682' ],
+						[ 'id' => 6681, 'number' => '6681' ],
+					],
+					'last_order_ids' => [ 6847, 6682, 6681 ],
+				],
+				'expect'          => [
+					'language'           => 'id',
+					'params.order_ids.0' => 6847,
+					'params.order_ids.1' => 6682,
+					'params.order_ids.2' => 6681,
+				],
+			],
+			[
 				'domain'         => 'email_followup',
 				'name'           => 'Japanese subject continues pending email template workflow',
 				'command'        => '配送遅延のお詫び',
@@ -2610,17 +3554,25 @@ class YoRo_Parser_Test_Suite {
 				'name'            => 'Workflow candidate upgrades suspicious order review request',
 				'command'         => 'Review suspicious order 6864',
 				'expected_action' => 'workflow.review_suspicious_order',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
+				'router_fixture'  => self::base_router_fixture_decision(
+					'task_request',
+					'orders.get_details',
+					[
+						'order_ids' => [ 6864 ],
+					],
+					0.92
+				),
 				'expect'          => [
-					'resolution_path'                => 'recovery_fallback',
-					'workflow_promotion_source'      => 'rule',
+					'resolution_path'                => 'ai_primary',
+					'workflow_promotion_source'      => 'ai_router',
 					'workflow_promotion_reason'      => 'post_router_workflow_candidate',
 					'workflow_promotion_trigger_action' => 'orders.get_details',
 					'params.order_id'                  => 6864,
 					'current_workflow.definition_id'   => 'review_suspicious_order',
 					'current_workflow.current_step_id' => 'step_1',
 					'current_workflow.status'          => 'ready_to_execute',
-					'parser_rule'                      => 'rule.workflow_template.review_suspicious_order',
+					'parser_rule'                      => 'guard.workflow_template.review_suspicious_order',
 				],
 			],
 			[
@@ -2635,6 +3587,9 @@ class YoRo_Parser_Test_Suite {
 					'params.order_ids.0'                 => 6864,
 					'intent_family'                      => 'refund_review',
 					'parser_rule'                        => 'guard.orders.refund_preview.explicit_order',
+					'command_shape.workflow_intent.kind' => 'refund_review',
+					'command_shape.workflow_intent.action' => 'orders.refund_preview',
+					'command_shape.workflow_intent.operation_hint' => 'refund_preview',
 				],
 			],
 			[
@@ -2649,6 +3604,33 @@ class YoRo_Parser_Test_Suite {
 					'params.order_ids.0' => 6864,
 					'intent_family'      => 'refund_review',
 					'parser_rule'        => 'guard.orders.refund_preview.explicit_order',
+					'command_shape.target_type' => 'order_workflow_explicit',
+					'command_shape.operation_hint' => 'refund_preview',
+					'command_shape.workflow_intent.kind' => 'refund_review',
+					'command_shape.workflow_intent.action' => 'orders.refund_preview',
+				],
+			],
+			[
+				'domain'          => 'workflow_candidates',
+				'name'            => 'Explicit multi-order refund command preserves all targets',
+				'command'         => 'Refund orders 6847, 6683, and 6681',
+				'expected_action' => 'orders.update_status',
+				'expected_source' => 'guard',
+				'expect'          => [
+					'resolution_path'                         => 'deterministic_override',
+					'intent_family'                           => 'update_order_status',
+					'params.status'                           => 'refunded',
+					'params.order_ids.0'                      => 6847,
+					'params.order_ids.1'                      => 6683,
+					'params.order_ids.2'                      => 6681,
+					'command_shape.explicit_order_ids.0'      => 6847,
+					'command_shape.explicit_order_ids.1'      => 6683,
+					'command_shape.explicit_order_ids.2'      => 6681,
+					'command_shape.operation_hint'            => 'explicit_refund_write',
+					'command_shape.workflow_intent.kind'      => 'refund_review',
+					'command_shape.workflow_intent.action'    => 'orders.update_status',
+					'command_shape.workflow_intent.target_status' => 'refunded',
+					'parser_rule'                             => 'guard.orders.update_status.explicit_refund_orders',
 				],
 			],
 			[
@@ -2666,6 +3648,9 @@ class YoRo_Parser_Test_Suite {
 					'current_workflow.current_step_id'   => 'step_1',
 					'current_workflow.status'            => 'ready_to_execute',
 					'parser_rule'                        => 'guard.workflow.verify_customer_before_fulfillment.explicit_order',
+					'command_shape.workflow_intent.kind' => 'verify_customer_before_fulfillment',
+					'command_shape.workflow_intent.action' => 'workflow.verify_customer_before_fulfillment',
+					'command_shape.workflow_intent.email_delivery_mode' => 'preview',
 				],
 			],
 			[
@@ -2683,6 +3668,9 @@ class YoRo_Parser_Test_Suite {
 					'current_workflow.steps.2.id'      => 'compose_email',
 					'current_workflow.steps.3.id'      => 'save_draft',
 					'parser_rule'                      => 'guard.workflow.refund_review.explicit_order',
+					'command_shape.workflow_intent.kind' => 'refund_review',
+					'command_shape.workflow_intent.action' => 'workflow.refund_review',
+					'command_shape.workflow_intent.delivery_mode' => 'save_draft',
 				],
 			],
 			[
@@ -2700,6 +3688,9 @@ class YoRo_Parser_Test_Suite {
 					'current_workflow.steps.2.id'      => 'compose_email',
 					'current_workflow.steps.3.id'      => 'send_email',
 					'parser_rule'                      => 'guard.workflow.refund_review.explicit_order',
+					'command_shape.workflow_intent.kind' => 'refund_review',
+					'command_shape.workflow_intent.action' => 'workflow.refund_review',
+					'command_shape.workflow_intent.delivery_mode' => 'send',
 				],
 			],
 			[
@@ -2717,6 +3708,9 @@ class YoRo_Parser_Test_Suite {
 					'current_workflow.status'          => 'ready_to_execute',
 					'current_workflow.steps.2.id'      => 'compose_email',
 					'parser_rule'                      => 'guard.workflow.refund_review.explicit_order',
+					'command_shape.workflow_intent.kind' => 'refund_review',
+					'command_shape.workflow_intent.action' => 'workflow.refund_review',
+					'command_shape.workflow_intent.delivery_mode' => 'preview',
 				],
 			],
 			[
@@ -2733,6 +3727,8 @@ class YoRo_Parser_Test_Suite {
 					'current_workflow.definition_id' => 'refund_review',
 					'current_workflow.steps.2.id'    => 'compose_email',
 					'parser_rule'                    => 'guard.workflow.refund_review.explicit_order',
+					'command_shape.workflow_intent.kind' => 'refund_review',
+					'command_shape.workflow_intent.action' => 'workflow.refund_review',
 				],
 			],
 			[
@@ -2751,6 +3747,8 @@ class YoRo_Parser_Test_Suite {
 					'current_workflow.status'            => 'ready_to_execute',
 					'current_workflow.steps.3.id'        => 'save_draft',
 					'parser_rule'                        => 'guard.workflow.verify_customer_before_fulfillment.explicit_order',
+					'command_shape.workflow_intent.kind' => 'verify_customer_before_fulfillment',
+					'command_shape.workflow_intent.email_delivery_mode' => 'save_draft',
 				],
 			],
 			[
@@ -2769,6 +3767,8 @@ class YoRo_Parser_Test_Suite {
 					'current_workflow.status'            => 'ready_to_execute',
 					'current_workflow.steps.3.id'        => 'send_email',
 					'parser_rule'                        => 'guard.workflow.verify_customer_before_fulfillment.explicit_order',
+					'command_shape.workflow_intent.kind' => 'verify_customer_before_fulfillment',
+					'command_shape.workflow_intent.email_delivery_mode' => 'send',
 				],
 			],
 			[
@@ -2776,11 +3776,11 @@ class YoRo_Parser_Test_Suite {
 				'name'            => 'Action composition upgrades hold and note request',
 				'command'         => 'Hold order 6864 and add note: Customer requested callback',
 				'expected_action' => 'workflow.composed_actions',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'expect'          => [
-					'resolution_path'                => 'recovery_fallback',
-					'fallback_reason'                => 'pre_router_composition',
-					'composition_source'             => 'rule_merge',
+					'resolution_path'                => 'deterministic_override',
+					'fallback_reason'                => 'action_composition_guard',
+					'composition_source'             => 'guard_action_composition',
 					'params.order_id'                  => 6864,
 					'current_workflow.definition_id'   => 'composed_actions',
 					'current_workflow.current_step_id' => 'load_order',
@@ -2788,7 +3788,7 @@ class YoRo_Parser_Test_Suite {
 					'current_workflow.steps.1.id'      => 'hold_order',
 					'current_workflow.steps.2.id'      => 'add_note',
 					'current_workflow.steps.2.params.note' => 'Customer requested callback',
-					'parser_rule'                      => 'rule.action_composition',
+					'parser_rule'                      => 'guard.action_composition',
 				],
 			],
 			[
@@ -2893,11 +3893,153 @@ class YoRo_Parser_Test_Suite {
 				},
 			],
 			[
+				'domain'          => 'workflow_candidates',
+				'name'            => 'Explicit multi-order email request resolves to multi-order workflow',
+				'command'         => 'Write an email about shipping on the way for orders 7140, 7139, 7138',
+				'expected_action' => 'workflow.write_email_for_orders',
+				'context'         => [
+					'last_orders'        => [
+						[ 'id' => 7140, 'number' => '7140' ],
+						[ 'id' => 7139, 'number' => '7139' ],
+						[ 'id' => 7138, 'number' => '7138' ],
+					],
+					'last_order_ids'     => [ 7140, 7139, 7138 ],
+					'resolved_order_ids' => [ 7140, 7139, 7138 ],
+					'current_order_id'   => 7140,
+				],
+				'router_fixture'  => static function() {
+					$decision = self::base_router_fixture_decision(
+						'task_request',
+						'workflow.write_email_for_orders',
+						[
+							'order_ids'     => [ 7140, 7139, 7138 ],
+							'instruction'   => 'shipping on the way',
+							'delivery_mode' => 'preview',
+						],
+						0.88
+					);
+					$decision['evidence']['referenced_context'] = [ 'recent_order_list' ];
+
+					return $decision;
+				},
+				'expect'          => [
+					'params.order_ids.0'                        => 7140,
+					'params.order_ids.1'                        => 7139,
+					'params.order_ids.2'                        => 7138,
+					'params.instruction'                        => 'shipping on the way',
+					'params.delivery_mode'                      => 'preview',
+					'current_workflow.definition_id'            => 'write_email_for_orders',
+					'current_workflow.current_step_id'          => 'load_order_7140',
+					'current_workflow.status'                   => 'ready_to_execute',
+					'current_workflow.steps.0.id'               => 'load_order_7140',
+					'current_workflow.steps.1.id'               => 'compose_email_7140',
+					'parser_rule'                               => 'ai.command_router.v2',
+				],
+				'assert'          => function( $actual ) {
+					$instruction = (string) self::get_path( $actual, 'current_workflow.steps.1.params.instruction', '' );
+
+					return [
+						'multi_order_step_instruction_mentions_current_order_only' => [
+							'expected' => 'instruction scoped to order 7140',
+							'actual'   => $instruction,
+							'passed'   => false !== strpos( $instruction, 'order #7140' ) && false !== strpos( $instruction, 'shipping on the way' ),
+						],
+					];
+				},
+			],
+			[
+				'domain'          => 'workflow_candidates',
+				'name'            => 'Multi-order send-email follow-up upgrades from order details to send workflow',
+				'command'         => 'Send them the email about shipping on the way',
+				'expected_action' => 'workflow.write_and_send_emails_for_orders',
+				'expected_source' => 'ai_router',
+				'context'         => [
+					'last_orders'        => [
+						[ 'id' => 7140, 'number' => '7140' ],
+						[ 'id' => 7139, 'number' => '7139' ],
+						[ 'id' => 7138, 'number' => '7138' ],
+					],
+					'last_order_ids'     => [ 7140, 7139, 7138 ],
+					'resolved_order_ids' => [ 7140, 7139, 7138 ],
+					'current_order_id'   => 7140,
+				],
+				'router_fixture'  => static function() {
+					$decision = self::base_router_fixture_decision(
+						'task_request',
+						'orders.get_details',
+						[
+							'order_ids' => [ 7140, 7139, 7138 ],
+						],
+						0.92
+					);
+					$decision['summary'] = 'Fetching details for orders 7140, 7139, and 7138 to prepare an email about shipping on the way.';
+					$decision['reasoning_summary'] = 'The best matching available action is to retrieve details for the referenced orders before sending the message.';
+					$decision['intent_family'] = 'get_order_details';
+					$decision['intent'] = [
+						'name'       => 'get_order_details',
+						'action'     => 'orders.get_details',
+						'confidence' => 0.92,
+						'source'     => 'ai_router',
+					];
+					$decision['entities'] = [
+						'order_ids' => [ 7140, 7139, 7138 ],
+					];
+					$decision['evidence']['referenced_context'] = [ 'recent_order_list' ];
+
+					return $decision;
+				},
+				'expect'          => [
+					'params.order_ids.0'                        => 7140,
+					'params.order_ids.1'                        => 7139,
+					'params.order_ids.2'                        => 7138,
+					'params.instruction'                        => 'shipping on the way',
+					'params.delivery_mode'                      => 'send',
+					'current_workflow.definition_id'            => 'write_and_send_emails_for_orders',
+					'current_workflow.steps.0.id'               => 'load_order_7140',
+					'current_workflow.steps.1.id'               => 'compose_email_7140',
+					'current_workflow.steps.2.id'               => 'send_email_7140',
+					'parser_rule'                               => 'guard.workflow_template.write_and_send_emails_for_orders',
+				],
+			],
+			[
+				'domain'          => 'workflow_candidates',
+				'name'            => 'Multi-order send-email request with mixed recipients clarifies instead of batching',
+				'command'         => 'Send email to ask about payment verification for them',
+				'expected_action' => 'workflow.write_and_send_emails_for_orders',
+				'expected_source' => 'guard',
+				'expected_stage'  => 'clarify',
+				'context'         => [
+					'last_orders'        => [
+						[ 'id' => 7133, 'number' => '7133' ],
+						[ 'id' => 6864, 'number' => '6864' ],
+					],
+					'last_order_ids'     => [ 7133, 6864 ],
+					'resolved_order_ids' => [ 7133, 6864 ],
+					'current_order_id'   => 7133,
+				],
+				'router_fixture'  => static function() {
+					return self::base_router_fixture_decision(
+						'task_request',
+						'workflow.write_and_send_emails_for_orders',
+						[
+							'order_ids'     => [ 7133, 6864 ],
+							'instruction'   => 'Ask the customer to verify payment for orders 7133 and 6864.',
+							'delivery_mode' => 'send',
+						],
+						0.92
+					);
+				},
+				'expect'          => [
+					'message'     => 'I can only prepare customer emails in one batch when all selected orders belong to the same recipient email. These orders belong to different recipients, so please split the request by customer.',
+					'parser_rule' => 'ai.command_router.v2',
+				],
+			],
+			[
 				'domain'          => 'workflow_composition',
 				'name'            => 'Action composition builds a composed workflow from hold note and email draft request',
 				'command'         => 'Hold order 6864, add note: Customer requested address confirmation, then write and save a payment follow-up email',
 				'expected_action' => 'workflow.composed_actions',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'expect'          => [
 					'current_workflow.definition_id'                              => 'composed_actions',
 					'current_workflow.status'                                     => 'ready_to_execute',
@@ -2907,7 +4049,7 @@ class YoRo_Parser_Test_Suite {
 					'current_workflow.steps.3.id'                                 => 'compose_email',
 					'current_workflow.steps.4.id'                                 => 'save_draft',
 					'current_workflow.artifacts.composition.requested_actions.2.kind' => 'write_email',
-					'parser_rule'                                                 => 'rule.action_composition',
+					'parser_rule'                                                 => 'guard.action_composition',
 				],
 			],
 			[
@@ -2915,13 +4057,13 @@ class YoRo_Parser_Test_Suite {
 				'name'            => 'Action composition keeps unsupported action as partial-support notice',
 				'command'         => 'Move order 6864 to pending with note: Awaiting payment confirmation, then create shipment label',
 				'expected_action' => 'workflow.composed_actions',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'expect'          => [
 					'current_workflow.definition_id'                                   => 'composed_actions',
 					'current_workflow.steps.0.action'                                  => 'orders.bulk_update_status_with_note',
 					'current_workflow.artifacts.composition.partial_support'           => true,
 					'current_workflow.artifacts.composition.unavailable_requests.0.key'=> 'shipping_label',
-					'parser_rule'                                                      => 'rule.action_composition',
+					'parser_rule'                                                      => 'guard.action_composition',
 				],
 			],
 			[
@@ -2929,7 +4071,7 @@ class YoRo_Parser_Test_Suite {
 				'name'            => 'AI action decomposition composes mixed workflow safely',
 				'command'         => 'Hold order 6864, add note: Customer requested address confirmation, then write and save a payment follow-up email',
 				'expected_action' => 'workflow.composed_actions',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'setup' => function() {
 					self::enable_mock_action_decomposition(
 						[
@@ -2977,12 +4119,12 @@ class YoRo_Parser_Test_Suite {
 					'parser_rule'                      => 'ai.action_decomposition',
 				],
 			],
-			[
-				'domain'          => 'workflow_composition_ai',
-				'name'            => 'AI action decomposition merges fallback note and email delivery details',
-				'command'         => 'Update order 6864 to pending and note: Need to update payment, and send an email about it',
+				[
+					'domain'          => 'workflow_composition_ai',
+					'name'            => 'AI action decomposition merges fallback note and email delivery details',
+					'command'         => 'Update order 6864 to pending and note: Need to update payment, and send an email about it',
 				'expected_action' => 'workflow.composed_actions',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'setup' => function() {
 					self::enable_mock_action_decomposition(
 						[
@@ -3027,15 +4169,74 @@ class YoRo_Parser_Test_Suite {
 					'current_workflow.steps.3.id'                                                => 'send_email',
 					'current_workflow.artifacts.composition.requested_actions.0.kind'            => 'status_with_note',
 					'current_workflow.artifacts.composition.requested_actions.1.kind'            => 'write_email',
-					'parser_rule'                                                                => 'ai.action_decomposition',
+						'parser_rule'                                                                => 'ai.action_decomposition',
+					],
 				],
-			],
-			[
-				'domain'         => 'workflow_composition_ai',
-				'name'           => 'AI action decomposition asks for missing note instead of inventing one',
-				'command'        => 'Update order 6864 to processing and add note, and send an email to tell that the shipment will be delivery soon',
+				[
+					'domain'          => 'workflow_composition_ai',
+					'name'            => 'AI action decomposition repairs empty note from email topic',
+					'command'         => 'Change order 123 status to on hold, add note and send an email about payment confirmation',
+					'expected_action' => 'workflow.composed_actions',
+					'expected_source' => 'guard',
+					'setup' => function() {
+						self::enable_mock_action_decomposition(
+							[
+								'matched' => true,
+								'confidence' => 0.85,
+								'requested_actions' => [
+									[
+										'id' => 'hold_order',
+										'label' => 'Put order on hold',
+										'action' => 'orders.hold',
+										'confidence' => 0.9,
+										'params' => [
+											'order_ids' => [ 123 ],
+										],
+									],
+									[
+										'id' => 'add_note',
+										'label' => 'Add internal note',
+										'action' => 'orders.add_note',
+										'confidence' => 0.86,
+										'params' => [
+											'order_ids' => [ 123 ],
+										],
+									],
+									[
+										'id' => 'compose_email',
+										'label' => 'Compose customer email',
+										'action' => 'orders.compose_customer_email',
+										'confidence' => 0.88,
+										'params' => [
+											'order_id' => 123,
+											'instruction' => 'payment confirmation',
+											'delivery_mode' => 'send',
+										],
+									],
+								],
+								'unsupported_requests' => [],
+								'missing_params' => [],
+							]
+						);
+					},
+					'teardown' => function() {
+						self::disable_mock_action_decomposition();
+					},
+					'expect'          => [
+						'current_workflow.definition_id'                  => 'composed_actions',
+						'current_workflow.steps.2.id'                     => 'add_note',
+						'current_workflow.steps.2.params.note'            => 'Payment confirmation',
+						'current_workflow.steps.3.action'                 => 'orders.compose_customer_email',
+						'current_workflow.steps.4.action'                 => 'orders.send_customer_email',
+						'parser_rule'                                     => 'ai.action_decomposition',
+					],
+				],
+				[
+					'domain'         => 'workflow_composition_ai',
+					'name'           => 'AI action decomposition asks for missing note instead of inventing one',
+					'command'        => 'Update order 6864 to processing and add note, and send an email to tell that the shipment will be delivery soon',
 				'expected_stage' => 'clarify',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'setup' => function() {
 					self::enable_mock_action_decomposition(
 						[
@@ -3106,7 +4307,7 @@ class YoRo_Parser_Test_Suite {
 				'name'            => 'Missing note follow-up can chain into email clarify for non-shippable order',
 				'command'         => 'Customer requested address confirmation',
 				'expected_stage'  => 'clarify',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'context'         => [
 					'current_workflow' => [
 						'type'     => 'composed_actions',
@@ -3150,7 +4351,7 @@ class YoRo_Parser_Test_Suite {
 					'message'                          => 'Order #6864 does not require shipping. What should the customer email say instead?',
 					'action'                           => 'orders.compose_customer_email',
 					'clarify_reason'                   => 'missing_instruction',
-					'composition_source'               => 'rule_merge',
+					'composition_source'               => 'ai_decomposition',
 					'params.order_id'                  => 6864,
 					'params.instruction'               => '',
 					'params._yoro_composed_requested_actions.2.kind' => 'write_email',
@@ -3164,7 +4365,7 @@ class YoRo_Parser_Test_Suite {
 				'name'            => 'Missing email follow-up resumes composed workflow with replacement email instruction',
 				'command'         => 'Notify the customer that the order is now processing and their download will be available soon.',
 				'expected_action' => 'workflow.composed_actions',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'context'         => [
 					'current_workflow' => [
 						'type'     => 'composed_actions',
@@ -3259,6 +4460,113 @@ class YoRo_Parser_Test_Suite {
 				'expected_action' => 'orders.search',
 				'expect'          => [
 					'params.status.0' => 'pending',
+				],
+			],
+			[
+				'name'            => 'Search latest orders keeps no default status filter',
+				'command'         => 'Show me the latest 5 orders',
+				'expected_action' => 'orders.search',
+				'expect'          => [
+					'params.limit' => 5,
+				],
+				'assert'          => function( $actual ) {
+					$status = self::get_path( $actual, 'params.status', null );
+
+					return [
+						'latest_orders_search_has_no_status_filter' => [
+							'expected' => 'no status filter',
+							'actual'   => $status,
+							'passed'   => empty( $status ),
+						],
+					];
+				},
+			],
+			[
+				'name'            => 'Search new orders does not imply pending status',
+				'command'         => 'Show me 2 new orders',
+				'expected_action' => 'orders.search',
+				'expect'          => [
+					'params.limit' => 2,
+				],
+				'assert'          => function( $actual ) {
+					$status = self::get_path( $actual, 'params.status', null );
+
+					return [
+						'new_orders_search_has_no_status_filter' => [
+							'expected' => 'no status filter',
+							'actual'   => $status,
+							'passed'   => empty( $status ),
+						],
+					];
+				},
+			],
+			[
+				'name'            => 'Status-qualified singular order request searches instead of opening current order',
+				'command'         => 'Show a refunded order',
+				'expected_action' => 'orders.search',
+				'context'         => [
+					'current_order_id' => 7133,
+				],
+				'expect'          => [
+					'params.limit'    => 1,
+					'params.status.0' => 'refunded',
+				],
+				'assert'          => function( $actual ) {
+					$order_id = self::get_path( $actual, 'params.order_id', null );
+					$order_ids = self::get_path( $actual, 'params.order_ids', null );
+
+					return [
+						'status_singular_search_does_not_reuse_current_order' => [
+							'expected' => 'no grounded order id',
+							'actual'   => $order_ids ?: $order_id,
+							'passed'   => empty( $order_id ) && empty( $order_ids ),
+						],
+					];
+				},
+			],
+			[
+				'name'            => 'Refund order quantity request searches refunded orders',
+				'command'         => 'Open 3 refund orders',
+				'expected_action' => 'orders.search',
+				'expect'          => [
+					'params.limit'    => 3,
+					'params.status.0' => 'refunded',
+					'entities.status' => 'refunded',
+				],
+			],
+			[
+				'name'            => 'Bare quantity completed order request searches completed orders',
+				'command'         => '4 completed order',
+				'expected_action' => 'orders.search',
+				'context'         => [
+					'current_order_id' => 6954,
+				],
+				'expect'          => [
+					'params.limit'    => 4,
+					'params.status.0' => 'completed',
+					'entities.status' => 'completed',
+				],
+				'assert'          => function( $actual ) {
+					$order_id = self::get_path( $actual, 'params.order_id', null );
+					$order_ids = self::get_path( $actual, 'params.order_ids', null );
+
+					return [
+						'bare_quantity_status_search_does_not_reuse_current_order' => [
+							'expected' => 'no grounded order id',
+							'actual'   => $order_ids ?: $order_id,
+							'passed'   => empty( $order_id ) && empty( $order_ids ),
+						],
+					];
+				},
+			],
+			[
+				'name'            => 'Failed orders search preserves status entity metadata',
+				'command'         => 'Show 2 failed orders',
+				'expected_action' => 'orders.search',
+				'expect'          => [
+					'params.limit'    => 2,
+					'params.status.0' => 'failed',
+					'entities.status' => 'failed',
 				],
 			],
 			[
@@ -3533,7 +4841,7 @@ class YoRo_Parser_Test_Suite {
 			[
 				'name'            => 'Find orders by customer email',
 				'command'         => 'Find orders with email john@example.com',
-				'expected_action' => 'orders.find_by_customer',
+				'expected_action' => 'orders.search',
 				'expect'          => [
 					'params.email' => 'john@example.com',
 				],
@@ -3876,7 +5184,7 @@ class YoRo_Parser_Test_Suite {
 				'name'            => 'Bulk update status with note',
 				'command'         => 'Update order #123 to on hold with note: Customer needs verification',
 				'expected_action' => 'orders.bulk_update_status_with_note',
-				'expected_source' => 'rule',
+				'expected_source' => 'ai_router',
 				'expect'          => [
 					'params.order_id'    => 123,
 					'params.order_ids.0' => 123,
@@ -3974,17 +5282,213 @@ class YoRo_Parser_Test_Suite {
 
 			// ===== EDGE / FALLBACK =====
 			[
-				'name'            => 'Latest 5 fallback searches orders',
+				'name'            => 'Latest 5 shorthand uses semantic shape search fallback',
 				'command'         => 'latest 5',
 				'expected_action' => 'orders.search',
 				'router_fixture'  => new WP_Error(
 					'yoro_ai_missing_api_key',
-					__( 'AI router fixture intentionally falls back to deterministic rules for this test.', 'yoro-agent-core' )
+					__( 'AI router fixture intentionally falls back to deterministic guardrails for this test.', 'yoro-ai-core' )
 				),
 				'expect'          => [
 					'resolution_path' => 'recovery_fallback',
-					'fallback_reason' => 'latest_orders_fallback',
-					'params.limit' => 5,
+					'fallback_reason' => 'command_shape_order_search',
+					'parser_source'   => 'semantic_shape',
+					'parser_rule'     => 'shape.orders.search',
+					'params.limit'    => 5,
+					'command_shape.quantity_scope.scope' => 'latest',
+					'command_shape.quantity_scope.value' => 5,
+					'command_shape.signals.0' => 'quantity',
+				],
+				'assert'          => function( $actual ) {
+					$status = self::get_path( $actual, 'params.status', null );
+
+					return [
+						'latest_shape_fallback_has_no_status_filter' => [
+							'expected' => 'no status filter',
+							'actual'   => $status,
+							'passed'   => empty( $status ),
+						],
+					];
+				},
+			],
+			[
+				'name'            => 'Recent 3 shorthand uses semantic shape search fallback',
+				'command'         => 'recent 3',
+				'expected_action' => 'orders.search',
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally falls back to deterministic guardrails for this test.', 'yoro-ai-core' )
+				),
+				'expect'          => [
+					'resolution_path' => 'recovery_fallback',
+					'fallback_reason' => 'command_shape_order_search',
+					'parser_source'   => 'semantic_shape',
+					'parser_rule'     => 'shape.orders.search',
+					'params.limit'    => 3,
+					'command_shape.quantity_scope.scope' => 'latest',
+					'command_shape.quantity_scope.value' => 3,
+				],
+			],
+			[
+				'name'            => 'Aged pending orders without AI uses semantic shape search fallback',
+				'command'         => 'Are there any orders pending for more than 3 days?',
+				'expected_action' => 'orders.search',
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally falls back to deterministic guardrails for this test.', 'yoro-ai-core' )
+				),
+				'expect'          => [
+					'resolution_path' => 'recovery_fallback',
+					'fallback_reason' => 'command_shape_order_search',
+					'parser_source'   => 'semantic_shape',
+					'parser_rule'     => 'shape.orders.search',
+					'params.status.0' => 'pending',
+					'params.min_age_hours' => 72,
+					'command_shape.age_filter.hours' => 72,
+				],
+			],
+			[
+				'name'            => 'Operations overview without AI uses semantic read-only recovery',
+				'command'         => 'What should we do now?',
+				'expected_action' => 'operations.get_summary',
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally falls back to deterministic guardrails for this test.', 'yoro-ai-core' )
+				),
+				'expect'          => [
+					'resolution_path' => 'recovery_fallback',
+					'fallback_reason' => 'semantic_read_only_fallback',
+					'parser_source'   => 'semantic_recovery',
+					'parser_rule'     => 'semantic.operations_overview',
+					'params.window'   => 'today',
+					'params.focus'    => 'overview',
+				],
+			],
+			[
+				'name'            => 'Store update without AI uses semantic read-only recovery',
+				'command'         => 'Give me the store update for this week',
+				'expected_action' => 'operations.get_summary',
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally falls back to deterministic guardrails for this test.', 'yoro-ai-core' )
+				),
+				'expect'          => [
+					'resolution_path' => 'recovery_fallback',
+					'fallback_reason' => 'semantic_read_only_fallback',
+					'parser_source'   => 'semantic_recovery',
+					'parser_rule'     => 'semantic.operations_overview',
+					'params.window'   => 'this_week',
+					'params.focus'    => 'overview',
+				],
+			],
+			[
+				'name'            => 'Explicit status update without AI uses command shape write fallback',
+				'command'         => 'Mark order #321 as completed',
+				'expected_action' => 'orders.update_status',
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally falls back to deterministic guardrails for this test.', 'yoro-ai-core' )
+				),
+				'expect'          => [
+					'resolution_path' => 'recovery_fallback',
+					'fallback_reason' => 'command_shape_explicit_order_write',
+					'parser_source'   => 'semantic_shape',
+					'parser_rule'     => 'shape.explicit_order_write',
+					'params.order_ids.0' => 321,
+					'params.status'   => 'completed',
+				],
+			],
+			[
+				'name'            => 'Explicit hold without AI uses command shape write fallback',
+				'command'         => 'Hold order #321',
+				'expected_action' => 'orders.hold',
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally falls back to deterministic guardrails for this test.', 'yoro-ai-core' )
+				),
+				'expect'          => [
+					'resolution_path' => 'recovery_fallback',
+					'fallback_reason' => 'command_shape_explicit_order_write',
+					'parser_source'   => 'semantic_shape',
+					'parser_rule'     => 'shape.explicit_order_write',
+					'params.order_ids.0' => 321,
+					'params.order_id' => 321,
+				],
+			],
+			[
+				'name'            => 'Explicit add note without AI uses command shape write fallback',
+				'command'         => 'Add note to order #321: test note',
+				'expected_action' => 'orders.add_note',
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally falls back to deterministic guardrails for this test.', 'yoro-ai-core' )
+				),
+				'expect'          => [
+					'resolution_path' => 'recovery_fallback',
+					'fallback_reason' => 'command_shape_explicit_order_write',
+					'parser_source'   => 'semantic_shape',
+					'parser_rule'     => 'shape.explicit_order_write',
+					'params.order_ids.0' => 321,
+					'params.order_id' => 321,
+					'params.note'     => 'test note',
+				],
+			],
+			[
+				'name'            => 'Explicit add note missing content without AI uses command shape clarification',
+				'command'         => 'Add note to order #321',
+				'expected_action' => 'orders.add_note',
+				'expect_stage'    => 'clarify',
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally falls back to deterministic guardrails for this test.', 'yoro-ai-core' )
+				),
+				'expect'          => [
+					'resolution_path' => 'recovery_fallback',
+					'fallback_reason' => 'command_shape_explicit_order_write',
+					'parser_source'   => 'semantic_shape',
+					'parser_rule'     => 'shape.explicit_order_write',
+					'missing.0'       => 'note',
+					'current_workflow.type' => 'order_note',
+					'current_workflow.order_id' => 321,
+				],
+			],
+			[
+				'name'            => 'Hold orders without AI uses semantic shape clarification',
+				'command'         => 'Hold orders',
+				'expected_action' => 'orders.hold',
+				'expect_stage'    => 'clarify',
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally falls back to deterministic guardrails for this test.', 'yoro-ai-core' )
+				),
+				'expect'          => [
+					'resolution_path' => 'recovery_fallback',
+					'fallback_reason' => 'command_shape_write_missing_target',
+					'parser_source'   => 'semantic_shape',
+					'parser_rule'     => 'shape.write_missing_target',
+					'missing.0'       => 'order_ids',
+					'command_shape.operation_hint' => 'write_missing_target',
+					'command_shape.write_missing_target.action' => 'orders.hold',
+				],
+			],
+			[
+				'name'            => 'Add note without AI uses semantic shape clarification',
+				'command'         => 'Add note to this order',
+				'expected_action' => 'orders.add_note',
+				'expect_stage'    => 'clarify',
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally falls back to deterministic guardrails for this test.', 'yoro-ai-core' )
+				),
+				'expect'          => [
+					'resolution_path' => 'recovery_fallback',
+					'fallback_reason' => 'command_shape_write_missing_target',
+					'parser_source'   => 'semantic_shape',
+					'parser_rule'     => 'shape.write_missing_target',
+					'missing.0'       => 'order_ids',
+					'missing.1'       => 'note',
+					'command_shape.operation_hint' => 'write_missing_target',
+					'command_shape.write_missing_target.action' => 'orders.add_note',
 				],
 			],
 
@@ -3998,7 +5502,7 @@ class YoRo_Parser_Test_Suite {
 			[
 				'name'             => 'Add note without note body should clarify',
 				'command'          => 'Add note to order #123',
-				'expected_action'  => null,
+				'expected_action'  => 'orders.add_note',
 				'expect_unmatched' => true,
 				'expect_stage'     => 'clarify',
 			],
@@ -4124,10 +5628,14 @@ class YoRo_Parser_Test_Suite {
 			],
 			[
 				'domain'          => 'operations',
-				'name'            => 'Store doing weekly phrasing clarifies safely when AI router is unavailable without context',
-				'command'         => 'How is the store doing this week?',
-				'expected_source' => 'rule',
+				'name'            => 'Relative weekly refresh clarifies safely when AI router is unavailable without context',
+				'command'         => 'this week again please',
+				'expected_source' => 'guard',
 				'expected_stage'  => 'clarify',
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally simulates unavailable AI for this guard fallback test.', 'yoro-ai-core' )
+				),
 			],
 			[
 				'domain'          => 'operations',
@@ -4135,10 +5643,14 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'this week again',
 				'expected_intent' => 'operations_overview',
 				'expected_action' => 'operations.get_summary',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'context'         => [
 					'last_result_type' => 'operations',
 				],
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally simulates unavailable AI for this guard fallback test.', 'yoro-ai-core' )
+				),
 				'expect'          => [
 					'resolution_path' => 'recovery_fallback',
 					'fallback_reason' => 'semantic_read_only_fallback',
@@ -4390,22 +5902,24 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Mark order #123 as completed',
 				'expected_action' => 'orders.update_status',
 			],
-			[
-				'domain'          => 'write_actions',
-				'name'            => 'Contextual write follow-up',
-				'command'         => 'Hold the first one',
-				'expected_action' => 'orders.hold',
-				'context'         => [
-					'last_orders'    => [
-						[ 'id' => 301 ],
-						[ 'id' => 302 ],
+				[
+					'domain'          => 'write_actions',
+					'name'            => 'Contextual write follow-up',
+					'command'         => 'Hold the first one',
+					'expected_action' => 'orders.hold',
+					'expected_source' => 'guard',
+					'context'         => [
+						'last_orders'    => [
+							[ 'id' => 301 ],
+							[ 'id' => 302 ],
+						],
+						'last_order_ids' => [ 301, 302 ],
 					],
-					'last_order_ids' => [ 301, 302 ],
+					'expect'          => [
+						'params.order_id' => 301,
+						'parser_rule'     => 'guard.follow_up.orders.hold',
+					],
 				],
-				'expect'          => [
-					'params.order_id' => 301,
-				],
-			],
 			[
 				'domain'          => 'clarify',
 				'name'            => 'Missing note body should clarify',
@@ -4441,10 +5955,14 @@ class YoRo_Parser_Test_Suite {
 			],
 			[
 				'domain'          => 'orders',
-				'name'            => 'Aged pending orders should route to attention review',
+				'name'            => 'Aged pending orders should route to filtered order search',
 				'command'         => 'Are there any orders pending for more than 3 days?',
-				'expected_intent' => 'operations_attention',
-				'expected_action' => 'operations.get_attention_queue',
+				'expected_intent' => 'search_orders',
+				'expected_action' => 'orders.search',
+				'expect'          => [
+					'params.status.0'      => 'pending',
+					'params.min_age_hours' => 72,
+				],
 			],
 			[
 				'domain'          => 'unsupported_analytics',
@@ -4524,7 +6042,7 @@ class YoRo_Parser_Test_Suite {
 				'expected_intent' => 'store_briefing',
 				'expected_action' => 'store.get_daily_briefing',
 				'expect'          => [
-					'params.window' => 'this_week',
+					'params.window' => 'last_7_days',
 				],
 			],
 			[
@@ -4535,15 +6053,19 @@ class YoRo_Parser_Test_Suite {
 				'expected_action' => 'store.get_daily_briefing',
 				'expected_source' => 'ai_router',
 				'expect'          => [
-					'params.window' => 'this_week',
+					'params.window' => 'last_7_days',
 				],
 			],
 			[
 				'domain'          => 'briefing',
 				'name'            => 'Brief me this week clarifies safely when AI router is unavailable without context',
-				'command'         => 'Brief me this week',
-				'expected_source' => 'rule',
+				'command'         => 'this week please',
+				'expected_source' => 'guard',
 				'expected_stage'  => 'clarify',
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally simulates unavailable AI for this guard fallback test.', 'yoro-ai-core' )
+				),
 			],
 			[
 				'domain'          => 'briefing',
@@ -4551,10 +6073,14 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'this month',
 				'expected_intent' => 'store_briefing',
 				'expected_action' => 'store.get_daily_briefing',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'context'         => [
 					'last_result_type' => 'briefing',
 				],
+				'router_fixture'  => new WP_Error(
+					'yoro_ai_missing_api_key',
+					__( 'AI router fixture intentionally simulates unavailable AI for this guard fallback test.', 'yoro-ai-core' )
+				),
 				'expect'          => [
 					'resolution_path' => 'recovery_fallback',
 					'fallback_reason' => 'semantic_read_only_fallback',
@@ -4567,7 +6093,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Continue the plan',
 				'expected_intent' => 'customer_service_review',
 				'expected_action' => 'customers.get_service_queue',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'context'         => [
 					'last_result_type'      => 'briefing',
 					'active_followup_type'  => 'briefing',
@@ -4590,7 +6116,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule' => 'rule.follow_up.briefing.recommendation',
+					'parser_rule' => 'guard.follow_up.briefing.recommendation',
 				],
 			],
 			[
@@ -4599,7 +6125,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Continue the plan',
 				'expected_intent' => 'business_summary',
 				'expected_action' => 'store.get_business_summary',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'context'         => [
 					'last_result_type'        => 'customer_service',
 					'active_followup_type'    => 'customer_service',
@@ -4622,7 +6148,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule' => 'rule.follow_up.service.recommendation',
+					'parser_rule' => 'guard.follow_up.service.recommendation',
 				],
 			],
 			[
@@ -4631,7 +6157,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Continue the plan',
 				'expected_intent' => 'customer_service_review',
 				'expected_action' => 'customers.get_service_queue',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'context'         => [
 					'last_result_type'          => 'fulfillment',
 					'active_followup_type'      => 'fulfillment',
@@ -4654,7 +6180,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule' => 'rule.follow_up.fulfillment.recommendation',
+					'parser_rule' => 'guard.follow_up.fulfillment.recommendation',
 				],
 			],
 			[
@@ -4663,9 +6189,9 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Continue the plan',
 				'expected_intent' => 'operations_overview',
 				'expected_action' => 'operations.get_summary',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'context'         => [
-					'last_result_type'        => 'fulfillment',
+					'last_result_type'          => 'fulfillment',
 					'active_followup_type'    => 'inventory',
 					'last_inventory_followup' => [
 						'recommended_sequence' => [
@@ -4686,7 +6212,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule' => 'rule.follow_up.inventory.recommendation',
+					'parser_rule' => 'guard.follow_up.inventory.recommendation',
 				],
 			],
 			[
@@ -4695,9 +6221,9 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Continue the plan',
 				'expected_intent' => 'customer_service_review',
 				'expected_action' => 'customers.get_service_queue',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'context'         => [
-					'last_result_type'         => 'fulfillment',
+					'last_result_type'          => 'fulfillment',
 					'active_followup_type'     => 'operations_attention',
 					'last_attention_followup'  => [
 						'recommended_sequence' => [
@@ -4718,7 +6244,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule' => 'rule.follow_up.attention.recommendation',
+					'parser_rule' => 'guard.follow_up.attention.recommendation',
 				],
 			],
 			[
@@ -4727,7 +6253,7 @@ class YoRo_Parser_Test_Suite {
 				'command'         => 'Continue the plan',
 				'expected_intent' => 'customer_service_review',
 				'expected_action' => 'customers.get_service_queue',
-				'expected_source' => 'rule',
+				'expected_source' => 'guard',
 				'context'         => [
 					'last_result_type'        => 'inventory',
 					'active_followup_type'    => 'business',
@@ -4750,15 +6276,15 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule' => 'rule.follow_up.business.recommendation',
+					'parser_rule' => 'guard.follow_up.business.recommendation',
 				],
 			],
-			[
-				'domain'          => 'phase4_fulfillment_workflow',
-				'name'            => 'Prepare next fulfillment follow-up should route to workflow preview when fulfillment context is present',
-				'command'         => 'Prepare the next fulfillment follow-up',
-				'expected_action' => 'workflow.fulfillment_followup_preview',
-				'expected_source' => 'rule',
+				[
+					'domain'          => 'phase4_fulfillment_workflow',
+					'name'            => 'Prepare next fulfillment follow-up should route to workflow preview when fulfillment context is present',
+					'command'         => 'Prepare the next fulfillment follow-up',
+					'expected_action' => 'workflow.fulfillment_followup_preview',
+					'expected_source' => 'guard',
 				'context'         => [
 					'last_result_type'          => 'fulfillment',
 					'last_fulfillment_followup' => [
@@ -4779,11 +6305,11 @@ class YoRo_Parser_Test_Suite {
 							],
 						],
 					],
+					],
+					'expect'          => [
+						'parser_rule' => 'guard.workflow.fulfillment_followup_preview',
+					],
 				],
-				'expect'          => [
-					'parser_rule' => 'rule.workflow.fulfillment_followup_preview',
-				],
-			],
 			[
 				'domain'          => 'phase4_fulfillment_workflow',
 				'name'            => 'Prepare next fulfillment follow-up should clarify when fulfillment context is missing',
@@ -4828,7 +6354,7 @@ class YoRo_Parser_Test_Suite {
 					'What is the fulfillment queue_key for the next follow-up you want me to prepare?'
 				),
 				'expect'          => [
-					'parser_rule'                              => 'ai.command_router.mock',
+					'parser_rule'                              => 'ai.command_router.v2',
 					'params.original_command'                 => 'Prepare the next fulfillment follow-up via AI router',
 					'command_decision.mode'                   => 'task_request',
 					'command_decision.missing'                => [],
@@ -4901,12 +6427,12 @@ class YoRo_Parser_Test_Suite {
 					'command_decision.clarification_question' => 'Open the fulfillment queue first so I can choose the right fulfillment item before preparing a follow-up.',
 				],
 			],
-			[
-				'domain'          => 'phase4_customer_followup_workflow',
-				'name'            => 'Prepare next customer follow-up should route to workflow preview when service context is present',
-				'command'         => 'Prepare the next customer follow-up',
-				'expected_action' => 'workflow.customer_followup_preview',
-				'expected_source' => 'rule',
+				[
+					'domain'          => 'phase4_customer_followup_workflow',
+					'name'            => 'Prepare next customer follow-up should route to workflow preview when service context is present',
+					'command'         => 'Prepare the next customer follow-up',
+					'expected_action' => 'workflow.customer_followup_preview',
+					'expected_source' => 'guard',
 				'context'         => [
 					'last_result_type'        => 'customer_service',
 					'last_service_followup'   => [
@@ -4926,11 +6452,11 @@ class YoRo_Parser_Test_Suite {
 							],
 						],
 					],
+					],
+					'expect'          => [
+						'parser_rule' => 'guard.workflow.customer_followup_preview',
+					],
 				],
-				'expect'          => [
-					'parser_rule' => 'rule.workflow.customer_followup_preview',
-				],
-			],
 			[
 				'domain'          => 'phase4_customer_followup_workflow',
 				'name'            => 'Prepare next customer follow-up should clarify when service context is missing',
@@ -4938,12 +6464,12 @@ class YoRo_Parser_Test_Suite {
 				'expected_action' => null,
 				'expected_stage'  => 'clarify',
 			],
-			[
-				'domain'          => 'phase4_operations_attention_workflow',
-				'name'            => 'Prepare next attention follow-up should route to workflow preview when attention context is present',
-				'command'         => 'Prepare the next attention follow-up',
-				'expected_action' => 'workflow.operations_attention_preview',
-				'expected_source' => 'rule',
+				[
+					'domain'          => 'phase4_operations_attention_workflow',
+					'name'            => 'Prepare next attention follow-up should route to workflow preview when attention context is present',
+					'command'         => 'Prepare the next attention follow-up',
+					'expected_action' => 'workflow.operations_attention_preview',
+					'expected_source' => 'guard',
 				'context'         => [
 					'last_result_type'         => 'operations_attention',
 					'last_attention_followup'  => [
@@ -4962,11 +6488,11 @@ class YoRo_Parser_Test_Suite {
 							],
 						],
 					],
+					],
+					'expect'          => [
+						'parser_rule' => 'guard.workflow.operations_attention_preview',
+					],
 				],
-				'expect'          => [
-					'parser_rule' => 'rule.workflow.operations_attention_preview',
-				],
-			],
 			[
 				'domain'          => 'phase4_operations_attention_workflow',
 				'name'            => 'Prepare next attention follow-up should clarify when attention context is missing',
@@ -4974,12 +6500,12 @@ class YoRo_Parser_Test_Suite {
 				'expected_action' => null,
 				'expected_stage'  => 'clarify',
 			],
-			[
-				'domain'          => 'phase4_inventory_pressure_workflow',
-				'name'            => 'Prepare next inventory review should route to workflow preview when inventory context is present',
-				'command'         => 'Prepare the next inventory review',
-				'expected_action' => 'workflow.inventory_pressure_preview',
-				'expected_source' => 'rule',
+				[
+					'domain'          => 'phase4_inventory_pressure_workflow',
+					'name'            => 'Prepare next inventory review should route to workflow preview when inventory context is present',
+					'command'         => 'Prepare the next inventory review',
+					'expected_action' => 'workflow.inventory_pressure_preview',
+					'expected_source' => 'guard',
 				'context'         => [
 					'last_result_type'        => 'inventory',
 					'last_inventory_followup' => [
@@ -4999,11 +6525,11 @@ class YoRo_Parser_Test_Suite {
 							],
 						],
 					],
+					],
+					'expect'          => [
+						'parser_rule' => 'guard.workflow.inventory_pressure_preview',
+					],
 				],
-				'expect'          => [
-					'parser_rule' => 'rule.workflow.inventory_pressure_preview',
-				],
-			],
 			[
 				'domain'          => 'phase4_inventory_pressure_workflow',
 				'name'            => 'Prepare next inventory review should clarify when inventory context is missing',
@@ -5033,12 +6559,12 @@ class YoRo_Parser_Test_Suite {
 					'command_decision.clarification_question' => 'Open the inventory queue first so I can choose the right stock issue before preparing the next review step.',
 				],
 			],
-			[
-				'domain'          => 'phase4_inventory_pressure_workflow',
-				'name'            => 'Prepare next inventory review alias should route to inventory pressure preview when inventory context is present',
-				'command'         => 'Review the next inventory recommendation',
-				'expected_action' => 'workflow.inventory_pressure_preview',
-				'expected_source' => 'rule',
+				[
+					'domain'          => 'phase4_inventory_pressure_workflow',
+					'name'            => 'Prepare next inventory review alias should route to inventory pressure preview when inventory context is present',
+					'command'         => 'Review the next inventory recommendation',
+					'expected_action' => 'workflow.inventory_pressure_preview',
+					'expected_source' => 'guard',
 				'context'         => [
 					'last_result_type'        => 'inventory',
 					'last_inventory_followup' => [
@@ -5058,11 +6584,11 @@ class YoRo_Parser_Test_Suite {
 							],
 						],
 					],
+					],
+					'expect'          => [
+						'parser_rule' => 'guard.workflow.inventory_pressure_preview',
+					],
 				],
-				'expect'          => [
-					'parser_rule' => 'rule.workflow.inventory_pressure_preview',
-				],
-			],
 			[
 				'domain'          => 'phase4_inventory_pressure_workflow',
 				'name'            => 'Prepare next inventory review alias should clarify when inventory context is missing',
@@ -5070,12 +6596,12 @@ class YoRo_Parser_Test_Suite {
 				'expected_action' => null,
 				'expected_stage'  => 'clarify',
 			],
-			[
-				'domain'          => 'phase4_business_summary_workflow',
-				'name'            => 'Prepare next business review should route to business summary preview when business context is present',
-				'command'         => 'Prepare the next business review',
-				'expected_action' => 'workflow.business_summary_preview',
-				'expected_source' => 'rule',
+				[
+					'domain'          => 'phase4_business_summary_workflow',
+					'name'            => 'Prepare next business review should route to business summary preview when business context is present',
+					'command'         => 'Prepare the next business review',
+					'expected_action' => 'workflow.business_summary_preview',
+					'expected_source' => 'guard',
 				'context'         => [
 					'last_result_type'        => 'business',
 					'last_business_followup'  => [
@@ -5102,11 +6628,11 @@ class YoRo_Parser_Test_Suite {
 							'order_count' => 25,
 						],
 					],
+					],
+					'expect'          => [
+						'parser_rule' => 'guard.workflow.business_summary_preview',
+					],
 				],
-				'expect'          => [
-					'parser_rule' => 'rule.workflow.business_summary_preview',
-				],
-			],
 			[
 				'domain'          => 'phase4_business_summary_workflow',
 				'name'            => 'Prepare next business review should clarify when business context is missing',
@@ -5372,6 +6898,88 @@ class YoRo_Parser_Test_Suite {
 			],
 			[
 				'pack'                   => 'multilingual_representative',
+				'domain'                 => 'orders',
+				'name'                   => 'Vietnamese completed order search semantic frame contract',
+				'command'                => 'Cho tôi xem 5 đơn hàng đã hoàn thành gần đây',
+				'expected_language'      => 'vi',
+				'expected_intent'        => 'search_orders',
+				'expected_intent_family' => 'search_orders',
+				'expected_action'        => 'orders.search',
+				'expected_source'        => 'ai_router',
+				'router_fixture'         => self::multilingual_router_fixture(
+					'vi',
+					'task_request',
+					'orders.search',
+					[
+						'limit'       => 5,
+						'date_window' => 'last_7_days',
+					],
+					'search_orders',
+					0.9,
+					[],
+					'',
+					[
+						'version' => 1,
+						'surface' => 'orders',
+						'operation' => 'search',
+						'target_type' => 'order_list',
+						'constraints' => [
+							'quantity' => 5,
+							'order_id' => null,
+							'order_ids' => [],
+							'status' => 'completed',
+							'date' => [
+								'window' => 'last_7_days',
+								'operator' => null,
+								'value' => null,
+								'unit' => null,
+								'text' => 'gần đây',
+							],
+							'money' => [
+								'operator' => null,
+								'value' => null,
+								'min' => null,
+								'max' => null,
+								'currency' => null,
+								'text' => null,
+							],
+							'customer_identity' => [
+								'type' => null,
+								'value' => null,
+							],
+							'payment_method' => null,
+							'shipping_state' => null,
+						],
+						'evidence' => [
+							'surface' => 'đơn hàng',
+							'operation' => 'xem',
+							'target' => 'đơn hàng',
+							'order_id' => null,
+							'quantity' => '5',
+							'status' => 'đã hoàn thành',
+							'date' => 'gần đây',
+							'money' => null,
+							'customer' => null,
+							'payment' => null,
+							'shipping' => null,
+						],
+						'confidence' => 0.9,
+					]
+				),
+				'expect'                 => [
+					'params.status.0'                             => 'completed',
+					'params.limit'                                => 5,
+					'params.date_window'                          => 'last_7_days',
+					'semantic_frame.surface'                      => 'orders',
+					'semantic_frame.operation'                    => 'search',
+					'semantic_frame.constraints.quantity'          => 5,
+					'semantic_frame.constraints.status'            => 'completed',
+					'semantic_frame.constraints.date.window'       => 'last_7_days',
+					'semantic_frame_validator_changes.0.param'    => 'status',
+				],
+			],
+			[
+				'pack'                   => 'multilingual_representative',
 				'domain'                 => 'business',
 				'name'                   => 'Spanish business health question contract',
 				'command'                => '¿Cómo va el negocio esta semana?',
@@ -5465,27 +7073,50 @@ class YoRo_Parser_Test_Suite {
 				'expected_stage'         => 'clarify',
 				'router_fixture'         => self::multilingual_router_fixture( 'id', 'clarify', 'orders.compose_customer_email', [ 'order_id' => 6865 ], 'customer_email', 0.93, [ 'instruction' ], 'Apa tujuan email untuk pelanggan ini?' ),
 			],
+			[
+				'pack'                   => 'multilingual_representative',
+				'domain'                 => 'email',
+				'name'                   => 'Multi-order email limit clarify contract',
+				'command'                => 'Write email about shipping update for these six orders',
+				'expected_action'        => 'workflow.write_email_for_orders',
+				'expected_source'        => 'ai_router',
+				'expected_stage'         => 'clarify',
+				'context'                => [
+					'last_order_ids' => [ 7140, 7139, 7138, 7137, 7136, 7135 ],
+				],
+				'router_fixture'         => self::base_router_fixture_decision(
+					'task_request',
+					'workflow.write_email_for_orders',
+					[
+						'order_ids'     => [ 7140, 7139, 7138, 7137, 7136, 7135 ],
+						'instruction'   => 'shipping update',
+						'delivery_mode' => 'preview',
+					],
+					0.88
+				),
+			],
 		];
 	}
 
 	private static function pipeline_cases() {
 		return [
-			[
-				'name'            => 'Follow-up first one resolves to first last_order_id',
-				'command'         => 'Hold the first one',
-				'expected_action' => 'orders.hold',
-				'context'         => [
-					'last_orders'    => [
-						[ 'id' => 101 ],
-						[ 'id' => 102 ],
+				[
+					'name'            => 'Follow-up first one resolves to first last_order_id',
+					'command'         => 'Hold the first one',
+					'expected_action' => 'orders.hold',
+					'context'         => [
+						'last_orders'    => [
+							[ 'id' => 101 ],
+							[ 'id' => 102 ],
+						],
+						'last_order_ids' => [ 101, 102 ],
 					],
-					'last_order_ids' => [ 101, 102 ],
+					'expect'          => [
+						'params.order_id'    => 101,
+						'params.order_ids.0' => 101,
+						'parser_rule'        => 'guard.follow_up.orders.hold',
+					],
 				],
-				'expect'          => [
-					'params.order_id'    => 101,
-					'params.order_ids.0' => 101,
-				],
-			],
 			[
 				'name'            => 'Follow-up add note to first one',
 				'command'         => 'Add note to the first one: test note',
@@ -5608,7 +7239,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule' => 'rule.follow_up.briefing.drilldown',
+					'parser_rule' => 'guard.follow_up.briefing.drilldown',
 				],
 			],
 			[
@@ -5631,7 +7262,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule' => 'rule.follow_up.briefing.drilldown',
+					'parser_rule' => 'guard.follow_up.briefing.drilldown',
 				],
 			],
 			[
@@ -5654,7 +7285,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule' => 'rule.follow_up.briefing.recommendation',
+					'parser_rule' => 'guard.follow_up.briefing.recommendation',
 				],
 			],
 			[
@@ -5677,7 +7308,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule' => 'rule.follow_up.briefing.recommendation',
+					'parser_rule' => 'guard.follow_up.briefing.recommendation',
 				],
 			],
 			[
@@ -5705,7 +7336,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'             => 'rule.follow_up.briefing.recommendation',
+					'parser_rule'             => 'guard.follow_up.briefing.recommendation',
 					'briefing_sequence_index' => 1,
 				],
 			],
@@ -5733,7 +7364,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'             => 'rule.follow_up.briefing.recommendation',
+					'parser_rule'             => 'guard.follow_up.briefing.recommendation',
 					'briefing_sequence_index' => 1,
 				],
 			],
@@ -5762,7 +7393,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'             => 'rule.follow_up.briefing.recommendation',
+					'parser_rule'             => 'guard.follow_up.briefing.recommendation',
 					'briefing_sequence_index' => 2,
 				],
 			],
@@ -5790,7 +7421,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'             => 'rule.follow_up.briefing.recommendation',
+					'parser_rule'             => 'guard.follow_up.briefing.recommendation',
 					'briefing_sequence_index' => 0,
 				],
 			],
@@ -5818,7 +7449,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'           => 'rule.follow_up.service.recommendation',
+					'parser_rule'           => 'guard.follow_up.service.recommendation',
 					'service_sequence_index' => 1,
 				],
 			],
@@ -5847,7 +7478,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'           => 'rule.follow_up.service.recommendation',
+					'parser_rule'           => 'guard.follow_up.service.recommendation',
 					'service_sequence_index' => 2,
 				],
 			],
@@ -5875,7 +7506,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'                => 'rule.follow_up.fulfillment.recommendation',
+					'parser_rule'                => 'guard.follow_up.fulfillment.recommendation',
 					'fulfillment_sequence_index' => 1,
 				],
 			],
@@ -5904,7 +7535,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'                => 'rule.follow_up.fulfillment.recommendation',
+					'parser_rule'                => 'guard.follow_up.fulfillment.recommendation',
 					'fulfillment_sequence_index' => 2,
 				],
 			],
@@ -5932,7 +7563,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'              => 'rule.follow_up.inventory.recommendation',
+					'parser_rule'              => 'guard.follow_up.inventory.recommendation',
 					'inventory_sequence_index' => 1,
 				],
 			],
@@ -5961,7 +7592,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'              => 'rule.follow_up.inventory.recommendation',
+					'parser_rule'              => 'guard.follow_up.inventory.recommendation',
 					'inventory_sequence_index' => 2,
 				],
 			],
@@ -5989,7 +7620,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'             => 'rule.follow_up.attention.recommendation',
+					'parser_rule'             => 'guard.follow_up.attention.recommendation',
 					'attention_sequence_index' => 1,
 				],
 			],
@@ -6018,7 +7649,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'             => 'rule.follow_up.attention.recommendation',
+					'parser_rule'             => 'guard.follow_up.attention.recommendation',
 					'attention_sequence_index' => 2,
 				],
 			],
@@ -6046,7 +7677,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'            => 'rule.follow_up.business.recommendation',
+					'parser_rule'            => 'guard.follow_up.business.recommendation',
 					'business_sequence_index' => 1,
 				],
 			],
@@ -6075,7 +7706,7 @@ class YoRo_Parser_Test_Suite {
 					],
 				],
 				'expect'          => [
-					'parser_rule'            => 'rule.follow_up.business.recommendation',
+					'parser_rule'            => 'guard.follow_up.business.recommendation',
 					'business_sequence_index' => 2,
 				],
 			],
@@ -6106,7 +7737,7 @@ class YoRo_Parser_Test_Suite {
 				'command'          => 'Hold this order',
 				'context'          => [],
 				'expect'           => [
-					'parsed.action' => 'orders.hold',
+					'action' => 'orders.hold',
 				],
 				'expect_unmatched' => true,
 				'expect_stage'     => 'clarify',
@@ -6114,7 +7745,7 @@ class YoRo_Parser_Test_Suite {
 			[
 				'name'             => 'Missing note should clarify',
 				'command'          => 'Add note to order #123',
-				'expected_action'  => null,
+				'expected_action'  => 'orders.add_note',
 				'expect_unmatched' => true,
 				'expect_stage'     => 'clarify',
 			],
@@ -6195,11 +7826,12 @@ class YoRo_Parser_Test_Suite {
 				'name'    => 'Hold latest 5 orders should require confirmation',
 				'command' => 'Hold latest 5 orders',
 				'expect'  => [
-					'parsed.action'              => 'multi.query_and_apply',
-					'parsed.resolution_path'     => 'recovery_fallback',
-					'parsed.fallback_reason'     => 'query_action_pattern',
-					'plan.type'                  => 'sequence',
-					'plan.steps.0.action'        => 'orders.search',
+						'parsed.action'              => 'multi.query_and_apply',
+						'parsed.resolution_path'     => 'ai_primary',
+						'parsed.parser_rule'         => 'ai.command_router.v2',
+						'parsed.command_shape.target_type' => 'order_query_selection',
+						'plan.type'                  => 'sequence',
+						'plan.steps.0.action'        => 'orders.search',
 					'plan.steps.1.action'        => 'orders.hold',
 					'risk.requires_confirmation' => true,
 				],
@@ -6950,12 +8582,20 @@ class YoRo_Parser_Test_Suite {
 					'result.display_type' => 'multi_action',
 				],
 			],
-			[
-				'name'    => 'Preview multi action sequence has standard contract',
-				'command' => 'Hold order #123 and add note: Need review',
-				'expect'  => [
-					'parsed.action'       => 'workflow.composed_actions',
-					'plan.type'           => 'sequence',
+				[
+					'name'    => 'Preview multi action sequence has standard contract',
+					'command' => 'Hold order #123 and add note: Need review',
+					'router_fixture' => self::base_router_fixture_decision(
+						'task_request',
+						'orders.hold',
+						[
+							'order_ids' => [ 123 ],
+						],
+						0.92
+					),
+					'expect'  => [
+						'parsed.action'       => 'workflow.composed_actions',
+						'plan.type'           => 'sequence',
 					'result.success'      => true,
 					'result.preview'      => true,
 					'result.multi_action' => true,
@@ -7158,6 +8798,63 @@ class YoRo_Parser_Test_Suite {
 						YoRo_REST_Workflow_State::delete( get_current_user_id(), $token );
 					}
 
+					YoRo_Conversation_Memory::clear_pending_confirmation( get_current_user_id() );
+				},
+			],
+			[
+				'name'          => 'REST run low confidence AI orders search bypasses confirmation',
+				'command'       => 'get 2 new orders',
+				'rest_method'   => 'POST',
+				'rest_callback' => [ 'YoRo_REST_Run_Handler', 'handle' ],
+				'rest_params'   => [
+					'command' => 'get 2 new orders',
+					'confirm' => false,
+				],
+				'router_fixture'=> function() {
+					$decision = self::base_router_fixture_decision(
+						'task_request',
+						'orders.search',
+						[
+							'limit' => 2,
+						],
+						0.0
+					);
+					$decision['summary'] = 'Showing latest 2 orders.';
+					$decision['reasoning_summary'] = 'The command asks for a recent order list, so it should search by freshness rather than assume a status filter.';
+
+					return $decision;
+				},
+				'expect'        => [
+					'result.success'             => true,
+					'result.stage'               => 'done',
+					'result.parsed.action'       => 'orders.search',
+					'result.parsed.confidence'   => 0.0,
+					'result.result.success'      => true,
+					'result.result.read_only'    => true,
+					'result.result.action'       => 'orders.search',
+				],
+				'assert'        => function( $actual ) {
+					$pending = YoRo_Conversation_Memory::get_pending_confirmation( get_current_user_id() );
+
+					return [
+						'low_confidence_orders_search_has_no_confirm_gate' => [
+							'expected' => false,
+							'actual'   => self::get_path( $actual, 'result.confirm_required', false ),
+							'passed'   => empty( self::get_path( $actual, 'result.confirm_required', false ) ),
+						],
+						'low_confidence_orders_search_has_no_pending_token' => [
+							'expected' => '',
+							'actual'   => self::get_path( $actual, 'result.workflow_state_token', '' ),
+							'passed'   => '' === self::get_path( $actual, 'result.workflow_state_token', '' ),
+						],
+						'low_confidence_orders_search_does_not_store_pending_confirmation' => [
+							'expected' => false,
+							'actual'   => is_array( $pending ) && ! empty( $pending['token'] ),
+							'passed'   => ! is_array( $pending ) || empty( $pending['token'] ),
+						],
+					];
+				},
+				'cleanup'       => function() {
 					YoRo_Conversation_Memory::clear_pending_confirmation( get_current_user_id() );
 				},
 			],
@@ -8989,7 +10686,7 @@ class YoRo_Parser_Test_Suite {
 				},
 			],
 			[
-				'name'  => 'Execute write email workflow send branch sends composed email',
+				'name'  => 'Execute write email workflow send branch leaves email for manual send',
 				'setup' => function() {
 					$order = self::create_test_order(
 						[
@@ -9032,7 +10729,9 @@ class YoRo_Parser_Test_Suite {
 					$found = false;
 
 					foreach ( $notes as $note ) {
-						if ( false !== stripos( (string) $note->content, 'YoRo Agent sent a custom customer email' ) ) {
+						$content = (string) $note->content;
+
+						if ( false !== stripos( $content, 'YoRo AI sent a custom customer email' ) ) {
 							$found = true;
 							break;
 						}
@@ -9044,10 +10743,20 @@ class YoRo_Parser_Test_Suite {
 							'actual'   => self::get_path( $actual, 'result.actions.2.action', '' ),
 							'passed'   => 'orders.send_customer_email' === self::get_path( $actual, 'result.actions.2.action', '' ),
 						],
-						'workflow_send_note_written' => [
+						'workflow_send_step_deferred_for_manual_send' => [
 							'expected' => true,
+							'actual'   => self::get_path( $actual, 'result.actions.2.manual_action_required', false ),
+							'passed'   => true === self::get_path( $actual, 'result.actions.2.manual_action_required', false ),
+						],
+						'workflow_send_step_did_not_send_email' => [
+							'expected' => false,
 							'actual'   => $found,
-							'passed'   => $found,
+							'passed'   => ! $found,
+						],
+						'workflow_send_result_keeps_send_payload' => [
+							'expected' => true,
+							'actual'   => ! empty( self::get_path( $actual, 'result.actions.2.result.send_payload.subject', '' ) ),
+							'passed'   => ! empty( self::get_path( $actual, 'result.actions.2.result.send_payload.subject', '' ) ),
 						],
 					];
 				},
@@ -9530,7 +11239,7 @@ class YoRo_Parser_Test_Suite {
 		if ( ! function_exists( 'wc_create_order' ) ) {
 			return new WP_Error(
 				'yoro_test_woocommerce_missing',
-				__( 'WooCommerce test helpers are unavailable.', 'yoro-agent-core' )
+				__( 'WooCommerce test helpers are unavailable.', 'yoro-ai-core' )
 			);
 		}
 
@@ -9555,7 +11264,7 @@ class YoRo_Parser_Test_Suite {
 		if ( ! $order instanceof WC_Order ) {
 			return new WP_Error(
 				'yoro_test_order_create_failed',
-				__( 'Could not create parser test order.', 'yoro-agent-core' )
+				__( 'Could not create parser test order.', 'yoro-ai-core' )
 			);
 		}
 
@@ -9684,7 +11393,9 @@ class YoRo_Parser_Test_Suite {
 		$note_ids = [];
 
 		foreach ( $comments as $comment ) {
-			if ( false === strpos( (string) $comment->comment_content, 'YoRo Agent' ) ) {
+			$content = (string) $comment->comment_content;
+
+			if ( false === strpos( $content, 'YoRo AI' ) ) {
 				continue;
 			}
 
@@ -9730,6 +11441,9 @@ class YoRo_Parser_Test_Suite {
 			'clarify_rate'      => 0,
 			'wrong_action_rate' => 0,
 			'wrong_intent_rate' => 0,
+			'semantic_frame_cases' => 0,
+			'semantic_frame_repaired' => 0,
+			'semantic_frame_repair_rate' => '0.0%',
 			'by_pack'           => [],
 			'by_domain'         => [],
 			'by_intent'         => [],
@@ -9748,6 +11462,8 @@ class YoRo_Parser_Test_Suite {
 			$language = sanitize_key( $result['expected_language'] ?? $result['trace']['language'] ?? 'unknown' );
 			$source  = sanitize_key( $result['trace']['source'] ?? 'unknown' );
 			$outcome = sanitize_key( $result['outcome'] ?? 'unknown' );
+			$semantic_frame_present = ! empty( $result['trace']['semantic_frame_present'] );
+			$semantic_frame_repair_count = absint( $result['trace']['semantic_frame_repair_count'] ?? 0 );
 
 			if ( $passed ) {
 				++$summary['passed'];
@@ -9762,12 +11478,27 @@ class YoRo_Parser_Test_Suite {
 			self::bump_evaluation_bucket( $summary['by_language'], $language ?: 'none', $passed );
 			self::bump_evaluation_bucket( $summary['by_source'], $source ?: 'none', $passed );
 			self::bump_evaluation_bucket( $summary['by_outcome'], $outcome ?: 'unknown', $passed );
+			self::annotate_evaluation_semantic_metrics( $summary['by_language'][ $language ?: 'none' ], $semantic_frame_present, $semantic_frame_repair_count );
+
+			if ( $semantic_frame_present ) {
+				++$summary['semantic_frame_cases'];
+			}
+
+			if ( $semantic_frame_repair_count > 0 ) {
+				++$summary['semantic_frame_repaired'];
+			}
 		}
 
 		if ( $summary['total'] > 0 ) {
 			$summary['clarify_rate']      = self::format_rate( $summary['by_outcome']['clarify']['total'] ?? 0, $summary['total'] );
 			$summary['wrong_action_rate'] = self::format_rate( $summary['by_outcome']['wrong_action']['total'] ?? 0, $summary['total'] );
 			$summary['wrong_intent_rate'] = self::format_rate( $summary['by_outcome']['wrong_intent']['total'] ?? 0, $summary['total'] );
+			$summary['semantic_frame_repair_rate'] = self::format_rate( $summary['semantic_frame_repaired'], $summary['total'] );
+		}
+
+		foreach ( $summary['by_language'] as $language => $bucket ) {
+			$summary['by_language'][ $language ]['semantic_frame_rate'] = self::format_rate( $bucket['semantic_frame_cases'] ?? 0, $bucket['total'] ?? 0 );
+			$summary['by_language'][ $language ]['semantic_frame_repair_rate'] = self::format_rate( $bucket['semantic_frame_repaired'] ?? 0, $bucket['total'] ?? 0 );
 		}
 
 		return $summary;
@@ -9818,7 +11549,9 @@ class YoRo_Parser_Test_Suite {
 
 			if ( 0 === strpos( $parser_rule, 'ai.' ) ) {
 				$actual['parser_source'] = 'ai_router';
-			} elseif ( 0 === strpos( $parser_rule, 'rule.' ) || 0 === strpos( $parser_rule, 'guard.' ) ) {
+			} elseif ( 0 === strpos( $parser_rule, 'guard.' ) ) {
+				$actual['parser_source'] = 'guard';
+			} elseif ( 0 === strpos( $parser_rule, 'rule.' ) ) {
 				$actual['parser_source'] = 'rule';
 			}
 		}
@@ -9932,10 +11665,21 @@ class YoRo_Parser_Test_Suite {
 			'orders.find_by_customer'         => 'find_customer_orders',
 			'orders.update_status'            => 'update_order_status',
 			'orders.bulk_update_status_with_note' => 'update_order_status',
-			'orders.hold'                     => 'hold_order',
-			'orders.add_note'                 => 'add_note',
-			'orders.compose_customer_email'   => 'customer_email',
-			'workflow.write_email_for_order'  => 'customer_email',
+				'orders.hold'                     => 'hold_order',
+				'orders.add_note'                 => 'add_note',
+				'orders.compose_customer_email'   => 'customer_email',
+				'orders.get_customer_email_drafts' => 'customer_email',
+				'orders.save_customer_email_draft' => 'customer_email',
+				'orders.update_customer_email_draft' => 'customer_email',
+				'orders.delete_customer_email_draft' => 'customer_email',
+				'orders.render_customer_email_preview' => 'customer_email',
+				'orders.send_customer_email'      => 'customer_email',
+				'workflow.write_email_for_order'  => 'customer_email',
+				'workflow.write_and_save_email_draft_for_order' => 'customer_email',
+			'workflow.write_and_send_email_for_order' => 'customer_email',
+			'workflow.write_email_for_orders' => 'customer_email',
+			'workflow.write_and_save_email_drafts_for_orders' => 'customer_email',
+			'workflow.write_and_send_emails_for_orders' => 'customer_email',
 			'customers.get_summary'           => 'customer_summary',
 		];
 
@@ -9958,6 +11702,41 @@ class YoRo_Parser_Test_Suite {
 		} else {
 			++$bucket[ $key ]['failed'];
 		}
+	}
+
+	private static function annotate_evaluation_semantic_metrics( &$bucket, $semantic_frame_present, $semantic_frame_repair_count ) {
+		if ( ! is_array( $bucket ) ) {
+			$bucket = [];
+		}
+
+		foreach ( [ 'semantic_frame_cases', 'semantic_frame_repaired', 'semantic_frame_repair_events' ] as $key ) {
+			if ( ! isset( $bucket[ $key ] ) ) {
+				$bucket[ $key ] = 0;
+			}
+		}
+
+		if ( $semantic_frame_present ) {
+			++$bucket['semantic_frame_cases'];
+		}
+
+		if ( $semantic_frame_repair_count > 0 ) {
+			++$bucket['semantic_frame_repaired'];
+			$bucket['semantic_frame_repair_events'] += absint( $semantic_frame_repair_count );
+		}
+	}
+
+	private static function evaluation_semantic_frame_is_informative( $frame ) {
+		$frame = is_array( $frame ) ? $frame : [];
+
+		if ( class_exists( 'YoRo_Semantic_Frame_Normalizer' ) ) {
+			return YoRo_Semantic_Frame_Normalizer::is_informative( $frame );
+		}
+
+		return ! empty( $frame ) && (
+			'unknown' !== sanitize_key( $frame['surface'] ?? 'unknown' ) ||
+			'unknown' !== sanitize_key( $frame['operation'] ?? 'unknown' ) ||
+			'unknown' !== sanitize_key( $frame['target_type'] ?? 'unknown' )
+		);
 	}
 
 	private static function format_rate( $count, $total ) {

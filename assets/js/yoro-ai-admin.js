@@ -19,7 +19,7 @@
 	}
 
 	function getBrowserDateTimeFormatter() {
-		const config = window.YoRoAgentAdmin || {};
+		const config = window.YoRoAIAdmin || {};
 		const dateFormat = String(config.dateFormat || 'Y-m-d');
 		const timeFormat = String(config.timeFormat || 'H:i');
 		const combinedFormat = [dateFormat, timeFormat].filter(Boolean).join(' ').trim() || 'Y-m-d H:i';
@@ -135,7 +135,7 @@
 					}
 
 					output += formatToken(char, date);
-				}
+			}
 
 				return output;
 			}
@@ -144,12 +144,12 @@
 
 	ready(function () {
 		const browserDateTimeFormatter = getBrowserDateTimeFormatter();
-		const commandField = document.getElementById('yoro-agent-command');
-		const runButton = document.getElementById('yoro-agent-run');
-		const clearButton = document.getElementById('yoro-agent-clear');
-		const contextButton = document.getElementById('yoro-agent-load-context');
+		const commandField = document.getElementById('yoro-ai-command');
+		const runButton = document.getElementById('yoro-ai-run');
+		const clearButton = document.getElementById('yoro-ai-clear');
+		const contextButton = document.getElementById('yoro-ai-load-context');
 		const chatThread = document.getElementById('yoro-chat-thread');
-		const exampleButtons = document.querySelectorAll('.yoro-agent-example');
+		const exampleButtons = document.querySelectorAll('.yoro-ai-example');
 		const parserTestButton = document.getElementById('yoro-run-parser-tests');
 		const parserTestResults = document.getElementById('yoro-parser-test-results');
 		const realQueryPackButton = document.getElementById('yoro-build-real-query-pack');
@@ -159,12 +159,89 @@
 		const quickActionsToggle = quickActionsRoot ? quickActionsRoot.querySelector('[data-yoro-quick-toggle]') : null;
 		const quickSearchField = quickActionsRoot ? quickActionsRoot.querySelector('[data-yoro-quick-search]') : null;
 		const quickSearchResults = quickActionsRoot ? quickActionsRoot.querySelector('[data-yoro-quick-results]') : null;
+		const aiApiStatusRoot = document.querySelector('[data-yoro-ai-api-status]');
+		const aiApiStatusToggle = aiApiStatusRoot ? aiApiStatusRoot.querySelector('[data-yoro-ai-api-status-toggle]') : null;
+		const aiApiStatusPanel = aiApiStatusRoot ? aiApiStatusRoot.querySelector('[data-yoro-ai-api-status-panel]') : null;
+		const aiApiStatusLabel = aiApiStatusRoot ? aiApiStatusRoot.querySelector('[data-yoro-ai-api-status-label]') : null;
+		const aiApiStatusBody = aiApiStatusRoot ? aiApiStatusRoot.querySelector('[data-yoro-ai-api-status-body]') : null;
+		const aiApiStatusRefresh = aiApiStatusRoot ? aiApiStatusRoot.querySelector('[data-yoro-ai-api-status-refresh]') : null;
 
 		registerHistoryHandlers();
 		registerDeveloperTools();
+		registerAiApiStatus();
 
 		if (!commandField || !runButton || !chatThread) {
 			return;
+		}
+
+		let protectedWorkCount = 0;
+		let unloadGuardEnabled = false;
+
+		function hasActiveWorkflow() {
+			const workflow = conversationState.current_workflow;
+
+			return !!(
+				workflow &&
+				typeof workflow === 'object' &&
+				Object.keys(workflow).length &&
+				workflow.status !== 'done' &&
+				workflow.status !== 'executed' &&
+				workflow.status !== 'cancelled' &&
+				workflow.status !== 'failed'
+			);
+		}
+
+		function hasVisibleConfirmationActions() {
+			return Array.prototype.some.call(
+				chatThread.querySelectorAll('.yoro-confirm-actions'),
+				function(actions) {
+					return actions.style.display !== 'none' && !!actions.querySelector('.yoro-confirm-run');
+				}
+			);
+		}
+
+		function shouldWarnBeforeUnload() {
+			return (
+				protectedWorkCount > 0 ||
+				!!conversationState.pending_plan_token ||
+				hasVisibleConfirmationActions() ||
+				hasActiveWorkflow() ||
+				commandField.value.trim() !== ''
+			);
+		}
+
+		function handleBeforeUnload(event) {
+			if (!shouldWarnBeforeUnload()) {
+				return;
+			}
+
+			event.preventDefault();
+			event.returnValue = '';
+		}
+
+		function syncBeforeUnloadGuard() {
+			const shouldEnable = shouldWarnBeforeUnload();
+
+			if (shouldEnable && !unloadGuardEnabled) {
+				window.addEventListener('beforeunload', handleBeforeUnload);
+				unloadGuardEnabled = true;
+				return;
+			}
+
+			if (!shouldEnable && unloadGuardEnabled) {
+				window.removeEventListener('beforeunload', handleBeforeUnload);
+				unloadGuardEnabled = false;
+			}
+		}
+
+		function beginProtectedWork() {
+			protectedWorkCount += 1;
+			syncBeforeUnloadGuard();
+
+			return function finishProtectedWork() {
+				protectedWorkCount = Math.max(0, protectedWorkCount - 1);
+				syncBeforeUnloadGuard();
+			};
 		}
 
 		function parseQuickActionParams(raw) {
@@ -391,7 +468,7 @@
 								loading.remove();
 								addAgentMessage({
 									success: false,
-									error: error || YoRoAgentAdmin.i18n.error
+									error: error || YoRoAIAdmin.i18n.error
 								});
 								return null;
 							});
@@ -406,7 +483,7 @@
 					loading.remove();
 					addAgentMessage({
 						success: false,
-						error: error || YoRoAgentAdmin.i18n.error
+						error: error || YoRoAIAdmin.i18n.error
 					});
 				})
 				.finally(function() {
@@ -465,13 +542,13 @@
 		}
 
 		function registerDeveloperTools() {
-			if (parserTestButton && parserTestResults && window.YoRoAgentAdmin && YoRoAgentAdmin.parserTestUrl) {
+			if (parserTestButton && parserTestResults && window.YoRoAIAdmin && YoRoAIAdmin.parserTestUrl) {
 				parserTestButton.addEventListener('click', function () {
 					runParserTests();
 				});
 			}
 
-			if (realQueryPackButton && realQueryPackResults && window.YoRoAgentAdmin && YoRoAgentAdmin.realQueryPackUrl) {
+			if (realQueryPackButton && realQueryPackResults && window.YoRoAIAdmin && YoRoAIAdmin.realQueryPackUrl) {
 				realQueryPackButton.addEventListener('click', function () {
 					buildRealQueryPack();
 				});
@@ -499,12 +576,174 @@
 			});
 		}
 
+		function registerAiApiStatus() {
+			if (!aiApiStatusRoot || !aiApiStatusToggle || !aiApiStatusPanel || !aiApiStatusBody || !window.YoRoAIAdmin || !YoRoAIAdmin.aiApiStatusUrl) {
+				return;
+			}
+
+			aiApiStatusToggle.addEventListener('click', function () {
+				const isOpen = aiApiStatusPanel.hidden;
+				aiApiStatusPanel.hidden = !isOpen;
+				aiApiStatusToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+			});
+
+			if (aiApiStatusRefresh && YoRoAIAdmin.aiApiHandshakeUrl) {
+				aiApiStatusRefresh.addEventListener('click', function () {
+					loadAiApiStatus(true);
+				});
+			}
+
+			document.addEventListener('click', function (event) {
+				if (aiApiStatusPanel.hidden || aiApiStatusRoot.contains(event.target)) {
+					return;
+				}
+
+				aiApiStatusPanel.hidden = true;
+				aiApiStatusToggle.setAttribute('aria-expanded', 'false');
+			});
+
+			loadAiApiStatus(false);
+		}
+
+		function loadAiApiStatus(forceHandshake) {
+			const url = forceHandshake ? YoRoAIAdmin.aiApiHandshakeUrl : YoRoAIAdmin.aiApiStatusUrl;
+			const method = forceHandshake ? 'POST' : 'GET';
+
+			if (!url) {
+				return;
+			}
+
+			setAiApiStatusLoading(forceHandshake ? 'Refreshing...' : 'Checking...');
+
+			requestJson(url, {
+				method: method
+			})
+				.then(function (data) {
+					renderAiApiStatus(data);
+				})
+				.catch(function (error) {
+					renderAiApiStatusError(error);
+				});
+		}
+
+		function setAiApiStatusLoading(label) {
+			if (!aiApiStatusToggle || !aiApiStatusBody) {
+				return;
+			}
+
+			aiApiStatusToggle.classList.remove('is-connected', 'is-warning', 'is-error');
+			aiApiStatusToggle.classList.add('is-loading');
+
+			if (aiApiStatusLabel) {
+				aiApiStatusLabel.textContent = label || 'Checking...';
+			}
+
+			aiApiStatusBody.innerHTML = '<p>Checking YoRo AI API status...</p>';
+		}
+
+		function renderAiApiStatus(data) {
+			if (!aiApiStatusToggle || !aiApiStatusBody) {
+				return;
+			}
+
+			const connection = data && data.connection ? data.connection : {};
+			const site = data && data.site ? data.site : {};
+			const usage = data && data.usage ? data.usage : {};
+			const entitlements = data && data.entitlements ? data.entitlements : {};
+			const capabilities = data && data.capabilities ? data.capabilities : {};
+			const configured = data && data.configured ? data.configured : {};
+			const connected = !!connection.connected;
+			const plan = site.plan || entitlements.usage_plan || '';
+			const remaining = usage.remaining;
+			const hasQuota = remaining === null || remaining === undefined || Number(remaining) > 0;
+			const stateClass = connected && hasQuota ? 'is-connected' : (connected ? 'is-warning' : 'is-error');
+			const provider = data && data.resolved_provider ? data.resolved_provider : '';
+
+			aiApiStatusToggle.classList.remove('is-loading', 'is-connected', 'is-warning', 'is-error');
+			aiApiStatusToggle.classList.add(stateClass);
+
+			if (aiApiStatusLabel) {
+				aiApiStatusLabel.textContent = connected
+					? ('YoRo AI API' + (plan ? ' · ' + plan : ''))
+					: 'YoRo AI API · offline';
+			}
+
+			let html = '';
+			html += '<dl class="yoro-ai-api-status-grid">';
+			html += renderAiApiStatusRow('Connection', connected ? 'Connected' : (connection.message || 'Not connected'));
+			html += renderAiApiStatusRow('Provider', provider || 'unknown');
+			html += renderAiApiStatusRow('Plan', plan || 'unknown');
+			html += renderAiApiStatusRow('Subscription', entitlements.subscription_status || 'unknown');
+			html += renderAiApiStatusRow('Usage', renderAiApiUsageText(usage));
+			html += renderAiApiStatusRow('Last checked', connection.checked_at || 'not checked');
+			html += '</dl>';
+			html += '<div class="yoro-ai-api-status-features">';
+			html += renderAiApiFeatureBadge('Command router', capabilities.command_router, entitlements.command_router || entitlements.ai_router);
+			html += renderAiApiFeatureBadge('Email compose', capabilities.email_compose, entitlements.email_composer);
+			html += renderAiApiFeatureBadge('Workflows', capabilities.workflow_plan, entitlements.workflows);
+			html += renderAiApiFeatureBadge('Suggestions', capabilities.suggestions, entitlements.suggestions);
+			html += '</div>';
+
+			if (!configured.enabled || !configured.endpoint_ready) {
+				html += '<p class="yoro-ai-api-status-note">YoRo AI API is configured but not fully enabled in plugin settings.</p>';
+			}
+
+			aiApiStatusBody.innerHTML = html;
+		}
+
+		function renderAiApiStatusError(error) {
+			const message = (error && error.message)
+				|| (error && error.data && error.data.message)
+				|| 'Could not load YoRo AI API status.';
+
+			if (aiApiStatusToggle) {
+				aiApiStatusToggle.classList.remove('is-loading', 'is-connected', 'is-warning');
+				aiApiStatusToggle.classList.add('is-error');
+			}
+
+			if (aiApiStatusLabel) {
+				aiApiStatusLabel.textContent = 'YoRo AI API · error';
+			}
+
+			if (aiApiStatusBody) {
+				aiApiStatusBody.innerHTML = '<p class="yoro-ai-api-status-error">' + escapeHtml(message) + '</p>';
+			}
+		}
+
+		function renderAiApiStatusRow(label, value) {
+			return '<div><dt>' + escapeHtml(label) + '</dt><dd>' + escapeHtml(value) + '</dd></div>';
+		}
+
+		function renderAiApiUsageText(usage) {
+			if (!usage || usage.limit === undefined || usage.used === undefined || usage.limit === null || usage.used === null) {
+				return 'not available';
+			}
+
+			const remaining = usage.remaining === undefined || usage.remaining === null
+				? ''
+				: ', ' + Number(usage.remaining || 0).toLocaleString() + ' remaining';
+
+			return Number(usage.used || 0).toLocaleString()
+				+ ' / '
+				+ Number(usage.limit || 0).toLocaleString()
+				+ remaining;
+		}
+
+		function renderAiApiFeatureBadge(label, capabilityValue, entitlementValue) {
+			const isOn = !!capabilityValue || !!entitlementValue;
+
+			return '<span class="yoro-ai-api-feature ' + (isOn ? 'is-on' : 'is-off') + '">'
+				+ '<span aria-hidden="true"></span>'
+				+ escapeHtml(label)
+				+ '</span>';
+		}
+
 		function runParserTests() {
 			parserTestButton.disabled = true;
 			parserTestButton.textContent = 'Running...';
 			parserTestResults.innerHTML = '<div class="yoro-parser-test-loading">Running AI command router tests...</div>';
 
-			requestJson(YoRoAgentAdmin.parserTestUrl, {
+			requestJson(YoRoAIAdmin.parserTestUrl, {
 				method: 'GET'
 			})
 				.then(function (data) {
@@ -614,7 +853,7 @@
 			realQueryPackButton.textContent = 'Building...';
 			realQueryPackResults.innerHTML = '<div class="yoro-parser-test-loading">Building command evaluation pack...</div>';
 
-			requestJson(YoRoAgentAdmin.realQueryPackUrl, {
+			requestJson(YoRoAIAdmin.realQueryPackUrl, {
 				method: 'GET'
 			})
 				.then(function (data) {
@@ -866,13 +1105,14 @@
 			runCommand(false);
 		}
 
-		commandField.addEventListener('input', function () {
-			if (commandField.value.trim() === '') {
-				clearCommandGhostHint();
-			}
+			commandField.addEventListener('input', function () {
+				if (commandField.value.trim() === '') {
+					clearCommandGhostHint();
+				}
 
-			syncRunButtonState();
-		});
+				syncRunButtonState();
+				syncBeforeUnloadGuard();
+			});
 
 		commandField.addEventListener('compositionstart', function () {
 			isComposerComposing = true;
@@ -1004,7 +1244,7 @@
 
 				const logId = target.getAttribute('data-log-id') || '';
 
-				if (!logId || !window.YoRoAgentAdmin || !YoRoAgentAdmin.undoUrl) {
+				if (!logId || !window.YoRoAIAdmin || !YoRoAIAdmin.undoUrl) {
 					return;
 				}
 
@@ -1115,8 +1355,8 @@
 				return;
 			}
 
-			const intro = (window.YoRoAgentAdmin && YoRoAgentAdmin.i18n && YoRoAgentAdmin.i18n.morningBriefingIntro)
-				? String(YoRoAgentAdmin.i18n.morningBriefingIntro)
+			const intro = (window.YoRoAIAdmin && YoRoAIAdmin.i18n && YoRoAIAdmin.i18n.morningBriefingIntro)
+				? String(YoRoAIAdmin.i18n.morningBriefingIntro)
 				: 'Good morning, here’s your store briefing for today.';
 
 			bubble.innerHTML = '<strong>YoRo</strong><p>' + escapeHtml(intro) + '</p>';
@@ -1134,8 +1374,8 @@
 		}
 
 		function replaceInitialGreetingForMorningBriefingMessage() {
-			const intro = (window.YoRoAgentAdmin && YoRoAgentAdmin.i18n && YoRoAgentAdmin.i18n.morningBriefingIntro)
-				? String(YoRoAgentAdmin.i18n.morningBriefingIntro)
+			const intro = (window.YoRoAIAdmin && YoRoAIAdmin.i18n && YoRoAIAdmin.i18n.morningBriefingIntro)
+				? String(YoRoAIAdmin.i18n.morningBriefingIntro)
 				: 'Good morning, here’s your store briefing for today.';
 
 			return addMessage('agent', '<strong>YoRo</strong><p>' + escapeHtml(intro) + '</p>');
@@ -1240,6 +1480,7 @@
 			}
 
 			hideSupersededAgentMessages(wrapper, data);
+			syncBeforeUnloadGuard();
 
 			if (morningGreetingWrapper) {
 				scrollMessageToTop(morningGreetingWrapper);
@@ -1260,6 +1501,7 @@
 
 			if (actions) {
 				actions.style.display = 'none';
+				syncBeforeUnloadGuard();
 			}
 		}
 
@@ -1365,7 +1607,7 @@
 				contextButton.disabled = isLoading;
 			}
 
-			runButton.textContent = isLoading ? YoRoAgentAdmin.i18n.running : (YoRoAgentAdmin.i18n.askYoRo || 'Ask YoRo');
+			runButton.textContent = isLoading ? YoRoAIAdmin.i18n.running : (YoRoAIAdmin.i18n.askYoRo || 'Ask YoRo');
 		}
 
 		function requestJson(url, options) {
@@ -1373,7 +1615,7 @@
 				credentials: 'same-origin',
 				headers: {
 					'Content-Type': 'application/json',
-					'X-WP-Nonce': YoRoAgentAdmin.nonce
+					'X-WP-Nonce': YoRoAIAdmin.nonce
 				}
 			}, options || {});
 
@@ -1389,7 +1631,7 @@
 		}
 
 		function undoLog(logId) {
-			return requestJson(YoRoAgentAdmin.undoUrl, {
+			return requestJson(YoRoAIAdmin.undoUrl, {
 				method: 'POST',
 				body: JSON.stringify({
 					log_id: logId
@@ -1401,10 +1643,11 @@
 			const command = 'Load store context';
 			addUserMessage(command);
 			const loading = addLoadingMessage();
+			const finishProtectedWork = beginProtectedWork();
 
 			setLoading(true);
 
-			requestJson(YoRoAgentAdmin.contextUrl, {
+			requestJson(YoRoAIAdmin.contextUrl, {
 				method: 'GET'
 			})
 				.then(function (data) {
@@ -1415,16 +1658,17 @@
 					loading.remove();
 					addAgentMessage({
 						success: false,
-						error: error || YoRoAgentAdmin.i18n.error
+						error: error || YoRoAIAdmin.i18n.error
 					});
-				})
-				.finally(function () {
-					setLoading(false);
-				});
+					})
+					.finally(function () {
+						finishProtectedWork();
+						setLoading(false);
+					});
 		}
 
 		function loadServerMemory() {
-			return requestJson(YoRoAgentAdmin.memoryUrl, {
+			return requestJson(YoRoAIAdmin.memoryUrl, {
 				method: 'GET'
 			}).then(function (data) {
 				const runtimeContext = data && data.success
@@ -1439,7 +1683,7 @@
 		}
 
 		function loadMorningBriefing() {
-			if (!window.YoRoAgentAdmin || !YoRoAgentAdmin.morningBriefingUrl) {
+			if (!window.YoRoAIAdmin || !YoRoAIAdmin.morningBriefingUrl) {
 				return Promise.resolve();
 			}
 
@@ -1465,8 +1709,8 @@
 			}
 
 			const url = requestParams.toString()
-				? (YoRoAgentAdmin.morningBriefingUrl + '?' + requestParams.toString())
-				: YoRoAgentAdmin.morningBriefingUrl;
+				? (YoRoAIAdmin.morningBriefingUrl + '?' + requestParams.toString())
+				: YoRoAIAdmin.morningBriefingUrl;
 
 			return requestJson(url, {
 				method: 'GET'
@@ -1488,7 +1732,7 @@
 
 
 		function dismissMorningBriefing() {
-			if (!window.YoRoAgentAdmin || !YoRoAgentAdmin.morningBriefingDismissUrl) {
+			if (!window.YoRoAIAdmin || !YoRoAIAdmin.morningBriefingDismissUrl) {
 				return Promise.resolve();
 			}
 
@@ -1502,7 +1746,7 @@
 				}
 			}
 
-			return requestJson(YoRoAgentAdmin.morningBriefingDismissUrl, {
+			return requestJson(YoRoAIAdmin.morningBriefingDismissUrl, {
 				method: 'POST',
 				body: JSON.stringify(payload)
 			}).then(function (data) {
@@ -1514,6 +1758,12 @@
 
 				return data;
 			});
+		}
+
+		function isFollowupParserRule(parsed, suffix) {
+			const parserRule = parsed && parsed.parser_rule ? String(parsed.parser_rule) : '';
+
+			return parserRule === 'rule.follow_up.' + suffix || parserRule === 'guard.follow_up.' + suffix;
 		}
 
 		function updateConversationState(data, command) {
@@ -1674,7 +1924,7 @@
 			}
 
 			if (
-				parsed.parser_rule === 'rule.follow_up.briefing.recommendation' &&
+				isFollowupParserRule(parsed, 'briefing.recommendation') &&
 				conversationState.last_briefing &&
 				typeof conversationState.last_briefing === 'object'
 			) {
@@ -1715,7 +1965,7 @@
 			}
 
 			if (
-				parsed.parser_rule === 'rule.follow_up.business.recommendation' &&
+				isFollowupParserRule(parsed, 'business.recommendation') &&
 				conversationState.last_business_followup &&
 				typeof conversationState.last_business_followup === 'object'
 			) {
@@ -1756,7 +2006,7 @@
 			}
 
 			if (
-				parsed.parser_rule === 'rule.follow_up.attention.recommendation' &&
+				isFollowupParserRule(parsed, 'attention.recommendation') &&
 				conversationState.last_attention_followup &&
 				typeof conversationState.last_attention_followup === 'object'
 			) {
@@ -1797,7 +2047,7 @@
 			}
 
 			if (
-				parsed.parser_rule === 'rule.follow_up.service.recommendation' &&
+				isFollowupParserRule(parsed, 'service.recommendation') &&
 				conversationState.last_service_followup &&
 				typeof conversationState.last_service_followup === 'object'
 			) {
@@ -1838,7 +2088,7 @@
 			}
 
 			if (
-				parsed.parser_rule === 'rule.follow_up.fulfillment.recommendation' &&
+				isFollowupParserRule(parsed, 'fulfillment.recommendation') &&
 				conversationState.last_fulfillment_followup &&
 				typeof conversationState.last_fulfillment_followup === 'object'
 			) {
@@ -1879,7 +2129,7 @@
 			}
 
 			if (
-				parsed.parser_rule === 'rule.follow_up.inventory.recommendation' &&
+				isFollowupParserRule(parsed, 'inventory.recommendation') &&
 				conversationState.last_inventory_followup &&
 				typeof conversationState.last_inventory_followup === 'object'
 			) {
@@ -1961,6 +2211,8 @@
 			) {
 				conversationState.current_workflow = {};
 			}
+
+			syncBeforeUnloadGuard();
 		}
 
 		let lastSubmitAt = 0;
@@ -1987,7 +2239,7 @@
 			if (!command) {
 				addAgentMessage({
 					success: false,
-					message: YoRoAgentAdmin.i18n.emptyCommand
+					message: YoRoAIAdmin.i18n.emptyCommand
 				});
 				return;
 			}
@@ -1998,18 +2250,20 @@
 
 			isSending = true;
 			conversationState.pending_confirm_command = command;
+			const finishProtectedWork = beginProtectedWork();
 
 			if (!confirm) {
 				addUserMessage(command);
 				commandField.value = '';
 				syncRunButtonState();
+				syncBeforeUnloadGuard();
 			}
 
 			const loading = addLoadingMessage();
 
 			setLoading(true);
 
-			requestJson(YoRoAgentAdmin.runUrl, {
+			requestJson(YoRoAIAdmin.runUrl, {
 				method: 'POST',
 				body: JSON.stringify({
 					command: command,
@@ -2025,6 +2279,10 @@
 					conversationState.pending_plan_token = data.workflow_state_token;
 				}
 
+				if (!data || data.stage !== 'confirm') {
+					conversationState.pending_confirm_command = '';
+				}
+
 				addAgentMessage(data);
 				updateConversationState(data, command);
 
@@ -2034,17 +2292,19 @@
 						onConfirmSuccess(data);
 					}
 				}
+				syncBeforeUnloadGuard();
 			})
 			.catch(function (error) {
 				loading.remove();
 
 				addAgentMessage({
 					success: false,
-					error: error || YoRoAgentAdmin.i18n.error
+					error: error || YoRoAIAdmin.i18n.error
 				});
 			})
 			.finally(function () {
 				isSending = false;
+				finishProtectedWork();
 				setLoading(false);
 			});
 		}
@@ -2078,8 +2338,8 @@
 
 		function getAvailableOrderStatuses() {
 			const statuses =
-				(window.YoRoAgentAdmin && Array.isArray(YoRoAgentAdmin.orderStatuses))
-					? YoRoAgentAdmin.orderStatuses
+				(window.YoRoAIAdmin && Array.isArray(YoRoAIAdmin.orderStatuses))
+					? YoRoAIAdmin.orderStatuses
 					: [];
 
 			if (statuses.length) {
@@ -2149,6 +2409,7 @@
 		function runCommandFromText(command, confirm) {
 			commandField.value = command;
 			syncRunButtonState();
+			syncBeforeUnloadGuard();
 			runCommand(confirm || false);
 		}
 
@@ -2203,9 +2464,13 @@
 				payload.action_state_token = actionStateToken;
 			}
 
-			return requestJson(YoRoAgentAdmin.executeUrl, {
+			const finishProtectedWork = beginProtectedWork();
+
+			return requestJson(YoRoAIAdmin.executeUrl, {
 				method: 'POST',
 				body: JSON.stringify(payload)
+			}).finally(function() {
+				finishProtectedWork();
 			});
 		}
 
@@ -2343,7 +2608,7 @@
 					loading.remove();
 					addAgentMessage({
 						success: false,
-						error: error || YoRoAgentAdmin.i18n.error
+						error: error || YoRoAIAdmin.i18n.error
 					});
 				})
 				.finally(function() {
@@ -2361,7 +2626,7 @@
 		}
 
 		function shouldShowDebugJson() {
-			return !!(window.YoRoAgentAdmin && YoRoAgentAdmin.debug);
+			return !!(window.YoRoAIAdmin && YoRoAIAdmin.debug);
 		}
 
 		function renderJsonFallback(data) {
@@ -2435,14 +2700,15 @@
 			});
 		}
 
-		clearButton.addEventListener('click', function () {
-			chatThread.innerHTML = '';
-			addMessage(
-				'agent',
-				'<strong>YoRo</strong><p>Chat cleared. How can I help manage your store?</p>'
-			);
-			commandField.value = '';
-			syncRunButtonState();
+			clearButton.addEventListener('click', function () {
+				chatThread.innerHTML = '';
+				addMessage(
+					'agent',
+					'<strong>YoRo</strong><p>Chat cleared. How can I help manage your store?</p>'
+				);
+				commandField.value = '';
+				syncRunButtonState();
+				syncBeforeUnloadGuard();
 				conversationState = {
 					surface: '',
 					admin_copilot: null,
@@ -2467,9 +2733,10 @@
 					pending_plan_token: ''
 				};
 
-			clearCommandGhostHint();
-			commandField.focus();
-		});
+				clearCommandGhostHint();
+				syncBeforeUnloadGuard();
+				commandField.focus();
+			});
 
 		const emailUI = window.YoRoEmailUI
 			? window.YoRoEmailUI.init({
@@ -2488,15 +2755,16 @@
 			})
 			: null;
 
-		const orderUI = window.YoRoOrderUI
-			? window.YoRoOrderUI.init({
-				escapeHtml: escapeHtml,
-				formatDateTime: formatDateTimeForChat,
-				renderDebugJson: renderDebugJsonProxy,
-				renderSuggestions: renderSuggestionsProxy,
-				getResultSuggestions: getResultSuggestions,
-				getConversationState: function() {
-					return conversationState;
+			const orderUI = window.YoRoOrderUI
+				? window.YoRoOrderUI.init({
+					escapeHtml: escapeHtml,
+					formatDateTime: formatDateTimeForChat,
+					renderDebugJson: renderDebugJsonProxy,
+					shouldShowDebugJson: shouldShowDebugJson,
+					renderSuggestions: renderSuggestionsProxy,
+					getResultSuggestions: getResultSuggestions,
+					getConversationState: function() {
+						return conversationState;
 				},
 				addAgentMessage: addAgentMessage,
 				addLoadingMessage: addLoadingMessage,
@@ -2655,17 +2923,18 @@
 					return;
 				}
 
-				if (requiresInput) {
-					commandField.value = command;
-					commandField.focus();
+					if (requiresInput) {
+						commandField.value = command;
+						syncBeforeUnloadGuard();
+						commandField.focus();
 
-					if (commandField.setSelectionRange) {
-						commandField.setSelectionRange(command.length, command.length);
+						if (commandField.setSelectionRange) {
+							commandField.setSelectionRange(command.length, command.length);
+						}
+
+						showCommandGhostHint('Type the note after the colon, then ask YoRo.');
+						return;
 					}
-
-					showCommandGhostHint('Type the note after the colon, then ask YoRo.');
-					return;
-				}
 
 				runCommandFromText(command, false);
 				return;
@@ -2703,7 +2972,7 @@
 								loading.remove();
 								addAgentMessage({
 									success: false,
-									error: error || YoRoAgentAdmin.i18n.error
+									error: error || YoRoAIAdmin.i18n.error
 								});
 							})
 							.finally(function() {
@@ -2712,9 +2981,10 @@
 						return;
 					}
 
-					commandField.value = command;
-					runCommand(false);
-				}
+						commandField.value = command;
+						syncBeforeUnloadGuard();
+						runCommand(false);
+					}
 
 				return;
 			}
@@ -2773,9 +3043,10 @@
 				event.preventDefault();
 				hideConfirmationActions(confirmCancel);
 
-				conversationState.pending_confirm_command = '';
-				conversationState.pending_plan_token = '';
-				addMessage('agent', '<p>Action cancelled.</p>');
+					conversationState.pending_confirm_command = '';
+					conversationState.pending_plan_token = '';
+					addMessage('agent', '<p>Action cancelled.</p>');
+					syncBeforeUnloadGuard();
 
 				return;
 			}
@@ -2818,9 +3089,10 @@
 			if (insertCommand) {
 				event.preventDefault();
 
-				commandField.value = insertCommand.getAttribute('data-command') || '';
-				syncRunButtonState();
-				commandField.focus();
+					commandField.value = insertCommand.getAttribute('data-command') || '';
+					syncRunButtonState();
+					syncBeforeUnloadGuard();
+					commandField.focus();
 
 				return;
 			}
@@ -2895,6 +3167,7 @@
 			button.addEventListener('click', function () {
 				commandField.value = button.getAttribute('data-command') || '';
 				syncRunButtonState();
+				syncBeforeUnloadGuard();
 				commandField.focus();
 			});
 		});

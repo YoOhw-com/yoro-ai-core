@@ -29,7 +29,7 @@ class YoRo_Rate_Limiter {
 			return new WP_Error(
 				'yoro_rate_limit_exceeded',
 				sprintf(
-					__( 'Too many YoRo commands. Please wait %d seconds and try again.', 'yoro-agent-core' ),
+					__( 'Too many YoRo commands. Please wait %d seconds and try again.', 'yoro-ai-core' ),
 					$window
 				),
 				[ 'status' => 429 ]

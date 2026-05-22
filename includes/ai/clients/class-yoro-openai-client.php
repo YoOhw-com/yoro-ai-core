@@ -12,7 +12,7 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 			60,
 			'parse_action',
 			'yoro_ai_api_error',
-			__( 'AI parser request failed.', 'yoro-agent-core' )
+			__( 'I could not reach the AI routing service.', 'yoro-ai-core' )
 		);
 	}
 
@@ -22,7 +22,7 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 			60,
 			'parse_intent',
 			'yoro_ai_intent_api_error',
-			__( 'AI intent parser request failed.', 'yoro-agent-core' )
+			__( 'I could not reach the AI routing service.', 'yoro-ai-core' )
 		);
 	}
 
@@ -32,7 +32,7 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 			60,
 			'plan_workflow',
 			'yoro_ai_workflow_api_error',
-			__( 'AI workflow planner request failed.', 'yoro-agent-core' )
+			__( 'I could not reach the AI workflow service.', 'yoro-ai-core' )
 		);
 	}
 
@@ -42,7 +42,7 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 			30,
 			'generate_suggestions',
 			'yoro_ai_freeform_api_error',
-			__( 'AI suggestion request failed.', 'yoro-agent-core' )
+			__( 'I could not reach the AI assistant service.', 'yoro-ai-core' )
 		);
 	}
 
@@ -52,7 +52,7 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 			60,
 			'compose_email',
 			'yoro_ai_email_api_error',
-			__( 'AI email compose request failed.', 'yoro-agent-core' )
+			__( 'I could not reach the AI email drafting service.', 'yoro-ai-core' )
 		);
 	}
 
@@ -62,7 +62,7 @@ class YoRo_OpenAI_Client implements YoRo_AI_Client_Interface {
 		if ( '' === $api_key ) {
 			return new WP_Error(
 				'yoro_ai_missing_api_key',
-				__( 'OpenAI API key is missing.', 'yoro-agent-core' )
+				__( 'The AI service is not configured yet.', 'yoro-ai-core' )
 			);
 		}
 

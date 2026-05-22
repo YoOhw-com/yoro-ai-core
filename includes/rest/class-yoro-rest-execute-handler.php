@@ -29,7 +29,7 @@ class YoRo_REST_Execute_Handler {
 		if ( empty( $action ) ) {
 			return new WP_Error(
 				'yoro_empty_action',
-				__( 'Action is required.', 'yoro-agent-core' )
+				__( 'Action is required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -38,7 +38,7 @@ class YoRo_REST_Execute_Handler {
 		if ( ! $registered_action ) {
 			return new WP_Error(
 				'yoro_invalid_action',
-				__( 'Action not found.', 'yoro-agent-core' )
+				__( 'Action not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -199,7 +199,7 @@ class YoRo_REST_Execute_Handler {
 					'risk'    => $risk,
 					'policy'  => $policy,
 					'result'  => $result,
-					'message' => $result['message'] ?? __( 'Action failed.', 'yoro-agent-core' ),
+					'message' => $result['message'] ?? __( 'I could not complete this action.', 'yoro-ai-core' ),
 				]
 			);
 		}
@@ -273,7 +273,7 @@ class YoRo_REST_Execute_Handler {
 					'confirm_required' => true,
 					'action_state_token'  => $action_state_token,
 					'pending_action_token' => $action_state_token,
-					'message'          => $result['message'] ?? __( 'Confirmation required.', 'yoro-agent-core' ),
+					'message'          => $result['message'] ?? __( 'Please confirm before I continue.', 'yoro-ai-core' ),
 					'result'           => $result,
 					'risk'             => $risk,
 					'policy'           => $policy,
@@ -314,23 +314,25 @@ class YoRo_REST_Execute_Handler {
 	}
 
 	private static function build_stale_action_confirmation_response( $trace_id ) {
+		$message = __( 'This confirmation has expired. Please review the action again before confirming.', 'yoro-ai-core' );
+
 		return [
 			'success'          => false,
 			'stage'            => 'confirm',
 			'trace_id'         => $trace_id,
 			'confirm_required' => true,
-			'message'          => __( 'This action confirmation is stale. Please review the action again before confirming.', 'yoro-agent-core' ),
+			'message'          => $message,
 			'result'           => [
 				'success'      => false,
-				'summary'      => __( 'This action confirmation is stale. Please review the action again before confirming.', 'yoro-agent-core' ),
-				'message'      => __( 'This action confirmation is stale. Please review the action again before confirming.', 'yoro-agent-core' ),
+				'summary'      => $message,
+				'message'      => $message,
 				'read_only'    => true,
 				'result_type'  => 'confirmation',
 				'display_type' => 'confirmation',
 				'errors'       => [
 					[
 						'code'    => 'yoro_stale_action_confirmation',
-						'message' => __( 'This action confirmation is stale. Please review the action again before confirming.', 'yoro-agent-core' ),
+						'message' => $message,
 					],
 				],
 			],

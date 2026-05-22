@@ -50,6 +50,11 @@ class YoRo_AI_Command_Router_Prompt {
 		);
 		$is_order_read_profile = 'order_read' === $router_profile;
 		$is_orders_search_profile = 'orders_search' === $router_profile;
+		$is_order_write_profile = in_array(
+			$router_profile,
+			[ 'order_query_action', 'order_write_missing_status', 'order_write_missing_hold' ],
+			true
+		);
 		$is_customer_profile = in_array(
 			$router_profile,
 			[ 'customer_summary', 'customer_orders' ],
@@ -79,7 +84,7 @@ class YoRo_AI_Command_Router_Prompt {
 				? array_values( array_filter( array_map( 'sanitize_text_field', $item['examples'] ) ) )
 				: [];
 
-			if ( $is_email_profile || $is_order_read_profile || $is_orders_search_profile || $is_customer_profile || $is_email_template_profile || $is_store_summary_profile || $is_queue_profile ) {
+			if ( $is_email_profile || $is_order_read_profile || $is_orders_search_profile || $is_order_write_profile || $is_customer_profile || $is_email_template_profile || $is_store_summary_profile || $is_queue_profile ) {
 				$examples = array_values( array_slice( $examples, 0, 1 ) );
 			}
 
@@ -197,8 +202,16 @@ class YoRo_AI_Command_Router_Prompt {
 			return self::order_read_system_prompt();
 		}
 
+		if ( 'order_ambiguous' === $router_profile ) {
+			return self::order_ambiguous_system_prompt();
+		}
+
 		if ( 'orders_search' === $router_profile ) {
 			return self::orders_search_system_prompt();
+		}
+
+		if ( in_array( $router_profile, [ 'order_query_action', 'order_write_missing_status', 'order_write_missing_hold' ], true ) ) {
+			return self::order_write_shape_system_prompt( $router_profile );
 		}
 
 		if ( in_array( $router_profile, [ 'customer_summary', 'customer_orders' ], true ) ) {
@@ -277,9 +290,19 @@ Prefer context.memory_context.reference over loose context fields when resolving
 If context.memory_context.reference.resolved is true and confidence is 0.7 or higher, use its target_type, target_ids, source, and reason as the primary reference evidence.
 If the reference source is active_workflow, preserve the workflow target exactly and only infer the missing parameter from the new message.
 Do not use current_order_id or last_order_ids to override a stronger memory_context.reference.
+If context.last_order_ids contains a recent order list and the new message refers back to that list in any language, treat that recent list as the target instead of asking for the same order ids again.
+For contextual follow-ups that reuse the recent order list, include "recent_order_list" inside evidence.referenced_context.
+When a contextual follow-up already grounds the target from the recent order list, only clarify the still-missing content such as note text, status, or email goal.
+If context.last_order_ids contains multiple recent orders and the new message refers to those orders collectively in any language, prefer the full recent order list over current_order_id or last_referenced_order_id.
+Do not ask the person to choose between current_order_id and the recent order list when the wording already points to the recent list collectively.
+Short collective follow-ups such as "change them", "cancel them", "hold those", or equivalent non-English wording should stay bound to the recent order list unless the command explicitly narrows to one item.
 If memory_context.reference is unresolved and the command does not clearly identify a target, ask one clarification instead of guessing.
+Always output semantic_frame as the language-agnostic meaning of the person command before action execution. It must preserve every explicit constraint regardless of language: surface, operation, target_type, order_id/order_ids, quantity, status, date, money, customer identity, payment method, and shipping state. The final action params must faithfully reflect semantic_frame. If semantic_frame says status=completed, params for orders.search must include status completed; if semantic_frame says quantity=5, params should include limit 5 where the action supports it; if semantic_frame says date window last_7_days, params should include date_window last_7_days where supported; if semantic_frame says target_type=single_order and order_ids=[6847], params for orders.get_details must include order_ids [6847].
+Use semantic_frame evidence fields to quote the original command span that caused each constraint. Do not translate the person command into English inside evidence; keep the original-language phrase.
 Use router_hints as trusted backend narrowing hints. When router_hints.catalog_scope is "single_order_reference", keep the route inside single-order order-management surfaces unless the command clearly asks for a broader store-level surface.
 When router_hints.catalog_scope is "single_order_targeted", strongly prefer exact-order actions such as details, note, hold, status, refund, or direct customer-email work before considering broader search-like surfaces.
+Treat router_hints.command_shape as the canonical semantic shape extracted by backend guardrails. If command_shape.target_type is "order_list" and operation_hint is "search", do not reuse a current or resolved single order unless the command includes an explicit order ID or contextual order reference.
+If command_shape.target_type is "order_query_selection" and operation_hint is "query_and_apply", preserve the requested write action such as orders.hold, orders.update_status, or orders.bulk_update_status_with_note; backend guardrails will convert it into a safe query-and-apply sequence.
 When router_hints.router_profile is present, treat it as the preferred sub-surface for this command.
 When router_hints.candidate_actions is present and semantically plausible, choose from that shortlist before considering the rest of action_catalog.
 When router_hints.candidate_intent_families is present, keep the chosen intent_family inside that shortlist unless the command clearly overrides it.
@@ -341,6 +364,25 @@ Do not widen to write, refund, email, queue, or store-summary surfaces unless th
 Confidence should reflect route confidence, not whether execution is allowed.';
 	}
 
+	private static function order_ambiguous_system_prompt() {
+		return 'You are YoRo Command Router for multilingual single-order requests.
+Return JSON only.
+Choose exactly one action from action_catalog.
+This request already targets one explicit order, but backend shape extraction did not confidently classify the language-specific sub-surface.
+Use the chosen action item as the only source of truth for params.
+Keep intent_family aligned with the chosen action family.
+The command may be in any language; map it to the same internal action contract.
+Only use params keys that belong to the chosen action input_schema.
+Prefer orders.get_details for read, show, open, or inspect intent.
+Prefer orders.update_status when the person asks to mark, set, change, move, complete, cancel, refund, or otherwise update the order status in any supported language.
+Prefer orders.bulk_update_status_with_note only when both a status change and note body are present.
+Prefer orders.add_note only when the person clearly asks to add an internal order note.
+Prefer orders.hold only when the requested target status is on-hold or the person asks to hold/pause the order.
+If the target order is known but the requested status or note body is missing, return clarify with that missing field only.
+Do not force a read-only fallback for a concrete write command; backend confirmation will protect execution.
+Confidence should reflect route confidence, not whether execution is allowed.';
+	}
+
 	private static function orders_search_system_prompt() {
 		return 'You are YoRo Command Router for read-only order-list and order-search requests.
 Return JSON only.
@@ -353,6 +395,30 @@ Only use params keys that belong to the chosen action input_schema.
 Prefer orders.search for latest, recent, pending, processing, completed, or list-orders phrasing.
 Keep params minimal and only set optional filters such as limit or status when the command explicitly asks for them.
 Do not widen to single-order details, customer summary, queue, email, or write surfaces unless the command clearly contradicts this profile.
+Confidence should reflect route confidence, not whether execution is allowed.';
+	}
+
+	private static function order_write_shape_system_prompt( $router_profile ) {
+		$router_profile = sanitize_key( $router_profile );
+		$profile_rule = 'Choose the write action encoded by router_hints.command_shape.';
+
+		if ( 'order_query_action' === $router_profile ) {
+			$profile_rule = 'The command targets a dynamic order selection plus a write action. Choose the requested write action from action_catalog; backend will convert it into a safe query-and-apply sequence.';
+		} elseif ( 'order_write_missing_hold' === $router_profile ) {
+			$profile_rule = 'The command starts with a hold-style write action but only gives a count. Choose orders.hold and clarify for exact order_ids.';
+		} elseif ( 'order_write_missing_status' === $router_profile ) {
+			$profile_rule = 'The command starts with a status-change write action but only gives a count. Choose orders.update_status and clarify for exact order_ids.';
+		}
+
+		return 'You are YoRo Command Router for order write-shape requests.
+Return JSON only.
+Choose exactly one action from action_catalog.
+Use router_hints.command_shape as the canonical semantic shape.
+Use the chosen action item as the only source of truth for params.
+Only use params keys that belong to the chosen action input_schema.
+' . $profile_rule . '
+Do not widen to orders.search, order details, email, queue, briefing, or store-summary surfaces.
+If exact order IDs are missing, return mode "clarify", keep action set to the selected write action, list order_ids in missing, and ask one short clarification question.
 Confidence should reflect route confidence, not whether execution is allowed.';
 	}
 
@@ -534,9 +600,14 @@ Confidence should reflect route confidence, not whether execution is allowed.';
 	private static function compact_router_hints( $router_hints ) {
 		$router_hints = is_array( $router_hints ) ? $router_hints : [];
 		$router_profile = sanitize_key( $router_hints['router_profile'] ?? '' );
+		$base = [
+			'command_shape' => isset( $router_hints['command_shape'] ) && is_array( $router_hints['command_shape'] )
+				? self::compact_command_shape( $router_hints['command_shape'] )
+				: [],
+		];
 
 		if ( 'order_email_send' === $router_profile ) {
-			return [
+			return array_merge( $base, [
 				'catalog_scope' => sanitize_key( $router_hints['catalog_scope'] ?? 'default' ),
 				'router_profile' => $router_profile,
 				'resolved_order_ids' => isset( $router_hints['resolved_order_ids'] ) && is_array( $router_hints['resolved_order_ids'] )
@@ -545,11 +616,11 @@ Confidence should reflect route confidence, not whether execution is allowed.';
 				'candidate_actions' => isset( $router_hints['candidate_actions'] ) && is_array( $router_hints['candidate_actions'] )
 					? array_values( array_filter( array_map( 'sanitize_text_field', $router_hints['candidate_actions'] ) ) )
 					: [],
-			];
+			] );
 		}
 
 		if ( 'order_read' === $router_profile ) {
-			return [
+			return array_merge( $base, [
 				'catalog_scope' => sanitize_key( $router_hints['catalog_scope'] ?? 'default' ),
 				'router_profile' => $router_profile,
 				'resolved_order_ids' => isset( $router_hints['resolved_order_ids'] ) && is_array( $router_hints['resolved_order_ids'] )
@@ -558,50 +629,50 @@ Confidence should reflect route confidence, not whether execution is allowed.';
 				'candidate_actions' => isset( $router_hints['candidate_actions'] ) && is_array( $router_hints['candidate_actions'] )
 					? array_values( array_filter( array_map( 'sanitize_text_field', $router_hints['candidate_actions'] ) ) )
 					: [],
-			];
+			] );
 		}
 
 		if ( 'orders_search' === $router_profile ) {
-			return [
+			return array_merge( $base, [
 				'catalog_scope' => sanitize_key( $router_hints['catalog_scope'] ?? 'default' ),
 				'router_profile' => $router_profile,
 				'candidate_actions' => isset( $router_hints['candidate_actions'] ) && is_array( $router_hints['candidate_actions'] )
 					? array_values( array_filter( array_map( 'sanitize_text_field', $router_hints['candidate_actions'] ) ) )
 					: [],
-			];
+			] );
 		}
 
 		if ( in_array( $router_profile, [ 'customer_summary', 'customer_orders', 'email_template_list' ], true ) ) {
-			return [
+			return array_merge( $base, [
 				'catalog_scope' => sanitize_key( $router_hints['catalog_scope'] ?? 'default' ),
 				'router_profile' => $router_profile,
 				'candidate_actions' => isset( $router_hints['candidate_actions'] ) && is_array( $router_hints['candidate_actions'] )
 					? array_values( array_filter( array_map( 'sanitize_text_field', $router_hints['candidate_actions'] ) ) )
 					: [],
-			];
+			] );
 		}
 
 		if ( in_array( $router_profile, [ 'business_summary', 'operations_overview' ], true ) ) {
-			return [
+			return array_merge( $base, [
 				'catalog_scope' => sanitize_key( $router_hints['catalog_scope'] ?? 'default' ),
 				'router_profile' => $router_profile,
 				'candidate_actions' => isset( $router_hints['candidate_actions'] ) && is_array( $router_hints['candidate_actions'] )
 					? array_values( array_filter( array_map( 'sanitize_text_field', $router_hints['candidate_actions'] ) ) )
 					: [],
-			];
+			] );
 		}
 
 		if ( in_array( $router_profile, [ 'operations_attention', 'fulfillment_review', 'customer_service_review', 'inventory_review' ], true ) ) {
-			return [
+			return array_merge( $base, [
 				'catalog_scope' => sanitize_key( $router_hints['catalog_scope'] ?? 'default' ),
 				'router_profile' => $router_profile,
 				'candidate_actions' => isset( $router_hints['candidate_actions'] ) && is_array( $router_hints['candidate_actions'] )
 					? array_values( array_filter( array_map( 'sanitize_text_field', $router_hints['candidate_actions'] ) ) )
 					: [],
-			];
+			] );
 		}
 
-		return [
+		return array_merge( $base, [
 			'catalog_scope' => sanitize_key( $router_hints['catalog_scope'] ?? 'default' ),
 			'router_profile' => $router_profile,
 			'catalog_total_action_count' => absint( $router_hints['catalog_total_action_count'] ?? 0 ),
@@ -614,6 +685,26 @@ Confidence should reflect route confidence, not whether execution is allowed.';
 			'candidate_intent_families' => isset( $router_hints['candidate_intent_families'] ) && is_array( $router_hints['candidate_intent_families'] )
 				? array_values( array_filter( array_map( 'sanitize_key', $router_hints['candidate_intent_families'] ) ) )
 				: [],
+		] );
+	}
+
+	private static function compact_command_shape( $shape ) {
+		if ( class_exists( 'YoRo_Command_Shape_Extractor' ) ) {
+			return YoRo_Command_Shape_Extractor::compact_for_prompt( $shape );
+		}
+
+		$shape = is_array( $shape ) ? $shape : [];
+
+		return [
+			'surface'               => sanitize_key( $shape['surface'] ?? 'unknown' ),
+			'target_type'           => sanitize_key( $shape['target_type'] ?? 'unknown' ),
+			'operation_hint'        => sanitize_key( $shape['operation_hint'] ?? '' ),
+			'quantity'              => isset( $shape['quantity'] ) && null !== $shape['quantity'] ? absint( $shape['quantity'] ) : null,
+			'status'                => sanitize_key( $shape['status'] ?? '' ),
+			'explicit_order_ids'    => isset( $shape['explicit_order_ids'] ) && is_array( $shape['explicit_order_ids'] )
+				? array_values( array_filter( array_map( 'absint', $shape['explicit_order_ids'] ) ) )
+				: [],
+			'context_order_allowed' => ! empty( $shape['context_order_allowed'] ),
 		];
 	}
 

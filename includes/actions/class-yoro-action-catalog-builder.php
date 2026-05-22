@@ -42,6 +42,7 @@ class YoRo_Action_Catalog_Builder {
 	public static function detect_router_scope( $command = '', $context = [] ) {
 		$context = is_array( $context ) ? $context : [];
 		$command = is_string( $command ) ? trim( $command ) : '';
+		$command_shape = self::extract_command_shape( $command, $context );
 		$resolved_order_ids = self::resolve_context_order_ids(
 			$context,
 			self::command_uses_contextual_order_reference( $command )
@@ -61,17 +62,42 @@ class YoRo_Action_Catalog_Builder {
 			)
 		);
 
+		if ( class_exists( 'YoRo_Command_Shape_Extractor' ) ) {
+			if ( YoRo_Command_Shape_Extractor::is_order_query_action_shape( $command_shape ) ) {
+				return 'order_query_action_targeted';
+			}
+
+			if ( YoRo_Command_Shape_Extractor::is_order_write_missing_target_shape( $command_shape ) ) {
+				return 'order_write_missing_targeted';
+			}
+
+			if ( YoRo_Command_Shape_Extractor::is_order_list_search_shape( $command_shape ) ) {
+				return 'orders_search_targeted';
+			}
+		}
+
+		if ( self::command_looks_like_customer_targeted_request( $command ) ) {
+			return 'customer_targeted';
+		}
+
+		if ( self::command_looks_like_email_template_targeted_request( $command ) ) {
+			return 'email_template_targeted';
+		}
+
 		if ( ! $references_single_order ) {
 			if ( count( $plural_context_order_ids ) > 1 ) {
 				return 'multi_order_targeted';
 			}
 
-			if ( self::command_looks_like_customer_targeted_request( $command ) ) {
-				return 'customer_targeted';
+			if (
+				self::command_looks_like_queue_targeted_request( $command ) &&
+				! self::command_shape_has_specific_order_filter( $command_shape )
+			) {
+				return 'queue_targeted';
 			}
 
-			if ( self::command_looks_like_email_template_targeted_request( $command ) ) {
-				return 'email_template_targeted';
+			if ( self::command_looks_like_store_summary_targeted_request( $command ) ) {
+				return 'store_summary_targeted';
 			}
 
 			if ( self::looks_like_orders_search_request( $command ) ) {
@@ -82,15 +108,19 @@ class YoRo_Action_Catalog_Builder {
 				return 'queue_targeted';
 			}
 
-			if ( self::command_looks_like_store_summary_targeted_request( $command ) ) {
-				return 'store_summary_targeted';
-			}
-
 			return 'default';
 		}
 
 		if ( self::command_looks_like_multi_order_request( $command ) ) {
 			return 'default';
+		}
+
+		if ( self::looks_like_orders_search_request( $command ) ) {
+			return 'orders_search_targeted';
+		}
+
+		if ( class_exists( 'YoRo_Command_Shape_Extractor' ) && YoRo_Command_Shape_Extractor::is_order_list_search_shape( $command_shape ) ) {
+			return 'orders_search_targeted';
 		}
 
 		if ( self::command_looks_like_single_order_targeted_request( $command, $context ) ) {
@@ -115,10 +145,14 @@ class YoRo_Action_Catalog_Builder {
 		$context = is_array( $context ) ? $context : [];
 		$scope   = self::detect_router_scope( $command, $context );
 		$full_catalog = self::build( $context );
+		$command_shape = self::extract_command_shape( $command, $context );
 
 		return [
 			'catalog_scope'              => $scope,
 			'catalog_total_action_count' => count( $full_catalog ),
+			'command_shape'              => class_exists( 'YoRo_Command_Shape_Extractor' )
+				? YoRo_Command_Shape_Extractor::compact_for_prompt( $command_shape )
+				: [],
 			'resolved_order_ids'         => self::resolve_context_order_ids(
 				$context,
 				self::command_uses_contextual_order_reference( $command )
@@ -143,12 +177,30 @@ class YoRo_Action_Catalog_Builder {
 		return $audit;
 	}
 
+	private static function extract_command_shape( $command, $context = [] ) {
+		$context = is_array( $context ) ? $context : [];
+
+		if ( isset( $context['_command_shape'] ) && is_array( $context['_command_shape'] ) ) {
+			return $context['_command_shape'];
+		}
+
+		if ( ! class_exists( 'YoRo_Command_Shape_Extractor' ) ) {
+			return [];
+		}
+
+		return YoRo_Command_Shape_Extractor::extract( $command, $context );
+	}
+
 	private static function action_is_allowed_for_scope( $action_name, $scope ) {
 		$scope = sanitize_key( $scope );
 		$action_name = sanitize_text_field( $action_name );
 
 		if ( 'orders_search_targeted' === $scope ) {
 			return 'orders.search' === $action_name;
+		}
+
+		if ( in_array( $scope, [ 'order_query_action_targeted', 'order_write_missing_targeted' ], true ) ) {
+			return in_array( $action_name, [ 'orders.hold', 'orders.update_status', 'orders.bulk_update_status_with_note' ], true );
 		}
 
 		if ( 'customer_targeted' === $scope ) {
@@ -186,6 +238,9 @@ class YoRo_Action_Catalog_Builder {
 			'workflow.write_email_for_order',
 			'workflow.write_and_save_email_draft_for_order',
 			'workflow.write_and_send_email_for_order',
+			'workflow.write_email_for_orders',
+			'workflow.write_and_save_email_drafts_for_orders',
+			'workflow.write_and_send_emails_for_orders',
 			'workflow.verify_customer_before_fulfillment',
 			'workflow.refund_review',
 			'workflow.cancel',
@@ -209,6 +264,9 @@ class YoRo_Action_Catalog_Builder {
 				'workflow.write_email_for_order',
 				'workflow.write_and_save_email_draft_for_order',
 				'workflow.write_and_send_email_for_order',
+				'workflow.write_email_for_orders',
+				'workflow.write_and_save_email_drafts_for_orders',
+				'workflow.write_and_send_emails_for_orders',
 				'orders.hold',
 				'orders.add_note',
 				'orders.update_status',
@@ -365,7 +423,7 @@ class YoRo_Action_Catalog_Builder {
 
 	private static function looks_like_customer_orders_request( $normalized ) {
 		return (bool) preg_match(
-			'/\b(?:orders?\s+for\s+(?:this|that|same)?\s*customer|this customer(?:\'s| s)?\s+orders|customer\s+orders?|(?:show|find|list|open|review)\s+orders?\s+for\s+[^\s]+@[^\s]+)\b/u',
+			'/\b(?:orders?\s+for\s+(?:this|that|same)?\s*customer|this customer(?:\'s| s)?\s+orders|customer\s+orders?|(?:show|find|list|open|review)\s+orders?\s+(?:for|with\s+email)\s+[^\s]+@[^\s]+|orders?\s+with\s+email\s+[^\s]+@[^\s]+)\b/u',
 			$normalized
 		);
 	}
@@ -389,12 +447,17 @@ class YoRo_Action_Catalog_Builder {
 			return false;
 		}
 
-		if ( preg_match( '/\b(?:update|change|status|hold|refund|note|email|shipment|shipping label|draft|send|save draft|delete)\b/u', $normalized ) ) {
+		$is_refunded_order_search = (bool) preg_match(
+			'/\b(?:show|get|view|find|list|search|open|review)\b.*\b(?:a|an|one|\d{1,2}|some)?\s*(?:refund|refunded)\s+orders?\b/u',
+			$normalized
+		);
+
+		if ( preg_match( '/\b(?:update|change|status|hold|refund|note|email|shipment|shipping label|draft|send|save draft|delete)\b/u', $normalized ) && ! $is_refunded_order_search ) {
 			return false;
 		}
 
 		return (bool) preg_match(
-			'/\b(?:latest|recent|last|newest|lestet|pending|processing|completed|cancelled|canceled|on[- ]hold|orders?\s+list|show\s+orders|find\s+orders|search\s+orders|list\s+orders|review\s+orders)\b/u',
+			'/\b(?:latest|recent|last|newest|lestet|pending|processing|completed|cancelled|canceled|refund|refunded|failed|on[- ]hold|orders?\s+list|show\s+orders|find\s+orders|search\s+orders|list\s+orders|review\s+orders)\b|\b(?:show|get|view|find|list|search|open|review)\s+(?:me\s+)?\d{1,2}\s+(?:refund|refunded)\s+orders?\b|\b\d{1,2}\s+(?:pending|processing|completed|cancelled|canceled|refund|refunded|failed|on[- ]hold)\s+orders?\b/u',
 			$normalized
 		);
 	}
@@ -452,7 +515,33 @@ class YoRo_Action_Catalog_Builder {
 			return 'orders_search';
 		}
 
+		if ( 'order_query_action_targeted' === $scope ) {
+			return 'order_query_action';
+		}
+
+		if ( 'order_write_missing_targeted' === $scope ) {
+			$shape = self::extract_command_shape( $command, $context );
+			$write_intent = isset( $shape['write_intent'] ) && is_array( $shape['write_intent'] )
+				? $shape['write_intent']
+				: [];
+			$action = sanitize_text_field( $write_intent['action'] ?? '' );
+
+			return 'orders.hold' === $action ? 'order_write_missing_hold' : 'order_write_missing_status';
+		}
+
 		if ( 'multi_order_targeted' === $scope ) {
+			if ( preg_match( '/\b(?:email|draft|reply|respond|message|write|mail)\b/u', $normalized ) || preg_match( '/\b(?:viết|soạn|gửi)\b/u', $normalized ) ) {
+				if ( preg_match( '/\b(?:save|store|keep)\b/u', $normalized ) && preg_match( '/\bdraft\b/u', $normalized ) ) {
+					return 'multi_order_email_save_draft';
+				}
+
+				if ( preg_match( '/\bsend\b/u', $normalized ) || preg_match( '/\bgửi\b/u', $normalized ) ) {
+					return 'multi_order_email_send';
+				}
+
+				return 'multi_order_email_preview';
+			}
+
 			if ( preg_match( '/\b(?:status|mark|set|move|change|update|on[- ]hold|completed|processing|cancelled|canceled)\b/u', $normalized ) ) {
 				return 'multi_order_status';
 			}
@@ -488,6 +577,8 @@ class YoRo_Action_Catalog_Builder {
 			return 'default';
 		}
 
+		$single_order_shape = self::extract_command_shape( $command, $context );
+
 		if (
 			(
 				false !== strpos( $normalized, 'email drafts' ) ||
@@ -517,6 +608,10 @@ class YoRo_Action_Catalog_Builder {
 			return 'order_email_preview';
 		}
 
+		if ( self::command_looks_like_status_note_request( $normalized, $single_order_shape ) ) {
+			return 'order_status';
+		}
+
 		if ( preg_match( '/\b(?:note|comment)\b/u', $normalized ) || preg_match( '/\b(?:ghi chú|ghichu|nhắn nội bộ)\b/u', $normalized ) ) {
 			return 'order_note';
 		}
@@ -531,6 +626,14 @@ class YoRo_Action_Catalog_Builder {
 
 		if ( preg_match( '/\b(?:refund)\b/u', $normalized ) ) {
 			return 'order_refund';
+		}
+
+		if (
+			'unknown' === sanitize_key( $single_order_shape['surface'] ?? '' ) &&
+			! empty( $single_order_shape['explicit_order_ids'] ) &&
+			is_array( $single_order_shape['explicit_order_ids'] )
+		) {
+			return 'order_ambiguous';
 		}
 
 		return 'order_read';
@@ -565,6 +668,12 @@ class YoRo_Action_Catalog_Builder {
 			return [
 				'orders.search',
 			];
+		}
+
+		if ( in_array( $scope, [ 'order_query_action_targeted', 'order_write_missing_targeted' ], true ) ) {
+			return self::derive_order_write_candidate_actions_from_shape(
+				self::extract_command_shape( $command, $context )
+			);
 		}
 
 		if ( 'store_summary_targeted' === $scope ) {
@@ -618,6 +727,26 @@ class YoRo_Action_Catalog_Builder {
 
 		if ( 'multi_order_targeted' === $scope ) {
 			switch ( self::derive_router_profile( $command, $context, $scope ) ) {
+				case 'multi_order_email_save_draft':
+					return [
+						'workflow.write_and_save_email_drafts_for_orders',
+						'workflow.write_email_for_orders',
+						'orders.compose_customer_email',
+						'orders.get_details',
+					];
+				case 'multi_order_email_send':
+					return [
+						'workflow.write_and_send_emails_for_orders',
+						'workflow.write_email_for_orders',
+						'orders.compose_customer_email',
+						'orders.get_details',
+					];
+				case 'multi_order_email_preview':
+					return [
+						'workflow.write_email_for_orders',
+						'orders.compose_customer_email',
+						'orders.get_details',
+					];
 				case 'multi_order_status':
 					return [
 						'orders.update_status',
@@ -655,6 +784,8 @@ class YoRo_Action_Catalog_Builder {
 				return [
 					'workflow.write_and_save_email_draft_for_order',
 					'workflow.write_email_for_order',
+					'workflow.write_and_save_email_drafts_for_orders',
+					'workflow.write_email_for_orders',
 					'orders.compose_customer_email',
 					'orders.get_customer_email_drafts',
 				];
@@ -667,6 +798,8 @@ class YoRo_Action_Catalog_Builder {
 				$actions = [
 					'workflow.write_and_send_email_for_order',
 					'workflow.write_email_for_order',
+					'workflow.write_and_send_emails_for_orders',
+					'workflow.write_email_for_orders',
 					'orders.compose_customer_email',
 				];
 
@@ -708,6 +841,14 @@ class YoRo_Action_Catalog_Builder {
 					'orders.refund_preview',
 					'workflow.refund_review',
 				];
+			case 'order_ambiguous':
+				return [
+					'orders.get_details',
+					'orders.update_status',
+					'orders.bulk_update_status_with_note',
+					'orders.hold',
+					'orders.add_note',
+				];
 			case 'order_read':
 			default:
 				return [
@@ -747,8 +888,34 @@ class YoRo_Action_Catalog_Builder {
 			];
 		}
 
+		if ( in_array( $scope, [ 'order_query_action_targeted', 'order_write_missing_targeted' ], true ) ) {
+			return self::derive_order_write_candidate_actions_from_shape(
+				self::extract_command_shape( $command )
+			);
+		}
+
 		if ( 'multi_order_targeted' === $scope ) {
 			switch ( $profile ) {
+				case 'multi_order_email_save_draft':
+					return [
+						'workflow.write_and_save_email_drafts_for_orders',
+						'workflow.write_email_for_orders',
+						'orders.compose_customer_email',
+						'orders.get_details',
+					];
+				case 'multi_order_email_send':
+					return [
+						'workflow.write_and_send_emails_for_orders',
+						'workflow.write_email_for_orders',
+						'orders.compose_customer_email',
+						'orders.get_details',
+					];
+				case 'multi_order_email_preview':
+					return [
+						'workflow.write_email_for_orders',
+						'orders.compose_customer_email',
+						'orders.get_details',
+					];
 				case 'multi_order_status':
 					return [
 						'orders.update_status',
@@ -885,10 +1052,26 @@ class YoRo_Action_Catalog_Builder {
 					'orders.refund_preview',
 					'workflow.refund_review',
 				];
+			case 'order_ambiguous':
+				return array_values(
+					array_unique(
+						array_merge(
+							$base,
+							[
+								'orders.update_status',
+								'orders.bulk_update_status_with_note',
+								'orders.hold',
+								'orders.add_note',
+							]
+						)
+					)
+				);
 			case 'order_email_save_draft':
 				return [
 					'workflow.write_and_save_email_draft_for_order',
 					'workflow.write_email_for_order',
+					'workflow.write_and_save_email_drafts_for_orders',
+					'workflow.write_email_for_orders',
 					'orders.compose_customer_email',
 					'orders.get_customer_email_drafts',
 				];
@@ -900,6 +1083,8 @@ class YoRo_Action_Catalog_Builder {
 				$actions = [
 					'workflow.write_and_send_email_for_order',
 					'workflow.write_email_for_order',
+					'workflow.write_and_send_emails_for_orders',
+					'workflow.write_email_for_orders',
 					'orders.compose_customer_email',
 				];
 
@@ -926,6 +1111,28 @@ class YoRo_Action_Catalog_Builder {
 					array_unique( $base )
 				);
 		}
+	}
+
+	private static function derive_order_write_candidate_actions_from_shape( $shape ) {
+		$shape = is_array( $shape ) ? $shape : [];
+		$intent = [];
+
+		if ( isset( $shape['query_action'] ) && is_array( $shape['query_action'] ) && ! empty( $shape['query_action'] ) ) {
+			$intent = $shape['query_action'];
+		} elseif ( isset( $shape['write_intent'] ) && is_array( $shape['write_intent'] ) && ! empty( $shape['write_intent'] ) ) {
+			$intent = $shape['write_intent'];
+		}
+
+		$action = sanitize_text_field( $intent['action'] ?? '' );
+
+		if ( ! in_array( $action, [ 'orders.hold', 'orders.update_status', 'orders.bulk_update_status_with_note' ], true ) ) {
+			return [
+				'orders.update_status',
+				'orders.hold',
+			];
+		}
+
+		return [ $action ];
 	}
 
 	private static function derive_candidate_intent_families( $command, $context, $scope ) {
@@ -1073,6 +1280,36 @@ class YoRo_Action_Catalog_Builder {
 		);
 	}
 
+	private static function command_looks_like_status_note_request( $normalized, $shape = [] ) {
+		$normalized = is_string( $normalized ) ? trim( $normalized ) : '';
+		$shape      = is_array( $shape ) ? $shape : [];
+
+		if ( '' === $normalized ) {
+			return false;
+		}
+
+		$status = sanitize_key( $shape['status'] ?? '' );
+
+		if ( '' === $status ) {
+			return false;
+		}
+
+		$has_note_cue = (bool) preg_match(
+			'/\b(?:with\s+note|add\s+note|note\s*:|note|comment)\b/u',
+			$normalized
+		);
+
+		if ( ! $has_note_cue ) {
+			return false;
+		}
+
+		return (bool) (
+			preg_match( '/^\s*(?:complete|completed|cancel|cancelled|canceled|refund|refunded|hold)\b/u', $normalized ) ||
+			preg_match( '/\b(?:status|mark|set|move|change|update)\b/u', $normalized ) ||
+			preg_match( '/\b(?:trạng thái|chuyển|đánh dấu|cap nhat|cập nhật)\b/u', $normalized )
+		);
+	}
+
 	private static function looks_like_business_summary_request( $normalized ) {
 		return (bool) preg_match(
 			'/\b(?:business|revenue|sales|profit|commercial|performance)\b/u',
@@ -1089,6 +1326,24 @@ class YoRo_Action_Catalog_Builder {
 			'/\b(?:store|operations?|operational|brief(?:ing)?|overview|summary|update|what\'?s new|what is new|how is the store)\b/u',
 			$normalized
 		);
+	}
+
+	private static function command_shape_has_specific_order_filter( $shape ) {
+		$shape = is_array( $shape ) ? $shape : [];
+
+		if (
+			! class_exists( 'YoRo_Command_Shape_Extractor' ) ||
+			! YoRo_Command_Shape_Extractor::is_order_list_search_shape( $shape )
+		) {
+			return false;
+		}
+
+		$status = sanitize_key( $shape['status'] ?? '' );
+		$age_filter = isset( $shape['age_filter'] ) && is_array( $shape['age_filter'] )
+			? $shape['age_filter']
+			: [];
+
+		return '' !== $status && ! empty( $age_filter['hours'] );
 	}
 
 	private static function looks_like_operations_attention_request( $normalized ) {
@@ -1233,6 +1488,9 @@ class YoRo_Action_Catalog_Builder {
 			'workflow.write_email_for_order'                => 'customer_email',
 			'workflow.write_and_save_email_draft_for_order' => 'customer_email',
 			'workflow.write_and_send_email_for_order'       => 'customer_email',
+			'workflow.write_email_for_orders'               => 'customer_email',
+			'workflow.write_and_save_email_drafts_for_orders' => 'customer_email',
+			'workflow.write_and_send_emails_for_orders'     => 'customer_email',
 			'workflow.review_suspicious_order'              => 'review_suspicious_order',
 			'workflow.verify_customer_before_fulfillment'   => 'verify_customer_before_fulfillment',
 			'workflow.refund_review'                        => 'refund_review',

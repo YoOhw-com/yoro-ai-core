@@ -8,6 +8,7 @@
 			escapeHtml: helpers.escapeHtml,
 			formatDateTime: helpers.formatDateTime,
 			renderDebugJson: helpers.renderDebugJson,
+			shouldShowDebugJson: helpers.shouldShowDebugJson,
 			renderSuggestions: helpers.renderSuggestions,
 			getResultSuggestions: helpers.getResultSuggestions,
 			getConversationState: helpers.getConversationState,
@@ -80,6 +81,56 @@
 		}
 
 		return String(value || '');
+	}
+
+	function formatAgeHours(value) {
+		const hours = parseInt(value || 0, 10) || 0;
+
+		if (hours <= 0) {
+			return '<1h';
+		}
+
+		if (hours < 24) {
+			return hours + 'h';
+		}
+
+		const days = Math.floor(hours / 24);
+		const remainingHours = hours % 24;
+
+		if (days < 7) {
+			return remainingHours ? (days + 'd ' + remainingHours + 'h') : (days + 'd');
+		}
+
+		const weeks = Math.floor(days / 7);
+		const remainingDays = days % 7;
+
+		if (weeks < 5) {
+			return remainingDays ? (weeks + 'w ' + remainingDays + 'd') : (weeks + 'w');
+		}
+
+		const months = Math.floor(days / 30);
+		const remainingMonthDays = days % 30;
+
+		if (months > 0) {
+			return remainingMonthDays ? (months + 'mo ' + remainingMonthDays + 'd') : (months + 'mo');
+		}
+
+		return days + 'd';
+	}
+
+	function formatAgeBadge(value) {
+		const text = String(value || '');
+		const match = text.match(/^(\d+)\s*h$/i);
+
+		if (match) {
+			return formatAgeHours(match[1]);
+		}
+
+		return text;
+	}
+
+	function shouldShowDecisionRoute(h) {
+		return !!(h && typeof h.shouldShowDebugJson === 'function' && h.shouldShowDebugJson());
 	}
 
 	function formatWindowRange(windowInfo, h) {
@@ -296,6 +347,10 @@
 			});
 	}
 
+	function alertMissingOrderSelection() {
+		window.alert('Please select at least one order.');
+	}
+
 	function renderOrderDetailsResult(data, h) {
 		const result = data.result || {};
 		const orders = Array.isArray(result.orders) ? result.orders : [];
@@ -304,7 +359,7 @@
 		let html = '<div class="yoro-result-summary">';
 		html += '<strong>' + h.escapeHtml(result.summary || ('Order details: ' + orders.length)) + '</strong>';
 
-		if (parsed.parser_rule) {
+		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
 			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
@@ -350,7 +405,7 @@
 			html += '<div class="yoro-order-detail-header">';
 			html += '<div>';
 			html += '<strong class="yoro-order-detail-title">Order #' + h.escapeHtml(order.number || order.id) + '</strong>';
-			html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + ' · ' + h.escapeHtml((order.age_hours || 0) + 'h old') + '</div>';
+			html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + ' · ' + h.escapeHtml(formatAgeHours(order.age_hours) + ' old') + '</div>';
 			html += '</div>';
 			html += '<span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span>';
 			html += '</div>';
@@ -529,7 +584,7 @@
 		html += '<strong>' + h.escapeHtml(result.summary || contextMeta.summary || ('Found ' + (result.count || orders.length) + ' orders')) + '</strong>';
 		html += '<span class="yoro-result-subtle">' + h.escapeHtml(contextMeta.subtle) + '</span>';
 
-		if (parsed.parser_rule) {
+		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
 			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
@@ -540,6 +595,13 @@
 		html += '</div>';
 
 		html += renderSupportFlowPanel(result, h);
+
+		if (!orders.length) {
+			html += renderOrdersEmptyState(result, parsed, contextMeta, h);
+			html += h.renderDebugJson(data);
+
+			return html;
+		}
 
 		html += '<div class="yoro-order-detail-card">';
 		html += '<div class="yoro-order-detail-header">';
@@ -554,7 +616,7 @@
 		html += '<div><span>Orders</span><strong>' + h.escapeHtml(String(result.count || orders.length)) + '</strong><small class="yoro-result-subtle">' + h.escapeHtml(contextMeta.metricSubtle) + '</small></div>';
 		html += '<div><span>Needs attention</span><strong>' + h.escapeHtml(String(needsAttentionCount)) + '</strong><small class="yoro-result-subtle">Pending, on-hold, or failed</small></div>';
 		html += '<div><span>Combined total</span><strong>' + h.escapeHtml(combinedTotal.toFixed(2) + ' ' + getOrdersListCurrency(orders)) + '</strong><small class="yoro-result-subtle">Across visible results</small></div>';
-		html += '<div><span>Average age</span><strong>' + h.escapeHtml(String(averageAge) + 'h') + '</strong><small class="yoro-result-subtle">Based on the current list</small></div>';
+		html += '<div><span>Average age</span><strong>' + h.escapeHtml(formatAgeHours(averageAge)) + '</strong><small class="yoro-result-subtle">Visible results</small></div>';
 		html += '</div>';
 
 		html += '<div class="yoro-bulk-actions">';
@@ -589,7 +651,7 @@
 			html += '<td><strong>' + h.escapeHtml(customerLabel) + '</strong><div class="yoro-result-subtle">' + h.escapeHtml(order.billing_email || order.billing_phone || '—') + '</div></td>';
 			html += '<td><span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span><div class="yoro-result-subtle">' + h.escapeHtml(caseLabel) + '</div></td>';
 			html += '<td>' + h.escapeHtml(order.total || '') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
-			html += '<td>' + h.escapeHtml(String(parseInt(order.age_hours || 0, 10) || 0) + 'h') + '<div class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</div></td>';
+			html += '<td>' + h.escapeHtml(formatAgeHours(order.age_hours)) + '<div class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</div></td>';
 			html += '<td class="yoro-row-actions">';
 			html += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h.escapeHtml(order.id) + '">' + h.escapeHtml(nextActionLabel) + '</button> ';
 			html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '" data-action-scope="row" data-has-email-drafts="' + (order.has_email_drafts ? '1' : '0') + '" data-draft-count="' + h.escapeHtml(order.draft_count || 0) + '">Actions</button> ';
@@ -621,6 +683,35 @@
 		return html;
 	}
 
+	function renderOrdersEmptyState(result, parsed, contextMeta, h) {
+		const emptyState = result && result.empty_state && typeof result.empty_state === 'object'
+			? result.empty_state
+			: {};
+		const title = emptyState.title || 'No matching orders found.';
+		const description = emptyState.description || 'No orders matched this request.';
+		const actions = Array.isArray(emptyState.actions) ? emptyState.actions : [];
+		let html = '<div class="yoro-order-detail-card yoro-empty-orders-card">';
+		html += '<div class="yoro-order-detail-header">';
+		html += '<div>';
+		html += '<strong class="yoro-order-detail-title">' + h.escapeHtml(title) + '</strong>';
+		html += '<div class="yoro-result-subtle">' + h.escapeHtml(contextMeta.meta || 'No visible orders') + '</div>';
+		html += '</div>';
+		html += '<span class="yoro-current-order-badge">0 orders</span>';
+		html += '</div>';
+		html += '<p>' + h.escapeHtml(description) + '</p>';
+		html += '<p class="yoro-result-subtle">Try widening the filters or checking a broader recent order list.</p>';
+
+		if (actions.length) {
+			html += renderQueueActionStrip(actions.filter(function(action) {
+				return action && action.label && action.command;
+			}), h, 'Try next');
+		}
+
+		html += '</div>';
+
+		return html;
+	}
+
 	function getOrdersListContextMeta(result, parsed, orders) {
 		const action = parsed.action || result.action || '';
 		if (action === 'orders.find_by_customer') {
@@ -629,24 +720,26 @@
 				title: 'Customer order history',
 				meta: 'Orders linked to ' + target,
 				summary: result.summary || ('Found ' + orders.length + ' customer orders.'),
-				subtle: 'Use this list to review recent customer history before you reply or update anything.',
+				subtle: 'Recent customer history is listed below.',
 				metricSubtle: 'Linked to the same customer'
 			};
 		}
+
 		if (action === 'orders.find_by_identity') {
 			return {
 				title: 'Related orders by identity',
 				meta: 'Compared against order #' + (result.order_id || ''),
 				summary: result.summary || ('Found ' + orders.length + ' identity-matched orders.'),
-				subtle: 'Use this list to inspect related orders that share email, phone, IP, or device hints.',
+				subtle: 'These orders share customer or identity signals.',
 				metricSubtle: 'Matched by identity signals'
 			};
 		}
+
 		return {
 			title: 'Orders',
 			meta: 'Most recent matching orders',
 			summary: result.summary || ('Found ' + orders.length + ' orders.'),
-			subtle: 'Use this list when you want a compact order snapshot before opening a specific order.',
+			subtle: 'The most recent matching orders are listed below.',
 			metricSubtle: 'Visible in this list'
 		};
 	}
@@ -736,7 +829,7 @@
 		html += '<div class="yoro-result-summary">';
 		html += '<strong>' + h.escapeHtml(result.summary || ('Found ' + orders.length + ' orders for this customer.')) + '</strong>';
 
-		if (parsed.parser_rule) {
+		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
 			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
@@ -847,7 +940,7 @@
 		html += '<div class="yoro-result-summary">';
 		html += '<strong>' + h.escapeHtml(result.summary || 'Operations summary') + '</strong>';
 
-		if (parsed.parser_rule) {
+		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
 			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
@@ -985,7 +1078,7 @@
 		html += '<strong>Business summary</strong>';
 		html += '<span class="yoro-result-subtle">Read-only executive summary. No store data is changed.</span>';
 
-		if (parsed.parser_rule) {
+		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
 			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
@@ -1570,7 +1663,7 @@ function renderQueueWorkbenchIntro(config, h) {
 		if (config.subtle) {
 			html += '<span class="yoro-result-subtle">' + h.escapeHtml(config.subtle) + '</span>';
 		}
-		if (config.parserRule) {
+		if (shouldShowDecisionRoute(h) && config.parserRule) {
 			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(config.parserRule) + '</span>';
 		}
 		html += '</div>';
@@ -1925,7 +2018,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			}
 			html += '</div>';
 			if (item.badge) {
-				html += '<span class="yoro-guided-case-badge">' + h.escapeHtml(item.badge) + '</span>';
+				html += '<span class="yoro-guided-case-badge">' + h.escapeHtml(formatAgeBadge(item.badge)) + '</span>';
 			}
 			html += '</div>';
 			if (item.message) {
@@ -2132,15 +2225,15 @@ function renderQueueWorkbenchIntro(config, h) {
 
 		let html = renderQueueWorkbenchIntro({
 			result: result,
-			showAssistantIntro: true,
-			showBoundary: true,
-			summary: result.summary || 'Operations attention queue',
-			subtle: 'Read-only operations queue. No fraud scoring applied.',
-			parserRule: parsed.parser_rule,
-			title: 'Operations attention cases',
-			contextLine: 'Showing up to ' + (result.limit_per_queue || 5) + ' cases per queue.',
-			badge: (result.count || 0) + ' items'
-		}, h);
+				showAssistantIntro: true,
+				showBoundary: true,
+				summary: result.summary || 'Operations attention queue',
+				subtle: 'Orders that may need review next.',
+				parserRule: parsed.parser_rule,
+				title: 'Operations attention cases',
+				contextLine: 'Top cases from each active queue.',
+				badge: (result.count || 0) + ' items'
+			}, h);
 		html += renderQueueWorkbenchHero(topPriority, [
 			{ label: 'Attention items', value: attentionContext.total_items || result.count || 0 },
 			{ label: 'Pending payment', value: attentionContext.pending_count || 0 },
@@ -2151,11 +2244,11 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += renderQueueStartHereCard(nextRecommendedCase, h, {
 			hideCommands: ['Show operations attention queue']
 		});
-		html += renderBatchDraftPreparation({
-			title: 'Review these queue cases next',
-			description: 'Use this shortlist when you want to move through several operations checks in one pass.',
-			items: batchDraftCandidates
-		}, h);
+			html += renderBatchDraftPreparation({
+				title: 'Review these queue cases next',
+				description: 'Start here when you want to clear several operations checks in one pass.',
+				items: batchDraftCandidates
+			}, h);
 		html += renderQueueRecommendedSequence(recommendedSequence, h, 'What comes after this', {
 			showActions: false,
 			limit: 3
@@ -2189,7 +2282,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
 				row += '<td><strong>' + h2.escapeHtml(caseMeta || (order.status || 'Case')) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(customerMeta || queue.description || '') + '</div></td>';
-				row += '<td>' + h2.escapeHtml(order.age_hours || 0) + 'h</td>';
+				row += '<td>' + h2.escapeHtml(formatAgeHours(order.age_hours)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(primaryLabel, primaryCommand, h2) + ' ';
 				if (primaryCommand !== detailsCommand) {
@@ -2225,15 +2318,15 @@ function renderQueueWorkbenchIntro(config, h) {
 
 		let html = renderQueueWorkbenchIntro({
 			result: result,
-			showAssistantIntro: true,
-			showBoundary: true,
-			summary: result.summary || 'Fulfillment queue',
-			subtle: 'Read-only queue. No tracking, status, or email changes are made.',
-			parserRule: parsed.parser_rule,
-			title: 'Fulfillment candidates',
-			contextLine: 'Showing up to ' + (result.limit_per_queue || 5) + ' cases per queue.',
-			badge: (result.count || 0) + ' fulfillment items'
-		}, h);
+				showAssistantIntro: true,
+				showBoundary: true,
+				summary: result.summary || 'Fulfillment queue',
+				subtle: 'Orders that may need shipping or tracking follow-up.',
+				parserRule: parsed.parser_rule,
+				title: 'Fulfillment candidates',
+				contextLine: 'Top fulfillment cases from each queue.',
+				badge: (result.count || 0) + ' fulfillment items'
+			}, h);
 		html += renderQueueWorkbenchHero(topPriority, [
 			{ label: 'Queue items', value: fulfillmentContext.total_items || result.count || 0 },
 			{ label: 'Missing tracking', value: fulfillmentContext.tracking_count || 0 },
@@ -2244,11 +2337,11 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += renderQueueStartHereCard(nextRecommendedCase, h, {
 			hideCommands: ['Show fulfillment queue']
 		});
-		html += renderBatchDraftPreparation({
-			title: 'Review these fulfillment cases next',
-			description: 'Use this shortlist when you want to move through several shipping follow-ups in one pass.',
-			items: batchDraftCandidates
-		}, h);
+			html += renderBatchDraftPreparation({
+				title: 'Review these fulfillment cases next',
+				description: 'Start here when you want to move through several shipping follow-ups.',
+				items: batchDraftCandidates
+			}, h);
 		html += renderQueueRecommendedSequence(recommendedSequence, h, 'What comes after this', {
 			showActions: false,
 			limit: 3
@@ -2281,7 +2374,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
 				row += '<td><strong>' + h2.escapeHtml(caseMeta || (order.status || 'Case')) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(order.fulfillment_reason || queue.description || '') + '</div></td>';
-				row += '<td>' + h2.escapeHtml(order.age_hours || 0) + 'h</td>';
+				row += '<td>' + h2.escapeHtml(formatAgeHours(order.age_hours)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(primaryLabel, primaryCommand, h2) + ' ';
 				row += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h2.escapeHtml(order.id) + '">Details</button> ';
@@ -2313,10 +2406,10 @@ function renderQueueWorkbenchIntro(config, h) {
 		const topPriority = buildInventoryHeroItem(inventoryContext, priorityItems, result);
 		const supportingPriorityItems = filterInventorySupportingPriorities(priorityItems, inventoryContext);
 		const stockManagementEnabled = !!inventoryContext.stock_management_enabled;
-		const inventoryMode = String(inventoryContext.inventory_mode || result.inventory_mode || '');
-		const inventorySubtle = stockManagementEnabled
-			? 'Read-only queue. No stock or product changes are made.'
-			: 'Status-only inventory view. Stock quantity tracking is off, so quantity-based queues are hidden.';
+			const inventoryMode = String(inventoryContext.inventory_mode || result.inventory_mode || '');
+			const inventorySubtle = stockManagementEnabled
+				? 'Products that may need stock attention.'
+				: 'Stock status view. Quantity tracking is not enabled for these products.';
 		const heroMetrics = [
 			{ label: 'Queue items', value: inventoryContext.total_items || result.count || 0 },
 			{ label: 'Out of stock', value: inventoryContext.out_of_stock_count || 0 },
@@ -2330,23 +2423,25 @@ function renderQueueWorkbenchIntro(config, h) {
 			showBoundary: false,
 			summary: result.summary || 'Inventory queue',
 			subtle: inventorySubtle,
-			parserRule: parsed.parser_rule,
-			title: 'Inventory attention',
-			contextLine: 'Showing up to ' + (result.limit_per_queue || 5) + ' products per queue.' + (inventoryMode === 'status_only' ? ' Status-only mode.' : ''),
-			badge: (result.count || 0) + ' items'
-		}, h);
+				parserRule: parsed.parser_rule,
+				title: 'Inventory attention',
+				contextLine: inventoryMode === 'status_only'
+					? 'Top stock-status exceptions.'
+					: 'Top products from each inventory queue.',
+				badge: (result.count || 0) + ' items'
+			}, h);
 		html += renderQueueWorkbenchHero(topPriority, heroMetrics, h);
 		html += renderWorklistModeCard(result, h);
 		html += renderQueueStartHereCard(nextRecommendedCase, h, {
 			hideCommands: ['Show inventory queue']
 		});
-		html += renderBatchDraftPreparation({
-			title: stockManagementEnabled ? 'Review these inventory items next' : 'Review these stock-status items next',
-			description: stockManagementEnabled
-				? 'Use this shortlist when you want to move through several inventory risks in one pass.'
-				: 'Use this shortlist when you want to move through the clearest stock-status exceptions first.',
-			items: batchDraftCandidates
-		}, h);
+			html += renderBatchDraftPreparation({
+				title: stockManagementEnabled ? 'Review these inventory items next' : 'Review these stock-status items next',
+				description: stockManagementEnabled
+					? 'Start here when you want to move through several inventory risks.'
+					: 'Start here with the clearest stock-status exceptions.',
+				items: batchDraftCandidates
+			}, h);
 		html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
 		html += renderQueueMetaMetrics([
 			{ label: 'Queues', value: queues.length },
@@ -2409,7 +2504,7 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += '<strong>' + h.escapeHtml(result.summary || 'Grouped store snapshot') + '</strong>';
 		html += '<span class="yoro-result-subtle">Use this grouped snapshot when you want a deeper read across orders, customers, and products.</span>';
 
-		if (parsed.parser_rule) {
+		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
 			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
@@ -2571,16 +2666,16 @@ function renderQueueWorkbenchIntro(config, h) {
 
 		let html = renderQueueWorkbenchIntro({
 			result: result,
-			showAssistantIntro: true,
-			showBoundary: true,
-			summary: result.summary || 'Customer service queue',
-			subtle: 'Read-only queue. No emails are sent automatically.',
-			parserRule: parsed.parser_rule,
-			title: 'Customer follow-up candidates',
-			contextLine: 'Showing up to ' + (result.limit_per_queue || 5) + ' cases per queue.',
-			badge: (result.count || 0) + ' follow-ups',
-			cardClassName: 'yoro-queue-workbench-card-customer-service'
-		}, h);
+				showAssistantIntro: true,
+				showBoundary: true,
+				summary: result.summary || 'Customer service queue',
+				subtle: 'Customer follow-ups that may need a reply.',
+				parserRule: parsed.parser_rule,
+				title: 'Customer follow-up candidates',
+				contextLine: 'Top customer cases from each queue.',
+				badge: (result.count || 0) + ' follow-ups',
+				cardClassName: 'yoro-queue-workbench-card-customer-service'
+			}, h);
 		html += renderQueueWorkbenchHero(topPriority, [
 			{ label: 'Follow-up items', value: serviceContext.total_items || result.count || 0 },
 			{ label: 'On-hold', value: serviceContext.on_hold_count || 0 },
@@ -2593,11 +2688,11 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += renderQueueStartHereCard(nextRecommendedCase, h, {
 			hideCommands: ['Show customer service queue']
 		});
-		html += renderBatchDraftPreparation({
-			title: 'Prepare these reply drafts next',
-			description: 'Use this shortlist to finish several likely replies in one pass.',
-			items: batchDraftCandidates
-		}, h);
+			html += renderBatchDraftPreparation({
+				title: 'Prepare these reply drafts next',
+				description: 'Start here when you want to finish several likely replies.',
+				items: batchDraftCandidates
+			}, h);
 		html += renderQueueRecommendedSequence(recommendedSequence, h, 'What comes after this', {
 			showActions: false,
 			limit: 3
@@ -2629,7 +2724,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
 				row += '<td><strong>' + h2.escapeHtml(caseMeta) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(order.followup_reason || '') + '</div></td>';
-				row += '<td>' + h2.escapeHtml(order.age_hours || 0) + 'h</td>';
+				row += '<td>' + h2.escapeHtml(formatAgeHours(order.age_hours)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(rowActionLabel, rowActionCommand, h2) + ' ';
 				row += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h2.escapeHtml(order.id) + '">Details</button> ';
@@ -3179,10 +3274,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			const ids = h.getSelectedOrderIds();
 
 			if (!ids.length) {
-				h.addAgentMessage({
-					success: false,
-					message: 'Please select at least one order.'
-				});
+				alertMissingOrderSelection();
 				return true;
 			}
 
@@ -3295,10 +3387,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			const ids = h.getSelectedOrderIds();
 
 			if (!ids.length) {
-				h.addAgentMessage({
-					success: false,
-					message: 'Please select at least one order.'
-				});
+				alertMissingOrderSelection();
 				return true;
 			}
 
@@ -3312,10 +3401,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			const ids = h.getSelectedOrderIds();
 
 			if (!ids.length) {
-				h.addAgentMessage({
-					success: false,
-					message: 'Please select at least one order.'
-				});
+				alertMissingOrderSelection();
 				return true;
 			}
 
@@ -3333,10 +3419,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			const ids = h.getSelectedOrderIds();
 
 			if (!ids.length) {
-				h.addAgentMessage({
-					success: false,
-					message: 'Please select at least one order.'
-				});
+				alertMissingOrderSelection();
 				return true;
 			}
 
@@ -3354,10 +3437,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			const ids = h.getSelectedOrderIds();
 
 			if (!ids.length) {
-				h.addAgentMessage({
-					success: false,
-					message: 'Please select at least one order.'
-				});
+				alertMissingOrderSelection();
 				return true;
 			}
 

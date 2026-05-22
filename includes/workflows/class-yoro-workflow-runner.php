@@ -273,7 +273,7 @@ class YoRo_Workflow_Runner {
 		if ( '' === $action || empty( $params ) ) {
 			return new WP_Error(
 				'yoro_workflow_stale',
-				__( 'This workflow preview is stale. Please generate a new preview before confirming.', 'yoro-agent-core' )
+				__( 'This workflow preview has expired. Please generate a new preview before confirming.', 'yoro-ai-core' )
 			);
 		}
 
@@ -286,14 +286,14 @@ class YoRo_Workflow_Runner {
 		) {
 			return new WP_Error(
 				'yoro_workflow_stale',
-				__( 'This workflow preview is stale. Please generate a new preview before confirming.', 'yoro-agent-core' )
+				__( 'This workflow preview has expired. Please generate a new preview before confirming.', 'yoro-ai-core' )
 			);
 		}
 
 		if ( 'orders.update_customer_email_draft' === $action && empty( $params['draft_id'] ) ) {
 			return new WP_Error(
 				'yoro_workflow_stale',
-				__( 'This workflow preview is stale. Please generate a new preview before confirming.', 'yoro-agent-core' )
+				__( 'This workflow preview has expired. Please generate a new preview before confirming.', 'yoro-ai-core' )
 			);
 		}
 
@@ -582,7 +582,7 @@ class YoRo_Workflow_Runner {
 		if ( ! empty( $runtime['preview'] ) || ! empty( $runtime['requires_confirmation'] ) ) {
 			return new WP_Error(
 				'yoro_workflow_boundary_blocked',
-				__( 'This workflow step now requires a fresh preview or confirmation before execution.', 'yoro-agent-core' )
+				__( 'This workflow step now requires a fresh preview or confirmation before execution.', 'yoro-ai-core' )
 			);
 		}
 

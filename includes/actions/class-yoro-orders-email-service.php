@@ -13,7 +13,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order_id || ! $template ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Order ID and template are required.', 'yoro-agent-core' )
+				__( 'Order ID and template are required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -22,7 +22,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order ) {
 			return new WP_Error(
 				'order_not_found',
-				__( 'Order not found.', 'yoro-agent-core' )
+				__( 'Order not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -62,6 +62,11 @@ class YoRo_Orders_Email_Service {
 					$email['body']
 				),
 			],
+			'send_payload' => [
+				'order_id' => $order->get_id(),
+				'subject'  => $email['subject'],
+				'body'     => $email['body'],
+			],
 			'result_type'  => 'customer_email',
 			'display_type' => 'customer_email_preview',
 			'order'        => self::build_order_context( $order ),
@@ -75,7 +80,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order_id || ! $template ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Order ID and template are required.', 'yoro-agent-core' )
+				__( 'Order ID and template are required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -84,7 +89,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order ) {
 			return new WP_Error(
 				'order_not_found',
-				__( 'Order not found.', 'yoro-agent-core' )
+				__( 'Order not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -97,7 +102,7 @@ class YoRo_Orders_Email_Service {
 		if ( empty( $email['to'] ) || ! is_email( $email['to'] ) ) {
 			return new WP_Error(
 				'invalid_recipient',
-				__( 'Order billing email is missing or invalid.', 'yoro-agent-core' )
+				__( 'Order billing email is missing or invalid.', 'yoro-ai-core' )
 			);
 		}
 
@@ -121,14 +126,14 @@ class YoRo_Orders_Email_Service {
 		if ( ! $sent ) {
 			return new WP_Error(
 				'email_send_failed',
-				__( 'The email could not be sent.', 'yoro-agent-core' )
+				__( 'The email could not be sent.', 'yoro-ai-core' )
 			);
 		}
 
 		$order->add_order_note(
 			sprintf(
 				/* translators: 1: template key, 2: recipient email */
-				__( 'YoRo Agent sent customer email template "%1$s" to %2$s.', 'yoro-agent-core' ),
+				__( 'YoRo AI sent customer email template "%1$s" to %2$s.', 'yoro-ai-core' ),
 				$template,
 				$email['to']
 			)
@@ -216,7 +221,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order_id || empty( $instruction ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Order ID and instruction are required.', 'yoro-agent-core' )
+				__( 'Order ID and instruction are required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -225,7 +230,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order ) {
 			return new WP_Error(
 				'order_not_found',
-				__( 'Order not found.', 'yoro-agent-core' )
+				__( 'Order not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -299,7 +304,7 @@ class YoRo_Orders_Email_Service {
 		$body    = ! empty( $params['body'] ) ? sanitize_textarea_field( $params['body'] ) : '';
 
 		if ( empty( $name ) || empty( $subject ) || empty( $body ) ) {
-			return new WP_Error( 'invalid_params', __( 'Name, subject, and body are required.', 'yoro-agent-core' ) );
+			return new WP_Error( 'invalid_params', __( 'Name, subject, and body are required.', 'yoro-ai-core' ) );
 		}
 
 		$templates = self::get_email_templates();
@@ -381,7 +386,7 @@ class YoRo_Orders_Email_Service {
 		$template_id = ! empty( $params['template_id'] ) ? sanitize_key( $params['template_id'] ) : '';
 
 		if ( empty( $template_id ) ) {
-			return new WP_Error( 'invalid_params', __( 'Template ID is required.', 'yoro-agent-core' ) );
+			return new WP_Error( 'invalid_params', __( 'Template ID is required.', 'yoro-ai-core' ) );
 		}
 
 		$templates = self::get_email_templates();
@@ -398,7 +403,7 @@ class YoRo_Orders_Email_Service {
 		}
 
 		if ( ! $deleted ) {
-			return new WP_Error( 'not_found', __( 'Template not found.', 'yoro-agent-core' ) );
+			return new WP_Error( 'not_found', __( 'Template not found.', 'yoro-ai-core' ) );
 		}
 
 		self::save_email_templates( $remaining );
@@ -449,7 +454,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order_id || empty( $subject ) || empty( $body ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Order ID, subject, and body are required.', 'yoro-agent-core' )
+				__( 'Order ID, subject, and body are required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -458,7 +463,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order ) {
 			return new WP_Error(
 				'order_not_found',
-				__( 'Order not found.', 'yoro-agent-core' )
+				__( 'Order not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -482,7 +487,7 @@ class YoRo_Orders_Email_Service {
 		$order->add_order_note(
 			sprintf(
 				/* translators: %s: email subject */
-				__( 'YoRo Agent saved a customer email draft. Subject: %s', 'yoro-agent-core' ),
+				__( 'YoRo AI saved a customer email draft. Subject: %s', 'yoro-ai-core' ),
 				$subject
 			)
 		);
@@ -537,7 +542,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order_id ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Order ID is required.', 'yoro-agent-core' )
+				__( 'Order ID is required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -546,7 +551,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order ) {
 			return new WP_Error(
 				'order_not_found',
-				__( 'Order not found.', 'yoro-agent-core' )
+				__( 'Order not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -582,7 +587,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order_id || empty( $draft_id ) || empty( $subject ) || empty( $body ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Order ID, draft ID, subject, and body are required.', 'yoro-agent-core' )
+				__( 'Order ID, draft ID, subject, and body are required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -591,7 +596,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order ) {
 			return new WP_Error(
 				'order_not_found',
-				__( 'Order not found.', 'yoro-agent-core' )
+				__( 'Order not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -612,7 +617,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $updated ) {
 			return new WP_Error(
 				'draft_not_found',
-				__( 'Email draft not found.', 'yoro-agent-core' )
+				__( 'Email draft not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -621,7 +626,7 @@ class YoRo_Orders_Email_Service {
 
 		$order->add_order_note(
 			sprintf(
-				__( 'YoRo Agent updated a customer email draft. Subject: %s', 'yoro-agent-core' ),
+				__( 'YoRo AI updated a customer email draft. Subject: %s', 'yoro-ai-core' ),
 				$subject
 			)
 		);
@@ -668,7 +673,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order_id || empty( $draft_id ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Order ID and draft ID are required.', 'yoro-agent-core' )
+				__( 'Order ID and draft ID are required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -677,7 +682,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order ) {
 			return new WP_Error(
 				'order_not_found',
-				__( 'Order not found.', 'yoro-agent-core' )
+				__( 'Order not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -697,7 +702,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $deleted ) {
 			return new WP_Error(
 				'draft_not_found',
-				__( 'Email draft not found.', 'yoro-agent-core' )
+				__( 'Email draft not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -707,7 +712,7 @@ class YoRo_Orders_Email_Service {
 		$order->add_order_note(
 			sprintf(
 				/* translators: %s: email subject */
-				__( 'YoRo Agent deleted a customer email draft. Subject: %s', 'yoro-agent-core' ),
+				__( 'YoRo AI deleted a customer email draft. Subject: %s', 'yoro-ai-core' ),
 				$deleted['subject']
 			)
 		);
@@ -762,7 +767,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order_id || empty( $subject ) || empty( $body ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Order ID, subject, and body are required.', 'yoro-agent-core' )
+				__( 'Order ID, subject, and body are required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -771,7 +776,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order ) {
 			return new WP_Error(
 				'order_not_found',
-				__( 'Order not found.', 'yoro-agent-core' )
+				__( 'Order not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -780,7 +785,7 @@ class YoRo_Orders_Email_Service {
 		if ( empty( $to ) || ! is_email( $to ) ) {
 			return new WP_Error(
 				'invalid_recipient',
-				__( 'Order billing email is missing or invalid.', 'yoro-agent-core' )
+				__( 'Order billing email is missing or invalid.', 'yoro-ai-core' )
 			);
 		}
 
@@ -867,7 +872,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order_id || empty( $subject ) || empty( $body ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Order ID, subject, and body are required.', 'yoro-agent-core' )
+				__( 'Order ID, subject, and body are required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -876,7 +881,7 @@ class YoRo_Orders_Email_Service {
 		if ( ! $order ) {
 			return new WP_Error(
 				'order_not_found',
-				__( 'Order not found.', 'yoro-agent-core' )
+				__( 'Order not found.', 'yoro-ai-core' )
 			);
 		}
 
@@ -885,7 +890,7 @@ class YoRo_Orders_Email_Service {
 		if ( empty( $to ) || ! is_email( $to ) ) {
 			return new WP_Error(
 				'invalid_recipient',
-				__( 'Order billing email is missing or invalid.', 'yoro-agent-core' )
+				__( 'Order billing email is missing or invalid.', 'yoro-ai-core' )
 			);
 		}
 
@@ -915,14 +920,14 @@ class YoRo_Orders_Email_Service {
 		if ( ! $sent ) {
 			return new WP_Error(
 				'email_send_failed',
-				__( 'The email could not be sent.', 'yoro-agent-core' )
+				__( 'The email could not be sent.', 'yoro-ai-core' )
 			);
 		}
 
 		$order->add_order_note(
 			sprintf(
 				/* translators: 1: recipient email, 2: subject */
-				__( 'YoRo Agent sent a custom customer email to %1$s. Subject: %2$s', 'yoro-agent-core' ),
+				__( 'YoRo AI sent a custom customer email to %1$s. Subject: %2$s', 'yoro-ai-core' ),
 				$to,
 				$subject
 			)
@@ -1241,14 +1246,14 @@ class YoRo_Orders_Email_Service {
 		if ( empty( $templates[ $template ] ) ) {
 			return new WP_Error(
 				'invalid_template',
-				__( 'Invalid email template.', 'yoro-agent-core' )
+				__( 'Invalid email template.', 'yoro-ai-core' )
 			);
 		}
 
 		$customer_name = trim( $order->get_billing_first_name() );
 
 		if ( '' === $customer_name ) {
-			$customer_name = __( 'there', 'yoro-agent-core' );
+			$customer_name = __( 'there', 'yoro-ai-core' );
 		}
 
 		$replacements = [
@@ -1271,20 +1276,20 @@ class YoRo_Orders_Email_Service {
 	private static function get_customer_email_templates() {
 		return [
 			'needs_verification' => [
-				'subject' => __( 'Action required for your order #{order_number}', 'yoro-agent-core' ),
-				'body'    => __( "Hi {customer_name},\n\nThank you for your order #{order_number} at {store_name}.\n\nBefore we continue processing your order, we need to verify a few details. Please reply to this email so our team can complete the review.\n\nOrder total: {order_total}\n\nThank you.", 'yoro-agent-core' ),
+				'subject' => __( 'Action required for your order #{order_number}', 'yoro-ai-core' ),
+				'body'    => __( "Hi {customer_name},\n\nThank you for your order #{order_number} at {store_name}.\n\nBefore we continue processing your order, we need to verify a few details. Please reply to this email so our team can complete the review.\n\nOrder total: {order_total}\n\nThank you.", 'yoro-ai-core' ),
 			],
 			'payment_mismatch' => [
-				'subject' => __( 'Payment verification needed for order #{order_number}', 'yoro-agent-core' ),
-				'body'    => __( "Hi {customer_name},\n\nWe are reviewing your order #{order_number} at {store_name}.\n\nSome payment details require confirmation before we can continue processing the order. Please reply to this email with confirmation of your order details.\n\nOrder total: {order_total}\n\nThank you.", 'yoro-agent-core' ),
+				'subject' => __( 'Payment verification needed for order #{order_number}', 'yoro-ai-core' ),
+				'body'    => __( "Hi {customer_name},\n\nWe are reviewing your order #{order_number} at {store_name}.\n\nSome payment details require confirmation before we can continue processing the order. Please reply to this email with confirmation of your order details.\n\nOrder total: {order_total}\n\nThank you.", 'yoro-ai-core' ),
 			],
 			'shipping_delay' => [
-				'subject' => __( 'Shipping update for order #{order_number}', 'yoro-agent-core' ),
-				'body'    => __( "Hi {customer_name},\n\nWe are contacting you about order #{order_number} from {store_name}.\n\nThere may be a short delay in shipping your order. Our team is reviewing it and will update you as soon as possible.\n\nThank you for your patience.", 'yoro-agent-core' ),
+				'subject' => __( 'Shipping update for order #{order_number}', 'yoro-ai-core' ),
+				'body'    => __( "Hi {customer_name},\n\nWe are contacting you about order #{order_number} from {store_name}.\n\nThere may be a short delay in shipping your order. Our team is reviewing it and will update you as soon as possible.\n\nThank you for your patience.", 'yoro-ai-core' ),
 			],
 			'order_followup' => [
-				'subject' => __( 'Follow-up about your order #{order_number}', 'yoro-agent-core' ),
-				'body'    => __( "Hi {customer_name},\n\nWe are following up about your order #{order_number} at {store_name}.\n\nPlease reply to this email if you have any questions or need to update any order details.\n\nThank you.", 'yoro-agent-core' ),
+				'subject' => __( 'Follow-up about your order #{order_number}', 'yoro-ai-core' ),
+				'body'    => __( "Hi {customer_name},\n\nWe are following up about your order #{order_number} at {store_name}.\n\nPlease reply to this email if you have any questions or need to update any order details.\n\nThank you.", 'yoro-ai-core' ),
 			],
 		];
 	}
@@ -1293,7 +1298,7 @@ class YoRo_Orders_Email_Service {
 		if ( 'yes' !== get_option( 'yoro_ai_email_compose_enabled', 'yes' ) ) {
 			return new WP_Error(
 				'yoro_ai_email_disabled',
-				__( 'AI customer email composing is disabled.', 'yoro-agent-core' )
+				__( 'AI email drafting is currently disabled.', 'yoro-ai-core' )
 			);
 		}
 
@@ -1317,7 +1322,7 @@ class YoRo_Orders_Email_Service {
 		$site_name  = wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES );
 		$user_name  = $user instanceof WP_User ? trim( (string) $user->display_name ) : '';
 		$site_name  = trim( (string) $site_name );
-		$signature  = [ __( 'Best regards,', 'yoro-agent-core' ) ];
+		$signature  = [ __( 'Best regards,', 'yoro-ai-core' ) ];
 
 		if ( '' !== $user_name ) {
 			$signature[] = $user_name;

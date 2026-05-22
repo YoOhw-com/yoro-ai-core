@@ -1,5 +1,14 @@
 # AI Router Hardening Plan
 
+## Status
+
+This hardening phase is complete for the AI-first routing migration.
+
+- The normal command path is AI router first.
+- Backend constraints are expressed through `CommandShape`, `YoRo_Router_Decision_Validator`, recovery fallbacks, and runtime guards.
+- Remaining deterministic paths are safety, context, workflow, conversation, or final clarification guardrails.
+- Current full suite status: `428/428`.
+
 ## Goal
 
 Make `ai_router` the stable default route for supported store tasks without removing the existing deterministic safety rails.
@@ -235,7 +244,7 @@ This hardening phase is complete when all of the following are true:
 
 - [ ] Add catalog-level audit output for incomplete action metadata.
 - [ ] Add optional debug fields that expose whether `required_params` came from explicit config or builder inference.
-- [ ] Review inferred required-param map and shrink it to legacy fallback only.
+- [ ] Review inferred required-param map and shrink it to documented action metadata plus recovery guardrails only.
 
 `includes/actions/class-yoro-orders-actions.php`
 

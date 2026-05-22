@@ -12,7 +12,7 @@ class YoRo_Orders_Write_Service {
 	private static function build_yoro_note_content( $note ) {
 		return sprintf(
 			/* translators: %s: note text */
-			__( '[YoRo] %s', 'yoro-agent-core' ),
+			__( '[YoRo] %s', 'yoro-ai-core' ),
 			$note
 		);
 	}
@@ -46,7 +46,10 @@ class YoRo_Orders_Write_Service {
 			}
 		}
 
-		return false !== strpos( (string) $comment->comment_content, 'YoRo Agent note:' );
+		$content = (string) $comment->comment_content;
+
+		return false !== strpos( $content, 'YoRo AI note:' )
+			|| false !== strpos( $content, '[YoRo]' );
 	}
 
 	public static function add_private_note_template( $params ) {
@@ -54,7 +57,7 @@ class YoRo_Orders_Write_Service {
 		$templates = self::get_private_note_templates();
 
 		if ( empty( $template ) || empty( $templates[ $template ] ) ) {
-			return new WP_Error( 'invalid_template', __( 'Invalid private note template.', 'yoro-agent-core' ) );
+			return new WP_Error( 'invalid_template', __( 'Invalid private note template.', 'yoro-ai-core' ) );
 		}
 
 		$params['note'] = $templates[ $template ];
@@ -95,7 +98,7 @@ class YoRo_Orders_Write_Service {
 			try {
 				$order->update_status(
 					'on-hold',
-					__( 'Order placed on hold by YoRo Agent.', 'yoro-agent-core' )
+					__( 'Order placed on hold by YoRo AI.', 'yoro-ai-core' )
 				);
 
 				$processed[] = $order_id;
@@ -122,7 +125,7 @@ class YoRo_Orders_Write_Service {
 		$note = isset( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : '';
 
 		if ( empty( $note ) ) {
-			return new WP_Error( 'invalid_params', __( 'Note is required.', 'yoro-agent-core' ) );
+			return new WP_Error( 'invalid_params', __( 'Note is required.', 'yoro-ai-core' ) );
 		}
 
 		$order_ids = [];
@@ -136,7 +139,7 @@ class YoRo_Orders_Write_Service {
 		$order_ids = array_values( array_filter( array_unique( $order_ids ) ) );
 
 		if ( empty( $order_ids ) ) {
-			return new WP_Error( 'invalid_params', __( 'Order ID is required.', 'yoro-agent-core' ) );
+			return new WP_Error( 'invalid_params', __( 'Order ID is required.', 'yoro-ai-core' ) );
 		}
 
 		$processed = [];
@@ -191,7 +194,7 @@ class YoRo_Orders_Write_Service {
 		if ( empty( $note_ids ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Note IDs are required.', 'yoro-agent-core' )
+				__( 'Note IDs are required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -321,10 +324,10 @@ class YoRo_Orders_Write_Service {
 			? YoRo_Order_Helper::normalize_status_slug( $params['status'] )
 			: '';
 
-		$note   = ! empty( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : __( 'Order status updated by YoRo Agent.', 'yoro-agent-core' );
+		$note   = ! empty( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : __( 'Order status updated by YoRo AI.', 'yoro-ai-core' );
 
 		if ( empty( $order_ids ) || empty( $status ) ) {
-			return new WP_Error( 'invalid_params', __( 'Order IDs and status are required.', 'yoro-agent-core' ) );
+			return new WP_Error( 'invalid_params', __( 'Order IDs and status are required.', 'yoro-ai-core' ) );
 		}
 
 		if ( ! YoRo_Order_Helper::is_valid_order_status( $status ) ) {
@@ -332,7 +335,7 @@ class YoRo_Orders_Write_Service {
 				'invalid_status',
 				sprintf(
 					/* translators: %s: order status */
-					__( 'Invalid WooCommerce order status: %s.', 'yoro-agent-core' ),
+					__( 'Invalid WooCommerce order status: %s.', 'yoro-ai-core' ),
 					$status
 				)
 			);
@@ -385,7 +388,7 @@ class YoRo_Orders_Write_Service {
 		if ( empty( $statuses ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Previous statuses are required.', 'yoro-agent-core' )
+				__( 'Previous statuses are required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -414,7 +417,7 @@ class YoRo_Orders_Write_Service {
 			try {
 				$order->update_status(
 					$status,
-					__( 'Order status restored by YoRo undo.', 'yoro-agent-core' ),
+					__( 'Order status restored by YoRo undo.', 'yoro-ai-core' ),
 					true
 				);
 
@@ -452,7 +455,7 @@ class YoRo_Orders_Write_Service {
 		if ( empty( $order_ids ) || empty( $status ) || empty( $note ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Order IDs, status, and note are required.', 'yoro-agent-core' )
+				__( 'Order IDs, status, and note are required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -461,7 +464,7 @@ class YoRo_Orders_Write_Service {
 				'invalid_status',
 				sprintf(
 					/* translators: %s: order status */
-					__( 'Invalid WooCommerce order status: %s.', 'yoro-agent-core' ),
+					__( 'Invalid WooCommerce order status: %s.', 'yoro-ai-core' ),
 					$status
 				)
 			);
@@ -487,7 +490,7 @@ class YoRo_Orders_Write_Service {
 					$status,
 					sprintf(
 						/* translators: %s: note text */
-						__( 'YoRo Agent status update: %s', 'yoro-agent-core' ),
+						__( 'YoRo AI status update: %s', 'yoro-ai-core' ),
 						$note
 					)
 				);
@@ -607,9 +610,9 @@ class YoRo_Orders_Write_Service {
 
 	private static function get_private_note_templates() {
 		return [
-			'suspicious'         => __( 'YoRo review: This order has suspicious signals and should be manually reviewed before fulfillment.', 'yoro-agent-core' ),
-			'payment_mismatch'   => __( 'YoRo review: Payment information may not match the customer/order identity. Please verify before fulfillment.', 'yoro-agent-core' ),
-			'needs_verification' => __( 'YoRo review: Customer verification is required before this order is processed further.', 'yoro-agent-core' ),
+			'suspicious'         => __( 'YoRo review: This order has suspicious signals and should be manually reviewed before fulfillment.', 'yoro-ai-core' ),
+			'payment_mismatch'   => __( 'YoRo review: Payment information may not match the customer/order identity. Please verify before fulfillment.', 'yoro-ai-core' ),
+			'needs_verification' => __( 'YoRo review: Customer verification is required before this order is processed further.', 'yoro-ai-core' ),
 		];
 	}
 }

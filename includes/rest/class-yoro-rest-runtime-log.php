@@ -11,6 +11,7 @@ class YoRo_REST_Runtime_Log {
 		$extra   = is_array( $extra ) ? $extra : [];
 		$retrieved_examples = self::normalize_retrieved_examples( $extra['retrieved_examples'] ?? [] );
 		$route_candidates = self::normalize_route_candidates( $extra['route_candidates'] ?? [] );
+		$ai_meta = isset( $extra['ai_meta'] ) && is_array( $extra['ai_meta'] ) ? $extra['ai_meta'] : [];
 		unset( $extra['retrieved_examples'] );
 		unset( $extra['route_candidates'] );
 
@@ -29,7 +30,14 @@ class YoRo_REST_Runtime_Log {
 			'intent_family'      => sanitize_key( $extra['intent_family'] ?? '' ),
 			'language'           => sanitize_key( $extra['language'] ?? '' ),
 			'confidence'         => isset( $extra['confidence'] ) && null !== $extra['confidence'] ? (float) $extra['confidence'] : null,
-			'ai_meta'            => isset( $extra['ai_meta'] ) && is_array( $extra['ai_meta'] ) ? $extra['ai_meta'] : [],
+			'ai_meta'            => $ai_meta,
+			'routing_provider'   => sanitize_key( $ai_meta['routing_provider'] ?? '' ),
+			'yoro_ai_api_request_id' => sanitize_text_field( $ai_meta['yoro_ai_api_request_id'] ?? '' ),
+			'yoro_ai_api_plan'   => sanitize_key( $ai_meta['yoro_ai_api_plan'] ?? '' ),
+			'yoro_ai_api_usage_period' => sanitize_text_field( $ai_meta['yoro_ai_api_usage_period'] ?? '' ),
+			'yoro_ai_api_usage_limit' => isset( $ai_meta['yoro_ai_api_usage_limit'] ) ? absint( $ai_meta['yoro_ai_api_usage_limit'] ) : null,
+			'yoro_ai_api_usage_used' => isset( $ai_meta['yoro_ai_api_usage_used'] ) ? absint( $ai_meta['yoro_ai_api_usage_used'] ) : null,
+			'yoro_ai_api_usage_remaining' => isset( $ai_meta['yoro_ai_api_usage_remaining'] ) ? absint( $ai_meta['yoro_ai_api_usage_remaining'] ) : null,
 			'retrieved_examples' => $retrieved_examples,
 			'route_candidates'   => $route_candidates,
 			'request_started_at' => isset( $extra['request_started_at'] ) ? (float) $extra['request_started_at'] : 0,

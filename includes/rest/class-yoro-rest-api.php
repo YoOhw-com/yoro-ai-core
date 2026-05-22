@@ -6,13 +6,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_REST_API {
 
+	const REST_NAMESPACE        = 'yoro-ai-core/v1';
+
 	public static function init() {
 		add_action( 'rest_api_init', [ __CLASS__, 'register_routes' ] );
 	}
 
 	public static function register_routes() {
 		register_rest_route(
-			'yoro-agent/v1',
+			self::REST_NAMESPACE,
 			'/actions',
 			[
 				'methods'             => 'GET',
@@ -22,7 +24,7 @@ class YoRo_REST_API {
 		);
 
 		register_rest_route(
-			'yoro-agent/v1',
+			self::REST_NAMESPACE,
 			'/context',
 			[
 				'methods'             => 'GET',
@@ -32,7 +34,7 @@ class YoRo_REST_API {
 		);
 
 		register_rest_route(
-			'yoro-agent/v1',
+			self::REST_NAMESPACE,
 			'/parse',
 			[
 				'methods'             => 'POST',
@@ -42,7 +44,7 @@ class YoRo_REST_API {
 		);
 
 		register_rest_route(
-			'yoro-agent/v1',
+			self::REST_NAMESPACE,
 			'/execute',
 			[
 				'methods'             => 'POST',
@@ -52,7 +54,7 @@ class YoRo_REST_API {
 		);
 
 		register_rest_route(
-			'yoro-agent/v1',
+			self::REST_NAMESPACE,
 			'/run',
 			[
 				'methods'             => 'POST',
@@ -62,7 +64,7 @@ class YoRo_REST_API {
 		);
 
 		register_rest_route(
-			'yoro-agent/v1',
+			self::REST_NAMESPACE,
 			'/memory',
 			[
 				'methods'  => 'GET',
@@ -74,7 +76,7 @@ class YoRo_REST_API {
 		);
 
 		register_rest_route(
-			'yoro-agent/v1',
+			self::REST_NAMESPACE,
 			'/proactive/morning-briefing',
 			[
 				'methods'             => 'GET',
@@ -84,7 +86,7 @@ class YoRo_REST_API {
 		);
 
 		register_rest_route(
-			'yoro-agent/v1',
+			self::REST_NAMESPACE,
 			'/proactive/morning-briefing-dismiss',
 			[
 				'methods'             => 'POST',
@@ -94,7 +96,7 @@ class YoRo_REST_API {
 		);
 
 		register_rest_route(
-			'yoro-agent/v1',
+			self::REST_NAMESPACE,
 			'/undo',
 			[
 				'methods'  => 'POST',
@@ -106,7 +108,7 @@ class YoRo_REST_API {
 		);
 
 		register_rest_route(
-			'yoro-agent/v1',
+			self::REST_NAMESPACE,
 			'/workflow-templates',
 			[
 				'methods'             => 'GET',
@@ -115,9 +117,29 @@ class YoRo_REST_API {
 			]
 		);
 
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/ai-api/status',
+			[
+				'methods'             => 'GET',
+				'callback'            => [ __CLASS__, 'get_ai_api_status' ],
+				'permission_callback' => [ __CLASS__, 'settings_permission_check' ],
+			]
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
+			'/ai-api/handshake',
+			[
+				'methods'             => 'POST',
+				'callback'            => [ __CLASS__, 'test_ai_api_handshake' ],
+				'permission_callback' => [ __CLASS__, 'settings_permission_check' ],
+			]
+		);
+
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 			register_rest_route(
-				'yoro-agent/v1',
+				self::REST_NAMESPACE,
 				'/parser-test',
 				[
 					'methods'  => 'GET',
@@ -139,7 +161,7 @@ class YoRo_REST_API {
 			);
 
 			register_rest_route(
-				'yoro-agent/v1',
+				self::REST_NAMESPACE,
 				'/real-query-pack',
 				[
 					'methods'  => 'GET',
@@ -154,6 +176,10 @@ class YoRo_REST_API {
 
 	public static function permission_check() {
 		return current_user_can( 'manage_woocommerce' );
+	}
+
+	public static function settings_permission_check() {
+		return current_user_can( 'manage_options' );
 	}
 
 	public static function get_actions() {
@@ -360,11 +386,83 @@ class YoRo_REST_API {
 			]
 		);
 	}
+
+	public static function get_ai_api_status() {
+		return rest_ensure_response( self::build_ai_api_status_response() );
+	}
+
+	public static function test_ai_api_handshake() {
+		if ( ! class_exists( 'YoRo_AI_API_Client' ) ) {
+			return new WP_Error(
+				'yoro_ai_api_client_missing',
+				__( 'YoRo AI API client is not available.', 'yoro-ai-core' ),
+				[ 'status' => 500 ]
+			);
+		}
+
+		$result = ( new YoRo_AI_API_Client() )->handshake();
+
+		if ( is_wp_error( $result ) ) {
+			return new WP_Error(
+				$result->get_error_code(),
+				$result->get_error_message(),
+				[
+					'status' => 502,
+					'ai_api_status' => self::build_ai_api_status_response(),
+				]
+			);
+		}
+
+		return rest_ensure_response( self::build_ai_api_status_response( $result ) );
+	}
+
+	private static function build_ai_api_status_response( $handshake_result = null ) {
+		$status       = class_exists( 'YoRo_AI_Settings' ) ? YoRo_AI_Settings::get_ai_api_status() : [];
+		$entitlements = class_exists( 'YoRo_AI_Settings' ) ? YoRo_AI_Settings::get_ai_api_entitlements() : [];
+		$usage        = class_exists( 'YoRo_AI_Settings' ) ? YoRo_AI_Settings::get_ai_api_usage() : [];
+
+		if ( is_array( $handshake_result ) ) {
+			$status       = $handshake_result;
+			$entitlements = isset( $handshake_result['entitlements'] ) && is_array( $handshake_result['entitlements'] ) ? $handshake_result['entitlements'] : [];
+			$usage        = isset( $handshake_result['usage'] ) && is_array( $handshake_result['usage'] ) ? $handshake_result['usage'] : [];
+		}
+
+		$api_url = class_exists( 'YoRo_AI_Settings' ) ? YoRo_AI_Settings::get_ai_api_url() : '';
+
+		return [
+			'success'             => true,
+			'service'             => 'yoro-ai-api',
+			'provider_preference' => class_exists( 'YoRo_AI_Settings' ) ? YoRo_AI_Settings::get_provider_preference() : '',
+			'resolved_provider'   => class_exists( 'YoRo_AI_Provider_Resolver' ) ? YoRo_AI_Provider_Resolver::resolve_provider() : '',
+			'configured'          => [
+				'api_url'          => esc_url_raw( $api_url ),
+				'api_url_present'  => '' !== $api_url,
+				'site_key_present' => class_exists( 'YoRo_AI_Settings' ) ? '' !== YoRo_AI_Settings::get_ai_api_site_key() : false,
+				'site_key_source'  => class_exists( 'YoRo_AI_Settings' ) ? YoRo_AI_Settings::get_ai_api_site_key_source() : 'missing',
+				'enabled'          => class_exists( 'YoRo_AI_Settings' ) ? YoRo_AI_Settings::is_ai_api_enabled() : false,
+				'endpoint_ready'   => class_exists( 'YoRo_AI_Settings' ) ? YoRo_AI_Settings::is_ai_api_endpoint_ready() : false,
+			],
+			'connection'          => [
+				'connected'  => ! empty( $status['connected'] ),
+				'checked_at' => sanitize_text_field( $status['checked_at'] ?? '' ),
+				'message'    => sanitize_text_field( $status['message'] ?? '' ),
+			],
+			'site'                => isset( $status['site'] ) && is_array( $status['site'] ) ? $status['site'] : [],
+			'entitlements'        => $entitlements,
+			'usage'               => $usage,
+			'capabilities'        => [
+				'command_router' => class_exists( 'YoRo_AI_Provider_Resolver' ) ? YoRo_AI_Provider_Resolver::supports( 'intent' ) : false,
+				'email_compose'  => class_exists( 'YoRo_AI_Provider_Resolver' ) ? YoRo_AI_Provider_Resolver::supports( 'email_compose' ) : false,
+				'workflow_plan'  => class_exists( 'YoRo_AI_Provider_Resolver' ) ? YoRo_AI_Provider_Resolver::supports( 'workflow_plan' ) : false,
+				'suggestions'    => class_exists( 'YoRo_AI_Provider_Resolver' ) ? YoRo_AI_Provider_Resolver::supports( 'suggestions' ) : false,
+			],
+		];
+	}
 	
 	public static function get_last_executed( $user_id ) {
 		global $wpdb;
 
-		$table = $wpdb->prefix . 'yoro_agent_logs';
+		$table = YoRo_DB::logs_table_name();
 
 		return $wpdb->get_row(
 			$wpdb->prepare(

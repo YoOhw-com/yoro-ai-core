@@ -10,7 +10,7 @@ class YoRo_Runtime_Guard {
 		if ( ! is_array( $plan ) || empty( $plan['type'] ) ) {
 			return new WP_Error(
 				'yoro_invalid_runtime_plan',
-				__( 'Invalid runtime plan.', 'yoro-agent-core' )
+				__( 'Invalid runtime plan.', 'yoro-ai-core' )
 			);
 		}
 
@@ -93,7 +93,7 @@ class YoRo_Runtime_Guard {
 			'parsed'           => is_array( $parsed ) ? $parsed : [],
 			'plan'             => is_array( $plan ) ? $plan : [],
 			'confirm_required' => true,
-			'message'          => __( 'This action requires confirmation before running.', 'yoro-agent-core' ),
+			'message'          => __( 'This action requires confirmation before running.', 'yoro-ai-core' ),
 			'risk'             => $risk,
 			'policy'           => $policy,
 			'result'           => [

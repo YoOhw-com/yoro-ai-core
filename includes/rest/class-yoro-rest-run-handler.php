@@ -37,7 +37,7 @@ class YoRo_REST_Run_Handler {
 		if ( empty( $command ) ) {
 			return new WP_Error(
 				'yoro_empty_command',
-				__( 'Command is required.', 'yoro-agent-core' )
+				__( 'Command is required.', 'yoro-ai-core' )
 			);
 		}
 
@@ -113,6 +113,8 @@ class YoRo_REST_Run_Handler {
 		}
 
 		if ( empty( $parsed['success'] ) || empty( $parsed['matched'] ) ) {
+			$promoted_low_confidence_parse = false;
+
 			if (
 				'ai_router' === sanitize_key( $parsed['parser_source'] ?? '' ) &&
 				'low_confidence' === sanitize_key( $parsed['clarify_reason'] ?? '' ) &&
@@ -129,6 +131,12 @@ class YoRo_REST_Run_Handler {
 				$timings['plan_ms'] = self::duration_ms( $plan_started_at );
 
 				if ( ! is_wp_error( $low_confidence_plan ) ) {
+					if ( self::should_bypass_low_confidence_ai_confirmation( $low_confidence_parsed, $low_confidence_plan ) ) {
+						unset( $low_confidence_parsed['stage'], $low_confidence_parsed['clarify_reason'] );
+						$parsed                       = $low_confidence_parsed;
+						$plan                         = $low_confidence_plan;
+						$promoted_low_confidence_parse = true;
+					} else {
 					$workflow_state_token = YoRo_REST_Confirmation_Flow::create_pending_state(
 						$user_id,
 						$command,
@@ -154,7 +162,7 @@ class YoRo_REST_Run_Handler {
 							'trace_id'             => $trace_id,
 							'parsed'               => $low_confidence_parsed,
 							'confirm_required'     => true,
-							'message'              => __( 'I am not fully confident about this AI-interpreted command. Please confirm before I continue.', 'yoro-agent-core' ),
+							'message'              => __( 'I’m not fully confident I understood this command. Please confirm before I continue.', 'yoro-ai-core' ),
 							'confidence'           => (float) ( $low_confidence_parsed['confidence'] ?? 0 ),
 							'parser_source'        => $low_confidence_parsed['parser_source'] ?? 'ai_router',
 							'workflow_state_token' => $workflow_state_token,
@@ -169,34 +177,37 @@ class YoRo_REST_Run_Handler {
 							),
 						]
 					);
+					}
 				}
 			}
 
-			if (
+			if ( ! $promoted_low_confidence_parse && (
 				! empty( $parsed['current_workflow'] ) &&
 				is_array( $parsed['current_workflow'] ) &&
 				class_exists( 'YoRo_Conversation_Memory' )
-			) {
+			) ) {
 				YoRo_Conversation_Memory::set_workflow( $user_id, $parsed['current_workflow'] );
 			}
 
-			return rest_ensure_response(
-				[
-					'success' => false,
-					'stage'   => $parsed['stage'] ?? 'parse',
-					'trace_id' => $trace_id,
-					'parsed'  => $parsed,
-					'current_workflow' => $parsed['current_workflow'] ?? [],
-					'telemetry' => self::build_response_telemetry(
-						$trace_id,
-						$parsed,
-						[],
-						[],
-						$request_started_at,
-						$timings
-					),
-				]
-			);
+			if ( ! $promoted_low_confidence_parse ) {
+				return rest_ensure_response(
+					[
+						'success' => false,
+						'stage'   => $parsed['stage'] ?? 'parse',
+						'trace_id' => $trace_id,
+						'parsed'  => $parsed,
+						'current_workflow' => $parsed['current_workflow'] ?? [],
+						'telemetry' => self::build_response_telemetry(
+							$trace_id,
+							$parsed,
+							[],
+							[],
+							$request_started_at,
+							$timings
+						),
+					]
+				);
+			}
 		}
 
 		if ( ! empty( $parsed['response_only'] ) && ! empty( $parsed['result'] ) && is_array( $parsed['result'] ) ) {
@@ -234,7 +245,7 @@ class YoRo_REST_Run_Handler {
 		if ( empty( $parsed['action'] ) ) {
 			return new WP_Error(
 				'yoro_missing_action',
-				__( 'No action could be resolved from intent.', 'yoro-agent-core' )
+				__( 'No action could be resolved from intent.', 'yoro-ai-core' )
 			);
 		}
 
@@ -254,46 +265,50 @@ class YoRo_REST_Run_Handler {
 					return $low_confidence_plan;
 				}
 
-				$workflow_state_token = YoRo_REST_Confirmation_Flow::create_pending_state(
-					$user_id,
-					$command,
-					$parsed,
-					$low_confidence_plan,
-					$action,
-					$trace_id
-				);
+				if ( self::should_bypass_low_confidence_ai_confirmation( $parsed, $low_confidence_plan ) ) {
+					$plan = $low_confidence_plan;
+				} else {
+					$workflow_state_token = YoRo_REST_Confirmation_Flow::create_pending_state(
+						$user_id,
+						$command,
+						$parsed,
+						$low_confidence_plan,
+						$action,
+						$trace_id
+					);
 
-				YoRo_REST_Run_Log_Helper::log_low_confidence_confirmation(
-					$user_id,
-					$command,
-					$parsed,
-					$trace_id,
-					$confidence,
-					$source
-				);
+					YoRo_REST_Run_Log_Helper::log_low_confidence_confirmation(
+						$user_id,
+						$command,
+						$parsed,
+						$trace_id,
+						$confidence,
+						$source
+					);
 
-				return rest_ensure_response(
-					[
-						'success'          => false,
-						'stage'            => 'confirm',
-						'trace_id'         => $trace_id,
-						'parsed'           => $parsed,
-						'confirm_required' => true,
-						'message'          => __( 'I am not fully confident about this AI-interpreted command. Please confirm before I continue.', 'yoro-agent-core' ),
-						'confidence'       => $confidence,
-						'parser_source'    => $source,
-						'workflow_state_token' => $workflow_state_token,
-						'pending_plan_token'   => $workflow_state_token,
-						'telemetry'        => self::build_response_telemetry(
-							$trace_id,
-							$parsed,
-							$low_confidence_plan,
-							[],
-							$request_started_at,
-							$timings
-						),
-					]
-				);
+					return rest_ensure_response(
+						[
+							'success'          => false,
+							'stage'            => 'confirm',
+							'trace_id'         => $trace_id,
+							'parsed'           => $parsed,
+							'confirm_required' => true,
+							'message'          => __( 'I’m not fully confident I understood this command. Please confirm before I continue.', 'yoro-ai-core' ),
+							'confidence'       => $confidence,
+							'parser_source'    => $source,
+							'workflow_state_token' => $workflow_state_token,
+							'pending_plan_token'   => $workflow_state_token,
+							'telemetry'        => self::build_response_telemetry(
+								$trace_id,
+								$parsed,
+								$low_confidence_plan,
+								[],
+								$request_started_at,
+								$timings
+							),
+						]
+					);
+				}
 			}
 
 			$preview_threshold = (float) get_option( 'yoro_ai_preview_threshold', 0.8 );
@@ -309,7 +324,7 @@ class YoRo_REST_Run_Handler {
 		if ( ! class_exists( 'YoRo_Action_Planner' ) ) {
 			return new WP_Error(
 				'yoro_action_planner_missing',
-				__( 'YoRo Action Planner is not loaded.', 'yoro-agent-core' )
+				__( 'YoRo Action Planner is not loaded.', 'yoro-ai-core' )
 			);
 		}
 
@@ -487,7 +502,7 @@ class YoRo_REST_Run_Handler {
 					'risk'    => $risk,
 					'policy'  => $policy,
 					'result'  => $result,
-					'message' => $result['message'] ?? __( 'Action failed.', 'yoro-agent-core' ),
+					'message' => $result['message'] ?? __( 'I could not complete this action.', 'yoro-ai-core' ),
 					'telemetry' => self::build_response_telemetry( $trace_id, $parsed, $plan, $runtime, $request_started_at, $timings ),
 				]
 			);
@@ -573,7 +588,7 @@ class YoRo_REST_Run_Handler {
 					'pending_plan_token'   => $workflow_state_token,
 					'risk'             => $risk,
 					'policy'           => $policy,
-					'message'          => $result['message'] ?? __( 'Confirmation required.', 'yoro-agent-core' ),
+					'message'          => $result['message'] ?? __( 'Please confirm before I continue.', 'yoro-ai-core' ),
 					'result'           => $result,
 					'telemetry'        => self::build_response_telemetry( $trace_id, $parsed, $plan, $runtime, $request_started_at, $timings ),
 				]
@@ -664,6 +679,9 @@ class YoRo_REST_Run_Handler {
 				'language'         => $parsed['language'] ?? ( $parsed['command_decision']['language'] ?? '' ),
 				'confidence'       => $parsed['confidence'] ?? null,
 				'ai_meta'          => isset( $parsed['meta'] ) && is_array( $parsed['meta'] ) ? $parsed['meta'] : [],
+				'command_shape'    => isset( $parsed['command_shape'] ) && is_array( $parsed['command_shape'] ) ? $parsed['command_shape'] : [],
+				'semantic_frame'   => isset( $parsed['semantic_frame'] ) && is_array( $parsed['semantic_frame'] ) ? $parsed['semantic_frame'] : [],
+				'semantic_frame_validator_changes' => isset( $parsed['semantic_frame_validator_changes'] ) && is_array( $parsed['semantic_frame_validator_changes'] ) ? $parsed['semantic_frame_validator_changes'] : [],
 				'retrieved_examples' => isset( $parsed['retrieved_examples'] ) && is_array( $parsed['retrieved_examples'] ) ? $parsed['retrieved_examples'] : [],
 				'route_candidates' => isset( $parsed['route_candidates'] ) && is_array( $parsed['route_candidates'] ) ? $parsed['route_candidates'] : [],
 				'request_started_at' => $request_started_at,
@@ -701,6 +719,9 @@ class YoRo_REST_Run_Handler {
 				'language'         => $parsed['language'] ?? ( $parsed['command_decision']['language'] ?? '' ),
 				'confidence'       => $parsed['confidence'] ?? null,
 				'ai_meta'          => isset( $parsed['meta'] ) && is_array( $parsed['meta'] ) ? $parsed['meta'] : [],
+				'command_shape'    => isset( $parsed['command_shape'] ) && is_array( $parsed['command_shape'] ) ? $parsed['command_shape'] : [],
+				'semantic_frame'   => isset( $parsed['semantic_frame'] ) && is_array( $parsed['semantic_frame'] ) ? $parsed['semantic_frame'] : [],
+				'semantic_frame_validator_changes' => isset( $parsed['semantic_frame_validator_changes'] ) && is_array( $parsed['semantic_frame_validator_changes'] ) ? $parsed['semantic_frame_validator_changes'] : [],
 				'retrieved_examples' => isset( $parsed['retrieved_examples'] ) && is_array( $parsed['retrieved_examples'] ) ? $parsed['retrieved_examples'] : [],
 				'route_candidates' => isset( $parsed['route_candidates'] ) && is_array( $parsed['route_candidates'] ) ? $parsed['route_candidates'] : [],
 				'request_started_at' => $request_started_at,
@@ -728,6 +749,77 @@ class YoRo_REST_Run_Handler {
 		);
 
 		return rest_ensure_response( $payload );
+	}
+
+	private static function should_bypass_low_confidence_ai_confirmation( $parsed, $plan = [] ) {
+		$parsed = is_array( $parsed ) ? $parsed : [];
+		$plan   = is_array( $plan ) ? $plan : [];
+
+		if ( 'ai_router' !== sanitize_key( $parsed['parser_source'] ?? '' ) ) {
+			return false;
+		}
+
+		if ( 'orders.search' !== sanitize_text_field( $parsed['action'] ?? '' ) ) {
+			return false;
+		}
+
+		if ( ! empty( $parsed['missing'] ) || ! empty( $parsed['ambiguities'] ) ) {
+			return false;
+		}
+
+		if ( ! self::is_semantically_grounded_read_only_search_plan( $plan ) ) {
+			return false;
+		}
+
+		$params = isset( $parsed['params'] ) && is_array( $parsed['params'] )
+			? $parsed['params']
+			: [];
+
+		if ( ! empty( $params ) ) {
+			return true;
+		}
+
+		return ! empty( $parsed['summary'] ) || ! empty( $parsed['reasoning_summary'] );
+	}
+
+	private static function is_semantically_grounded_read_only_search_plan( $plan ) {
+		if ( empty( $plan ) || ! is_array( $plan ) ) {
+			return false;
+		}
+
+		$actions = [];
+
+		if ( ! empty( $plan['action'] ) ) {
+			$actions[] = sanitize_text_field( $plan['action'] );
+		}
+
+		if ( ! empty( $plan['steps'] ) && is_array( $plan['steps'] ) ) {
+			foreach ( $plan['steps'] as $step ) {
+				if ( ! is_array( $step ) || empty( $step['action'] ) ) {
+					continue;
+				}
+
+				$actions[] = sanitize_text_field( $step['action'] );
+			}
+		}
+
+		$actions = array_values( array_unique( array_filter( $actions ) ) );
+
+		if ( [ 'orders.search' ] !== $actions ) {
+			return false;
+		}
+
+		if ( ! class_exists( 'YoRo_Action_Registry' ) ) {
+			return false;
+		}
+
+		$action_def = YoRo_Action_Registry::get( 'orders.search' );
+
+		if ( ! is_array( $action_def ) ) {
+			return false;
+		}
+
+		return empty( $action_def['write_action'] ) && empty( $action_def['requires_confirmation'] );
 	}
 
 	private static function build_run_telemetry( $timings, $request_started_at ) {

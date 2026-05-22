@@ -51,6 +51,9 @@ class YoRo_Command_Decision_Normalizer {
 					],
 					'required'             => [ 'matched_terms', 'referenced_context', 'notes' ],
 				],
+				'semantic_frame' => class_exists( 'YoRo_Semantic_Frame_Normalizer' )
+					? YoRo_Semantic_Frame_Normalizer::schema()
+					: [ 'type' => 'object' ],
 				'clarification_question' => [ 'type' => 'string' ],
 				'summary' => [ 'type' => 'string' ],
 				'reasoning_summary' => [ 'type' => 'string' ],
@@ -67,7 +70,7 @@ class YoRo_Command_Decision_Normalizer {
 					],
 				],
 			],
-			'required'             => [ 'mode', 'language', 'intent_family', 'action', 'params', 'confidence', 'missing', 'ambiguities', 'evidence', 'clarification_question', 'summary', 'reasoning_summary', 'suggestions' ],
+			'required'             => [ 'mode', 'language', 'intent_family', 'action', 'params', 'confidence', 'missing', 'ambiguities', 'evidence', 'semantic_frame', 'clarification_question', 'summary', 'reasoning_summary', 'suggestions' ],
 		];
 	}
 
@@ -153,7 +156,7 @@ class YoRo_Command_Decision_Normalizer {
 		if ( ! is_array( $decision ) ) {
 			return new WP_Error(
 				'yoro_invalid_command_decision',
-				__( 'Invalid command decision.', 'yoro-agent-core' )
+				__( 'Invalid command decision.', 'yoro-ai-core' )
 			);
 		}
 
@@ -169,7 +172,7 @@ class YoRo_Command_Decision_Normalizer {
 		if ( 'task_request' === $mode && ! $catalog_item ) {
 			return new WP_Error(
 				'yoro_unknown_command_decision_action',
-				__( 'AI selected an action that is not available.', 'yoro-agent-core' )
+				__( 'I understood the request, but it mapped to an action YoRo does not support yet.', 'yoro-ai-core' )
 			);
 		}
 
@@ -195,6 +198,7 @@ class YoRo_Command_Decision_Normalizer {
 			'missing'                => self::normalize_string_list( $decision['missing'] ?? [] ),
 			'ambiguities'            => self::normalize_string_list( $decision['ambiguities'] ?? [] ),
 			'evidence'               => isset( $decision['evidence'] ) && is_array( $decision['evidence'] ) ? $decision['evidence'] : [],
+			'semantic_frame'         => class_exists( 'YoRo_Semantic_Frame_Normalizer' ) ? YoRo_Semantic_Frame_Normalizer::normalize( $decision['semantic_frame'] ?? [] ) : [],
 			'clarification_question' => self::normalize_response_copy( $decision['clarification_question'] ?? '', $mode ),
 			'summary'                => self::normalize_response_copy( $decision['summary'] ?? '', $mode ),
 			'reasoning_summary'      => self::normalize_response_copy( $decision['reasoning_summary'] ?? '', $mode ),
@@ -239,11 +243,15 @@ class YoRo_Command_Decision_Normalizer {
 			'orders.update_status'                      => 'update_order_status',
 			'orders.bulk_update_status_with_note'       => 'update_order_status',
 			'orders.hold'                               => 'hold_order',
-			'orders.add_note'                           => 'add_note',
-			'orders.compose_customer_email'             => 'customer_email',
-			'orders.save_customer_email_draft'          => 'customer_email',
-			'orders.send_customer_email'                => 'customer_email',
-			'workflow.write_email_for_order'            => 'customer_email',
+				'orders.add_note'                           => 'add_note',
+				'orders.compose_customer_email'             => 'customer_email',
+				'orders.get_customer_email_drafts'          => 'customer_email',
+				'orders.save_customer_email_draft'          => 'customer_email',
+				'orders.update_customer_email_draft'        => 'customer_email',
+				'orders.delete_customer_email_draft'        => 'customer_email',
+				'orders.render_customer_email_preview'      => 'customer_email',
+				'orders.send_customer_email'                => 'customer_email',
+				'workflow.write_email_for_order'            => 'customer_email',
 			'workflow.write_and_save_email_draft_for_order' => 'customer_email',
 			'workflow.write_and_send_email_for_order'   => 'customer_email',
 			'workflow.review_suspicious_order'          => 'review_suspicious_order',
@@ -291,8 +299,12 @@ class YoRo_Command_Decision_Normalizer {
 
 		$text = trim( preg_replace( '/\s+/', ' ', $text ) );
 
+		if ( class_exists( 'YoRo_Response_UX_Formatter' ) ) {
+			$text = YoRo_Response_UX_Formatter::clean_user_facing_copy( $text );
+		}
+
 		if ( 'chat_only' === $mode && preg_match( '/\bidentity information\b|\bno WooCommerce task\b/i', $text ) ) {
-			return __( 'I don’t know who you are from this chat alone. I can use store context when you ask about orders, customers, or operations.', 'yoro-agent-core' );
+			return __( 'I don’t know who you are from this chat alone. I can use store context when you ask about orders, customers, or operations.', 'yoro-ai-core' );
 		}
 
 		if ( in_array( $mode, [ 'chat_only', 'out_of_scope' ], true ) && preg_match( '/\bcasual conversation\b|\bchat mode\b|\bclassifier\b/i', $text ) ) {
@@ -300,16 +312,16 @@ class YoRo_Command_Decision_Normalizer {
 		}
 
 		if ( 'chat_only' === $mode && $had_classifier_intro && preg_match( '/^I can help with WooCommerce store operations\.?$/i', $text ) ) {
-			return __( 'Hi. I can help with WooCommerce store operations.', 'yoro-agent-core' );
+			return __( 'Hi. I can help with WooCommerce store operations.', 'yoro-ai-core' );
 		}
 
 		if ( '' === $text ) {
 			if ( 'chat_only' === $mode ) {
-				return __( 'Hi. I can help with WooCommerce store operations.', 'yoro-agent-core' );
+				return __( 'Hi. I can help with WooCommerce store operations.', 'yoro-ai-core' );
 			}
 
 			if ( 'out_of_scope' === $mode ) {
-				return __( 'I’m focused on WooCommerce store operations, so I can’t help with that topic here.', 'yoro-agent-core' );
+				return __( 'I’m focused on WooCommerce store operations, so I can’t help with that topic here.', 'yoro-ai-core' );
 			}
 
 			return '';

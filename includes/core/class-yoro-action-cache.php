@@ -89,7 +89,7 @@ class YoRo_Action_Cache {
 					'group'   => $group,
 					'group_version' => self::get_group_version( $group ),
 					'context' => self::normalize_value( $context ),
-					'version' => YORO_AGENT_CORE_VERSION,
+					'version' => YORO_AI_CORE_VERSION,
 				]
 			)
 		);

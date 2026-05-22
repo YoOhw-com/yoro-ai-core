@@ -95,14 +95,15 @@
 		const deliveryMode = branch.delivery_mode || '';
 		const emailDeliveryMode = branch.email_delivery_mode || '';
 
-		if (definitionId === 'write_email_for_order') {
+		if (definitionId === 'write_email_for_order' || definitionId === 'write_email_for_orders' || definitionId === 'write_and_save_email_drafts_for_orders' || definitionId === 'write_and_send_emails_for_orders') {
+			const plural = definitionId === 'write_email_for_orders' || definitionId === 'write_and_save_email_drafts_for_orders' || definitionId === 'write_and_send_emails_for_orders';
 			if (deliveryMode === 'save_draft') {
-				return { label: 'Save as draft', successTitle: 'Email draft saved', successMessage: 'I wrote the email and saved the draft on the order.' };
+				return { label: 'Save as draft', successTitle: plural ? 'Email drafts saved' : 'Email draft saved', successMessage: plural ? 'I wrote the emails and saved drafts on each order.' : 'I wrote the email and saved the draft on the order.' };
 			}
 			if (deliveryMode === 'send') {
-				return { label: 'Send email', successTitle: 'Email sent', successMessage: 'I wrote the email and sent it to the customer.' };
+				return { label: 'Send email', successTitle: plural ? 'Emails sent' : 'Email sent', successMessage: plural ? 'I wrote the emails and sent them to the customers.' : 'I wrote the email and sent it to the customer.' };
 			}
-			return { label: 'Preview email', successTitle: 'Email ready for review', successMessage: 'I prepared the email below for review.' };
+			return { label: 'Preview email', successTitle: plural ? 'Emails ready for review' : 'Email ready for review', successMessage: plural ? 'I prepared the emails below for review.' : 'I prepared the email below for review.' };
 		}
 
 		if (definitionId === 'verify_customer_before_fulfillment') {
@@ -886,27 +887,14 @@
 			stepResult.display_type === 'customer_email_preview' &&
 			typeof h.renderCustomerEmailPreviewResult === 'function'
 		) {
-			let html = '';
-
-			html += renderWorkflowStepCard(
-				'Customer email drafted',
-				'<p>Please review the email below before sending it.</p>',
-				'success',
-				h
-			);
-
-			html += '<div class="yoro-workflow-email-preview">';
-			html += h.renderCustomerEmailPreviewResult({
+			return '<div class="yoro-workflow-email-preview">' + h.renderCustomerEmailPreviewResult({
 				success: true,
 				stage: 'done',
 				parsed: {
 					action: stepResult.action || 'orders.compose_customer_email'
 				},
 				result: stepResult
-			});
-			html += '</div>';
-
-			return html;
+			}) + '</div>';
 		}
 
 		const email = stepResult.email || {};
@@ -998,6 +986,12 @@
 		const h = getHelpers(helpers);
 		const result = data.result || {};
 		const actions = Array.isArray(result.actions) ? result.actions : [];
+		const workflow = result.workflow || {};
+		const isMultiOrderEmailWorkflow = [
+			'write_email_for_orders',
+			'write_and_save_email_drafts_for_orders',
+			'write_and_send_emails_for_orders'
+		].indexOf(workflow.definition_id || workflow.type || '') !== -1;
 
 		const hasPendingEmail = actions.some(function(item) {
 			const stepResult = item && item.result ? item.result : {};
@@ -1008,7 +1002,7 @@
 		const emailPreviewResult = hasPendingEmail
 			? findBestWorkflowEmailPreview(actions)
 			: null;
-		const branchMeta = getWorkflowBranchMeta(result.workflow || {});
+		const branchMeta = getWorkflowBranchMeta(workflow);
 
 		let html = '<div class="yoro-workflow-result">';
 		html += '<div class="yoro-result-notice yoro-result-success">';
@@ -1023,9 +1017,32 @@
 		html += '</div>';
 
 		html += '<div class="yoro-workflow-result-body">';
-		html += renderWorkflowCompositionNotice(result.workflow || {}, h);
-		html += renderWorkflowStatePanel(result.workflow || {}, h);
-		if (emailPreviewResult && typeof h.renderCustomerEmailPreviewResult === 'function') {
+		html += renderWorkflowCompositionNotice(workflow, h);
+		html += renderWorkflowStatePanel(workflow, h);
+		if (isMultiOrderEmailWorkflow) {
+			actions.forEach(function(item) {
+				const action = item.action || '';
+				const stepResult = item.result || {};
+
+				if (!shouldRenderWorkflowResultStep(item, hasPendingEmail)) {
+					return;
+				}
+
+				const renderer = workflowRenderers[action] && workflowRenderers[action].result;
+
+				if (typeof renderer === 'function') {
+					html += renderer(stepResult, item, h);
+					return;
+				}
+
+				html += renderWorkflowStepCard(
+					action,
+					renderWorkflowRawJsonDetails(stepResult, h),
+					'neutral',
+					h
+				);
+			});
+		} else if (emailPreviewResult && typeof h.renderCustomerEmailPreviewResult === 'function') {
 			html += '<div class="yoro-workflow-email-preview">';
 			html += h.renderCustomerEmailPreviewResult({
 				success: true,

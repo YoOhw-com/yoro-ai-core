@@ -8,7 +8,7 @@ class YoRo_Store_Operations_Service {
 
 	public static function get_operations_summary( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-agent-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
 		}
 
 		$window_key = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( $params['window'] ?? 'today' );
@@ -135,7 +135,7 @@ class YoRo_Store_Operations_Service {
 
 	public static function get_operations_attention_queue( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-agent-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
 		}
 
 		$limit                = isset( $params['limit'] ) ? absint( $params['limit'] ) : 5;
@@ -153,8 +153,8 @@ class YoRo_Store_Operations_Service {
 				$queues = [
 					YoRo_Orders_Read_Service::operations_build_attention_queue(
 						'pending_payment_older_than_24h',
-						__( 'Pending payment older than 24h', 'yoro-agent-core' ),
-						__( 'Orders still pending payment after 24 hours.', 'yoro-agent-core' ),
+						__( 'Pending payment older than 24h', 'yoro-ai-core' ),
+						__( 'Orders still pending payment after 24 hours.', 'yoro-ai-core' ),
 						[
 							'status'       => [ 'pending' ],
 							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-24 hours' ),
@@ -163,8 +163,8 @@ class YoRo_Store_Operations_Service {
 					),
 					YoRo_Orders_Read_Service::operations_build_attention_queue(
 						'processing_older_than_72h',
-						__( 'Processing older than 72h', 'yoro-agent-core' ),
-						__( 'Paid/open orders that may need fulfillment follow-up.', 'yoro-agent-core' ),
+						__( 'Processing older than 72h', 'yoro-ai-core' ),
+						__( 'Paid/open orders that may need fulfillment follow-up.', 'yoro-ai-core' ),
 						[
 							'status'       => [ 'processing' ],
 							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-72 hours' ),
@@ -173,8 +173,8 @@ class YoRo_Store_Operations_Service {
 					),
 					YoRo_Orders_Read_Service::operations_build_attention_queue(
 						'on_hold_older_than_48h',
-						__( 'On-hold older than 48h', 'yoro-agent-core' ),
-						__( 'On-hold orders that have not moved for two days.', 'yoro-agent-core' ),
+						__( 'On-hold older than 48h', 'yoro-ai-core' ),
+						__( 'On-hold orders that have not moved for two days.', 'yoro-ai-core' ),
 						[
 							'status'       => [ 'on-hold' ],
 							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-48 hours' ),
@@ -183,8 +183,8 @@ class YoRo_Store_Operations_Service {
 					),
 					YoRo_Orders_Read_Service::operations_build_attention_queue(
 						'recent_failed_orders',
-						__( 'Recent failed orders', 'yoro-agent-core' ),
-						__( 'Failed checkout/payment attempts from the last 7 days.', 'yoro-agent-core' ),
+						__( 'Recent failed orders', 'yoro-ai-core' ),
+						__( 'Failed checkout/payment attempts from the last 7 days.', 'yoro-ai-core' ),
 						[
 							'status'       => [ 'failed' ],
 							'date_created' => YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-7 days' ) . '...' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( 'now' ),
@@ -311,7 +311,7 @@ class YoRo_Store_Operations_Service {
 				'topic'   => 'pending_payment_older_than_24h',
 				'score'   => absint( $queue_map['pending_payment_older_than_24h']['count'] ?? 0 ) + 120,
 				'tone'    => 'warning',
-				'title'   => __( 'Pending payment orders are still stacking up', 'yoro-agent-core' ),
+				'title'   => __( 'Pending payment orders are still stacking up', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $queue_map['pending_payment_older_than_24h']['description'] ?? '' ),
 			];
 		}
@@ -321,7 +321,7 @@ class YoRo_Store_Operations_Service {
 				'topic'   => 'processing_older_than_72h',
 				'score'   => absint( $queue_map['processing_older_than_72h']['count'] ?? 0 ) + 90,
 				'tone'    => 'watch',
-				'title'   => __( 'Aging processing orders still need operational follow-through', 'yoro-agent-core' ),
+				'title'   => __( 'Aging processing orders still need operational follow-through', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $queue_map['processing_older_than_72h']['description'] ?? '' ),
 			];
 		}
@@ -331,7 +331,7 @@ class YoRo_Store_Operations_Service {
 				'topic'   => 'on_hold_older_than_48h',
 				'score'   => absint( $queue_map['on_hold_older_than_48h']['count'] ?? 0 ) + 60,
 				'tone'    => 'watch',
-				'title'   => __( 'On-hold orders are still waiting for a decision', 'yoro-agent-core' ),
+				'title'   => __( 'On-hold orders are still waiting for a decision', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $queue_map['on_hold_older_than_48h']['description'] ?? '' ),
 			];
 		}
@@ -341,7 +341,7 @@ class YoRo_Store_Operations_Service {
 				'topic'   => 'high_value_open_orders',
 				'score'   => absint( $queue_map['high_value_open_orders']['count'] ?? 0 ) + 80,
 				'tone'    => 'positive',
-				'title'   => __( 'High-value open orders deserve a direct check', 'yoro-agent-core' ),
+				'title'   => __( 'High-value open orders deserve a direct check', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $queue_map['high_value_open_orders']['description'] ?? '' ),
 			];
 		}
@@ -351,7 +351,7 @@ class YoRo_Store_Operations_Service {
 				'topic'   => 'recent_failed_orders',
 				'score'   => absint( $queue_map['recent_failed_orders']['count'] ?? 0 ) + 40,
 				'tone'    => 'neutral',
-				'title'   => __( 'Recent failed orders are worth a quick recovery pass', 'yoro-agent-core' ),
+				'title'   => __( 'Recent failed orders are worth a quick recovery pass', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $queue_map['recent_failed_orders']['description'] ?? '' ),
 			];
 		}
@@ -395,9 +395,9 @@ class YoRo_Store_Operations_Service {
 		$sequence[] = [
 			'kind'    => 'view',
 			'topic'   => 'operations_overview',
-			'label'   => __( 'Review today\'s operating picture', 'yoro-agent-core' ),
+			'label'   => __( 'Review today\'s operating picture', 'yoro-ai-core' ),
 			'command' => 'Show operations summary for today',
-			'reason'  => __( 'Use this last when you want the broader store picture after the queue-specific checks.', 'yoro-agent-core' ),
+			'reason'  => __( 'Use this last when you want the broader store picture after the queue-specific checks.', 'yoro-ai-core' ),
 		];
 
 		return $sequence;
@@ -573,14 +573,14 @@ class YoRo_Store_Operations_Service {
 
 		if ( sanitize_text_field( $ranked_case['primary_command'] ?? '' ) !== $details_command ) {
 			$actions[] = [
-				'label'   => __( 'Open order details', 'yoro-agent-core' ),
+				'label'   => __( 'Open order details', 'yoro-ai-core' ),
 				'command' => $details_command,
 			];
 		}
 
 		if ( $include_queue_action ) {
 			$actions[] = [
-				'label'   => __( 'Find related orders', 'yoro-agent-core' ),
+				'label'   => __( 'Find related orders', 'yoro-ai-core' ),
 				'command' => 'Find orders by identity for order ' . absint( $order['id'] ?? 0 ),
 			];
 		}
@@ -588,7 +588,7 @@ class YoRo_Store_Operations_Service {
 		return [
 			'topic'   => $topic,
 			'title'   => sprintf(
-				__( 'Start with order #%s', 'yoro-agent-core' ),
+				__( 'Start with order #%s', 'yoro-ai-core' ),
 				sanitize_text_field( $order['number'] ?? $order['id'] ?? '' )
 			),
 			'meta'    => trim(
@@ -618,7 +618,7 @@ class YoRo_Store_Operations_Service {
 		}
 
 		if ( 'pending_payment_older_than_24h' === $topic ) {
-			return 'Write email for order #' . $order_id . ' about: ' . __( 'Payment follow-up may be useful.', 'yoro-agent-core' );
+			return 'Write email for order #' . $order_id . ' about: ' . __( 'Payment follow-up may be useful.', 'yoro-ai-core' );
 		}
 
 		if ( 'processing_older_than_72h' === $topic ) {
@@ -626,11 +626,11 @@ class YoRo_Store_Operations_Service {
 		}
 
 		if ( 'on_hold_older_than_48h' === $topic ) {
-			return 'Write email for order #' . $order_id . ' about: ' . __( 'Order is still on hold and may need clarification.', 'yoro-agent-core' );
+			return 'Write email for order #' . $order_id . ' about: ' . __( 'Order is still on hold and may need clarification.', 'yoro-ai-core' );
 		}
 
 		if ( 'recent_failed_orders' === $topic ) {
-			return 'Write email for order #' . $order_id . ' about: ' . __( 'Failed checkout may need support follow-up.', 'yoro-agent-core' );
+			return 'Write email for order #' . $order_id . ' about: ' . __( 'Failed checkout may need support follow-up.', 'yoro-ai-core' );
 		}
 
 		if ( 'high_value_open_orders' === $topic ) {
@@ -643,34 +643,34 @@ class YoRo_Store_Operations_Service {
 	private static function get_operations_attention_primary_action_label( $topic ) {
 		switch ( sanitize_key( $topic ) ) {
 			case 'pending_payment_older_than_24h':
-				return __( 'Draft payment follow-up', 'yoro-agent-core' );
+				return __( 'Draft payment follow-up', 'yoro-ai-core' );
 			case 'processing_older_than_72h':
-				return __( 'Preview delay email', 'yoro-agent-core' );
+				return __( 'Preview delay email', 'yoro-ai-core' );
 			case 'on_hold_older_than_48h':
-				return __( 'Draft on-hold reply', 'yoro-agent-core' );
+				return __( 'Draft on-hold reply', 'yoro-ai-core' );
 			case 'recent_failed_orders':
-				return __( 'Draft support reply', 'yoro-agent-core' );
+				return __( 'Draft support reply', 'yoro-ai-core' );
 			case 'high_value_open_orders':
-				return __( 'Open high-value order', 'yoro-agent-core' );
+				return __( 'Open high-value order', 'yoro-ai-core' );
 			default:
-				return __( 'Review order', 'yoro-agent-core' );
+				return __( 'Review order', 'yoro-ai-core' );
 		}
 	}
 
 	private static function get_operations_attention_sequence_label( $topic ) {
 		switch ( sanitize_key( $topic ) ) {
 			case 'pending_payment_older_than_24h':
-				return __( 'Review the next pending payment case', 'yoro-agent-core' );
+				return __( 'Review the next pending payment case', 'yoro-ai-core' );
 			case 'processing_older_than_72h':
-				return __( 'Review the next aging processing case', 'yoro-agent-core' );
+				return __( 'Review the next aging processing case', 'yoro-ai-core' );
 			case 'on_hold_older_than_48h':
-				return __( 'Review the next on-hold case', 'yoro-agent-core' );
+				return __( 'Review the next on-hold case', 'yoro-ai-core' );
 			case 'recent_failed_orders':
-				return __( 'Review the next failed order', 'yoro-agent-core' );
+				return __( 'Review the next failed order', 'yoro-ai-core' );
 			case 'high_value_open_orders':
-				return __( 'Review the next high-value open order', 'yoro-agent-core' );
+				return __( 'Review the next high-value open order', 'yoro-ai-core' );
 			default:
-				return __( 'Review the next attention case', 'yoro-agent-core' );
+				return __( 'Review the next attention case', 'yoro-ai-core' );
 		}
 	}
 
@@ -681,17 +681,17 @@ class YoRo_Store_Operations_Service {
 	private static function get_operations_attention_topic_meta_label( $topic ) {
 		switch ( sanitize_key( $topic ) ) {
 			case 'pending_payment_older_than_24h':
-				return __( 'Pending payment', 'yoro-agent-core' );
+				return __( 'Pending payment', 'yoro-ai-core' );
 			case 'processing_older_than_72h':
-				return __( 'Aging processing', 'yoro-agent-core' );
+				return __( 'Aging processing', 'yoro-ai-core' );
 			case 'on_hold_older_than_48h':
-				return __( 'On-hold follow-up', 'yoro-agent-core' );
+				return __( 'On-hold follow-up', 'yoro-ai-core' );
 			case 'recent_failed_orders':
-				return __( 'Failed checkout', 'yoro-agent-core' );
+				return __( 'Failed checkout', 'yoro-ai-core' );
 			case 'high_value_open_orders':
-				return __( 'High-value open', 'yoro-agent-core' );
+				return __( 'High-value open', 'yoro-ai-core' );
 			default:
-				return __( 'Attention case', 'yoro-agent-core' );
+				return __( 'Attention case', 'yoro-ai-core' );
 		}
 	}
 
@@ -702,17 +702,17 @@ class YoRo_Store_Operations_Service {
 
 		switch ( sanitize_key( $topic ) ) {
 			case 'pending_payment_older_than_24h':
-				return sprintf( __( 'Payment is still pending after %d hours and now needs a direct review.', 'yoro-agent-core' ), $age_hours );
+				return sprintf( __( 'Payment is still pending after %d hours and now needs a direct review.', 'yoro-ai-core' ), $age_hours );
 			case 'processing_older_than_72h':
-				return sprintf( __( 'This processing order has been open for %d hours without clearing the operations queue.', 'yoro-agent-core' ), $age_hours );
+				return sprintf( __( 'This processing order has been open for %d hours without clearing the operations queue.', 'yoro-ai-core' ), $age_hours );
 			case 'on_hold_older_than_48h':
-				return sprintf( __( 'This order has been sitting on hold for %d hours and may need a decision or follow-up.', 'yoro-agent-core' ), $age_hours );
+				return sprintf( __( 'This order has been sitting on hold for %d hours and may need a decision or follow-up.', 'yoro-ai-core' ), $age_hours );
 			case 'recent_failed_orders':
-				return __( 'A recent failed checkout is still visible here and may need a quick recovery pass.', 'yoro-agent-core' );
+				return __( 'A recent failed checkout is still visible here and may need a quick recovery pass.', 'yoro-ai-core' );
 			case 'high_value_open_orders':
-				return $total ? sprintf( __( 'This open order is worth %s and deserves a direct check while it is still unresolved.', 'yoro-agent-core' ), $total ) : __( 'This open order deserves a direct check while it is still unresolved.', 'yoro-agent-core' );
+				return $total ? sprintf( __( 'This open order is worth %s and deserves a direct check while it is still unresolved.', 'yoro-ai-core' ), $total ) : __( 'This open order deserves a direct check while it is still unresolved.', 'yoro-ai-core' );
 			default:
-				return sanitize_text_field( $ranked_case['queue_description'] ?? __( 'This order still needs attention.', 'yoro-agent-core' ) );
+				return sanitize_text_field( $ranked_case['queue_description'] ?? __( 'This order still needs attention.', 'yoro-ai-core' ) );
 		}
 	}
 
@@ -722,19 +722,19 @@ class YoRo_Store_Operations_Service {
 
 		switch ( sanitize_key( $topic ) ) {
 			case 'pending_payment_older_than_24h':
-				return __( 'Use this first if you want the clearest payment-delay case before the rest of the queue ages further.', 'yoro-agent-core' );
+				return __( 'Use this first if you want the clearest payment-delay case before the rest of the queue ages further.', 'yoro-ai-core' );
 			case 'processing_older_than_72h':
-				return __( 'Use this next when you want to confirm whether operations delay is turning into a fulfillment problem.', 'yoro-agent-core' );
+				return __( 'Use this next when you want to confirm whether operations delay is turning into a fulfillment problem.', 'yoro-ai-core' );
 			case 'on_hold_older_than_48h':
-				return __( 'Use this when older on-hold orders are likely to need an explicit decision instead of waiting longer.', 'yoro-agent-core' );
+				return __( 'Use this when older on-hold orders are likely to need an explicit decision instead of waiting longer.', 'yoro-ai-core' );
 			case 'recent_failed_orders':
-				return __( 'Use this when you want a quick recovery check on checkout problems before they go cold.', 'yoro-agent-core' );
+				return __( 'Use this when you want a quick recovery check on checkout problems before they go cold.', 'yoro-ai-core' );
 			case 'high_value_open_orders':
-				return __( 'Use this when you want the highest commercial exposure checked before lower-value backlog.', 'yoro-agent-core' );
+				return __( 'Use this when you want the highest commercial exposure checked before lower-value backlog.', 'yoro-ai-core' );
 			default:
 				return $age_hours > 0
-					? sprintf( __( 'This case has been waiting for %d hours and deserves a direct review.', 'yoro-agent-core' ), $age_hours )
-					: __( 'This case deserves a direct review.', 'yoro-agent-core' );
+					? sprintf( __( 'This case has been waiting for %d hours and deserves a direct review.', 'yoro-ai-core' ), $age_hours )
+					: __( 'This case deserves a direct review.', 'yoro-ai-core' );
 		}
 	}
 }

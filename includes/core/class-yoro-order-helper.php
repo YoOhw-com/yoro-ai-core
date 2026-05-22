@@ -10,7 +10,7 @@ class YoRo_Order_Helper {
 		$text = (string) $text;
 		$order_ids = [];
 
-		if ( preg_match_all( '/(?:orders?|order\s+ids?)\s*(?:#?\d+(?:\s*(?:,|and|&)\s*#?\d+)*)/i', $text, $groups ) ) {
+		if ( preg_match_all( '/(?:orders?|order\s+ids?)\s*(?:#?\d+(?:\s*(?:,|,?\s*and|&)\s*#?\d+)*)/i', $text, $groups ) ) {
 			foreach ( $groups[0] as $group ) {
 				if ( preg_match_all( '/#?(\d+)\b/', $group, $matches ) ) {
 					foreach ( $matches[1] as $id ) {
@@ -142,6 +142,69 @@ class YoRo_Order_Helper {
 
 			if ( preg_match( $pattern, $text ) ) {
 				return $status;
+			}
+		}
+
+		return '';
+	}
+
+	public static function detect_status_from_search_semantics( $text ) {
+		$text = strtolower( trim( (string) $text ) );
+
+		if ( '' === $text ) {
+			return '';
+		}
+
+		$detected = self::detect_status_from_text( $text );
+
+		if ( '' !== $detected ) {
+			return $detected;
+		}
+
+		$semantic_aliases = [
+			'refunded'  => [
+				'refund',
+				'refunds',
+				'refunded',
+			],
+			'failed'    => [
+				'fail',
+				'fails',
+				'failed',
+				'failing',
+			],
+			'cancelled' => [
+				'cancel',
+				'cancels',
+				'cancelled',
+				'canceled',
+			],
+			'completed' => [
+				'complete',
+				'completes',
+				'completed',
+			],
+			'processing' => [
+				'process',
+				'processing',
+			],
+			'pending' => [
+				'pending',
+			],
+			'on-hold' => [
+				'hold',
+				'on hold',
+				'on-hold',
+			],
+		];
+
+		foreach ( $semantic_aliases as $status => $aliases ) {
+			foreach ( $aliases as $alias ) {
+				$pattern = '/\b' . preg_quote( $alias, '/' ) . '\b(?:\s+(?:order|orders))?/i';
+
+				if ( preg_match( $pattern, $text ) ) {
+					return $status;
+				}
 			}
 		}
 

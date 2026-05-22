@@ -40,7 +40,7 @@ class YoRo_Action_Intent_Extractor {
 			$requested[] = [
 				'kind'     => 'status_with_note',
 				'action'   => 'orders.bulk_update_status_with_note',
-				'label'    => __( 'Update order status with note', 'yoro-agent-core' ),
+				'label'    => __( 'Update order status with note', 'yoro-ai-core' ),
 				'position' => $status_position,
 				'params'   => [
 					'status' => $status,
@@ -52,7 +52,7 @@ class YoRo_Action_Intent_Extractor {
 			$requested[] = [
 				'kind'     => 'update_status',
 				'action'   => 'orders.update_status',
-				'label'    => __( 'Update order status', 'yoro-agent-core' ),
+				'label'    => __( 'Update order status', 'yoro-ai-core' ),
 				'position' => $status_position,
 				'params'   => [
 					'status' => $status,
@@ -65,7 +65,7 @@ class YoRo_Action_Intent_Extractor {
 			$requested[] = [
 				'kind'     => 'hold',
 				'action'   => 'orders.hold',
-				'label'    => __( 'Put order on hold', 'yoro-agent-core' ),
+				'label'    => __( 'Put order on hold', 'yoro-ai-core' ),
 				'position' => $hold_position,
 				'params'   => [],
 			];
@@ -75,7 +75,7 @@ class YoRo_Action_Intent_Extractor {
 			$requested[] = [
 				'kind'     => 'add_note',
 				'action'   => 'orders.add_note',
-				'label'    => __( 'Add internal note', 'yoro-agent-core' ),
+				'label'    => __( 'Add internal note', 'yoro-ai-core' ),
 				'position' => $note_position,
 				'params'   => [
 					'note' => $note,
@@ -93,7 +93,7 @@ class YoRo_Action_Intent_Extractor {
 			$requested[] = [
 				'kind'     => 'write_email',
 				'action'   => 'orders.compose_customer_email',
-				'label'    => __( 'Compose customer email', 'yoro-agent-core' ),
+				'label'    => __( 'Compose customer email', 'yoro-ai-core' ),
 				'position' => $email_position,
 				'params'   => [
 					'instruction'   => '' !== $instruction ? $instruction : sanitize_textarea_field( $command ),
@@ -204,17 +204,17 @@ class YoRo_Action_Intent_Extractor {
 			[
 				'pattern' => '/\b(?:shipping\s+label|shipment\s+label|print\s+label|book\s+shipment|create\s+shipment)\b/i',
 				'key'     => 'shipping_label',
-				'label'   => __( 'Shipping label or shipment booking', 'yoro-agent-core' ),
+				'label'   => __( 'Shipping label or shipment booking', 'yoro-ai-core' ),
 			],
 			[
 				'pattern' => '/\b(?:hubspot|slack|google\s+sheets|crm|sync\s+to)\b/i',
 				'key'     => 'external_sync',
-				'label'   => __( 'External sync or third-party integration', 'yoro-agent-core' ),
+				'label'   => __( 'External sync or third-party integration', 'yoro-ai-core' ),
 			],
 			[
 				'pattern' => '/\b(?:create|make|open)\b.*?\b(?:new\s+order|draft\s+order|manual\s+order)\b/i',
 				'key'     => 'order_authoring',
-				'label'   => __( 'Create or author a new order', 'yoro-agent-core' ),
+				'label'   => __( 'Create or author a new order', 'yoro-ai-core' ),
 			],
 		];
 
@@ -225,7 +225,7 @@ class YoRo_Action_Intent_Extractor {
 				$unavailable[] = [
 					'key'     => sanitize_key( $item['key'] ),
 					'label'   => sanitize_text_field( $item['label'] ),
-					'message' => __( 'Not available yet in YoRo.', 'yoro-agent-core' ),
+					'message' => __( 'Not available yet in YoRo.', 'yoro-ai-core' ),
 				];
 			}
 		}

@@ -11,7 +11,7 @@ class YoRo_AI_Workflow_Validator {
 		if ( ! is_array( $parsed ) ) {
 			return new WP_Error(
 				'yoro_ai_invalid_workflow',
-				__( 'Invalid AI workflow.', 'yoro-agent-core' )
+				__( 'I could not build a valid workflow for this request.', 'yoro-ai-core' )
 			);
 		}
 
@@ -20,7 +20,7 @@ class YoRo_AI_Workflow_Validator {
 		if ( empty( $steps ) || ! is_array( $steps ) ) {
 			return new WP_Error(
 				'yoro_ai_empty_workflow',
-				__( 'AI workflow has no steps.', 'yoro-agent-core' )
+				__( 'I could not find any workflow steps to run.', 'yoro-ai-core' )
 			);
 		}
 
@@ -30,7 +30,7 @@ class YoRo_AI_Workflow_Validator {
 			return new WP_Error(
 				'yoro_ai_workflow_too_large',
 				sprintf(
-					__( 'AI workflow exceeds maximum step limit (%d).', 'yoro-agent-core' ),
+					__( 'This workflow is too large to run safely. Please keep it to %d steps or fewer.', 'yoro-ai-core' ),
 					$max_steps
 				)
 			);
@@ -47,7 +47,7 @@ class YoRo_AI_Workflow_Validator {
 			if ( empty( $action ) ) {
 				return new WP_Error(
 					'yoro_ai_missing_action',
-					__( 'AI workflow contains an empty action.', 'yoro-agent-core' )
+					__( 'I could not build a valid workflow step for this request.', 'yoro-ai-core' )
 				);
 			}
 
@@ -57,7 +57,7 @@ class YoRo_AI_Workflow_Validator {
 				return new WP_Error(
 					'yoro_ai_unknown_action',
 					sprintf(
-						__( 'AI workflow uses unknown action "%s".', 'yoro-agent-core' ),
+						__( 'This workflow includes an action YoRo does not support yet: %s.', 'yoro-ai-core' ),
 						$action
 					)
 				);
@@ -78,7 +78,7 @@ class YoRo_AI_Workflow_Validator {
 					return new WP_Error(
 						'yoro_ai_missing_required_param',
 						sprintf(
-							__( 'AI workflow action "%1$s" is missing required parameter "%2$s".', 'yoro-agent-core' ),
+							__( 'The workflow step "%1$s" is missing required information: %2$s.', 'yoro-ai-core' ),
 							$action,
 							$param
 						)
@@ -98,7 +98,7 @@ class YoRo_AI_Workflow_Validator {
 				return new WP_Error(
 					'yoro_ai_forbidden_action',
 					sprintf(
-						__( 'AI workflow attempted forbidden action "%s".', 'yoro-agent-core' ),
+						__( 'Store policy blocks this workflow action: %s.', 'yoro-ai-core' ),
 						$action
 					)
 				);
@@ -122,7 +122,7 @@ class YoRo_AI_Workflow_Validator {
 				return new WP_Error(
 					'yoro_ai_retry_limit',
 					sprintf(
-						__( 'AI workflow retry limit exceeded for "%s".', 'yoro-agent-core' ),
+						__( 'This workflow asks to retry %s too many times.', 'yoro-ai-core' ),
 						$action
 					)
 				);
@@ -143,7 +143,7 @@ class YoRo_AI_Workflow_Validator {
 				return new WP_Error(
 					'yoro_ai_invalid_on_error',
 					sprintf(
-						__( 'AI workflow uses invalid on_error policy for "%s".', 'yoro-agent-core' ),
+						__( 'This workflow includes an invalid error-handling setting for %s.', 'yoro-ai-core' ),
 						$action
 					)
 				);
@@ -156,7 +156,7 @@ class YoRo_AI_Workflow_Validator {
 		if ( $write_steps > 3 ) {
 			return new WP_Error(
 				'yoro_ai_too_many_writes',
-				__( 'AI workflow contains too many write actions.', 'yoro-agent-core' )
+				__( 'This workflow contains too many store-changing actions to run safely.', 'yoro-ai-core' )
 			);
 		}
 
@@ -211,7 +211,7 @@ class YoRo_AI_Workflow_Validator {
 			) {
 				return new WP_Error(
 					'yoro_ai_missing_dependency',
-					__( 'Save draft requires compose email step first.', 'yoro-agent-core' )
+					__( 'Save draft requires compose email step first.', 'yoro-ai-core' )
 				);
 			}
 
@@ -228,7 +228,7 @@ class YoRo_AI_Workflow_Validator {
 			) {
 				return new WP_Error(
 					'yoro_ai_missing_dependency',
-					__( 'Email preview requires compose email step first.', 'yoro-agent-core' )
+					__( 'Email preview requires compose email step first.', 'yoro-ai-core' )
 				);
 			}
 

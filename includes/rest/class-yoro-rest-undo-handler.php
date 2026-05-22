@@ -16,7 +16,7 @@ class YoRo_REST_Undo_Handler {
 		if ( ! $log || empty( $log['undo_data'] ) ) {
 			return new WP_Error(
 				'yoro_no_undo',
-				__( 'Nothing to undo.', 'yoro-agent-core' )
+				__( 'Nothing to undo.', 'yoro-ai-core' )
 			);
 		}
 
@@ -28,7 +28,7 @@ class YoRo_REST_Undo_Handler {
 			if ( $created_at && ( time() - $created_at ) > $ttl ) {
 				return new WP_Error(
 					'yoro_undo_expired',
-					__( 'Undo window has expired.', 'yoro-agent-core' )
+					__( 'Undo window has expired.', 'yoro-ai-core' )
 				);
 			}
 		}
@@ -92,7 +92,7 @@ class YoRo_REST_Undo_Handler {
 
 		return [
 			'success' => true,
-			'message' => __( 'Undo completed.', 'yoro-agent-core' ),
+			'message' => __( 'Undo completed.', 'yoro-ai-core' ),
 			'type'    => 'undo_plan',
 			'count'   => count( $results ),
 			'result'  => $results,
@@ -123,7 +123,7 @@ class YoRo_REST_Undo_Handler {
 
 				return [
 					'success' => true,
-					'message' => __( 'No removable YoRo note IDs were found.', 'yoro-agent-core' ),
+					'message' => __( 'No removable YoRo note IDs were found.', 'yoro-ai-core' ),
 				];
 
 			case 'delete_email_draft':
@@ -145,7 +145,7 @@ class YoRo_REST_Undo_Handler {
 			default:
 				return [
 					'success' => false,
-					'message' => __( 'Undo not supported for this action.', 'yoro-agent-core' ),
+					'message' => __( 'Undo not supported for this action.', 'yoro-ai-core' ),
 				];
 		}
 
@@ -157,7 +157,7 @@ class YoRo_REST_Undo_Handler {
 
 		return [
 			'success' => true,
-			'message' => __( 'Undo completed.', 'yoro-agent-core' ),
+			'message' => __( 'Undo completed.', 'yoro-ai-core' ),
 			'type'    => $type,
 		];
 	}
@@ -175,7 +175,7 @@ class YoRo_REST_Undo_Handler {
 			if ( $order && ! empty( $item['previous_status'] ) ) {
 				$order->update_status(
 					$item['previous_status'],
-					__( 'Undo YoRo Agent status action.', 'yoro-agent-core' )
+					__( 'Undo YoRo AI status action.', 'yoro-ai-core' )
 				);
 
 				$restored[] = absint( $item['id'] );
@@ -185,7 +185,7 @@ class YoRo_REST_Undo_Handler {
 		if ( empty( $restored ) ) {
 			return new WP_Error(
 				'yoro_undo_restore_failed',
-				__( 'No orders were restored.', 'yoro-agent-core' )
+				__( 'No orders were restored.', 'yoro-ai-core' )
 			);
 		}
 
@@ -273,7 +273,7 @@ class YoRo_REST_Undo_Handler {
 		if ( false === $marked ) {
 			return new WP_Error(
 				'yoro_undo_mark_failed',
-				__( 'Undo completed, but YoRo could not mark the action as undone.', 'yoro-agent-core' )
+				__( 'Undo completed, but YoRo could not mark the action as undone.', 'yoro-ai-core' )
 			);
 		}
 

@@ -12,7 +12,7 @@ class YoRo_Plan_Risk_Engine {
 				'risk_level'            => 'unknown',
 				'requires_confirmation' => true,
 				'reasons'               => [
-					__( 'Invalid or unknown execution plan.', 'yoro-agent-core' ),
+					__( 'Invalid or unknown execution plan.', 'yoro-ai-core' ),
 				],
 			];
 		}
@@ -28,9 +28,9 @@ class YoRo_Plan_Risk_Engine {
 
 			if ( self::plan_has_write_action( $plan ) ) {
 				$requires_confirmation = true;
-				$reasons[] = __( 'Plan contains multiple write steps.', 'yoro-agent-core' );
+				$reasons[] = __( 'Plan contains multiple write steps.', 'yoro-ai-core' );
 			} else {
-				$reasons[] = __( 'Plan contains multiple read-only steps.', 'yoro-agent-core' );
+				$reasons[] = __( 'Plan contains multiple read-only steps.', 'yoro-ai-core' );
 			}
 		}
 
@@ -44,7 +44,7 @@ class YoRo_Plan_Risk_Engine {
 				$requires_confirmation = true;
 				$risk_level = self::max_risk( $risk_level, 'high' );
 				$reasons[] = sprintf(
-					__( 'Unknown action "%s".', 'yoro-agent-core' ),
+					__( 'Unknown action "%s".', 'yoro-ai-core' ),
 					$action_name
 				);
 				continue;
@@ -57,7 +57,7 @@ class YoRo_Plan_Risk_Engine {
 			if ( ! empty( $registered['requires_confirmation'] ) ) {
 				$requires_confirmation = true;
 				$reasons[] = sprintf(
-					__( 'Action "%s" requires confirmation.', 'yoro-agent-core' ),
+					__( 'Action "%s" requires confirmation.', 'yoro-ai-core' ),
 					$action_name
 				);
 			}
@@ -65,7 +65,7 @@ class YoRo_Plan_Risk_Engine {
 			if ( ! empty( $registered['write_action'] ) ) {
 				$requires_confirmation = true;
 				$reasons[] = sprintf(
-					__( 'Action "%s" changes store data.', 'yoro-agent-core' ),
+					__( 'Action "%s" changes store data.', 'yoro-ai-core' ),
 					$action_name
 				);
 			}
@@ -80,7 +80,7 @@ class YoRo_Plan_Risk_Engine {
 			if ( $is_write_action && $item_count > 1 ) {
 				$requires_confirmation = true;
 				$reasons[] = sprintf(
-					__( 'Action "%1$s" affects %2$d items.', 'yoro-agent-core' ),
+					__( 'Action "%1$s" affects %2$d items.', 'yoro-ai-core' ),
 					$action_name,
 					$item_count
 				);
@@ -92,12 +92,12 @@ class YoRo_Plan_Risk_Engine {
 				if ( ! empty( $registered['write_action'] ) ) {
 					$requires_confirmation = true;
 					$reasons[] = sprintf(
-						__( 'Action "%s" changes financial information.', 'yoro-agent-core' ),
+						__( 'Action "%s" changes financial information.', 'yoro-ai-core' ),
 						$action_name
 					);
 				} else {
 					$reasons[] = sprintf(
-						__( 'Action "%s" reads financial information.', 'yoro-agent-core' ),
+						__( 'Action "%s" reads financial information.', 'yoro-ai-core' ),
 						$action_name
 					);
 				}
@@ -107,7 +107,7 @@ class YoRo_Plan_Risk_Engine {
 				$requires_confirmation = true;
 				$risk_level = self::max_risk( $risk_level, 'high' );
 				$reasons[] = sprintf(
-					__( 'Action "%s" may remove or delete data.', 'yoro-agent-core' ),
+					__( 'Action "%s" may remove or delete data.', 'yoro-ai-core' ),
 					$action_name
 				);
 			}
@@ -116,7 +116,7 @@ class YoRo_Plan_Risk_Engine {
 				$requires_confirmation = true;
 				$risk_level = self::max_risk( $risk_level, 'medium' );
 				$reasons[] = sprintf(
-					__( 'Action "%s" communicates with a customer.', 'yoro-agent-core' ),
+					__( 'Action "%s" communicates with a customer.', 'yoro-ai-core' ),
 					$action_name
 				);
 			}

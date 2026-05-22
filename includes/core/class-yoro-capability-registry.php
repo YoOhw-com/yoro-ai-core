@@ -10,42 +10,42 @@ class YoRo_Capability_Registry {
 		return [
 			'woocommerce_core_operations' => [
 				'key'                       => 'woocommerce_core_operations',
-				'label'                     => __( 'WooCommerce core operations', 'yoro-agent-core' ),
+				'label'                     => __( 'WooCommerce core operations', 'yoro-ai-core' ),
 				'status'                    => 'supported',
 				'nearest_supported_surfaces'=> [ 'morning_briefing', 'operations_attention', 'latest_orders' ],
 				'developer_handoff_allowed' => false,
 			],
 			'shipping_extensions' => [
 				'key'                       => 'shipping_extensions',
-				'label'                     => __( 'Shipping extensions and shipment-related tooling', 'yoro-agent-core' ),
+				'label'                     => __( 'Shipping extensions and shipment-related tooling', 'yoro-ai-core' ),
 				'status'                    => 'partially_supported',
 				'nearest_supported_surfaces'=> [ 'fulfillment_queue', 'order_details', 'operations_summary' ],
 				'developer_handoff_allowed' => true,
 			],
 			'plugin_compatibility_questions' => [
 				'key'                       => 'plugin_compatibility_questions',
-				'label'                     => __( 'Plugin compatibility questions', 'yoro-agent-core' ),
+				'label'                     => __( 'Plugin compatibility questions', 'yoro-ai-core' ),
 				'status'                    => 'unknown',
 				'nearest_supported_surfaces'=> [ 'none' ],
 				'developer_handoff_allowed' => true,
 			],
 			'third_party_crm_and_team_integrations' => [
 				'key'                       => 'third_party_crm_and_team_integrations',
-				'label'                     => __( 'CRM, Slack, and external integrations', 'yoro-agent-core' ),
+				'label'                     => __( 'CRM, Slack, and external integrations', 'yoro-ai-core' ),
 				'status'                    => 'unsupported',
 				'nearest_supported_surfaces'=> [ 'operations_attention', 'morning_briefing', 'latest_orders' ],
 				'developer_handoff_allowed' => true,
 			],
 			'order_authoring' => [
 				'key'                       => 'order_authoring',
-				'label'                     => __( 'Order creation and authoring', 'yoro-agent-core' ),
+				'label'                     => __( 'Order creation and authoring', 'yoro-ai-core' ),
 				'status'                    => 'unsupported',
 				'nearest_supported_surfaces'=> [ 'latest_orders', 'customer_summary', 'order_details' ],
 				'developer_handoff_allowed' => true,
 			],
 			'general_world_knowledge' => [
 				'key'                       => 'general_world_knowledge',
-				'label'                     => __( 'General knowledge outside store operations', 'yoro-agent-core' ),
+				'label'                     => __( 'General knowledge outside store operations', 'yoro-ai-core' ),
 				'status'                    => 'unsupported',
 				'nearest_supported_surfaces'=> [ 'morning_briefing', 'operations_summary' ],
 				'developer_handoff_allowed' => false,
@@ -112,7 +112,7 @@ class YoRo_Capability_Registry {
 			$capability_key = self::resolve_target_family( $target_name, '', '', $parser_family );
 		}
 		$record          = self::get_family( $capability_key );
-		$target_label    = '' !== $target_name ? sanitize_text_field( $target_name ) : __( 'that tool', 'yoro-agent-core' );
+		$target_label    = '' !== $target_name ? sanitize_text_field( $target_name ) : __( 'that tool', 'yoro-ai-core' );
 		$plugin_label    = ! empty( $plugin_match['name'] ) ? sanitize_text_field( $plugin_match['name'] ) : $target_label;
 		$plugin_active   = ! empty( $plugin_match['active'] );
 		$status_override = sanitize_key( $overrides['status_override'] ?? '' );
@@ -148,53 +148,53 @@ class YoRo_Capability_Registry {
 		switch ( $capability_key ) {
 			case 'woocommerce_core_operations':
 				$decision['summary'] = '' !== $target_name && ! in_array( strtolower( $target_name ), [ 'woocommerce', 'woocommerce core', 'woo commerce' ], true )
-					? sprintf( __( 'I support WooCommerce core store operations, but I don’t confirm direct compatibility with %s from here.', 'yoro-agent-core' ), $target_label )
-					: __( 'Yes. I support WooCommerce store operations directly.', 'yoro-agent-core' );
-				$decision['followup'] = __( 'I can help with briefings, queues, order review, email follow-up, and guided operational actions inside WooCommerce.', 'yoro-agent-core' );
+					? sprintf( __( 'I support WooCommerce core store operations, but I don’t confirm direct compatibility with %s from here.', 'yoro-ai-core' ), $target_label )
+					: __( 'Yes. I support WooCommerce store operations directly.', 'yoro-ai-core' );
+				$decision['followup'] = __( 'I can help with briefings, queues, order review, email follow-up, and guided operational actions inside WooCommerce.', 'yoro-ai-core' );
 				break;
 
 			case 'shipping_extensions':
 				if ( 'carrier_integration' === $parser_family ) {
 					$decision['status'] = 'unsupported';
 					$decision['summary'] = '' !== $target_label
-						? sprintf( __( 'I can’t connect directly to %s yet.', 'yoro-agent-core' ), $target_label )
-						: __( 'I can’t connect directly to that carrier flow yet.', 'yoro-agent-core' );
-					$decision['followup'] = __( 'I can still review fulfillment and shipment-related store activity. If direct carrier support matters here, I can pass that request to the developers.', 'yoro-agent-core' );
+						? sprintf( __( 'I can’t connect directly to %s yet.', 'yoro-ai-core' ), $target_label )
+						: __( 'I can’t connect directly to that carrier flow yet.', 'yoro-ai-core' );
+					$decision['followup'] = __( 'I can still review fulfillment and shipment-related store activity. If direct carrier support matters here, I can pass that request to the developers.', 'yoro-ai-core' );
 				} elseif ( 'tracking_extension' === $parser_family ) {
-					$decision['summary'] = sprintf( __( 'I can read some tracking-related signals around %s, but I can’t confirm full compatibility yet.', 'yoro-agent-core' ), $plugin_label );
-					$decision['followup'] = __( 'I can still review tracked versus untracked fulfillment cases. If you need plugin-level compatibility confirmed, I can pass that request to the developers.', 'yoro-agent-core' );
+					$decision['summary'] = sprintf( __( 'I can read some tracking-related signals around %s, but I can’t confirm full compatibility yet.', 'yoro-ai-core' ), $plugin_label );
+					$decision['followup'] = __( 'I can still review tracked versus untracked fulfillment cases. If you need plugin-level compatibility confirmed, I can pass that request to the developers.', 'yoro-ai-core' );
 				} else {
 					$decision['summary'] = '' !== $requested_capability
-						? sprintf( __( 'I can’t confirm direct support for %s in %s yet.', 'yoro-agent-core' ), strtolower( $requested_capability ), $plugin_label )
-						: sprintf( __( 'I can’t confirm direct compatibility with %s yet.', 'yoro-agent-core' ), $plugin_label );
+						? sprintf( __( 'I can’t confirm direct support for %s in %s yet.', 'yoro-ai-core' ), strtolower( $requested_capability ), $plugin_label )
+						: sprintf( __( 'I can’t confirm direct compatibility with %s yet.', 'yoro-ai-core' ), $plugin_label );
 					$decision['followup'] = $plugin_active
-						? __( 'I can still inspect shipping-related orders, fulfillment pressure, and shipping signals I already understand. If you need confirmed plugin-level support, I can pass that request to the developers.', 'yoro-agent-core' )
-						: __( 'I can still inspect shipping-related orders and fulfillment flow. If you need confirmed plugin-level support, I can pass that request to the developers.', 'yoro-agent-core' );
+						? __( 'I can still inspect shipping-related orders, fulfillment pressure, and shipping signals I already understand. If you need confirmed plugin-level support, I can pass that request to the developers.', 'yoro-ai-core' )
+						: __( 'I can still inspect shipping-related orders and fulfillment flow. If you need confirmed plugin-level support, I can pass that request to the developers.', 'yoro-ai-core' );
 				}
 				break;
 
 			case 'third_party_crm_and_team_integrations':
 				$decision['summary'] = '' !== $requested_capability && '' !== $target_label
-					? sprintf( __( 'I can’t handle %s with %s yet.', 'yoro-agent-core' ), strtolower( $requested_capability ), $target_label )
-					: sprintf( __( 'I can’t connect directly to %s yet.', 'yoro-agent-core' ), $target_label );
-				$decision['followup'] = __( 'If you want, I can pass that integration request to the developers. For now, I can still help with the store work I already support.', 'yoro-agent-core' );
+					? sprintf( __( 'I can’t handle %s with %s yet.', 'yoro-ai-core' ), strtolower( $requested_capability ), $target_label )
+					: sprintf( __( 'I can’t connect directly to %s yet.', 'yoro-ai-core' ), $target_label );
+				$decision['followup'] = __( 'Next, I can pass that integration request to the developers. For now, I can still help with the store work I already support.', 'yoro-ai-core' );
 				break;
 
 			case 'order_authoring':
 				$decision['summary'] = '' !== $requested_capability
-					? sprintf( __( 'I can’t support %s yet.', 'yoro-agent-core' ), strtolower( $requested_capability ) )
-					: __( 'I can’t create new orders yet.', 'yoro-agent-core' );
-				$decision['followup'] = __( 'If you want, I can pass that request to the developers. For now, I can help you inspect or manage existing orders.', 'yoro-agent-core' );
+					? sprintf( __( 'I can’t support %s yet.', 'yoro-ai-core' ), strtolower( $requested_capability ) )
+					: __( 'I can’t create new orders yet.', 'yoro-ai-core' );
+				$decision['followup'] = __( 'Next, I can pass that request to the developers. For now, I can help you inspect or manage existing orders.', 'yoro-ai-core' );
 				break;
 
 			case 'plugin_compatibility_questions':
 			default:
 				$decision['summary'] = '' !== $requested_capability
-					? sprintf( __( 'I can’t confirm direct support for %s in %s yet.', 'yoro-agent-core' ), strtolower( $requested_capability ), $plugin_label )
-					: sprintf( __( 'I can’t confirm direct compatibility with %s yet.', 'yoro-agent-core' ), $plugin_label );
+					? sprintf( __( 'I can’t confirm direct support for %s in %s yet.', 'yoro-ai-core' ), strtolower( $requested_capability ), $plugin_label )
+					: sprintf( __( 'I can’t confirm direct compatibility with %s yet.', 'yoro-ai-core' ), $plugin_label );
 				$decision['followup'] = $plugin_active
-					? __( 'I can see the plugin is active, but I still do not confirm deep compatibility from here. If you want, I can pass that request to the developers and help with the closest supported store workflow for now.', 'yoro-agent-core' )
-					: __( 'If you want, I can pass that compatibility request to the developers and help with the closest supported store workflow for now.', 'yoro-agent-core' );
+					? __( 'I can see the plugin is active, but I still do not confirm deep compatibility from here. Next, I can pass that request to the developers and help with the closest supported store workflow for now.', 'yoro-ai-core' )
+					: __( 'Next, I can pass that compatibility request to the developers and help with the closest supported store workflow for now.', 'yoro-ai-core' );
 				break;
 		}
 
@@ -217,31 +217,31 @@ class YoRo_Capability_Registry {
 			case 'order_authoring':
 				return [
 					'summary'  => '' !== $requested_capability
-						? sprintf( __( 'I can’t handle %s yet.', 'yoro-agent-core' ), strtolower( $requested_capability ) )
-						: __( 'I can’t create a new order yet.', 'yoro-agent-core' ),
-					'followup' => __( 'If you want, I can pass that request to the developers. For now, I can help you inspect or manage existing orders.', 'yoro-agent-core' ),
+						? sprintf( __( 'I can’t handle %s yet.', 'yoro-ai-core' ), strtolower( $requested_capability ) )
+						: __( 'I can’t create a new order yet.', 'yoro-ai-core' ),
+					'followup' => __( 'Next, I can pass that request to the developers. For now, I can help you inspect or manage existing orders.', 'yoro-ai-core' ),
 				];
 			case 'shipping_extensions':
 				return [
 					'summary'  => '' !== $requested_capability
-						? sprintf( __( 'I can’t handle %s yet.', 'yoro-agent-core' ), strtolower( $requested_capability ) )
-						: __( 'I can’t create shipments or shipping labels yet.', 'yoro-agent-core' ),
-					'followup' => __( 'If you want, I can pass that request to the developers. For now, I can help you review the order or the fulfillment queue.', 'yoro-agent-core' ),
+						? sprintf( __( 'I can’t handle %s yet.', 'yoro-ai-core' ), strtolower( $requested_capability ) )
+						: __( 'I can’t create shipments or shipping labels yet.', 'yoro-ai-core' ),
+					'followup' => __( 'Next, I can pass that request to the developers. For now, I can help you review the order or the fulfillment queue.', 'yoro-ai-core' ),
 				];
 			case 'third_party_crm_and_team_integrations':
 				return [
 					'summary'  => '' !== $target_label
-						? sprintf( __( 'I can’t connect directly to %s yet.', 'yoro-agent-core' ), $target_label )
-						: __( 'I can’t connect to that external tool yet.', 'yoro-agent-core' ),
-					'followup' => __( 'If you want, I can pass that integration request to the developers. For now, I can help with the store work I already support.', 'yoro-agent-core' ),
+						? sprintf( __( 'I can’t connect directly to %s yet.', 'yoro-ai-core' ), $target_label )
+						: __( 'I can’t connect to that external tool yet.', 'yoro-ai-core' ),
+					'followup' => __( 'Next, I can pass that integration request to the developers. For now, I can help with the store work I already support.', 'yoro-ai-core' ),
 				];
 			default:
 				$summary  = sanitize_text_field( $result['summary'] ?? '' );
 				$followup = sanitize_text_field( $result['followup'] ?? '' );
 
 				return [
-					'summary'  => '' !== $summary ? $summary : __( 'I can’t do that yet.', 'yoro-agent-core' ),
-					'followup' => '' !== $followup ? $followup : __( 'If you want, I can pass that request to the developers and help you with the closest supported option for now.', 'yoro-agent-core' ),
+					'summary'  => '' !== $summary ? $summary : __( 'I can’t do that yet.', 'yoro-ai-core' ),
+					'followup' => '' !== $followup ? $followup : __( 'Next, I can pass that request to the developers and help you with the closest supported option for now.', 'yoro-ai-core' ),
 				];
 		}
 	}
@@ -280,15 +280,15 @@ class YoRo_Capability_Registry {
 			'status'                  => in_array( $support_hypothesis, [ 'supported', 'partially_supported', 'unknown', 'unsupported' ], true )
 				? $support_hypothesis
 				: sanitize_key( $record['status'] ?? 'unsupported' ),
-			'summary'                 => $copy['summary'] ?? __( 'I can’t do that yet.', 'yoro-agent-core' ),
-			'followup'                => $copy['followup'] ?? __( 'If you want, I can pass that request to the developers.', 'yoro-agent-core' ),
+			'summary'                 => $copy['summary'] ?? __( 'I can’t do that yet.', 'yoro-ai-core' ),
+			'followup'                => $copy['followup'] ?? __( 'Next, I can pass that request to the developers.', 'yoro-ai-core' ),
 			'closest_supported_surface' => $surface,
 			'developer_handoff_offer' => ! empty( $record['developer_handoff_allowed'] ),
 			'handoff_request_text'    => $handoff_request_text,
 			'suggestions'             => ! empty( $record['developer_handoff_allowed'] )
 				? [
 					[
-						'label'   => __( 'Send to developers', 'yoro-agent-core' ),
+						'label'   => __( 'Send to developers', 'yoro-ai-core' ),
 						'action'  => 'assistant.submit_developer_request',
 						'params'  => [
 							'request_text'              => $handoff_request_text,
@@ -316,7 +316,7 @@ class YoRo_Capability_Registry {
 
 		if ( $include_handoff ) {
 			$suggestions[] = [
-				'label'   => __( 'Send to developers', 'yoro-agent-core' ),
+				'label'   => __( 'Send to developers', 'yoro-ai-core' ),
 				'action'  => 'assistant.submit_developer_request',
 				'params'  => [
 					'request_text'              => sanitize_text_field( $decision['handoff_request_text'] ?? $normalized ),
@@ -364,27 +364,27 @@ class YoRo_Capability_Registry {
 		switch ( $surface ) {
 			case 'morning_briefing':
 				return [
-					'label' => __( 'Show morning briefing', 'yoro-agent-core' ),
+					'label' => __( 'Show morning briefing', 'yoro-ai-core' ),
 					'value' => 'Show morning briefing',
 				];
 			case 'operations_attention':
 				return [
-					'label' => __( 'Show operations attention queue', 'yoro-agent-core' ),
+					'label' => __( 'Show operations attention queue', 'yoro-ai-core' ),
 					'value' => 'Show operations attention queue',
 				];
 			case 'operations_summary':
 				return [
-					'label' => __( 'Show operations summary for today', 'yoro-agent-core' ),
+					'label' => __( 'Show operations summary for today', 'yoro-ai-core' ),
 					'value' => 'Show operations summary for today',
 				];
 			case 'latest_orders':
 				return [
-					'label' => __( 'Show latest 5 orders', 'yoro-agent-core' ),
+					'label' => __( 'Show latest 5 orders', 'yoro-ai-core' ),
 					'value' => 'Show latest 5 orders',
 				];
 			case 'fulfillment_queue':
 				return [
-					'label' => __( 'Show fulfillment queue', 'yoro-agent-core' ),
+					'label' => __( 'Show fulfillment queue', 'yoro-ai-core' ),
 					'value' => 'Show fulfillment queue',
 				];
 			case 'order_details':
@@ -393,14 +393,14 @@ class YoRo_Capability_Registry {
 					preg_match( '/\b(?:this order|order\b|customer\b|shipment\b|tracking\b)\b/i', $normalized )
 				) {
 					return [
-						'label' => sprintf( __( 'Show order #%d details', 'yoro-agent-core' ), $order_id ),
+						'label' => sprintf( __( 'Show order #%d details', 'yoro-ai-core' ), $order_id ),
 						'value' => 'Show order details for this order',
 					];
 				}
 				return [];
 			case 'customer_summary':
 				return [
-					'label' => __( 'Show customer summary', 'yoro-agent-core' ),
+					'label' => __( 'Show customer summary', 'yoro-ai-core' ),
 					'value' => 'Show customer summary',
 				];
 			default:

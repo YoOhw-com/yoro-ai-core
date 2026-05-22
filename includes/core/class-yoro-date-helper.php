@@ -174,14 +174,14 @@ class YoRo_Date_Helper {
 
 		$labels = [
 			'en' => [
-				'today'        => __( 'Today', 'yoro-agent-core' ),
-				'yesterday'    => __( 'Yesterday', 'yoro-agent-core' ),
-				'this_week'    => __( 'This week', 'yoro-agent-core' ),
-				'last_week'    => __( 'Last week', 'yoro-agent-core' ),
-				'last_7_days'  => __( 'Last 7 days', 'yoro-agent-core' ),
-				'this_month'   => __( 'This month', 'yoro-agent-core' ),
-				'last_month'   => __( 'Last month', 'yoro-agent-core' ),
-				'last_30_days' => __( 'Last 30 days', 'yoro-agent-core' ),
+				'today'        => __( 'Today', 'yoro-ai-core' ),
+				'yesterday'    => __( 'Yesterday', 'yoro-ai-core' ),
+				'this_week'    => __( 'This week', 'yoro-ai-core' ),
+				'last_week'    => __( 'Last week', 'yoro-ai-core' ),
+				'last_7_days'  => __( 'Last 7 days', 'yoro-ai-core' ),
+				'this_month'   => __( 'This month', 'yoro-ai-core' ),
+				'last_month'   => __( 'Last month', 'yoro-ai-core' ),
+				'last_30_days' => __( 'Last 30 days', 'yoro-ai-core' ),
 			],
 			'vi' => [
 				'today'        => 'hôm nay',

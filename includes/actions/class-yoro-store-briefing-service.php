@@ -8,7 +8,7 @@ class YoRo_Store_Briefing_Service {
 
 	public static function get_business_summary( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-agent-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
 		}
 
 		$window_key = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( $params['window'] ?? 'last_7_days' );
@@ -162,7 +162,7 @@ class YoRo_Store_Briefing_Service {
 		];
 
 		$customer_count_label = sprintf(
-			_n( '%d active customer', '%d active customers', count( $customer_map ), 'yoro-agent-core' ),
+			_n( '%d active customer', '%d active customers', count( $customer_map ), 'yoro-ai-core' ),
 			count( $customer_map )
 		);
 
@@ -290,37 +290,37 @@ class YoRo_Store_Briefing_Service {
 		$sections = [
 			[
 				'key'     => 'operations',
-				'label'   => __( 'Operations', 'yoro-agent-core' ),
+				'label'   => __( 'Operations', 'yoro-ai-core' ),
 				'summary' => sanitize_text_field( $operations['summary'] ?? '' ),
 				'count'   => absint( $operations['count'] ?? 0 ),
 			],
 			[
 				'key'     => 'attention',
-				'label'   => __( 'Attention', 'yoro-agent-core' ),
+				'label'   => __( 'Attention', 'yoro-ai-core' ),
 				'summary' => sanitize_text_field( $attention['summary'] ?? '' ),
 				'count'   => absint( $attention['count'] ?? 0 ),
 			],
 			[
 				'key'     => 'fulfillment',
-				'label'   => __( 'Fulfillment', 'yoro-agent-core' ),
+				'label'   => __( 'Fulfillment', 'yoro-ai-core' ),
 				'summary' => sanitize_text_field( $fulfillment['summary'] ?? '' ),
 				'count'   => absint( $fulfillment['count'] ?? 0 ),
 			],
 			[
 				'key'     => 'customer_service',
-				'label'   => __( 'Customer follow-up', 'yoro-agent-core' ),
+				'label'   => __( 'Customer follow-up', 'yoro-ai-core' ),
 				'summary' => sanitize_text_field( $customer_service['summary'] ?? '' ),
 				'count'   => absint( $customer_service['count'] ?? 0 ),
 			],
 			[
 				'key'     => 'business',
-				'label'   => __( 'Business', 'yoro-agent-core' ),
+				'label'   => __( 'Business', 'yoro-ai-core' ),
 				'summary' => sanitize_text_field( $business['summary'] ?? '' ),
 				'count'   => absint( $business['business_metrics']['order_count'] ?? 0 ),
 			],
 			[
 				'key'     => 'inventory',
-				'label'   => __( 'Inventory', 'yoro-agent-core' ),
+				'label'   => __( 'Inventory', 'yoro-ai-core' ),
 				'summary' => sanitize_text_field( $inventory['summary'] ?? '' ),
 				'count'   => absint( $inventory['count'] ?? 0 ),
 			],
@@ -520,7 +520,7 @@ class YoRo_Store_Briefing_Service {
 			),
 			'assistant_followup'  => ! empty( $first_recommended_action['reason'] )
 				? sanitize_text_field( $first_recommended_action['reason'] )
-				: __( 'I can take you straight to the first queue worth reviewing.', 'yoro-agent-core' ),
+				: __( 'I can take you straight to the first queue worth reviewing.', 'yoro-ai-core' ),
 			'count'               => 1,
 			'read_only'           => true,
 			'undoable'            => false,
@@ -535,11 +535,11 @@ class YoRo_Store_Briefing_Service {
 			'errors'              => [],
 			'briefing_date'       => YoRo_Date_Helper::format_timestamp( current_datetime()->getTimestamp() ),
 			'briefing_date_ts'    => current_datetime()->getTimestamp(),
-			'time_window_label'   => __( 'Yesterday and this morning', 'yoro-agent-core' ),
+			'time_window_label'   => __( 'Yesterday and this morning', 'yoro-ai-core' ),
 			'headline'            => $headline,
 			'yesterday_window'    => [
 				'key'            => $yesterday_window_key,
-				'label'          => sanitize_text_field( $yesterday_window['label'] ?? __( 'Yesterday', 'yoro-agent-core' ) ),
+				'label'          => sanitize_text_field( $yesterday_window['label'] ?? __( 'Yesterday', 'yoro-ai-core' ) ),
 				'start'          => sanitize_text_field( $yesterday_window['start'] ?? '' ),
 				'end'            => sanitize_text_field( $yesterday_window['end'] ?? '' ),
 				'start_ts'       => isset( $yesterday_window['start_ts'] ) ? (int) $yesterday_window['start_ts'] : 0,
@@ -549,7 +549,7 @@ class YoRo_Store_Briefing_Service {
 			],
 			'live_window'         => [
 				'key'            => $window_key,
-				'label'          => sanitize_text_field( $today_window['label'] ?? __( 'Today', 'yoro-agent-core' ) ),
+				'label'          => sanitize_text_field( $today_window['label'] ?? __( 'Today', 'yoro-ai-core' ) ),
 				'start'          => sanitize_text_field( $today_window['start'] ?? '' ),
 				'end'            => sanitize_text_field( $today_window['end'] ?? '' ),
 				'start_ts'       => isset( $today_window['start_ts'] ) ? (int) $today_window['start_ts'] : 0,
@@ -561,7 +561,7 @@ class YoRo_Store_Briefing_Service {
 			'live_pressure'            => $live_pressure,
 			'top_priorities'           => $priority_items,
 			'first_recommended_action' => [
-				'label'   => sanitize_text_field( $first_recommended_action['label'] ?? __( 'Open operations attention queue', 'yoro-agent-core' ) ),
+				'label'   => sanitize_text_field( $first_recommended_action['label'] ?? __( 'Open operations attention queue', 'yoro-ai-core' ) ),
 				'command' => sanitize_text_field( $first_recommended_action['command'] ?? 'Show operations attention queue' ),
 				'reason'  => sanitize_text_field( $first_recommended_action['reason'] ?? '' ),
 				'kind'    => sanitize_key( $first_recommended_action['kind'] ?? 'step' ),
@@ -585,13 +585,13 @@ class YoRo_Store_Briefing_Service {
 			case 'this_week':
 			case 'last_week':
 			case 'last_7_days':
-				return __( 'Weekly briefing', 'yoro-agent-core' );
+				return __( 'Weekly briefing', 'yoro-ai-core' );
 			case 'this_month':
 			case 'last_month':
 			case 'last_30_days':
-				return __( 'Monthly briefing', 'yoro-agent-core' );
+				return __( 'Monthly briefing', 'yoro-ai-core' );
 			default:
-				return __( 'Daily briefing', 'yoro-agent-core' );
+				return __( 'Daily briefing', 'yoro-ai-core' );
 		}
 	}
 
@@ -665,21 +665,21 @@ class YoRo_Store_Briefing_Service {
 
 		if ( 0 === $window_orders && $gross_sales <= 0 && 0 === $active_customers ) {
 			$business_state   = 'quiet';
-			$business_message = __( 'Commercial activity is quiet so far in the current window.', 'yoro-agent-core' );
+			$business_message = __( 'Commercial activity is quiet so far in the current window.', 'yoro-ai-core' );
 		} elseif ( $window_orders <= 3 && $gross_sales < 250 && $active_customers <= 1 ) {
 			$business_state   = 'soft';
-			$business_message = __( 'Commercial activity is light so far in the current window.', 'yoro-agent-core' );
+			$business_message = __( 'Commercial activity is light so far in the current window.', 'yoro-ai-core' );
 		} elseif ( $window_orders >= 25 || $gross_sales >= 5000 || $active_customers >= 10 ) {
 			$business_state   = 'strong';
-			$business_message = __( 'Commercial activity looks strong in the current window.', 'yoro-agent-core' );
+			$business_message = __( 'Commercial activity looks strong in the current window.', 'yoro-ai-core' );
 		} elseif ( $window_orders >= 10 || $gross_sales >= 1000 || $active_customers >= 3 ) {
 			$business_state   = 'active';
-			$business_message = __( 'Commercial activity is moving at a healthy pace in the current window.', 'yoro-agent-core' );
+			$business_message = __( 'Commercial activity is moving at a healthy pace in the current window.', 'yoro-ai-core' );
 		}
 
 		return [
 			'window_key'       => $window_key,
-			'window_label'     => sanitize_text_field( $window['label'] ?? __( 'Today', 'yoro-agent-core' ) ),
+			'window_label'     => sanitize_text_field( $window['label'] ?? __( 'Today', 'yoro-ai-core' ) ),
 			'state'            => $state,
 			'top_topic'        => sanitize_key( $top_topic ),
 			'top_score'        => $top_score,
@@ -704,9 +704,9 @@ class YoRo_Store_Briefing_Service {
 				'topic'   => 'operations_attention',
 				'score'   => absint( $briefing_context['priority_scores']['operations_attention'] ?? 0 ),
 				'tone'    => 'operations_attention' === $top_topic || $top_score >= 50 ? 'warning' : 'neutral',
-				'title'   => __( 'Operational pressure is elevated', 'yoro-agent-core' ),
+				'title'   => __( 'Operational pressure is elevated', 'yoro-ai-core' ),
 				'message' => sprintf(
-					__( 'The live store queue shows %1$d attention items and %2$d backlog items right now.', 'yoro-agent-core' ),
+					__( 'The live store queue shows %1$d attention items and %2$d backlog items right now.', 'yoro-ai-core' ),
 					absint( $operations['attention_total'] ?? 0 ),
 					absint( $operations['backlog_total'] ?? 0 )
 				),
@@ -718,7 +718,7 @@ class YoRo_Store_Briefing_Service {
 				'topic'   => 'fulfillment',
 				'score'   => absint( $briefing_context['priority_scores']['fulfillment'] ?? 0 ),
 				'tone'    => 'fulfillment' === $top_topic ? 'warning' : 'neutral',
-				'title'   => __( 'Fulfillment still needs active review', 'yoro-agent-core' ),
+				'title'   => __( 'Fulfillment still needs active review', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $fulfillment['assistant_summary'] ?? $fulfillment['summary'] ?? '' ),
 			];
 		}
@@ -728,20 +728,20 @@ class YoRo_Store_Briefing_Service {
 				'topic'   => 'customer_service',
 				'score'   => absint( $briefing_context['priority_scores']['customer_service'] ?? 0 ),
 				'tone'    => 'customer_service' === $top_topic ? 'warning' : 'neutral',
-				'title'   => __( 'Customer follow-up remains active', 'yoro-agent-core' ),
+				'title'   => __( 'Customer follow-up remains active', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $customer_service['assistant_summary'] ?? $customer_service['summary'] ?? '' ),
 			];
 		}
 
 		if ( ! empty( $business['headline_insights'][0]['message'] ) || ! empty( $briefing_context['business_message'] ) ) {
-			$business_title = __( 'Commercial activity deserves a quick read', 'yoro-agent-core' );
+			$business_title = __( 'Commercial activity deserves a quick read', 'yoro-ai-core' );
 			$business_tone  = 'positive';
 
 			if ( 'quiet' === ( $briefing_context['business_state'] ?? '' ) ) {
-				$business_title = __( 'Commercial activity is quiet', 'yoro-agent-core' );
+				$business_title = __( 'Commercial activity is quiet', 'yoro-ai-core' );
 				$business_tone  = 'watch';
 			} elseif ( 'soft' === ( $briefing_context['business_state'] ?? '' ) ) {
-				$business_title = __( 'Commercial activity is still light', 'yoro-agent-core' );
+				$business_title = __( 'Commercial activity is still light', 'yoro-ai-core' );
 				$business_tone  = 'watch';
 			}
 
@@ -759,7 +759,7 @@ class YoRo_Store_Briefing_Service {
 				'topic'   => 'inventory',
 				'score'   => absint( $briefing_context['priority_scores']['inventory'] ?? 0 ),
 				'tone'    => 'inventory' === $top_topic ? 'watch' : 'neutral',
-				'title'   => __( 'Inventory risk is still present', 'yoro-agent-core' ),
+				'title'   => __( 'Inventory risk is still present', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $inventory['assistant_summary'] ?? $inventory['summary'] ?? '' ),
 			];
 		}
@@ -769,8 +769,8 @@ class YoRo_Store_Briefing_Service {
 				'topic'   => 'overview',
 				'score'   => 0,
 				'tone'    => 'neutral',
-				'title'   => __( 'No single queue stands out as critical right now', 'yoro-agent-core' ),
-				'message' => __( 'The store still has routine operational work, but nothing in this briefing looks unusually acute.', 'yoro-agent-core' ),
+				'title'   => __( 'No single queue stands out as critical right now', 'yoro-ai-core' ),
+				'message' => __( 'The store still has routine operational work, but nothing in this briefing looks unusually acute.', 'yoro-ai-core' ),
 			];
 		}
 
@@ -782,7 +782,7 @@ class YoRo_Store_Briefing_Service {
 		);
 
 		if ( 'split_pressure' === $state && count( $items ) >= 2 ) {
-			$items[0]['title'] = __( 'Two queues are competing for attention', 'yoro-agent-core' );
+			$items[0]['title'] = __( 'Two queues are competing for attention', 'yoro-ai-core' );
 		}
 
 		return $items;
@@ -798,15 +798,15 @@ class YoRo_Store_Briefing_Service {
 			case 'operations_attention':
 				$drilldowns = [
 					[
-						'label'   => __( 'Open attention queue', 'yoro-agent-core' ),
+						'label'   => __( 'Open attention queue', 'yoro-ai-core' ),
 						'command' => 'Show operations attention queue',
 					],
 					[
-						'label'   => __( 'Check fulfillment pressure', 'yoro-agent-core' ),
+						'label'   => __( 'Check fulfillment pressure', 'yoro-ai-core' ),
 						'command' => 'Show fulfillment queue',
 					],
 					[
-						'label'   => __( 'Check customer follow-up', 'yoro-agent-core' ),
+						'label'   => __( 'Check customer follow-up', 'yoro-ai-core' ),
 						'command' => 'Show customer service queue',
 					],
 					[
@@ -819,15 +819,15 @@ class YoRo_Store_Briefing_Service {
 			case 'fulfillment':
 				$drilldowns = [
 					[
-						'label'   => __( 'Open fulfillment queue', 'yoro-agent-core' ),
+						'label'   => __( 'Open fulfillment queue', 'yoro-ai-core' ),
 						'command' => 'Show fulfillment queue',
 					],
 					[
-						'label'   => __( 'Check shipping blockers', 'yoro-agent-core' ),
+						'label'   => __( 'Check shipping blockers', 'yoro-ai-core' ),
 						'command' => 'What looks stuck in shipping?',
 					],
 					[
-						'label'   => __( 'Review attention queue', 'yoro-agent-core' ),
+						'label'   => __( 'Review attention queue', 'yoro-ai-core' ),
 						'command' => 'Show operations attention queue',
 					],
 				];
@@ -836,15 +836,15 @@ class YoRo_Store_Briefing_Service {
 			case 'customer_service':
 				$drilldowns = [
 					[
-						'label'   => __( 'Open customer follow-up', 'yoro-agent-core' ),
+						'label'   => __( 'Open customer follow-up', 'yoro-ai-core' ),
 						'command' => 'Show customer service queue',
 					],
 					[
-						'label'   => __( 'See who needs a reply first', 'yoro-agent-core' ),
+						'label'   => __( 'See who needs a reply first', 'yoro-ai-core' ),
 						'command' => 'Who should we answer first ' . $window_phrase . '?',
 					],
 					[
-						'label'   => __( 'Review fulfillment queue', 'yoro-agent-core' ),
+						'label'   => __( 'Review fulfillment queue', 'yoro-ai-core' ),
 						'command' => 'Show fulfillment queue',
 					],
 				];
@@ -853,11 +853,11 @@ class YoRo_Store_Briefing_Service {
 			case 'inventory':
 				$drilldowns = [
 					[
-						'label'   => __( 'Open inventory queue', 'yoro-agent-core' ),
+						'label'   => __( 'Open inventory queue', 'yoro-ai-core' ),
 						'command' => 'Show inventory queue',
 					],
 					[
-						'label'   => __( 'Focus on restock priorities', 'yoro-agent-core' ),
+						'label'   => __( 'Focus on restock priorities', 'yoro-ai-core' ),
 						'command' => 'What should we restock first?',
 					],
 					[
@@ -870,15 +870,15 @@ class YoRo_Store_Briefing_Service {
 			case 'business':
 				$drilldowns = [
 					[
-						'label'   => __( 'Open business summary', 'yoro-agent-core' ),
+						'label'   => __( 'Open business summary', 'yoro-ai-core' ),
 						'command' => 'Show business summary for ' . $window_phrase,
 					],
 					[
-						'label'   => __( 'Review operations summary', 'yoro-agent-core' ),
+						'label'   => __( 'Review operations summary', 'yoro-ai-core' ),
 						'command' => 'Show operations summary for ' . $window_phrase,
 					],
 					[
-						'label'   => __( 'Check customer follow-up', 'yoro-agent-core' ),
+						'label'   => __( 'Check customer follow-up', 'yoro-ai-core' ),
 						'command' => 'Show customer service queue',
 					],
 				];
@@ -892,11 +892,11 @@ class YoRo_Store_Briefing_Service {
 					'command' => 'Show operations summary for ' . $window_phrase,
 				],
 				[
-					'label'   => __( 'Open attention queue', 'yoro-agent-core' ),
+					'label'   => __( 'Open attention queue', 'yoro-ai-core' ),
 					'command' => 'Show operations attention queue',
 				],
 				[
-					'label'   => __( 'Open business summary', 'yoro-agent-core' ),
+					'label'   => __( 'Open business summary', 'yoro-ai-core' ),
 					'command' => 'Show business summary for ' . $window_phrase,
 				],
 			];
@@ -915,7 +915,7 @@ class YoRo_Store_Briefing_Service {
 
 			$drilldowns[] = [
 				'label'   => sprintf(
-					__( 'Review: %s', 'yoro-agent-core' ),
+					__( 'Review: %s', 'yoro-ai-core' ),
 					sanitize_text_field( $priority_item['title'] )
 				),
 				'command' => self::get_briefing_review_command_for_topic( $priority_topic, $window_phrase ),
@@ -954,13 +954,13 @@ class YoRo_Store_Briefing_Service {
 			case 'this_week':
 			case 'last_week':
 			case 'last_7_days':
-				return __( 'Review weekly operations summary', 'yoro-agent-core' );
+				return __( 'Review weekly operations summary', 'yoro-ai-core' );
 			case 'this_month':
 			case 'last_month':
 			case 'last_30_days':
-				return __( 'Review monthly operations summary', 'yoro-agent-core' );
+				return __( 'Review monthly operations summary', 'yoro-ai-core' );
 			default:
-				return __( 'Review operations summary', 'yoro-agent-core' );
+				return __( 'Review operations summary', 'yoro-ai-core' );
 		}
 	}
 
@@ -991,7 +991,7 @@ class YoRo_Store_Briefing_Service {
 		if ( ! empty( $fulfillment_orders[0]['suggested_command'] ) ) {
 			$actions[] = [
 				'topic'   => 'fulfillment',
-				'label'   => __( 'Preview next delay email', 'yoro-agent-core' ),
+				'label'   => __( 'Preview next delay email', 'yoro-ai-core' ),
 				'command' => sanitize_text_field( $fulfillment_orders[0]['suggested_command'] ),
 				'tone'    => 'fulfillment' === $top_topic ? 'primary' : 'secondary',
 			];
@@ -1000,7 +1000,7 @@ class YoRo_Store_Briefing_Service {
 		if ( ! empty( $service_orders[0]['suggested_command'] ) ) {
 			$actions[] = [
 				'topic'   => 'customer_service',
-				'label'   => __( 'Draft next customer reply', 'yoro-agent-core' ),
+				'label'   => __( 'Draft next customer reply', 'yoro-ai-core' ),
 				'command' => sanitize_text_field( $service_orders[0]['suggested_command'] ),
 				'tone'    => 'customer_service' === $top_topic ? 'primary' : 'secondary',
 			];
@@ -1009,7 +1009,7 @@ class YoRo_Store_Briefing_Service {
 		if ( ! empty( $inventory['count'] ) ) {
 			$actions[] = [
 				'topic'   => 'inventory',
-				'label'   => __( 'Review restock priorities', 'yoro-agent-core' ),
+				'label'   => __( 'Review restock priorities', 'yoro-ai-core' ),
 				'command' => 'What should we restock first?',
 				'tone'    => 'inventory' === $top_topic ? 'primary' : 'secondary',
 			];
@@ -1035,7 +1035,7 @@ class YoRo_Store_Briefing_Service {
 	private static function build_daily_briefing_recommended_sequence( $briefing_context = [], $priority_drilldowns = [], $briefing_actions = [], $priority_items = [] ) {
 		$sequence     = [];
 		$top_topic    = sanitize_key( $briefing_context['top_topic'] ?? '' );
-		$window_label = sanitize_text_field( $briefing_context['window_label'] ?? __( 'Today', 'yoro-agent-core' ) );
+		$window_label = sanitize_text_field( $briefing_context['window_label'] ?? __( 'Today', 'yoro-ai-core' ) );
 
 		foreach ( $priority_drilldowns as $drilldown ) {
 			$command = sanitize_text_field( $drilldown['command'] ?? '' );
@@ -1149,18 +1149,18 @@ class YoRo_Store_Briefing_Service {
 		switch ( $topic ) {
 			case 'operations_attention':
 				return 'operations_attention' === $top_topic
-					? sprintf( __( 'Start here because the attention queue is the main pressure point in %s.', 'yoro-agent-core' ), $window_label )
-					: __( 'Use this to review the live attention queue first.', 'yoro-agent-core' );
+					? sprintf( __( 'Start here because the attention queue is the main pressure point in %s.', 'yoro-ai-core' ), $window_label )
+					: __( 'Use this to review the live attention queue first.', 'yoro-ai-core' );
 			case 'fulfillment':
-				return __( 'Use this next to confirm whether shipping or aging processing work is building up.', 'yoro-agent-core' );
+				return __( 'Use this next to confirm whether shipping or aging processing work is building up.', 'yoro-ai-core' );
 			case 'customer_service':
-				return __( 'Use this to review which customers still need follow-up after the main queue check.', 'yoro-agent-core' );
+				return __( 'Use this to review which customers still need follow-up after the main queue check.', 'yoro-ai-core' );
 			case 'inventory':
-				return __( 'Use this to check whether stock or replenishment risk is contributing to today’s pressure.', 'yoro-agent-core' );
+				return __( 'Use this to check whether stock or replenishment risk is contributing to today’s pressure.', 'yoro-ai-core' );
 			case 'business':
-				return __( 'Use this to balance the operational view with the commercial picture.', 'yoro-agent-core' );
+				return __( 'Use this to balance the operational view with the commercial picture.', 'yoro-ai-core' );
 			default:
-				return __( 'Use this to review the broader operating picture for the current window.', 'yoro-agent-core' );
+				return __( 'Use this to review the broader operating picture for the current window.', 'yoro-ai-core' );
 		}
 	}
 
@@ -1170,16 +1170,16 @@ class YoRo_Store_Briefing_Service {
 		switch ( $topic ) {
 			case 'fulfillment':
 				return 'fulfillment' === $top_topic
-					? __( 'This is the fastest next move if you want to act on the top fulfillment issue.', 'yoro-agent-core' )
-					: __( 'Use this after review if you want to prepare the next fulfillment follow-up.', 'yoro-agent-core' );
+					? __( 'This is the fastest next move if you want to act on the top fulfillment issue.', 'yoro-ai-core' )
+					: __( 'Use this after review if you want to prepare the next fulfillment follow-up.', 'yoro-ai-core' );
 			case 'customer_service':
 				return 'customer_service' === $top_topic
-					? __( 'This is the fastest next move if you want to start the top customer follow-up.', 'yoro-agent-core' )
-					: __( 'Use this once you decide which customer follow-up should move first.', 'yoro-agent-core' );
+					? __( 'This is the fastest next move if you want to start the top customer follow-up.', 'yoro-ai-core' )
+					: __( 'Use this once you decide which customer follow-up should move first.', 'yoro-ai-core' );
 			case 'inventory':
-				return __( 'Use this if you want to turn the inventory signal into a restock decision next.', 'yoro-agent-core' );
+				return __( 'Use this if you want to turn the inventory signal into a restock decision next.', 'yoro-ai-core' );
 			default:
-				return __( 'Use this when you are ready to act on the current briefing.', 'yoro-agent-core' );
+				return __( 'Use this when you are ready to act on the current briefing.', 'yoro-ai-core' );
 		}
 	}
 
@@ -1219,7 +1219,7 @@ class YoRo_Store_Briefing_Service {
 		}
 
 		return [
-			'window_label'          => sanitize_text_field( $window['label'] ?? __( 'this period', 'yoro-agent-core' ) ),
+			'window_label'          => sanitize_text_field( $window['label'] ?? __( 'this period', 'yoro-ai-core' ) ),
 			'performance_level'     => $performance_level,
 			'pressure_level'        => $pressure_level,
 			'state'                 => $state,
@@ -1251,8 +1251,8 @@ class YoRo_Store_Briefing_Service {
 				$insights[] = [
 					'topic'   => 'state_summary',
 					'tone'    => 'warning',
-					'title'   => __( 'Sales are quiet, but operational load is still heavy', 'yoro-agent-core' ),
-					'message' => __( 'The requested window looks commercially light, but the live store queue is still carrying substantial operational pressure.', 'yoro-agent-core' ),
+					'title'   => __( 'Sales are quiet, but operational load is still heavy', 'yoro-ai-core' ),
+					'message' => __( 'The requested window looks commercially light, but the live store queue is still carrying substantial operational pressure.', 'yoro-ai-core' ),
 				];
 				break;
 
@@ -1260,8 +1260,8 @@ class YoRo_Store_Briefing_Service {
 				$insights[] = [
 					'topic'   => 'state_summary',
 					'tone'    => 'watch',
-					'title'   => __( 'Demand is strong, but the team is under pressure', 'yoro-agent-core' ),
-					'message' => __( 'Sales activity in the requested window is healthy, but the current queue still suggests meaningful operational strain.', 'yoro-agent-core' ),
+					'title'   => __( 'Demand is strong, but the team is under pressure', 'yoro-ai-core' ),
+					'message' => __( 'Sales activity in the requested window is healthy, but the current queue still suggests meaningful operational strain.', 'yoro-ai-core' ),
 				];
 				break;
 
@@ -1269,8 +1269,8 @@ class YoRo_Store_Briefing_Service {
 				$insights[] = [
 					'topic'   => 'state_summary',
 					'tone'    => 'positive',
-					'title'   => __( 'Commercial performance looks healthy', 'yoro-agent-core' ),
-					'message' => __( 'The requested window looks commercially strong and the current queue does not suggest unusual pressure.', 'yoro-agent-core' ),
+					'title'   => __( 'Commercial performance looks healthy', 'yoro-ai-core' ),
+					'message' => __( 'The requested window looks commercially strong and the current queue does not suggest unusual pressure.', 'yoro-ai-core' ),
 				];
 				break;
 
@@ -1278,8 +1278,8 @@ class YoRo_Store_Briefing_Service {
 				$insights[] = [
 					'topic'   => 'state_summary',
 					'tone'    => 'watch',
-					'title'   => __( 'Performance is steady, with some operational watchpoints', 'yoro-agent-core' ),
-					'message' => __( 'The requested window looks stable overall, but the current queue still has a few areas worth monitoring.', 'yoro-agent-core' ),
+					'title'   => __( 'Performance is steady, with some operational watchpoints', 'yoro-ai-core' ),
+					'message' => __( 'The requested window looks stable overall, but the current queue still has a few areas worth monitoring.', 'yoro-ai-core' ),
 				];
 				break;
 		}
@@ -1288,9 +1288,9 @@ class YoRo_Store_Briefing_Service {
 			$insights[] = [
 				'topic'   => 'operations_pressure',
 				'tone'    => $attention_total >= 10 ? 'warning' : 'watch',
-				'title'   => __( 'Operational pressure is building', 'yoro-agent-core' ),
+				'title'   => __( 'Operational pressure is building', 'yoro-ai-core' ),
 				'message' => sprintf(
-					__( 'Across the store right now, %1$d items look time-sensitive and %2$d orders are still sitting in backlog.', 'yoro-agent-core' ),
+					__( 'Across the store right now, %1$d items look time-sensitive and %2$d orders are still sitting in backlog.', 'yoro-ai-core' ),
 					$attention_total,
 					$backlog_total
 				),
@@ -1299,9 +1299,9 @@ class YoRo_Store_Briefing_Service {
 			$insights[] = [
 				'topic'   => 'operations_pressure',
 				'tone'    => 'watch',
-				'title'   => __( 'Backlog is present but controlled', 'yoro-agent-core' ),
+				'title'   => __( 'Backlog is present but controlled', 'yoro-ai-core' ),
 				'message' => sprintf(
-					__( 'Across the store right now, %d orders are still open across pending, processing, or on-hold states.', 'yoro-agent-core' ),
+					__( 'Across the store right now, %d orders are still open across pending, processing, or on-hold states.', 'yoro-ai-core' ),
 					$backlog_total
 				),
 			];
@@ -1312,9 +1312,9 @@ class YoRo_Store_Briefing_Service {
 			$insights[]      = [
 				'topic'   => 'fulfillment_velocity',
 				'tone'    => $completed_share >= 50 ? 'positive' : 'neutral',
-				'title'   => __( 'Completed orders are carrying the period', 'yoro-agent-core' ),
+				'title'   => __( 'Completed orders are carrying the period', 'yoro-ai-core' ),
 				'message' => sprintf(
-					__( '%1$d of %2$d orders are already completed, which suggests fulfillment is moving.', 'yoro-agent-core' ),
+					__( '%1$d of %2$d orders are already completed, which suggests fulfillment is moving.', 'yoro-ai-core' ),
 					$completed_count,
 					$order_count
 				),
@@ -1323,9 +1323,9 @@ class YoRo_Store_Briefing_Service {
 			$insights[] = [
 				'topic'   => 'open_order_mix',
 				'tone'    => 'neutral',
-				'title'   => __( 'Most activity is still in-flight', 'yoro-agent-core' ),
+				'title'   => __( 'Most activity is still in-flight', 'yoro-ai-core' ),
 				'message' => sprintf(
-					__( '%1$d pending, %2$d processing, and %3$d on-hold orders still need to convert into completed revenue.', 'yoro-agent-core' ),
+					__( '%1$d pending, %2$d processing, and %3$d on-hold orders still need to convert into completed revenue.', 'yoro-ai-core' ),
 					$pending_count,
 					$processing_count,
 					$on_hold_count
@@ -1338,9 +1338,9 @@ class YoRo_Store_Briefing_Service {
 			$insights[]  = [
 				'topic'   => 'top_customers',
 				'tone'    => 'positive',
-				'title'   => __( 'A clear customer leader stands out', 'yoro-agent-core' ),
+				'title'   => __( 'A clear customer leader stands out', 'yoro-ai-core' ),
 				'message' => sprintf(
-					__( '%1$s generated %2$d orders in this window and is one of the strongest repeat-customer signals.', 'yoro-agent-core' ),
+					__( '%1$s generated %2$d orders in this window and is one of the strongest repeat-customer signals.', 'yoro-ai-core' ),
 					$leader_name,
 					absint( $top_customers[0]['order_count'] ?? 0 )
 				),
@@ -1351,9 +1351,9 @@ class YoRo_Store_Briefing_Service {
 			$insights[] = [
 				'topic'   => 'top_products',
 				'tone'    => 'positive',
-				'title'   => __( 'One product is leading demand', 'yoro-agent-core' ),
+				'title'   => __( 'One product is leading demand', 'yoro-ai-core' ),
 				'message' => sprintf(
-					__( '%1$s sold %2$s units and is the strongest product signal in this period.', 'yoro-agent-core' ),
+					__( '%1$s sold %2$s units and is the strongest product signal in this period.', 'yoro-ai-core' ),
 					$top_products[0]['name'],
 					wc_format_decimal( $top_products[0]['quantity'] ?? 0, 0 )
 				),
@@ -1364,10 +1364,10 @@ class YoRo_Store_Briefing_Service {
 			$insights[] = [
 				'topic'   => 'sales_gap',
 				'tone'    => 'watch',
-				'title'   => __( 'There is no order activity in this window', 'yoro-agent-core' ),
+				'title'   => __( 'There is no order activity in this window', 'yoro-ai-core' ),
 				'message' => sprintf(
-					__( 'YoRo did not find any orders in %s, so the business summary is mostly a pressure check rather than a sales readout.', 'yoro-agent-core' ),
-					sanitize_text_field( $window['label'] ?? __( 'this period', 'yoro-agent-core' ) )
+					__( 'YoRo did not find any orders in %s, so the business summary is mostly a pressure check rather than a sales readout.', 'yoro-ai-core' ),
+					sanitize_text_field( $window['label'] ?? __( 'this period', 'yoro-ai-core' ) )
 				),
 			];
 		}
@@ -1408,7 +1408,7 @@ class YoRo_Store_Briefing_Service {
 
 		return [
 			'window_key'       => $window_key,
-			'window_label'     => sanitize_text_field( $window['label'] ?? __( 'Last 7 days', 'yoro-agent-core' ) ),
+			'window_label'     => sanitize_text_field( $window['label'] ?? __( 'Last 7 days', 'yoro-ai-core' ) ),
 			'focus'            => sanitize_key( $focus ),
 			'top_topic'        => $top_topic,
 			'state'            => $state,
@@ -1433,7 +1433,7 @@ class YoRo_Store_Briefing_Service {
 				'topic'   => sanitize_key( $insight['topic'] ?? '' ),
 				'score'   => max( 1, 100 - ( $index * 10 ) ),
 				'tone'    => sanitize_key( $insight['tone'] ?? 'neutral' ),
-				'title'   => sanitize_text_field( $insight['title'] ?? __( 'Business signal', 'yoro-agent-core' ) ),
+				'title'   => sanitize_text_field( $insight['title'] ?? __( 'Business signal', 'yoro-ai-core' ) ),
 				'message' => sanitize_text_field( $insight['message'] ?? '' ),
 			];
 		}
@@ -1443,9 +1443,9 @@ class YoRo_Store_Briefing_Service {
 				'topic'   => 'top_customers',
 				'score'   => absint( $business_context['unique_customers'] ?? 0 ),
 				'tone'    => 'positive',
-				'title'   => __( 'A repeat customer signal is visible', 'yoro-agent-core' ),
+				'title'   => __( 'A repeat customer signal is visible', 'yoro-ai-core' ),
 				'message' => sprintf(
-					__( '%1$s generated %2$d orders in this window and is shaping the current customer mix.', 'yoro-agent-core' ),
+					__( '%1$s generated %2$d orders in this window and is shaping the current customer mix.', 'yoro-ai-core' ),
 					sanitize_text_field( $top_customers[0]['name'] ),
 					absint( $top_customers[0]['order_count'] ?? 0 )
 				),
@@ -1457,9 +1457,9 @@ class YoRo_Store_Briefing_Service {
 				'topic'   => 'top_products',
 				'score'   => absint( $top_products[0]['quantity'] ?? 0 ),
 				'tone'    => 'neutral',
-				'title'   => __( 'Product demand is concentrated', 'yoro-agent-core' ),
+				'title'   => __( 'Product demand is concentrated', 'yoro-ai-core' ),
 				'message' => sprintf(
-					__( '%1$s is leading demand with %2$s units in this window.', 'yoro-agent-core' ),
+					__( '%1$s is leading demand with %2$s units in this window.', 'yoro-ai-core' ),
 					sanitize_text_field( $top_products[0]['name'] ),
 					sanitize_text_field( $top_products[0]['quantity'] ?? '0' )
 				),
@@ -1486,16 +1486,16 @@ class YoRo_Store_Briefing_Service {
 			$sequence[] = [
 				'kind'    => 'view',
 				'topic'   => 'operations_attention',
-				'label'   => __( 'Open the attention queue first', 'yoro-agent-core' ),
+				'label'   => __( 'Open the attention queue first', 'yoro-ai-core' ),
 				'command' => 'Show operations attention queue',
-				'reason'  => __( 'Start here when the live queue is overshadowing the commercial picture.', 'yoro-agent-core' ),
+				'reason'  => __( 'Start here when the live queue is overshadowing the commercial picture.', 'yoro-ai-core' ),
 			];
 			$sequence[] = [
 				'kind'    => 'view',
 				'topic'   => 'fulfillment',
-				'label'   => __( 'Check fulfillment pressure next', 'yoro-agent-core' ),
+				'label'   => __( 'Check fulfillment pressure next', 'yoro-ai-core' ),
 				'command' => 'Show fulfillment queue',
-				'reason'  => __( 'Use this next to confirm whether business pressure is turning into shipping work.', 'yoro-agent-core' ),
+				'reason'  => __( 'Use this next to confirm whether business pressure is turning into shipping work.', 'yoro-ai-core' ),
 			];
 		} else {
 			$sequence[] = [
@@ -1503,30 +1503,30 @@ class YoRo_Store_Briefing_Service {
 				'topic'   => 'operations_overview',
 				'label'   => $window_label,
 				'command' => 'Show operations summary for ' . $window_phrase,
-				'reason'  => __( 'Start here when you want the operating context behind the commercial picture.', 'yoro-agent-core' ),
+				'reason'  => __( 'Start here when you want the operating context behind the commercial picture.', 'yoro-ai-core' ),
 			];
 			$sequence[] = [
 				'kind'    => 'view',
 				'topic'   => 'inventory',
-				'label'   => __( 'Check inventory pressure', 'yoro-agent-core' ),
+				'label'   => __( 'Check inventory pressure', 'yoro-ai-core' ),
 				'command' => 'Show inventory queue',
-				'reason'  => __( 'Use this next to see whether demand is starting to create stock risk.', 'yoro-agent-core' ),
+				'reason'  => __( 'Use this next to see whether demand is starting to create stock risk.', 'yoro-ai-core' ),
 			];
 		}
 
 		$sequence[] = [
 			'kind'    => 'view',
 			'topic'   => 'customer_service',
-			'label'   => __( 'Check customer follow-up load', 'yoro-agent-core' ),
+			'label'   => __( 'Check customer follow-up load', 'yoro-ai-core' ),
 			'command' => 'Show customer service queue',
-			'reason'  => __( 'Use this to see whether customer support load is building behind current activity.', 'yoro-agent-core' ),
+			'reason'  => __( 'Use this to see whether customer support load is building behind current activity.', 'yoro-ai-core' ),
 		];
 		$sequence[] = [
 			'kind'    => 'view',
 			'topic'   => 'business_summary',
-			'label'   => __( 'Re-check this business window', 'yoro-agent-core' ),
+			'label'   => __( 'Re-check this business window', 'yoro-ai-core' ),
 			'command' => 'Show business summary for ' . $window_phrase,
-			'reason'  => __( 'Use this last after queue checks when you want a refreshed commercial read for the same window.', 'yoro-agent-core' ),
+			'reason'  => __( 'Use this last after queue checks when you want a refreshed commercial read for the same window.', 'yoro-ai-core' ),
 		];
 
 		return $sequence;
@@ -1538,22 +1538,22 @@ class YoRo_Store_Briefing_Service {
 		return [
 			[
 				'topic'   => 'operations_attention',
-				'label'   => __( 'Open attention queue', 'yoro-agent-core' ),
+				'label'   => __( 'Open attention queue', 'yoro-ai-core' ),
 				'command' => 'Show operations attention queue',
 			],
 			[
 				'topic'   => 'fulfillment',
-				'label'   => __( 'Check fulfillment queue', 'yoro-agent-core' ),
+				'label'   => __( 'Check fulfillment queue', 'yoro-ai-core' ),
 				'command' => 'Show fulfillment queue',
 			],
 			[
 				'topic'   => 'inventory',
-				'label'   => __( 'Check inventory queue', 'yoro-agent-core' ),
+				'label'   => __( 'Check inventory queue', 'yoro-ai-core' ),
 				'command' => 'Show inventory queue',
 			],
 			[
 				'topic'   => 'operations_overview',
-				'label'   => __( 'Open operations summary', 'yoro-agent-core' ),
+				'label'   => __( 'Open operations summary', 'yoro-ai-core' ),
 				'command' => 'Show operations summary for ' . $window_phrase,
 			],
 		];
@@ -1565,26 +1565,26 @@ class YoRo_Store_Briefing_Service {
 		$top_message    = sanitize_text_field( $top_priority['message'] ?? '' );
 
 		if ( 'positive' === $business_state && in_array( $briefing_state, [ 'high_pressure', 'focused_pressure', 'split_pressure' ], true ) ) {
-			return __( 'Sales held up yesterday, but this morning still needs focused attention.', 'yoro-agent-core' );
+			return __( 'Sales held up yesterday, but this morning still needs focused attention.', 'yoro-ai-core' );
 		}
 
 		if ( in_array( $briefing_state, [ 'high_pressure', 'focused_pressure' ], true ) ) {
-			return __( 'One queue is clearly more urgent than the rest this morning.', 'yoro-agent-core' );
+			return __( 'One queue is clearly more urgent than the rest this morning.', 'yoro-ai-core' );
 		}
 
 		if ( '' !== $top_message ) {
 			return $top_message;
 		}
 
-		return __( 'Your store is in a stable place this morning, with a few items worth checking first.', 'yoro-agent-core' );
+		return __( 'Your store is in a stable place this morning, with a few items worth checking first.', 'yoro-ai-core' );
 	}
 
 	private static function build_morning_briefing_assistant_summary( $headline, $yesterday_window, $business_metrics ) {
 		return sprintf(
 			/* translators: 1: headline, 2: yesterday label, 3: order count, 4: gross sales */
-			__( '%1$s Over %2$s, the store closed with %3$d orders and %4$s in gross sales.', 'yoro-agent-core' ),
+			__( '%1$s Over %2$s, the store closed with %3$d orders and %4$s in gross sales.', 'yoro-ai-core' ),
 			sanitize_text_field( $headline ),
-			sanitize_text_field( strtolower( $yesterday_window['label'] ?? __( 'yesterday', 'yoro-agent-core' ) ) ),
+			sanitize_text_field( strtolower( $yesterday_window['label'] ?? __( 'yesterday', 'yoro-ai-core' ) ) ),
 			absint( $business_metrics['order_count'] ?? 0 ),
 			sanitize_text_field( $business_metrics['gross_sales'] ?? '0' )
 		);
@@ -1651,28 +1651,28 @@ class YoRo_Store_Briefing_Service {
 		switch ( sanitize_key( $topic ) ) {
 			case 'operations_attention':
 				return sprintf(
-					_n( '%d order needs operational attention first.', '%d orders need operational attention first.', $count, 'yoro-agent-core' ),
+					_n( '%d order needs operational attention first.', '%d orders need operational attention first.', $count, 'yoro-ai-core' ),
 					$count
 				);
 			case 'fulfillment':
 				return sprintf(
-					_n( '%d fulfillment item is waiting on progress.', '%d fulfillment items are waiting on progress.', $count, 'yoro-agent-core' ),
+					_n( '%d fulfillment item is waiting on progress.', '%d fulfillment items are waiting on progress.', $count, 'yoro-ai-core' ),
 					$count
 				);
 			case 'customer_service':
 				return sprintf(
-					_n( '%d customer follow-up item is open.', '%d customer follow-up items are open.', $count, 'yoro-agent-core' ),
+					_n( '%d customer follow-up item is open.', '%d customer follow-up items are open.', $count, 'yoro-ai-core' ),
 					$count
 				);
 			case 'inventory':
 				return sprintf(
-					_n( '%d inventory item looks at risk.', '%d inventory items look at risk.', $count, 'yoro-agent-core' ),
+					_n( '%d inventory item looks at risk.', '%d inventory items look at risk.', $count, 'yoro-ai-core' ),
 					$count
 				);
 			case 'business':
-				return __( 'Review the commercial picture behind today\'s operating pressure.', 'yoro-agent-core' );
+				return __( 'Review the commercial picture behind today\'s operating pressure.', 'yoro-ai-core' );
 			default:
-				return __( 'Open the queue view behind this morning priority.', 'yoro-agent-core' );
+				return __( 'Open the queue view behind this morning priority.', 'yoro-ai-core' );
 		}
 	}
 

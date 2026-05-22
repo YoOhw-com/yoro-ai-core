@@ -49,7 +49,42 @@
 		};
 	}
 
-	function renderResult(data, h) {
+	function formatAgeHours(value) {
+		const hours = parseInt(value || 0, 10) || 0;
+
+		if (hours <= 0) {
+			return '<1h';
+		}
+
+		if (hours < 24) {
+			return hours + 'h';
+		}
+
+		const days = Math.floor(hours / 24);
+		const remainingHours = hours % 24;
+
+		if (days < 7) {
+			return remainingHours ? (days + 'd ' + remainingHours + 'h') : (days + 'd');
+		}
+
+		const weeks = Math.floor(days / 7);
+		const remainingDays = days % 7;
+
+		if (weeks < 5) {
+			return remainingDays ? (weeks + 'w ' + remainingDays + 'd') : (weeks + 'w');
+		}
+
+		const months = Math.floor(days / 30);
+		const remainingMonthDays = days % 30;
+
+		if (months > 0) {
+			return remainingMonthDays ? (months + 'mo ' + remainingMonthDays + 'd') : (months + 'mo');
+		}
+
+		return days + 'd';
+	}
+
+		function renderResult(data, h) {
 		function finish(html) {
 			const markup = typeof html === 'string' ? html : '';
 			const trimmed = markup.trim();
@@ -277,7 +312,7 @@
 			html += '<p><strong>Suggestion:</strong> ' + h.escapeHtml(data.parsed.suggestion) + '</p>';
 		}
 
-		if (data.parsed && Array.isArray(data.parsed.options) && data.parsed.options.length) {
+		if (data.parsed && shouldRenderClarifyOptions(data.parsed) && Array.isArray(data.parsed.options) && data.parsed.options.length) {
 			html += '<div class="yoro-clarify-options">';
 
 			data.parsed.options.forEach(function (option) {
@@ -326,14 +361,15 @@
 		const deliveryMode = branch.delivery_mode || '';
 		const emailDeliveryMode = branch.email_delivery_mode || '';
 
-		if (definitionId === 'write_email_for_order') {
+		if (definitionId === 'write_email_for_order' || definitionId === 'write_email_for_orders' || definitionId === 'write_and_save_email_drafts_for_orders' || definitionId === 'write_and_send_emails_for_orders') {
+			const plural = definitionId === 'write_email_for_orders' || definitionId === 'write_and_save_email_drafts_for_orders' || definitionId === 'write_and_send_emails_for_orders';
 			if (deliveryMode === 'save_draft') {
-				return { label: 'Save as draft', outcome: 'Draft will be saved on the order' };
+				return { label: 'Save as draft', outcome: plural ? 'Drafts will be saved on each order' : 'Draft will be saved on the order' };
 			}
 			if (deliveryMode === 'send') {
-				return { label: 'Send email', outcome: 'Email will be sent to the customer' };
+				return { label: 'Send email', outcome: plural ? 'Each email will be sent to its customer' : 'Email will be sent to the customer' };
 			}
-			return { label: 'Preview email', outcome: 'Email draft will stay in review state' };
+			return { label: 'Preview email', outcome: plural ? 'Email drafts will stay in review state' : 'Email draft will stay in review state' };
 		}
 
 		if (definitionId === 'verify_customer_before_fulfillment') {
@@ -673,7 +709,7 @@
 		html += '<span><strong>Order:</strong> #' + h.escapeHtml(selectedItem.order_number || selectedItem.order_id || '') + '</span>';
 		html += '<span><strong>Status:</strong> ' + h.escapeHtml(selectedItem.status || '—') + '</span>';
 		html += '<span><strong>Queue:</strong> ' + h.escapeHtml(queueSource.label || queueSource.key || '—') + '</span>';
-		html += '<span><strong>Age:</strong> ' + h.escapeHtml(selectedItem.age_hours || 0) + 'h</span>';
+		html += '<span><strong>Age:</strong> ' + h.escapeHtml(formatAgeHours(selectedItem.age_hours)) + '</span>';
 		html += '</div>';
 
 		if (result.selection_reason) {
@@ -1454,7 +1490,15 @@
 			}
 		}
 
-		if (workflow.definition_id === 'write_email_for_order' && branchMeta.outcome) {
+		if (
+			(
+				workflow.definition_id === 'write_email_for_order' ||
+				workflow.definition_id === 'write_email_for_orders' ||
+				workflow.definition_id === 'write_and_save_email_drafts_for_orders' ||
+				workflow.definition_id === 'write_and_send_emails_for_orders'
+			) &&
+			branchMeta.outcome
+		) {
 			changeLines.push(branchMeta.outcome);
 		}
 
@@ -1656,7 +1700,7 @@
 		const parsed = data.parsed || {};
 		const message = parsed.message || data.message || 'I need a little more detail.';
 		const suggestion = parsed.suggestion || data.suggestion || '';
-		const options = Array.isArray(parsed.options) ? parsed.options : [];
+		const options = shouldRenderClarifyOptions(parsed) && Array.isArray(parsed.options) ? parsed.options : [];
 
 		let html = '<div class="yoro-assistant-message-result yoro-clarification-message-result">';
 		html += '<p>' + h.escapeHtml(message) + '</p>';
@@ -1684,6 +1728,31 @@
 		html += '</div>';
 
 		return html;
+	}
+
+	function shouldRenderClarifyOptions(parsed) {
+		parsed = parsed && typeof parsed === 'object' ? parsed : {};
+
+		if (parsed.current_workflow) {
+			return true;
+		}
+
+		const reason = String(parsed.clarify_reason || '');
+		const action = String(parsed.action || '');
+		const missing = Array.isArray(parsed.missing) ? parsed.missing : [];
+		const shape = parsed.command_shape && typeof parsed.command_shape === 'object' ? parsed.command_shape : {};
+		const operationHint = String(shape.operation_hint || '');
+
+		if (
+			reason === 'missing_target' &&
+			action &&
+			missing.length &&
+			(operationHint === 'write_missing_target' || action.indexOf('orders.') === 0 || action.indexOf('workflow.') === 0)
+		) {
+			return false;
+		}
+
+		return true;
 	}
 
 	function renderAssistantNarrative(result, h) {
@@ -1843,7 +1912,7 @@
 		html += '<div class="yoro-result-notice yoro-result-success">';
 		html += '<strong>' + h.escapeHtml(successCopy.title || 'Completed') + '</strong>';
 
-		if (parsed.parser_rule) {
+		if (h.shouldShowDebugJson && h.shouldShowDebugJson() && parsed.parser_rule) {
 			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
@@ -2050,6 +2119,8 @@
 			html += '<div class="yoro-result-meta">' + traceItems.join('') + '</div>';
 		}
 
+		html += renderTraceReview(data, h);
+
 		const retrievedExamples = Array.isArray(parsed.retrieved_examples) ? parsed.retrieved_examples : [];
 		const routeCandidates = parsed && parsed.route_candidates ? parsed.route_candidates : {};
 		const candidateIntents = Array.isArray(routeCandidates.intents) ? routeCandidates.intents : [];
@@ -2182,6 +2253,370 @@
 		html += '</details>';
 
 		return html;
+	}
+
+	function renderTraceReview(data, h) {
+		const review = buildTraceReview(data);
+
+		if (!review.length) {
+			return '';
+		}
+
+		let html = '<div class="yoro-trace-review">';
+		html += '<div class="yoro-trace-review-title">Trace Review</div>';
+		html += '<ol class="yoro-trace-review-steps">';
+
+		review.forEach(function (step) {
+			const detail = step.detail ? '<small>' + h.escapeHtml(step.detail) + '</small>' : '';
+			html += '<li>';
+			html += '<strong>' + h.escapeHtml(step.label) + '</strong>';
+			html += '<span>' + h.escapeHtml(step.summary || '-') + '</span>';
+			html += detail;
+			html += '</li>';
+		});
+
+		html += '</ol></div>';
+
+		return html;
+	}
+
+	function buildTraceReview(data) {
+		data = data && typeof data === 'object' ? data : {};
+		const parsed = data.parsed && typeof data.parsed === 'object' ? data.parsed : {};
+		const plan = data.plan && typeof data.plan === 'object' ? data.plan : {};
+		const result = data.result && typeof data.result === 'object' ? data.result : {};
+		const telemetry = data.telemetry && typeof data.telemetry === 'object' ? data.telemetry : {};
+		const runtime = telemetry.runtime_snapshot && typeof telemetry.runtime_snapshot === 'object' ? telemetry.runtime_snapshot : {};
+		const shape = parsed.command_shape && typeof parsed.command_shape === 'object'
+			? parsed.command_shape
+			: (telemetry.command_shape && typeof telemetry.command_shape === 'object' ? telemetry.command_shape : {});
+		const decision = parsed.command_decision && typeof parsed.command_decision === 'object' ? parsed.command_decision : {};
+		const command = parsed.original_command ||
+			(parsed.params && parsed.params.original_command) ||
+			(plan.params && plan.params.original_command) ||
+			'';
+
+		const steps = [
+			{
+				label: 'Command',
+				summary: command,
+				detail: parsed.normalized_command && parsed.normalized_command !== command
+					? 'normalized: ' + parsed.normalized_command
+					: ''
+			},
+			{
+				label: 'Command shape',
+				summary: formatShapeSummary(shape),
+				detail: formatShapeDetail(shape)
+			},
+			{
+				label: 'AI decision',
+				summary: formatDecisionSummary(parsed, decision),
+				detail: formatDecisionDetail(parsed, decision)
+			},
+			{
+				label: 'Validator changes',
+				summary: formatValidatorSummary(parsed, plan),
+				detail: formatValidatorDetail(parsed, plan)
+			},
+			{
+				label: 'Final action',
+				summary: formatFinalAction(parsed, plan, runtime),
+				detail: formatRuntimeDetail(runtime)
+			},
+			{
+				label: 'Result',
+				summary: formatResultSummary(data, result),
+				detail: formatResultDetail(result)
+			}
+		];
+
+		return steps.filter(function (step) {
+			return !!(step.summary || step.detail);
+		});
+	}
+
+	function formatShapeSummary(shape) {
+		if (!shape || typeof shape !== 'object') {
+			return '';
+		}
+
+		const parts = [];
+
+		['surface', 'target_type', 'operation_hint'].forEach(function (key) {
+			if (shape[key]) {
+				parts.push(key + '=' + shape[key]);
+			}
+		});
+
+		if (shape.status) {
+			parts.push('status=' + shape.status);
+		}
+
+		if (shape.quantity) {
+			parts.push('quantity=' + shape.quantity);
+		}
+
+		if (shape.age_filter && typeof shape.age_filter === 'object' && shape.age_filter.operator) {
+			parts.push('age=' + shape.age_filter.operator + ' ' + (shape.age_filter.value || '') + ' ' + (shape.age_filter.unit || ''));
+		}
+
+		if (shape.money_filter && typeof shape.money_filter === 'object' && shape.money_filter.operator) {
+			parts.push('money=' + shape.money_filter.operator + ' ' + (shape.money_filter.value || ''));
+		}
+
+		return parts.join(' | ');
+	}
+
+	function formatShapeDetail(shape) {
+		if (!shape || typeof shape !== 'object') {
+			return '';
+		}
+
+		const parts = [];
+
+		if (Array.isArray(shape.explicit_order_ids) && shape.explicit_order_ids.length) {
+			parts.push('order_ids: ' + shape.explicit_order_ids.join(', '));
+		}
+
+		if (shape.quantity_scope && typeof shape.quantity_scope === 'object' && shape.quantity_scope.scope) {
+			parts.push('quantity_scope: ' + shape.quantity_scope.scope);
+		}
+
+		if (shape.customer_identity && typeof shape.customer_identity === 'object' && Object.keys(shape.customer_identity).length) {
+			parts.push('customer_identity: ' + compactObject(shape.customer_identity));
+		}
+
+		if (shape.payment_method && typeof shape.payment_method === 'object' && Object.keys(shape.payment_method).length) {
+			parts.push('payment_method: ' + compactObject(shape.payment_method));
+		}
+
+		if (shape.shipping_state && typeof shape.shipping_state === 'object' && Object.keys(shape.shipping_state).length) {
+			parts.push('shipping_state: ' + compactObject(shape.shipping_state));
+		}
+
+		if (shape.write_missing_target && typeof shape.write_missing_target === 'object' && Object.keys(shape.write_missing_target).length) {
+			parts.push('write_missing_target: ' + compactObject(shape.write_missing_target));
+		}
+
+		if (Array.isArray(shape.signals) && shape.signals.length) {
+			parts.push('signals: ' + shape.signals.slice(0, 8).join(', '));
+		}
+
+		return parts.join(' | ');
+	}
+
+	function formatDecisionSummary(parsed, decision) {
+		const parts = [];
+		const confidence = typeof decision.confidence !== 'undefined' ? decision.confidence : parsed.confidence;
+
+		if (decision.mode) {
+			parts.push('mode=' + decision.mode);
+		}
+
+		if (decision.intent_family || parsed.intent_family) {
+			parts.push('intent=' + (decision.intent_family || parsed.intent_family));
+		}
+
+		if (decision.action || parsed.action) {
+			parts.push('action=' + (decision.action || parsed.action));
+		}
+
+		if (typeof confidence !== 'undefined' && confidence !== null && !Number.isNaN(Number(confidence))) {
+			parts.push('confidence=' + Math.round(Number(confidence) * 100) + '%');
+		}
+
+		return parts.join(' | ');
+	}
+
+	function formatDecisionDetail(parsed, decision) {
+		const parts = [];
+
+		if (parsed.parser_source) {
+			parts.push('source: ' + parsed.parser_source);
+		}
+
+		if (parsed.parser_rule) {
+			parts.push('rule: ' + parsed.parser_rule);
+		}
+
+		if (parsed.resolution_path) {
+			parts.push('resolution: ' + parsed.resolution_path);
+		}
+
+		if (typeof decision.catalog_action_count !== 'undefined') {
+			parts.push('catalog_actions: ' + decision.catalog_action_count);
+		}
+
+		return parts.join(' | ');
+	}
+
+	function formatValidatorSummary(parsed, plan) {
+		const semantic = plan.validation && plan.validation.semantic ? plan.validation.semantic : {};
+		const parts = [];
+
+		parts.push('missing=' + formatArray(parsed.missing));
+		parts.push('ambiguities=' + formatArray(parsed.ambiguities));
+		parts.push('dropped=' + formatArray(parsed.dropped_param_keys));
+
+		if (typeof parsed.params_trimmed_count !== 'undefined') {
+			parts.push('trimmed=' + parsed.params_trimmed_count);
+		}
+
+		if (typeof semantic.passed !== 'undefined') {
+			parts.push('semantic=' + (semantic.passed ? 'passed' : 'failed'));
+		}
+
+		return parts.join(' | ');
+	}
+
+	function formatValidatorDetail(parsed, plan) {
+		const semantic = plan.validation && plan.validation.semantic ? plan.validation.semantic : {};
+		const parts = [];
+
+		if (Array.isArray(parsed.raw_param_keys) && parsed.raw_param_keys.length) {
+			parts.push('raw_params: ' + parsed.raw_param_keys.join(', '));
+		}
+
+		if (Array.isArray(semantic.warnings) && semantic.warnings.length) {
+			parts.push('semantic_warnings: ' + semantic.warnings.map(formatTraceValue).join(' | '));
+		}
+
+		if (parsed.params && typeof parsed.params === 'object') {
+			const params = Object.assign({}, parsed.params);
+			delete params.original_command;
+			if (Object.keys(params).length) {
+				parts.push('final_params: ' + compactObject(params));
+			}
+		}
+
+		return parts.join(' | ');
+	}
+
+	function formatFinalAction(parsed, plan, runtime) {
+		const parts = [];
+
+		if (plan.type) {
+			parts.push('plan=' + plan.type);
+		}
+
+		if (plan.action || parsed.action) {
+			parts.push('action=' + (plan.action || parsed.action));
+		}
+
+		return parts.join(' | ');
+	}
+
+	function formatRuntimeDetail(runtime) {
+		const flags = [];
+
+		['preview', 'confirm', 'requires_confirmation', 'policy_requires_confirmation', 'risk_requires_confirmation'].forEach(function (key) {
+			if (runtime[key]) {
+				flags.push(key);
+			}
+		});
+
+		if (runtime.reason) {
+			flags.push('reason: ' + runtime.reason);
+		}
+
+		return flags.length ? 'runtime: ' + flags.join(', ') : '';
+	}
+
+	function formatResultSummary(data, result) {
+		const parts = [];
+
+		if (data.stage) {
+			parts.push('stage=' + data.stage);
+		}
+
+		if (typeof data.success !== 'undefined') {
+			parts.push(data.success ? 'success' : 'failed');
+		}
+
+		if (result.display_type) {
+			parts.push('display=' + result.display_type);
+		}
+
+		if (typeof result.count !== 'undefined') {
+			parts.push('count=' + result.count);
+		}
+
+		if (result.summary || result.message || data.message) {
+			parts.push(result.summary || result.message || data.message);
+		}
+
+		return parts.join(' | ');
+	}
+
+	function formatResultDetail(result) {
+		const parts = [];
+
+		if (result.result_type) {
+			parts.push('result_type: ' + result.result_type);
+		}
+
+		if (typeof result.read_only !== 'undefined') {
+			parts.push('read_only: ' + (result.read_only ? 'yes' : 'no'));
+		}
+
+		if (typeof result.undoable !== 'undefined') {
+			parts.push('undoable: ' + (result.undoable ? 'yes' : 'no'));
+		}
+
+		if (Array.isArray(result.errors) && result.errors.length) {
+			parts.push('errors: ' + result.errors.length);
+		}
+
+		return parts.join(' | ');
+	}
+
+	function formatArray(items) {
+		return Array.isArray(items) && items.length ? '[' + items.map(formatTraceValue).join(', ') + ']' : '[]';
+	}
+
+	function compactObject(value) {
+		if (!value || typeof value !== 'object') {
+			return '';
+		}
+
+		return Object.keys(value).slice(0, 8).map(function (key) {
+			const item = value[key];
+
+			if (Array.isArray(item)) {
+				return key + '=[' + item.map(formatTraceValue).join(',') + ']';
+			}
+
+			if (item && typeof item === 'object') {
+				return key + '={' + compactObject(item) + '}';
+			}
+
+			return key + '=' + String(item);
+		}).join(', ');
+	}
+
+	function formatTraceValue(value) {
+		if (value === null || typeof value === 'undefined') {
+			return '';
+		}
+
+		if (Array.isArray(value)) {
+			return '[' + value.map(formatTraceValue).join(',') + ']';
+		}
+
+		if (typeof value === 'object') {
+			if (value.message) {
+				return String(value.message);
+			}
+
+			if (value.code) {
+				return String(value.code);
+			}
+
+			return compactObject(value);
+		}
+
+		return String(value);
 	}
 
 	window.YoRoResultRenderers = {

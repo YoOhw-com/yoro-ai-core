@@ -8,7 +8,7 @@ class YoRo_Store_Customer_Service {
 
 	public static function get_customer_service_queue( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-agent-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
 		}
 
 		$limit = isset( $params['limit'] ) ? absint( $params['limit'] ) : 5;
@@ -17,36 +17,36 @@ class YoRo_Store_Customer_Service {
 		$queues = [
 			YoRo_Orders_Read_Service::customer_service_build_queue(
 				'pending_payment_followup',
-				__( 'Pending payment follow-up', 'yoro-agent-core' ),
-				__( 'Customers with pending payment orders older than 24 hours.', 'yoro-agent-core' ),
+				__( 'Pending payment follow-up', 'yoro-ai-core' ),
+				__( 'Customers with pending payment orders older than 24 hours.', 'yoro-ai-core' ),
 				[
 					'status'       => [ 'pending' ],
 					'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-24 hours' ),
 				],
 				$limit,
-				__( 'Payment follow-up may be useful.', 'yoro-agent-core' )
+				__( 'Payment follow-up may be useful.', 'yoro-ai-core' )
 			),
 			YoRo_Orders_Read_Service::customer_service_build_queue(
 				'on_hold_followup',
-				__( 'On-hold follow-up', 'yoro-agent-core' ),
-				__( 'Customers with on-hold orders older than 48 hours.', 'yoro-agent-core' ),
+				__( 'On-hold follow-up', 'yoro-ai-core' ),
+				__( 'Customers with on-hold orders older than 48 hours.', 'yoro-ai-core' ),
 				[
 					'status'       => [ 'on-hold' ],
 					'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-48 hours' ),
 				],
 				$limit,
-				__( 'Order is still on hold and may need clarification.', 'yoro-agent-core' )
+				__( 'Order is still on hold and may need clarification.', 'yoro-ai-core' )
 			),
 			YoRo_Orders_Read_Service::customer_service_build_queue(
 				'failed_checkout_followup',
-				__( 'Failed checkout follow-up', 'yoro-agent-core' ),
-				__( 'Recent failed orders that may need customer support.', 'yoro-agent-core' ),
+				__( 'Failed checkout follow-up', 'yoro-ai-core' ),
+				__( 'Recent failed orders that may need customer support.', 'yoro-ai-core' ),
 				[
 					'status'       => [ 'failed' ],
 					'date_created' => YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-7 days' ) . '...' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( 'now' ),
 				],
 				$limit,
-				__( 'Recent failed order may need checkout support.', 'yoro-agent-core' )
+				__( 'Recent failed order may need checkout support.', 'yoro-ai-core' )
 			),
 			YoRo_Orders_Read_Service::customer_service_build_saved_email_drafts_queue( $limit ),
 		];
@@ -164,7 +164,7 @@ class YoRo_Store_Customer_Service {
 				'topic'   => 'on_hold_followup',
 				'score'   => absint( $queue_map['on_hold_followup']['count'] ?? 0 ),
 				'tone'    => 'warning',
-				'title'   => __( 'On-hold follow-ups are carrying most of the reply load', 'yoro-agent-core' ),
+				'title'   => __( 'On-hold follow-ups are carrying most of the reply load', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $queue_map['on_hold_followup']['description'] ?? '' ),
 			];
 		}
@@ -174,7 +174,7 @@ class YoRo_Store_Customer_Service {
 				'topic'   => 'pending_payment_followup',
 				'score'   => absint( $queue_map['pending_payment_followup']['count'] ?? 0 ),
 				'tone'    => 'watch',
-				'title'   => __( 'Pending payment follow-ups still need attention', 'yoro-agent-core' ),
+				'title'   => __( 'Pending payment follow-ups still need attention', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $queue_map['pending_payment_followup']['description'] ?? '' ),
 			];
 		}
@@ -184,7 +184,7 @@ class YoRo_Store_Customer_Service {
 				'topic'   => 'saved_email_drafts',
 				'score'   => absint( $queue_map['saved_email_drafts']['count'] ?? 0 ),
 				'tone'    => 'positive',
-				'title'   => __( 'Saved drafts are already waiting for review', 'yoro-agent-core' ),
+				'title'   => __( 'Saved drafts are already waiting for review', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $queue_map['saved_email_drafts']['description'] ?? '' ),
 			];
 		}
@@ -194,7 +194,7 @@ class YoRo_Store_Customer_Service {
 				'topic'   => 'failed_checkout_followup',
 				'score'   => absint( $queue_map['failed_checkout_followup']['count'] ?? 0 ),
 				'tone'    => 'neutral',
-				'title'   => __( 'Failed checkouts may need manual outreach', 'yoro-agent-core' ),
+				'title'   => __( 'Failed checkouts may need manual outreach', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $queue_map['failed_checkout_followup']['description'] ?? '' ),
 			];
 		}
@@ -404,14 +404,14 @@ class YoRo_Store_Customer_Service {
 				'command' => sanitize_text_field( $ranked_case['primary_command'] ?? '' ),
 			],
 			[
-				'label'   => __( 'Open order details', 'yoro-agent-core' ),
+				'label'   => __( 'Open order details', 'yoro-ai-core' ),
 				'command' => 'Show order ' . absint( $order['id'] ?? 0 ) . ' details',
 			],
 		];
 
 		if ( $include_queue_action ) {
 			$actions[] = [
-				'label'   => __( 'Open customer queue', 'yoro-agent-core' ),
+				'label'   => __( 'Open customer queue', 'yoro-ai-core' ),
 				'command' => 'Show customer service queue',
 			];
 		}
@@ -420,7 +420,7 @@ class YoRo_Store_Customer_Service {
 			'topic'   => $topic,
 			'title'   => sprintf(
 				/* translators: %s: order number */
-				__( 'Start with order #%s', 'yoro-agent-core' ),
+				__( 'Start with order #%s', 'yoro-ai-core' ),
 				sanitize_text_field( $order['number'] ?? $order['id'] ?? '' )
 			),
 			'meta'    => trim(
@@ -453,15 +453,15 @@ class YoRo_Store_Customer_Service {
 	private static function get_customer_service_sequence_label( $topic ) {
 		switch ( sanitize_key( $topic ) ) {
 			case 'saved_email_drafts':
-				return __( 'Review the next saved draft', 'yoro-agent-core' );
+				return __( 'Review the next saved draft', 'yoro-ai-core' );
 			case 'on_hold_followup':
-				return __( 'Reply to the next on-hold case', 'yoro-agent-core' );
+				return __( 'Reply to the next on-hold case', 'yoro-ai-core' );
 			case 'pending_payment_followup':
-				return __( 'Handle the next payment follow-up', 'yoro-agent-core' );
+				return __( 'Handle the next payment follow-up', 'yoro-ai-core' );
 			case 'failed_checkout_followup':
-				return __( 'Handle the next failed checkout follow-up', 'yoro-agent-core' );
+				return __( 'Handle the next failed checkout follow-up', 'yoro-ai-core' );
 			default:
-				return __( 'Handle the next customer follow-up', 'yoro-agent-core' );
+				return __( 'Handle the next customer follow-up', 'yoro-ai-core' );
 		}
 	}
 
@@ -485,10 +485,10 @@ class YoRo_Store_Customer_Service {
 				return $age_hours >= 72
 					? sprintf(
 						/* translators: %s: age in hours */
-						__( 'This order has been sitting on hold for %sh and is still waiting on a customer-facing reply.', 'yoro-agent-core' ),
+						__( 'This order has been sitting on hold for %sh and is still waiting on a customer-facing reply.', 'yoro-ai-core' ),
 						$age_hours
 					)
-					: __( 'This order is still on hold and looks ready for the next customer-facing reply.', 'yoro-agent-core' );
+					: __( 'This order is still on hold and looks ready for the next customer-facing reply.', 'yoro-ai-core' );
 			case 'saved_email_drafts':
 				return $draft_count > 1
 					? sprintf(
@@ -497,21 +497,21 @@ class YoRo_Store_Customer_Service {
 							'%d saved draft is already attached to this order.',
 							'%d saved drafts are already attached to this order.',
 							$draft_count,
-							'yoro-agent-core'
+							'yoro-ai-core'
 						),
 						$draft_count
 					)
-					: __( 'A saved draft is already attached to this order and ready for review.', 'yoro-agent-core' );
+					: __( 'A saved draft is already attached to this order and ready for review.', 'yoro-ai-core' );
 			case 'pending_payment_followup':
 				return $age_hours >= 48
 					? sprintf(
 						/* translators: %s: age in hours */
-						__( 'Payment is still pending after %sh, so this order is ready for follow-up.', 'yoro-agent-core' ),
+						__( 'Payment is still pending after %sh, so this order is ready for follow-up.', 'yoro-ai-core' ),
 						$age_hours
 					)
-					: __( 'Payment is still pending and this order is ready for a quick follow-up.', 'yoro-agent-core' );
+					: __( 'Payment is still pending and this order is ready for a quick follow-up.', 'yoro-ai-core' );
 			case 'failed_checkout_followup':
-				return __( 'Checkout failed recently, so this case is still in a good window for direct support outreach.', 'yoro-agent-core' );
+				return __( 'Checkout failed recently, so this case is still in a good window for direct support outreach.', 'yoro-ai-core' );
 			default:
 				return sanitize_text_field( $order['followup_reason'] ?? $ranked_case['queue_description'] ?? '' );
 		}
@@ -525,33 +525,33 @@ class YoRo_Store_Customer_Service {
 		switch ( sanitize_key( $topic ) ) {
 			case 'on_hold_followup':
 				return $age_hours >= 72
-					? __( 'Use this first if you want to reduce the heaviest live reply backlog instead of letting it age further.', 'yoro-agent-core' )
-					: __( 'This is the cleanest live on-hold reply to move before the queue builds further.', 'yoro-agent-core' );
+					? __( 'Use this first if you want to reduce the heaviest live reply backlog instead of letting it age further.', 'yoro-ai-core' )
+					: __( 'This is the cleanest live on-hold reply to move before the queue builds further.', 'yoro-ai-core' );
 			case 'saved_email_drafts':
 				return $draft_count > 1
-					? __( 'Use this first if you want the quickest completed reply before working through the heavier backlog.', 'yoro-agent-core' )
-					: __( 'This is the fastest clean win in the queue because the reply work is already started.', 'yoro-agent-core' );
+					? __( 'Use this first if you want the quickest completed reply before working through the heavier backlog.', 'yoro-ai-core' )
+					: __( 'This is the fastest clean win in the queue because the reply work is already started.', 'yoro-ai-core' );
 			case 'pending_payment_followup':
-				return __( 'This is usually a quick outreach win and is old enough that it should not wait much longer.', 'yoro-agent-core' );
+				return __( 'This is usually a quick outreach win and is old enough that it should not wait much longer.', 'yoro-ai-core' );
 			case 'failed_checkout_followup':
-				return __( 'This is still recent enough that direct outreach has a realistic chance of recovering the order.', 'yoro-agent-core' );
+				return __( 'This is still recent enough that direct outreach has a realistic chance of recovering the order.', 'yoro-ai-core' );
 			default:
-				return __( 'This case is the clearest next follow-up from the current queue.', 'yoro-agent-core' );
+				return __( 'This case is the clearest next follow-up from the current queue.', 'yoro-ai-core' );
 		}
 	}
 
 	private static function get_customer_service_primary_action_label( $topic ) {
 		switch ( sanitize_key( $topic ) ) {
 			case 'saved_email_drafts':
-				return __( 'Open draft', 'yoro-agent-core' );
+				return __( 'Open draft', 'yoro-ai-core' );
 			case 'pending_payment_followup':
-				return __( 'Draft payment follow-up', 'yoro-agent-core' );
+				return __( 'Draft payment follow-up', 'yoro-ai-core' );
 			case 'on_hold_followup':
-				return __( 'Draft on-hold reply', 'yoro-agent-core' );
+				return __( 'Draft on-hold reply', 'yoro-ai-core' );
 			case 'failed_checkout_followup':
-				return __( 'Draft support reply', 'yoro-agent-core' );
+				return __( 'Draft support reply', 'yoro-ai-core' );
 			default:
-				return __( 'Draft next reply', 'yoro-agent-core' );
+				return __( 'Draft next reply', 'yoro-ai-core' );
 		}
 	}
 

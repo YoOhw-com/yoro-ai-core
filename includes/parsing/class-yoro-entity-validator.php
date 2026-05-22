@@ -48,14 +48,14 @@ class YoRo_Entity_Validator {
 		if ( empty( $params['order_ids'] ) ) {
 			return self::error(
 				$parsed,
-				__( 'Which orders should I update?', 'yoro-agent-core' )
+				__( 'Which orders should I update?', 'yoro-ai-core' )
 			);
 		}
 
 		if ( empty( $params['status'] ) ) {
 			return self::error(
 				$parsed,
-				__( 'What status should I update to?', 'yoro-agent-core' )
+				__( 'What status should I update to?', 'yoro-ai-core' )
 			);
 		}
 
@@ -64,7 +64,7 @@ class YoRo_Entity_Validator {
 				$parsed,
 				sprintf(
 					/* translators: %s: order status */
-					__( 'The order status "%s" is not available on this store.', 'yoro-agent-core' ),
+					__( 'The order status "%s" is not available on this store.', 'yoro-ai-core' ),
 					$params['status']
 				)
 			);
@@ -80,7 +80,7 @@ class YoRo_Entity_Validator {
 		if ( empty( $params['order_ids'] ) ) {
 			return self::error(
 				$parsed,
-				__( 'Which orders should I put on hold?', 'yoro-agent-core' )
+				__( 'Which orders should I put on hold?', 'yoro-ai-core' )
 			);
 		}
 
@@ -99,14 +99,14 @@ class YoRo_Entity_Validator {
 		if ( empty( $params['order_ids'] ) ) {
 			return self::error(
 				$parsed,
-				__( 'Which order should I add the note to?', 'yoro-agent-core' )
+				__( 'Which order should I add the note to?', 'yoro-ai-core' )
 			);
 		}
 
 		if ( empty( $params['note'] ) ) {
 			return self::error(
 				$parsed,
-				__( 'What note should I add?', 'yoro-agent-core' )
+				__( 'What note should I add?', 'yoro-ai-core' )
 			);
 		}
 
@@ -130,7 +130,7 @@ class YoRo_Entity_Validator {
 						$parsed,
 						sprintf(
 							/* translators: %s: order status */
-							__( 'The order status "%s" is not available on this store.', 'yoro-agent-core' ),
+							__( 'The order status "%s" is not available on this store.', 'yoro-ai-core' ),
 							$status
 						)
 					);
@@ -155,21 +155,21 @@ class YoRo_Entity_Validator {
 		if ( empty( $name ) ) {
 			return self::error(
 				$parsed,
-				__( 'Please provide a name for this email template.', 'yoro-agent-core' )
+				__( 'Please provide a name for this email template.', 'yoro-ai-core' )
 			);
 		}
 
 		if ( empty( $subject ) ) {
 			return self::error(
 				$parsed,
-				__( 'Please provide the subject for this email template.', 'yoro-agent-core' )
+				__( 'Please provide the subject for this email template.', 'yoro-ai-core' )
 			);
 		}
 
 		if ( empty( $body ) ) {
 			return self::error(
 				$parsed,
-				__( 'Please provide the body for this email template.', 'yoro-agent-core' )
+				__( 'Please provide the body for this email template.', 'yoro-ai-core' )
 			);
 		}
 

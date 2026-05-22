@@ -8,7 +8,7 @@ class YoRo_Store_Inventory_Service {
 
 	public static function get_inventory_queue( $params ) {
 		if ( ! function_exists( 'wc_get_products' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-agent-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
 		}
 
 		$limit = isset( $params['limit'] ) ? absint( $params['limit'] ) : 5;
@@ -20,8 +20,8 @@ class YoRo_Store_Inventory_Service {
 		$queues = [
 			YoRo_Orders_Read_Service::inventory_build_query_queue(
 				'out_of_stock',
-				__( 'Out of stock', 'yoro-agent-core' ),
-				__( 'Published products currently marked out of stock.', 'yoro-agent-core' ),
+				__( 'Out of stock', 'yoro-ai-core' ),
+				__( 'Published products currently marked out of stock.', 'yoro-ai-core' ),
 				[
 					'stock_status' => 'outofstock',
 				],
@@ -29,8 +29,8 @@ class YoRo_Store_Inventory_Service {
 			),
 			YoRo_Orders_Read_Service::inventory_build_query_queue(
 				'on_backorder',
-				__( 'On backorder', 'yoro-agent-core' ),
-				__( 'Products currently available on backorder.', 'yoro-agent-core' ),
+				__( 'On backorder', 'yoro-ai-core' ),
+				__( 'Products currently available on backorder.', 'yoro-ai-core' ),
 				[
 					'stock_status' => 'onbackorder',
 				],
@@ -41,8 +41,8 @@ class YoRo_Store_Inventory_Service {
 		if ( $stock_management_enabled ) {
 			$queues[] = YoRo_Orders_Read_Service::inventory_build_query_queue(
 				'low_stock',
-				__( 'Low stock', 'yoro-agent-core' ),
-				__( 'Products with managed stock at or below the low-stock threshold.', 'yoro-agent-core' ),
+				__( 'Low stock', 'yoro-ai-core' ),
+				__( 'Products with managed stock at or below the low-stock threshold.', 'yoro-ai-core' ),
 				[
 					'manage_stock' => true,
 					'stock_status' => 'instock',
@@ -55,8 +55,8 @@ class YoRo_Store_Inventory_Service {
 
 			$queues[] = YoRo_Orders_Read_Service::inventory_build_query_queue(
 				'unmanaged_stock_selling',
-				__( 'Selling without stock management', 'yoro-agent-core' ),
-				__( 'Published products that are in stock but do not manage stock quantity.', 'yoro-agent-core' ),
+				__( 'Selling without stock management', 'yoro-ai-core' ),
+				__( 'Published products that are in stock but do not manage stock quantity.', 'yoro-ai-core' ),
 				[
 					'stock_status' => 'instock',
 				],
@@ -184,8 +184,8 @@ class YoRo_Store_Inventory_Service {
 				'topic'   => 'out_of_stock',
 				'score'   => absint( $queue_map['out_of_stock']['count'] ?? 0 ) + 200,
 				'tone'    => 'warning',
-				'title'   => __( 'Stockouts are the clearest inventory risk right now', 'yoro-agent-core' ),
-				'message' => __( 'Published products are already marked out of stock.', 'yoro-agent-core' ),
+				'title'   => __( 'Stockouts are the clearest inventory risk right now', 'yoro-ai-core' ),
+				'message' => __( 'Published products are already marked out of stock.', 'yoro-ai-core' ),
 			];
 		}
 
@@ -194,8 +194,8 @@ class YoRo_Store_Inventory_Service {
 				'topic'   => 'on_backorder',
 				'score'   => absint( $queue_map['on_backorder']['count'] ?? 0 ) + 100,
 				'tone'    => 'watch',
-				'title'   => __( 'Backorders are still building behind demand', 'yoro-agent-core' ),
-				'message' => __( 'Products are still selling while stock is already behind demand.', 'yoro-agent-core' ),
+				'title'   => __( 'Backorders are still building behind demand', 'yoro-ai-core' ),
+				'message' => __( 'Products are still selling while stock is already behind demand.', 'yoro-ai-core' ),
 			];
 		}
 
@@ -204,8 +204,8 @@ class YoRo_Store_Inventory_Service {
 				'topic'   => 'low_stock',
 				'score'   => absint( $queue_map['low_stock']['count'] ?? 0 ),
 				'tone'    => 'neutral',
-				'title'   => __( 'Low-stock items should be queued for replenishment', 'yoro-agent-core' ),
-				'message' => __( 'Managed stock is already at or below the low-stock threshold.', 'yoro-agent-core' ),
+				'title'   => __( 'Low-stock items should be queued for replenishment', 'yoro-ai-core' ),
+				'message' => __( 'Managed stock is already at or below the low-stock threshold.', 'yoro-ai-core' ),
 			];
 		}
 
@@ -214,8 +214,8 @@ class YoRo_Store_Inventory_Service {
 				'topic'   => 'low_stock_in_processing_orders',
 				'score'   => absint( $queue_map['low_stock_in_processing_orders']['count'] ?? 0 ),
 				'tone'    => 'positive',
-				'title'   => __( 'Recent processing demand is already pointing to the next restock needs', 'yoro-agent-core' ),
-				'message' => __( 'Current processing orders are already leaning on the remaining stock.', 'yoro-agent-core' ),
+				'title'   => __( 'Recent processing demand is already pointing to the next restock needs', 'yoro-ai-core' ),
+				'message' => __( 'Current processing orders are already leaning on the remaining stock.', 'yoro-ai-core' ),
 			];
 		}
 
@@ -239,8 +239,8 @@ class YoRo_Store_Inventory_Service {
 			'kind'    => 'action',
 			'topic'   => 'inventory_review',
 			'label'   => 'status_only' === $inventory_mode
-				? __( 'Review the next stock-status issue', 'yoro-agent-core' )
-				: __( 'Prepare the next inventory review', 'yoro-agent-core' ),
+				? __( 'Review the next stock-status issue', 'yoro-ai-core' )
+				: __( 'Prepare the next inventory review', 'yoro-ai-core' ),
 			'command' => 'Prepare next inventory review',
 			'reason'  => self::build_inventory_sequence_reason( $top_topic, $inventory_mode ),
 		];
@@ -249,18 +249,18 @@ class YoRo_Store_Inventory_Service {
 			$sequence[] = [
 				'kind'    => 'view',
 				'topic'   => 'fulfillment_review',
-				'label'   => __( 'Check fulfillment pressure next', 'yoro-agent-core' ),
+				'label'   => __( 'Check fulfillment pressure next', 'yoro-ai-core' ),
 				'command' => 'What seems blocked in fulfillment?',
-				'reason'  => __( 'Use this next to confirm whether inventory gaps are feeding into fulfillment delays.', 'yoro-agent-core' ),
+				'reason'  => __( 'Use this next to confirm whether inventory gaps are feeding into fulfillment delays.', 'yoro-ai-core' ),
 			];
 		}
 
 		$sequence[] = [
 			'kind'    => 'view',
 			'topic'   => 'operations_overview',
-			'label'   => __( 'Review the broader store picture', 'yoro-agent-core' ),
+			'label'   => __( 'Review the broader store picture', 'yoro-ai-core' ),
 			'command' => 'Can you give me a monthly store picture?',
-			'reason'  => __( 'Use this after the inventory pass when you want the broader operating context.', 'yoro-agent-core' ),
+			'reason'  => __( 'Use this after the inventory pass when you want the broader operating context.', 'yoro-ai-core' ),
 		];
 
 		return $sequence;
@@ -270,18 +270,18 @@ class YoRo_Store_Inventory_Service {
 		switch ( $top_topic ) {
 			case 'out_of_stock':
 				return 'status_only' === $inventory_mode
-					? __( 'Start here when you want the clearest stock-status exception first.', 'yoro-agent-core' )
-					: __( 'Start here when you want the clearest stockout to review before demand slips further.', 'yoro-agent-core' );
+					? __( 'Start here when you want the clearest stock-status exception first.', 'yoro-ai-core' )
+					: __( 'Start here when you want the clearest stockout to review before demand slips further.', 'yoro-ai-core' );
 			case 'on_backorder':
-				return __( 'Start here when you want to confirm which backordered item should be reviewed before it feeds deeper into fulfillment pressure.', 'yoro-agent-core' );
+				return __( 'Start here when you want to confirm which backordered item should be reviewed before it feeds deeper into fulfillment pressure.', 'yoro-ai-core' );
 			case 'low_stock_in_processing_orders':
-				return __( 'Start here when you want the inventory item that is already under live order demand.', 'yoro-agent-core' );
+				return __( 'Start here when you want the inventory item that is already under live order demand.', 'yoro-ai-core' );
 			case 'low_stock':
-				return __( 'Start here when you want the cleanest low-stock review before it turns into a stockout.', 'yoro-agent-core' );
+				return __( 'Start here when you want the cleanest low-stock review before it turns into a stockout.', 'yoro-ai-core' );
 			case 'unmanaged_stock_selling':
-				return __( 'Start here when you want to review where stock visibility is weakest before restock decisions become guesswork.', 'yoro-agent-core' );
+				return __( 'Start here when you want to review where stock visibility is weakest before restock decisions become guesswork.', 'yoro-ai-core' );
 			default:
-				return __( 'Start here when you want the cleanest inventory priority read first.', 'yoro-agent-core' );
+				return __( 'Start here when you want the cleanest inventory priority read first.', 'yoro-ai-core' );
 		}
 	}
 
@@ -289,23 +289,23 @@ class YoRo_Store_Inventory_Service {
 		$actions = [
 			[
 				'topic'   => 'inventory_review',
-				'label'   => __( 'Review restock priorities', 'yoro-agent-core' ),
+				'label'   => __( 'Review restock priorities', 'yoro-ai-core' ),
 				'command' => 'What should we restock first?',
 			],
 			[
 				'topic'   => 'fulfillment_review',
-				'label'   => __( 'Check fulfillment pressure', 'yoro-agent-core' ),
+				'label'   => __( 'Check fulfillment pressure', 'yoro-ai-core' ),
 				'command' => 'What seems blocked in fulfillment?',
 			],
 			[
 				'topic'   => 'operations_overview',
-				'label'   => __( 'Open the store picture', 'yoro-agent-core' ),
+				'label'   => __( 'Open the store picture', 'yoro-ai-core' ),
 				'command' => 'Can you give me a monthly store picture?',
 			],
 		];
 
 		if ( empty( $inventory_context['stock_management_enabled'] ) ) {
-			$actions[0]['label'] = __( 'Review stock status risks', 'yoro-agent-core' );
+			$actions[0]['label'] = __( 'Review stock status risks', 'yoro-ai-core' );
 			$actions[0]['command'] = 'What inventory items are out of stock or on backorder?';
 		}
 
@@ -453,7 +453,7 @@ class YoRo_Store_Inventory_Service {
 
 		if ( $is_start_here && ! empty( $product['edit_url'] ) ) {
 			$actions[] = [
-				'label' => __( 'Open product', 'yoro-agent-core' ),
+				'label' => __( 'Open product', 'yoro-ai-core' ),
 				'href'  => esc_url_raw( $product['edit_url'] ),
 			];
 		}
@@ -461,7 +461,7 @@ class YoRo_Store_Inventory_Service {
 		return [
 			'topic'   => $topic,
 			'title'   => $is_start_here
-				? sprintf( __( 'Start with %s', 'yoro-agent-core' ), sanitize_text_field( $product['name'] ?? '#' . $product_id ) )
+				? sprintf( __( 'Start with %s', 'yoro-ai-core' ), sanitize_text_field( $product['name'] ?? '#' . $product_id ) )
 				: sanitize_text_field( $product['name'] ?? '#' . $product_id ),
 			'meta'    => implode( ' · ', $meta_parts ),
 			'badge'   => self::format_inventory_badge( $topic, $product ),
@@ -492,28 +492,28 @@ class YoRo_Store_Inventory_Service {
 
 	private static function get_inventory_primary_action_label( $topic, $inventory_context ) {
 		if ( 'low_stock_in_processing_orders' === $topic ) {
-			return __( 'Check fulfillment impact', 'yoro-agent-core' );
+			return __( 'Check fulfillment impact', 'yoro-ai-core' );
 		}
 
 		if ( 'status_only' === sanitize_key( $inventory_context['inventory_mode'] ?? '' ) ) {
-			return __( 'Review stock-status issue', 'yoro-agent-core' );
+			return __( 'Review stock-status issue', 'yoro-ai-core' );
 		}
 
-		return __( 'Prepare inventory review', 'yoro-agent-core' );
+		return __( 'Prepare inventory review', 'yoro-ai-core' );
 	}
 
 	private static function build_inventory_case_message( $topic, $product, $inventory_context ) {
-		$product_name = sanitize_text_field( $product['name'] ?? __( 'This product', 'yoro-agent-core' ) );
+		$product_name = sanitize_text_field( $product['name'] ?? __( 'This product', 'yoro-ai-core' ) );
 		$open_order_count = absint( $product['open_order_count'] ?? 0 );
 		$inventory_mode = sanitize_key( $inventory_context['inventory_mode'] ?? '' );
 
 		switch ( $topic ) {
 			case 'out_of_stock':
 				return 'status_only' === $inventory_mode
-					? sprintf( __( '%s is marked out of stock and is the clearest stock-status exception to review first.', 'yoro-agent-core' ), $product_name )
-					: sprintf( __( '%s is already out of stock and should be reviewed before demand slips further.', 'yoro-agent-core' ), $product_name );
+					? sprintf( __( '%s is marked out of stock and is the clearest stock-status exception to review first.', 'yoro-ai-core' ), $product_name )
+					: sprintf( __( '%s is already out of stock and should be reviewed before demand slips further.', 'yoro-ai-core' ), $product_name );
 			case 'on_backorder':
-				return sprintf( __( '%s is already on backorder and may now be feeding directly into fulfillment pressure.', 'yoro-agent-core' ), $product_name );
+				return sprintf( __( '%s is already on backorder and may now be feeding directly into fulfillment pressure.', 'yoro-ai-core' ), $product_name );
 			case 'low_stock_in_processing_orders':
 				return sprintf(
 					/* translators: %d: open order count */
@@ -521,14 +521,14 @@ class YoRo_Store_Inventory_Service {
 						'Recent processing demand is already consuming the remaining stock for this item across %d open order.',
 						'Recent processing demand is already consuming the remaining stock for this item across %d open orders.',
 						$open_order_count,
-						'yoro-agent-core'
+						'yoro-ai-core'
 					),
 					$open_order_count
 				);
 			case 'low_stock':
-				return __( 'Stock is already at or below the low-stock threshold and should be reviewed before it becomes a stockout.', 'yoro-agent-core' );
+				return __( 'Stock is already at or below the low-stock threshold and should be reviewed before it becomes a stockout.', 'yoro-ai-core' );
 			case 'unmanaged_stock_selling':
-				return __( 'This product is still selling without quantity tracking, so its next inventory risk is harder to see.', 'yoro-agent-core' );
+				return __( 'This product is still selling without quantity tracking, so its next inventory risk is harder to see.', 'yoro-ai-core' );
 			default:
 				return sanitize_text_field( $product['stock_status'] ?? '' );
 		}
@@ -540,18 +540,18 @@ class YoRo_Store_Inventory_Service {
 		switch ( $topic ) {
 			case 'out_of_stock':
 				return 'status_only' === $inventory_mode
-					? __( 'Use this first when you want the fastest stock-status review without relying on quantity tracking.', 'yoro-agent-core' )
-					: __( 'Use this first when you want the clearest stockout to act on before reviewing softer inventory signals.', 'yoro-agent-core' );
+					? __( 'Use this first when you want the fastest stock-status review without relying on quantity tracking.', 'yoro-ai-core' )
+					: __( 'Use this first when you want the clearest stockout to act on before reviewing softer inventory signals.', 'yoro-ai-core' );
 			case 'on_backorder':
-				return __( 'Use this next when you want to confirm whether customer demand is already outrunning available stock.', 'yoro-agent-core' );
+				return __( 'Use this next when you want to confirm whether customer demand is already outrunning available stock.', 'yoro-ai-core' );
 			case 'low_stock_in_processing_orders':
-				return __( 'Use this next when you want to connect inventory risk directly to the current fulfillment backlog.', 'yoro-agent-core' );
+				return __( 'Use this next when you want to connect inventory risk directly to the current fulfillment backlog.', 'yoro-ai-core' );
 			case 'low_stock':
-				return __( 'Use this next when you want to catch replenishment issues before they turn into stockouts.', 'yoro-agent-core' );
+				return __( 'Use this next when you want to catch replenishment issues before they turn into stockouts.', 'yoro-ai-core' );
 			case 'unmanaged_stock_selling':
-				return __( 'Use this if you want to review where inventory visibility is weakest before deeper restock decisions.', 'yoro-agent-core' );
+				return __( 'Use this if you want to review where inventory visibility is weakest before deeper restock decisions.', 'yoro-ai-core' );
 			default:
-				return __( 'Use this if you want the cleanest next inventory check.', 'yoro-agent-core' );
+				return __( 'Use this if you want the cleanest next inventory check.', 'yoro-ai-core' );
 		}
 	}
 
@@ -563,13 +563,13 @@ class YoRo_Store_Inventory_Service {
 		if ( '' === $quantity || null === $quantity ) {
 			return 'status_only' === sanitize_key( $inventory_context['inventory_mode'] ?? '' )
 				? sanitize_text_field( str_replace( '_', ' ', $stock_status ) )
-				: __( 'Quantity not tracked', 'yoro-agent-core' );
+				: __( 'Quantity not tracked', 'yoro-ai-core' );
 		}
 
-		$summary = sprintf( __( 'Stock %d', 'yoro-agent-core' ), (int) $quantity );
+		$summary = sprintf( __( 'Stock %d', 'yoro-ai-core' ), (int) $quantity );
 
 		if ( ! empty( $inventory_context['stock_management_enabled'] ) && $threshold > 0 ) {
-			$summary .= sprintf( __( ' / low %d', 'yoro-agent-core' ), $threshold );
+			$summary .= sprintf( __( ' / low %d', 'yoro-ai-core' ), $threshold );
 		}
 
 		return $summary;
