@@ -460,13 +460,13 @@
 						return executeActionDirect(fallbackAction, fallbackParams, false, false, 'quick-actions')
 							.then(function(fallbackData) {
 								loading.remove();
-								addAgentMessage(fallbackData);
+								addAssistantMessage(fallbackData);
 								updateConversationState(fallbackData, fallbackAction);
 								return null;
 							})
 							.catch(function(error) {
 								loading.remove();
-								addAgentMessage({
+								addAssistantMessage({
 									success: false,
 									error: error || YoRoAIAdmin.i18n.error
 								});
@@ -475,13 +475,13 @@
 					}
 
 					loading.remove();
-					addAgentMessage(data);
+					addAssistantMessage(data);
 					updateConversationState(data, action);
 					return null;
 				})
 				.catch(function(error) {
 					loading.remove();
-					addAgentMessage({
+					addAssistantMessage({
 						success: false,
 						error: error || YoRoAIAdmin.i18n.error
 					});
@@ -1312,7 +1312,7 @@
 			const isUser = type === 'user';
 
 			const wrapper = document.createElement('div');
-			wrapper.className = 'yoro-chat-message ' + (isUser ? 'yoro-chat-message-user' : 'yoro-chat-message-agent');
+			wrapper.className = 'yoro-chat-message ' + (isUser ? 'yoro-chat-message-user' : 'yoro-chat-message-assistant');
 
 			wrapper.innerHTML = `
 				<div class="yoro-chat-avatar" aria-hidden="true">${isUser ? 'U' : ''}</div>
@@ -1345,7 +1345,7 @@
 
 			const firstMessage = messages[0];
 
-			if (!firstMessage.classList.contains('yoro-chat-message-agent')) {
+			if (!firstMessage.classList.contains('yoro-chat-message-assistant')) {
 				return;
 			}
 
@@ -1363,7 +1363,7 @@
 		}
 
 		function swapInitialGreetingForMorningBriefing() {
-			const greetingMessage = chatThread.querySelector('.yoro-chat-message-agent[data-yoro-initial-greeting="1"]');
+			const greetingMessage = chatThread.querySelector('.yoro-chat-message-assistant[data-yoro-initial-greeting="1"]');
 
 			if (!greetingMessage) {
 				return false;
@@ -1378,7 +1378,7 @@
 				? String(YoRoAIAdmin.i18n.morningBriefingIntro)
 				: 'Good morning, here’s your store briefing for today.';
 
-			return addMessage('agent', '<strong>YoRo</strong><p>' + escapeHtml(intro) + '</p>');
+			return addMessage('assistant', '<strong>YoRo</strong><p>' + escapeHtml(intro) + '</p>');
 		}
 
 		function shouldUseMorningBriefingGreeting(data) {
@@ -1401,7 +1401,7 @@
 
 		let resultUI = null;
 
-		function hideSupersededAgentMessages(wrapper, data) {
+		function hideSupersededAssistantMessages(wrapper, data) {
 			const payload = data && data.result && data.result.display_type ? data.result : (data || {});
 			const displayType = payload && payload.display_type ? String(payload.display_type) : '';
 			const orderId = parseInt(
@@ -1420,7 +1420,7 @@
 				wrapper.setAttribute('data-yoro-order-id', String(orderId));
 
 				const previousDraftMessages = chatThread.querySelectorAll(
-					'.yoro-chat-message-agent[data-yoro-display-type="customer_email_drafts"][data-yoro-order-id="' + orderId + '"]'
+					'.yoro-chat-message-assistant[data-yoro-display-type="customer_email_drafts"][data-yoro-order-id="' + orderId + '"]'
 				);
 
 				previousDraftMessages.forEach(function (message) {
@@ -1442,7 +1442,7 @@
 				wrapper.setAttribute('data-yoro-display-type', displayType);
 
 				const previousTemplateMessages = chatThread.querySelectorAll(
-					'.yoro-chat-message-agent[data-yoro-display-type="email_templates_list"]'
+					'.yoro-chat-message-assistant[data-yoro-display-type="email_templates_list"]'
 				);
 
 				previousTemplateMessages.forEach(function (message) {
@@ -1459,7 +1459,7 @@
 			}
 		}
 
-		function addAgentMessage(data) {
+		function addAssistantMessage(data) {
 			let morningGreetingWrapper = null;
 
 			if (shouldUseMorningBriefingGreeting(data)) {
@@ -1467,7 +1467,7 @@
 			}
 
 			const wrapper = addMessage(
-				'agent',
+				'assistant',
 				resultUI
 					? resultUI.renderResult(data)
 					: renderJsonFallback(data)
@@ -1479,7 +1479,7 @@
 				wrapper.setAttribute('data-yoro-display-type', displayType);
 			}
 
-			hideSupersededAgentMessages(wrapper, data);
+			hideSupersededAssistantMessages(wrapper, data);
 			syncBeforeUnloadGuard();
 
 			if (morningGreetingWrapper) {
@@ -1489,7 +1489,7 @@
 
 		function addLoadingMessage() {
 			return addMessage(
-				'agent',
+				'assistant',
 				'<div class="yoro-typing"><span></span><span></span><span></span></div>'
 			);
 		}
@@ -1652,11 +1652,11 @@
 			})
 				.then(function (data) {
 					loading.remove();
-					addAgentMessage(data);
+					addAssistantMessage(data);
 				})
 				.catch(function (error) {
 					loading.remove();
-					addAgentMessage({
+					addAssistantMessage({
 						success: false,
 						error: error || YoRoAIAdmin.i18n.error
 					});
@@ -1721,7 +1721,7 @@
 
 				swapInitialGreetingForMorningBriefing();
 
-				addAgentMessage(data);
+				addAssistantMessage(data);
 				updateConversationState(data, 'Morning briefing');
 
 				return data;
@@ -2237,7 +2237,7 @@
 			clearCommandGhostHint();
 
 			if (!command) {
-				addAgentMessage({
+				addAssistantMessage({
 					success: false,
 					message: YoRoAIAdmin.i18n.emptyCommand
 				});
@@ -2283,7 +2283,7 @@
 					conversationState.pending_confirm_command = '';
 				}
 
-				addAgentMessage(data);
+				addAssistantMessage(data);
 				updateConversationState(data, command);
 
 				if (data && data.stage === 'done') {
@@ -2297,7 +2297,7 @@
 			.catch(function (error) {
 				loading.remove();
 
-				addAgentMessage({
+				addAssistantMessage({
 					success: false,
 					error: error || YoRoAIAdmin.i18n.error
 				});
@@ -2601,12 +2601,12 @@
 			executeActionDirect(action, params || {}, confirm || false, preview || false, 'suggestion')
 				.then(function(data) {
 					loading.remove();
-					addAgentMessage(data);
+					addAssistantMessage(data);
 					updateConversationState(data, action);
 				})
 				.catch(function(error) {
 					loading.remove();
-					addAgentMessage({
+					addAssistantMessage({
 						success: false,
 						error: error || YoRoAIAdmin.i18n.error
 					});
@@ -2703,7 +2703,7 @@
 			clearButton.addEventListener('click', function () {
 				chatThread.innerHTML = '';
 				addMessage(
-					'agent',
+					'assistant',
 					'<strong>YoRo</strong><p>Chat cleared. How can I help manage your store?</p>'
 				);
 				commandField.value = '';
@@ -2747,7 +2747,7 @@
 				resolveOrderId: resolveOrderId,
 				setCurrentOrderId: setCurrentOrderId,
 				executeActionDirect: executeActionDirect,
-				addAgentMessage: addAgentMessage,
+				addAssistantMessage: addAssistantMessage,
 				addLoadingMessage: addLoadingMessage,
 				updateConversationState: updateConversationState,
 				runCommandFromText: runCommandFromText,
@@ -2766,7 +2766,7 @@
 					getConversationState: function() {
 						return conversationState;
 				},
-				addAgentMessage: addAgentMessage,
+				addAssistantMessage: addAssistantMessage,
 				addLoadingMessage: addLoadingMessage,
 				updateConversationState: updateConversationState,
 				runCommandFromText: runCommandFromText,
@@ -2955,7 +2955,7 @@
 						executeActionDirect(directFromCommand.action, directFromCommand.params || {}, false, false, 'clarify-option')
 							.then(function(data) {
 								loading.remove();
-								addAgentMessage(data);
+								addAssistantMessage(data);
 								updateConversationState(data, directFromCommand.action);
 
 								if (
@@ -2970,7 +2970,7 @@
 							})
 							.catch(function(error) {
 								loading.remove();
-								addAgentMessage({
+								addAssistantMessage({
 									success: false,
 									error: error || YoRoAIAdmin.i18n.error
 								});
@@ -3003,7 +3003,7 @@
 						try {
 							directParams = JSON.parse(directParamsRaw);
 						} catch (error) {
-							addAgentMessage({
+							addAssistantMessage({
 								success: false,
 								message: 'Could not confirm this action because the saved action payload is invalid.'
 							});
@@ -3014,11 +3014,11 @@
 					executeActionDirect(directAction, directParams, true, false, '', directActionStateToken)
 						.then(function(data) {
 							hideConfirmationActions(confirmRun);
-							addAgentMessage(data);
+							addAssistantMessage(data);
 							updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || directAction));
 						})
 						.catch(function(error) {
-							addAgentMessage({
+							addAssistantMessage({
 								success: false,
 								error: error
 							});
@@ -3045,7 +3045,7 @@
 
 					conversationState.pending_confirm_command = '';
 					conversationState.pending_plan_token = '';
-					addMessage('agent', '<p>Action cancelled.</p>');
+					addMessage('assistant', '<p>Action cancelled.</p>');
 					syncBeforeUnloadGuard();
 
 				return;
@@ -3059,7 +3059,7 @@
 
 				if (!logId) {
 					restoreHiddenAction(hiddenUndoAction);
-					addAgentMessage({
+					addAssistantMessage({
 						success: false,
 						message: 'Undo log ID is missing.'
 					});
@@ -3068,7 +3068,7 @@
 
 				undoLog(logId)
 					.then(function (data) {
-						addAgentMessage({
+						addAssistantMessage({
 							success: true,
 							message: data.message || 'Undo completed',
 							stage: 'undo',
@@ -3077,7 +3077,7 @@
 					})
 					.catch(function (error) {
 						restoreHiddenAction(hiddenUndoAction);
-						addAgentMessage({
+						addAssistantMessage({
 							success: false,
 							error: error
 						});
@@ -3102,10 +3102,10 @@
 
 				dismissMorningBriefing()
 					.then(function () {
-						addMessage('agent', '<p>Morning briefing dismissed for today.</p>');
+						addMessage('assistant', '<p>Morning briefing dismissed for today.</p>');
 					})
 					.catch(function () {
-						addAgentMessage({
+						addAssistantMessage({
 							success: false,
 							message: 'Could not dismiss the morning briefing.'
 						});

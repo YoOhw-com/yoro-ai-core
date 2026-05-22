@@ -312,7 +312,7 @@ class YoRo_Admin_Page {
 			</div>
 
 			<div id="yoro-chat-thread" class="yoro-chat-thread">
-				<div class="yoro-chat-message yoro-chat-message-agent" data-yoro-initial-greeting="1">
+				<div class="yoro-chat-message yoro-chat-message-assistant" data-yoro-initial-greeting="1">
 					<div class="yoro-chat-avatar" aria-hidden="true"></div>
 					<div class="yoro-chat-bubble">
 						<strong><?php esc_html_e( 'YoRo', 'yoro-ai-core' ); ?></strong>
@@ -1509,7 +1509,7 @@ class YoRo_Admin_Page {
 		if ( $task_unclassified_rate > 5 ) {
 			return [
 				'status'  => 'observe',
-				'title'   => __( 'Legacy logs still limit confidence', 'yoro-ai-core' ),
+					'title'   => __( 'Older logs still limit confidence', 'yoro-ai-core' ),
 				'message' => sprintf(
 					/* translators: 1: unclassified rate, 2: inferred count */
 					__( 'About %1$s%% of task logs remain unclassified. The dashboard inferred %2$d guard or recovery paths, but you still need fresher traffic before calling this phase complete.', 'yoro-ai-core' ),
@@ -1950,16 +1950,14 @@ class YoRo_Admin_Page {
 		$rate_limit_window = absint( $settings['rate_limit_window'] ?? 60 );
 		$undo_ttl = absint( $settings['undo_ttl'] ?? 60 );
 		$max_result_limit = absint( $settings['max_result_limit'] ?? 20 );
-		$ai_api_url = $settings['ai_api_url'] ?? ( $settings['cloud_api_url'] ?? '' );
+		$ai_api_url = $settings['ai_api_url'] ?? '';
 		$ai_api_url_locked = ! empty( $settings['ai_api_url_locked'] );
 		$ai_api_url_constant = $settings['ai_api_url_constant'] ?? '';
-		$ai_api_site_key_source = $settings['ai_api_site_key_source'] ?? ( $settings['cloud_site_key_source'] ?? 'missing' );
+		$ai_api_site_key_source = $settings['ai_api_site_key_source'] ?? 'missing';
 		$ai_api_site_key_constant = $settings['ai_api_site_key_constant'] ?? '';
-		$ai_api_enabled = $settings['ai_api_enabled'] ?? ( $settings['cloud_parser_enabled'] ?? 'no' );
-		$ai_api_endpoint_ready = $settings['ai_api_endpoint_ready'] ?? ( $settings['cloud_endpoint_ready'] ?? 'no' );
-		$ai_api_status = isset( $settings['ai_api_status'] ) && is_array( $settings['ai_api_status'] )
-			? $settings['ai_api_status']
-			: ( isset( $settings['cloud_status'] ) && is_array( $settings['cloud_status'] ) ? $settings['cloud_status'] : [] );
+		$ai_api_enabled = $settings['ai_api_enabled'] ?? 'no';
+		$ai_api_endpoint_ready = $settings['ai_api_endpoint_ready'] ?? 'no';
+		$ai_api_status = isset( $settings['ai_api_status'] ) && is_array( $settings['ai_api_status'] ) ? $settings['ai_api_status'] : [];
 
 		?>
 		<div class="wrap yoro-ai-wrap">
@@ -2546,18 +2544,15 @@ class YoRo_Admin_Page {
 		}
 
 		$connection_result = is_array( $settings_result )
-			? ( $settings_result['ai_api_connection_result'] ?? ( $settings_result['cloud_connection_result'] ?? null ) )
+			? ( $settings_result['ai_api_connection_result'] ?? null )
 			: null;
 		$connection_error = is_array( $settings_result )
-			? ( $settings_result['ai_api_connection_error'] ?? ( $settings_result['cloud_connection_error'] ?? null ) )
+			? ( $settings_result['ai_api_connection_error'] ?? null )
 			: null;
-		$credentials_verified = is_array( $settings_result ) && (
-			! empty( $settings_result['ai_api_credentials_verified'] ) ||
-			! empty( $settings_result['cloud_credentials_verified'] )
-		);
+		$credentials_verified = is_array( $settings_result ) && ! empty( $settings_result['ai_api_credentials_verified'] );
 
 		if (
-			( ! empty( $_POST['yoro_ai_api_test_connection'] ) || ! empty( $_POST['yoro_cloud_test_connection'] ) ) &&
+			! empty( $_POST['yoro_ai_api_test_connection'] ) &&
 			class_exists( 'YoRo_AI_API_Client' ) &&
 			! is_wp_error( $connection_error ) &&
 			! $credentials_verified

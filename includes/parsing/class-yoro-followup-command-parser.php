@@ -158,7 +158,7 @@ class YoRo_Followup_Command_Parser {
 	}
 
 	private static function parse_contextual_workflow_preview( $command, $normalized, $client_context ) {
-		$legacy_preview_phrases = [
+		$preview_phrases = [
 			'preview the next follow-up',
 			'preview the next follow up',
 			'preview next follow-up',
@@ -168,7 +168,7 @@ class YoRo_Followup_Command_Parser {
 			'next recommendation',
 		];
 
-		$wants_preview = in_array( $normalized, $legacy_preview_phrases, true );
+		$wants_preview = in_array( $normalized, $preview_phrases, true );
 
 		if ( ! $wants_preview ) {
 			return null;

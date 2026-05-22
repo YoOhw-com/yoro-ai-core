@@ -8,10 +8,6 @@ if ( ! defined( 'YORO_AI_PROVIDER_YORO_AI_API' ) ) {
 	define( 'YORO_AI_PROVIDER_YORO_AI_API', 'yoro_ai_api' );
 }
 
-if ( ! defined( 'YORO_AI_PROVIDER_YORO_CLOUD' ) ) {
-	define( 'YORO_AI_PROVIDER_YORO_CLOUD', 'yoro_cloud' );
-}
-
 class YoRo_AI_Parser {
 
 	const PROMPT_VERSION_PARSE = 'parse.v1';
@@ -24,8 +20,8 @@ class YoRo_AI_Parser {
 
 	public static function parse( $command ) {
 		return new WP_Error(
-			'yoro_ai_legacy_parse_removed',
-			__( 'Legacy AI parse is no longer available in the plugin. Use YoRo AI API command routing instead.', 'yoro-ai-core' )
+			'yoro_ai_parse_removed',
+			__( 'Local AI parse is no longer available in the plugin. Use YoRo AI API command routing instead.', 'yoro-ai-core' )
 		);
 	}
 

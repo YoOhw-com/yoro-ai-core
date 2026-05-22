@@ -13,7 +13,7 @@
 			resolveOrderId: helpers.resolveOrderId,
 			setCurrentOrderId: helpers.setCurrentOrderId,
 			executeActionDirect: helpers.executeActionDirect,
-			addAgentMessage: helpers.addAgentMessage,
+			addAssistantMessage: helpers.addAssistantMessage,
 			addLoadingMessage: helpers.addLoadingMessage,
 			updateConversationState: helpers.updateConversationState,
 			openModal: helpers.openModal
@@ -528,7 +528,7 @@
 				let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
 				if (!templateId) {
-					h.addAgentMessage({
+					h.addAssistantMessage({
 						success: false,
 						message: 'Template ID is required.'
 					});
@@ -536,7 +536,7 @@
 				}
 
 				if (!orderId) {
-					h.addAgentMessage({
+					h.addAssistantMessage({
 						success: false,
 						message: 'No active order. Please open or reference an order first.'
 					});
@@ -559,13 +559,13 @@
 					.then(function(data) {
 						loading.remove();
 
-						h.addAgentMessage(data);
+						h.addAssistantMessage(data);
 						h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
 					})
 					.catch(function(error) {
 						loading.remove();
 
-						h.addAgentMessage({
+						h.addAssistantMessage({
 							success: false,
 							error: error
 						});
@@ -580,7 +580,7 @@
 			const templateName = target.getAttribute('data-template-name') || '';
 
 			if (!templateId) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'Template ID is required.'
 				});
@@ -605,13 +605,13 @@
 						.then(function(data) {
 							loading.remove();
 
-							h.addAgentMessage(data);
+							h.addAssistantMessage(data);
 							h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
 						})
 						.catch(function(error) {
 							loading.remove();
 
-							h.addAgentMessage({
+							h.addAssistantMessage({
 								success: false,
 								error: error
 							});
@@ -627,7 +627,7 @@
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
 			if (!templateId) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'Template ID is required.'
 				});
@@ -635,7 +635,7 @@
 			}
 
 			if (!orderId) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'No active order. Please open or reference an order first.'
 				});
@@ -663,13 +663,13 @@
 				.then(function(data) {
 					loading.remove();
 
-					h.addAgentMessage(data);
+					h.addAssistantMessage(data);
 					h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
 				})
 				.catch(function(error) {
 					loading.remove();
 
-					h.addAgentMessage({
+					h.addAssistantMessage({
 						success: false,
 						error: error
 					});
@@ -684,7 +684,7 @@
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
 			if (!orderId) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'No active order. Please open or reference an order first.'
 				});
@@ -697,7 +697,7 @@
 			const body = readEmailEditableValue(bodyInput);
 
 			if (!subject || !body) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'Subject and body are required before saving a template.'
 				});
@@ -734,13 +734,13 @@
 				.then(function(data) {
 					loading.remove();
 
-					h.addAgentMessage(data);
+					h.addAssistantMessage(data);
 					h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
 				})
 				.catch(function(error) {
 					loading.remove();
 
-					h.addAgentMessage({
+					h.addAssistantMessage({
 						success: false,
 						error: error
 					});
@@ -807,7 +807,7 @@
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
 			if (!orderId) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'No active order. Please open or reference an order first.'
 				});
@@ -823,7 +823,7 @@
 			const body = readEmailEditableValue(bodyInput);
 
 			if (!orderId || !subject || !body) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'Order ID, subject, and body are required.'
 				});
@@ -845,13 +845,13 @@
 				.then(function(data) {
 					loading.remove();
 
-					h.addAgentMessage(data);
+					h.addAssistantMessage(data);
 					h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
 				})
 				.catch(function(error) {
 					loading.remove();
 
-					h.addAgentMessage({
+					h.addAssistantMessage({
 						success: false,
 						error: error
 					});
@@ -864,7 +864,7 @@
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
 			if (!orderId) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'No active order. Please open or reference an order first.'
 				});
@@ -874,7 +874,7 @@
 			h.setCurrentOrderId(orderId);
 
 			if (!orderId) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'Order ID is required.'
 				});
@@ -894,13 +894,13 @@
 				.then(function(data) {
 					loading.remove();
 
-					h.addAgentMessage(data);
+					h.addAssistantMessage(data);
 					h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
 				})
 				.catch(function(error) {
 					loading.remove();
 
-					h.addAgentMessage({
+					h.addAssistantMessage({
 						success: false,
 						error: error
 					});
@@ -913,7 +913,7 @@
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
 			if (!orderId) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'No active order. Please open or reference an order first.'
 				});
@@ -949,13 +949,13 @@
 						result.send_payload.draft_id = draftId;
 					}
 
-					h.addAgentMessage(data);
+					h.addAssistantMessage(data);
 					h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
 				})
 				.catch(function(error) {
 					loading.remove();
 
-					h.addAgentMessage({
+					h.addAssistantMessage({
 						success: false,
 						error: error
 					});
@@ -970,7 +970,7 @@
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
 			if (!orderId) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'No active order. Please open or reference an order first.'
 				});
@@ -987,7 +987,7 @@
 			const draftId = target.getAttribute('data-draft-id') || '';
 
 			if (!draftId || !subject || !body) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'Draft ID, subject, and body are required.'
 				});
@@ -1010,13 +1010,13 @@
 				.then(function(data) {
 					loading.remove();
 
-					h.addAgentMessage(data);
+					h.addAssistantMessage(data);
 					h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
 				})
 				.catch(function(error) {
 					loading.remove();
 
-					h.addAgentMessage({
+					h.addAssistantMessage({
 						success: false,
 						error: error
 					});
@@ -1029,7 +1029,7 @@
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
 			if (!orderId) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'No active order. Please open or reference an order first.'
 				});
@@ -1042,7 +1042,7 @@
 			const subject = target.getAttribute('data-subject') || '';
 
 			if (!orderId || !draftId) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'Order ID and draft ID are required.'
 				});
@@ -1068,13 +1068,13 @@
 						.then(function(data) {
 							loading.remove();
 
-							h.addAgentMessage(data);
+							h.addAssistantMessage(data);
 							h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
 						})
 						.catch(function(error) {
 							loading.remove();
 
-							h.addAgentMessage({
+							h.addAssistantMessage({
 								success: false,
 								error: error
 							});
@@ -1090,7 +1090,7 @@
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
 			if (!orderId) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'No active order. Please open or reference an order first.'
 				});
@@ -1106,7 +1106,7 @@
 			const body = readEmailEditableValue(bodyInput);
 
 			if (!orderId || !subject || !body) {
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					message: 'Order ID, subject, and body are required.'
 				});
@@ -1133,13 +1133,13 @@
 						.then(function(data) {
 							loading.remove();
 
-							h.addAgentMessage(data);
+							h.addAssistantMessage(data);
 							h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
 						})
 						.catch(function(error) {
 							loading.remove();
 
-							h.addAgentMessage({
+							h.addAssistantMessage({
 								success: false,
 								error: error
 							});

@@ -8,10 +8,6 @@ if ( ! defined( 'YORO_AI_PROVIDER_YORO_AI_API' ) ) {
 	define( 'YORO_AI_PROVIDER_YORO_AI_API', 'yoro_ai_api' );
 }
 
-if ( ! defined( 'YORO_AI_PROVIDER_YORO_CLOUD' ) ) {
-	define( 'YORO_AI_PROVIDER_YORO_CLOUD', 'yoro_cloud' );
-}
-
 class YoRo_AI_Provider_Resolver {
 
 	public static function resolve_provider() {

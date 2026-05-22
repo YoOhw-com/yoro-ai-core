@@ -34,10 +34,6 @@ if ( ! defined( 'YORO_AI_PROVIDER_YORO_AI_API' ) ) {
 	define( 'YORO_AI_PROVIDER_YORO_AI_API', 'yoro_ai_api' );
 }
 
-if ( ! defined( 'YORO_AI_PROVIDER_YORO_CLOUD' ) ) {
-	define( 'YORO_AI_PROVIDER_YORO_CLOUD', 'yoro_cloud' );
-}
-
 require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-db.php';
 require_once YORO_AI_CORE_PATH . 'includes/class-yoro-ai-core.php';
 

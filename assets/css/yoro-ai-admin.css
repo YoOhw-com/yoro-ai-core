@@ -438,7 +438,7 @@ body.yoro-ai-core_page_yoro-ai-core-settings {
 	flex: 0 0 34px;
 }
 
-.yoro-chat-message-agent .yoro-chat-avatar {
+.yoro-chat-message-assistant .yoro-chat-avatar {
 	background: #050505 url("../images/yoro-chat-avatar.png") center / cover no-repeat;
 	color: transparent;
 	font-size: 0;

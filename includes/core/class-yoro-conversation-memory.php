@@ -1043,19 +1043,19 @@ class YoRo_Conversation_Memory {
 
 		if ( ! empty( $data['pending_confirmation'] ) && is_array( $data['pending_confirmation'] ) ) {
 			$state['pending_confirmation'] = array_merge( $state['pending_confirmation'], $data['pending_confirmation'] );
-		} else {
-			$legacy_token = sanitize_text_field(
-				$data['pending_plan_token'] ?? $data['workflow_state_token'] ?? ''
-			);
-
-			if ( $legacy_token ) {
-				$state['pending_confirmation'] = array_merge(
-					$state['pending_confirmation'],
-					[
-						'token'    => $legacy_token,
-						'required' => true,
-					]
+			} else {
+				$pending_token = sanitize_text_field(
+					$data['pending_plan_token'] ?? $data['workflow_state_token'] ?? ''
 				);
+
+				if ( $pending_token ) {
+					$state['pending_confirmation'] = array_merge(
+						$state['pending_confirmation'],
+						[
+							'token'    => $pending_token,
+							'required' => true,
+						]
+					);
 			}
 		}
 
@@ -1069,7 +1069,7 @@ class YoRo_Conversation_Memory {
 
 		$state['pending_confirmation'] = self::normalize_pending_confirmation( $state['pending_confirmation'] );
 
-		return self::project_legacy_state( $state );
+			return self::project_flat_state( $state );
 	}
 
 	private static function merge_state( $current, $data ) {
@@ -1094,16 +1094,16 @@ class YoRo_Conversation_Memory {
 				: self::pending_confirmation_defaults();
 		}
 
-		self::apply_legacy_update( $state, $data );
+			self::apply_flat_update( $state, $data );
 
 		$state['conversation']['updated_at'] = current_time( 'mysql' );
 		$state['workflow_state']['current_workflow'] = self::normalize_workflow( $state['workflow_state']['current_workflow'] );
 		$state['pending_confirmation'] = self::normalize_pending_confirmation( $state['pending_confirmation'] );
 
-		return self::project_legacy_state( $state );
-	}
+			return self::project_flat_state( $state );
+		}
 
-	private static function apply_legacy_update( &$state, $data ) {
+		private static function apply_flat_update( &$state, $data ) {
 		$conversation_keys = [
 			'last_plan',
 			'last_result',
@@ -1162,7 +1162,7 @@ class YoRo_Conversation_Memory {
 		}
 	}
 
-	private static function project_legacy_state( $state ) {
+		private static function project_flat_state( $state ) {
 		$state = wp_parse_args(
 			$state,
 			[
@@ -1541,22 +1541,22 @@ class YoRo_Conversation_Memory {
 		];
 	}
 
-	private static function is_parser_rule( $parsed, $legacy_rule, $guard_rule ) {
+		private static function is_parser_rule( $parsed, $primary_rule, $guard_rule ) {
 		$parsed = is_array( $parsed ) ? $parsed : [];
 		$parser_rule = sanitize_text_field( $parsed['parser_rule'] ?? '' );
 
 		return in_array(
 			$parser_rule,
-			[
-				sanitize_text_field( $legacy_rule ),
-				sanitize_text_field( $guard_rule ),
-			],
+				[
+					sanitize_text_field( $primary_rule ),
+					sanitize_text_field( $guard_rule ),
+				],
 			true
 		);
 	}
 
 	private static function default_state() {
-		return self::project_legacy_state(
+			return self::project_flat_state(
 			[
 				'conversation'         => self::conversation_defaults(),
 				'entity_context'       => self::entity_context_defaults(),

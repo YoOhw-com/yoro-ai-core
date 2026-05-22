@@ -12,7 +12,7 @@
 			renderSuggestions: helpers.renderSuggestions,
 			getResultSuggestions: helpers.getResultSuggestions,
 			getConversationState: helpers.getConversationState,
-			addAgentMessage: helpers.addAgentMessage,
+			addAssistantMessage: helpers.addAssistantMessage,
 			addLoadingMessage: helpers.addLoadingMessage,
 			updateConversationState: helpers.updateConversationState,
 			openModal: helpers.openModal,
@@ -332,7 +332,7 @@
 					loading.remove();
 				}
 
-				h.addAgentMessage(data);
+				h.addAssistantMessage(data);
 				h.updateConversationState(data, 'direct:' + action);
 			})
 			.catch(function(error) {
@@ -340,7 +340,7 @@
 					loading.remove();
 				}
 
-				h.addAgentMessage({
+				h.addAssistantMessage({
 					success: false,
 					error: error
 				});

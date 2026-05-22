@@ -1432,7 +1432,7 @@ class YoRo_Plan_Executor {
 		}
 
 		/*
-		* Legacy shape:
+		* Flat confirmation shape:
 		*
 		* [
 		*   'path'     => 'context.xxx',

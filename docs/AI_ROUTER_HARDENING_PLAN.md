@@ -377,11 +377,6 @@ Laravel YoRo AI API command-router prompt
 - [ ] Add assertions for `resolution_path` where behavior is intentional.
 - [ ] Add assertions for `clarify_reason` in known missing-param cases.
 
-`docs/AI_ROUTER_MIGRATION.md`
-
-- [ ] Keep only the migration contract and current-state notes here.
-- [ ] Link to this hardening plan for implementation detail.
-
 `docs/AI_ROUTER_HARDENING_PLAN.md`
 
 - [ ] Update progress by phase instead of expanding ad hoc notes elsewhere.

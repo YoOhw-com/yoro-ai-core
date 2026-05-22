@@ -56,11 +56,11 @@ class YoRo_REST_API {
 		register_rest_route(
 			self::REST_NAMESPACE,
 			'/run',
-			[
-				'methods'             => 'POST',
-				'callback'            => [ __CLASS__, 'run_agent' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
-			]
+				[
+					'methods'             => 'POST',
+					'callback'            => [ __CLASS__, 'run' ],
+					'permission_callback' => [ __CLASS__, 'permission_check' ],
+				]
 		);
 
 		register_rest_route(
@@ -221,7 +221,7 @@ class YoRo_REST_API {
 		return YoRo_REST_Execute_Handler::handle( $request );
 	}
 
-	public static function run_agent( WP_REST_Request $request ) {
+	public static function run( WP_REST_Request $request ) {
 		return YoRo_REST_Run_Handler::handle( $request );
 	}
 

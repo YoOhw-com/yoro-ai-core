@@ -217,7 +217,7 @@ class YoRo_Memory_Command_Parser {
 			return [
 				'action'      => sanitize_text_field( $workflow['action'] ),
 				'params'      => $workflow['params'],
-				'parser_rule' => 'memory.continue_previous_workflow.legacy',
+				'parser_rule' => 'memory.continue_previous_workflow.state',
 			];
 		}
 

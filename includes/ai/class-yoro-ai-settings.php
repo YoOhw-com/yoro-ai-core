@@ -8,10 +8,6 @@ if ( ! defined( 'YORO_AI_PROVIDER_YORO_AI_API' ) ) {
 	define( 'YORO_AI_PROVIDER_YORO_AI_API', 'yoro_ai_api' );
 }
 
-if ( ! defined( 'YORO_AI_PROVIDER_YORO_CLOUD' ) ) {
-	define( 'YORO_AI_PROVIDER_YORO_CLOUD', 'yoro_cloud' );
-}
-
 class YoRo_AI_Settings {
 
 	const OPTION_AI_API_URL = 'yoro_ai_api_url';
@@ -20,18 +16,8 @@ class YoRo_AI_Settings {
 	const OPTION_AI_API_ENDPOINT_READY = 'yoro_ai_api_endpoint_ready';
 	const OPTION_AI_API_STATUS = 'yoro_ai_api_status';
 
-	const LEGACY_OPTION_CLOUD_API_URL = 'yoro_cloud_api_url';
-	const LEGACY_OPTION_CLOUD_SITE_KEY = 'yoro_cloud_site_key';
-	const LEGACY_OPTION_CLOUD_ENABLED = 'yoro_cloud_parser_enabled';
-	const LEGACY_OPTION_CLOUD_ENDPOINT_READY = 'yoro_cloud_endpoint_ready';
-	const LEGACY_OPTION_CLOUD_STATUS = 'yoro_cloud_status';
-
 	public static function get_ai_api_site_key_source() {
 		if ( defined( 'YORO_AI_API_SITE_KEY' ) && YORO_AI_API_SITE_KEY ) {
-			return 'constant';
-		}
-
-		if ( defined( 'YORO_CLOUD_SITE_KEY' ) && YORO_CLOUD_SITE_KEY ) {
 			return 'constant';
 		}
 
@@ -41,17 +27,7 @@ class YoRo_AI_Settings {
 			return 'option';
 		}
 
-		$legacy_stored = (string) get_option( self::LEGACY_OPTION_CLOUD_SITE_KEY, '' );
-
-		if ( '' !== trim( $legacy_stored ) ) {
-			return 'option';
-		}
-
 		return 'missing';
-	}
-
-	public static function get_cloud_site_key_source() {
-		return self::get_ai_api_site_key_source();
 	}
 
 	public static function get_provider_preference() {
@@ -75,21 +51,7 @@ class YoRo_AI_Settings {
 			return esc_url_raw( YORO_AI_API_URL );
 		}
 
-		if ( defined( 'YORO_CLOUD_API_URL' ) && YORO_CLOUD_API_URL ) {
-			return esc_url_raw( YORO_CLOUD_API_URL );
-		}
-
-		return esc_url_raw(
-			(string) self::get_option_with_legacy(
-				self::OPTION_AI_API_URL,
-				self::LEGACY_OPTION_CLOUD_API_URL,
-				''
-			)
-		);
-	}
-
-	public static function get_cloud_api_url() {
-		return self::get_ai_api_url();
+		return esc_url_raw( (string) get_option( self::OPTION_AI_API_URL, '' ) );
 	}
 
 	public static function get_ai_api_site_key() {
@@ -97,61 +59,21 @@ class YoRo_AI_Settings {
 			return YORO_AI_API_SITE_KEY;
 		}
 
-		if ( defined( 'YORO_CLOUD_SITE_KEY' ) && YORO_CLOUD_SITE_KEY ) {
-			return YORO_CLOUD_SITE_KEY;
-		}
-
-		return sanitize_text_field(
-			(string) self::get_option_with_legacy(
-				self::OPTION_AI_API_SITE_KEY,
-				self::LEGACY_OPTION_CLOUD_SITE_KEY,
-				''
-			)
-		);
-	}
-
-	public static function get_cloud_site_key() {
-		return self::get_ai_api_site_key();
+		return sanitize_text_field( (string) get_option( self::OPTION_AI_API_SITE_KEY, '' ) );
 	}
 
 	public static function is_ai_api_enabled() {
-		return 'yes' === self::get_option_with_legacy(
-			self::OPTION_AI_API_ENABLED,
-			self::LEGACY_OPTION_CLOUD_ENABLED,
-			'no'
-		);
-	}
-
-	public static function is_cloud_enabled() {
-		return self::is_ai_api_enabled();
+		return 'yes' === get_option( self::OPTION_AI_API_ENABLED, 'no' );
 	}
 
 	public static function is_ai_api_endpoint_ready() {
-		return 'yes' === self::get_option_with_legacy(
-			self::OPTION_AI_API_ENDPOINT_READY,
-			self::LEGACY_OPTION_CLOUD_ENDPOINT_READY,
-			'no'
-		);
-	}
-
-	public static function is_cloud_endpoint_ready() {
-		return self::is_ai_api_endpoint_ready();
+		return 'yes' === get_option( self::OPTION_AI_API_ENDPOINT_READY, 'no' );
 	}
 
 	public static function get_ai_api_status() {
-		$status = get_option( self::OPTION_AI_API_STATUS, null );
-
-		if ( is_array( $status ) && [] !== $status ) {
-			return $status;
-		}
-
-		$status = get_option( self::LEGACY_OPTION_CLOUD_STATUS, [] );
+		$status = get_option( self::OPTION_AI_API_STATUS, [] );
 
 		return is_array( $status ) ? $status : [];
-	}
-
-	public static function get_cloud_status() {
-		return self::get_ai_api_status();
 	}
 
 	public static function get_ai_api_entitlements() {
@@ -161,10 +83,6 @@ class YoRo_AI_Settings {
 		return is_array( $entitlements ) ? $entitlements : [];
 	}
 
-	public static function get_cloud_entitlements() {
-		return self::get_ai_api_entitlements();
-	}
-
 	public static function get_ai_api_usage() {
 		$status = self::get_ai_api_status();
 		$usage = $status['usage'] ?? [];
@@ -172,12 +90,8 @@ class YoRo_AI_Settings {
 		return is_array( $usage ) ? $usage : [];
 	}
 
-	public static function get_cloud_usage() {
-		return self::get_ai_api_usage();
-	}
-
 	public static function ai_api_allows_feature( $feature ) {
-		$feature = self::normalize_cloud_feature( $feature );
+		$feature = self::normalize_ai_api_feature( $feature );
 
 		if ( '' === $feature ) {
 			return false;
@@ -200,10 +114,6 @@ class YoRo_AI_Settings {
 		return false;
 	}
 
-	public static function cloud_allows_feature( $feature ) {
-		return self::ai_api_allows_feature( $feature );
-	}
-
 	public static function ai_api_has_quota_remaining() {
 		$usage = self::get_ai_api_usage();
 
@@ -214,29 +124,16 @@ class YoRo_AI_Settings {
 		return absint( $usage['remaining'] ) > 0;
 	}
 
-	public static function cloud_has_quota_remaining() {
-		return self::ai_api_has_quota_remaining();
-	}
-
 	public static function update_ai_api_status( array $status ) {
-		update_option( self::OPTION_AI_API_STATUS, self::sanitize_cloud_status_value( $status ), false );
-	}
-
-	public static function update_cloud_status( array $status ) {
-		self::update_ai_api_status( $status );
+		update_option( self::OPTION_AI_API_STATUS, self::sanitize_ai_api_status_value( $status ), false );
 	}
 
 	public static function clear_ai_api_status() {
 		delete_option( self::OPTION_AI_API_STATUS );
-		delete_option( self::LEGACY_OPTION_CLOUD_STATUS );
-	}
-
-	public static function clear_cloud_status() {
-		self::clear_ai_api_status();
 	}
 
 	public static function is_ai_api_url_locked() {
-		return ( defined( 'YORO_AI_API_URL' ) && YORO_AI_API_URL ) || ( defined( 'YORO_CLOUD_API_URL' ) && YORO_CLOUD_API_URL );
+		return defined( 'YORO_AI_API_URL' ) && YORO_AI_API_URL;
 	}
 
 	public static function is_ai_api_site_key_locked() {
@@ -248,10 +145,6 @@ class YoRo_AI_Settings {
 			return 'YORO_AI_API_URL';
 		}
 
-		if ( defined( 'YORO_CLOUD_API_URL' ) && YORO_CLOUD_API_URL ) {
-			return 'YORO_CLOUD_API_URL';
-		}
-
 		return '';
 	}
 
@@ -260,28 +153,10 @@ class YoRo_AI_Settings {
 			return 'YORO_AI_API_SITE_KEY';
 		}
 
-		if ( defined( 'YORO_CLOUD_SITE_KEY' ) && YORO_CLOUD_SITE_KEY ) {
-			return 'YORO_CLOUD_SITE_KEY';
-		}
-
 		return '';
 	}
 
-	public static function migrate_legacy_ai_api_options( $delete_legacy = false ) {
-		self::copy_legacy_option_if_missing( self::OPTION_AI_API_URL, self::LEGACY_OPTION_CLOUD_API_URL, false );
-		self::copy_legacy_option_if_missing( self::OPTION_AI_API_SITE_KEY, self::LEGACY_OPTION_CLOUD_SITE_KEY, false );
-		self::copy_legacy_option_if_missing( self::OPTION_AI_API_ENABLED, self::LEGACY_OPTION_CLOUD_ENABLED, true );
-		self::copy_legacy_option_if_missing( self::OPTION_AI_API_ENDPOINT_READY, self::LEGACY_OPTION_CLOUD_ENDPOINT_READY, true );
-		self::copy_legacy_option_if_missing( self::OPTION_AI_API_STATUS, self::LEGACY_OPTION_CLOUD_STATUS, false );
-
-		if ( $delete_legacy ) {
-			self::delete_legacy_ai_api_options();
-		}
-	}
-
 	public static function get_all() {
-		self::migrate_legacy_ai_api_options();
-
 		return [
 			'provider'                 => self::get_provider_preference(),
 			'ai_confidence_threshold'  => self::get_ai_confidence_threshold(),
@@ -310,18 +185,10 @@ class YoRo_AI_Settings {
 			'ai_api_enabled'           => self::is_ai_api_enabled() ? 'yes' : 'no',
 			'ai_api_endpoint_ready'    => self::is_ai_api_endpoint_ready() ? 'yes' : 'no',
 			'ai_api_status'            => self::get_ai_api_status(),
-			'cloud_api_url'            => self::get_ai_api_url(),
-			'cloud_site_key_configured' => '' !== self::get_ai_api_site_key(),
-			'cloud_site_key_source'    => self::get_ai_api_site_key_source(),
-			'cloud_parser_enabled'     => self::is_ai_api_enabled() ? 'yes' : 'no',
-			'cloud_endpoint_ready'     => self::is_ai_api_endpoint_ready() ? 'yes' : 'no',
-			'cloud_status'             => self::get_ai_api_status(),
 		];
 	}
 
 	public static function save_admin_settings( array $post ) {
-		self::migrate_legacy_ai_api_options();
-
 		$previous_ai_api_url      = self::get_ai_api_url();
 		$previous_ai_api_site_key = self::get_ai_api_site_key();
 		$ai_api_url_locked       = self::is_ai_api_url_locked();
@@ -333,11 +200,6 @@ class YoRo_AI_Settings {
 			'ai_api_credentials_verified'   => false,
 			'ai_api_credentials_rejected'   => false,
 			'ai_api_connection_changed'     => false,
-			'cloud_connection_result'       => null,
-			'cloud_connection_error'        => null,
-			'cloud_credentials_verified'    => false,
-			'cloud_credentials_rejected'    => false,
-			'cloud_connection_changed'      => false,
 		];
 
 		$confidence = isset( $post['yoro_ai_confidence_threshold'] )
@@ -367,29 +229,17 @@ class YoRo_AI_Settings {
 		$ai_max_suggestions = isset( $post['yoro_ai_max_suggestions'] )
 			? absint( $post['yoro_ai_max_suggestions'] )
 			: 4;
-		$posted_ai_api_url = self::get_posted_value(
-			$post,
-			'yoro_ai_api_url',
-			'yoro_cloud_api_url',
-			''
-		);
+		$posted_ai_api_url = isset( $post['yoro_ai_api_url'] )
+			? wp_unslash( $post['yoro_ai_api_url'] )
+			: '';
 		$posted_ai_api_url = esc_url_raw( $posted_ai_api_url );
-		$ai_api_site_key_clear = ! $ai_api_site_key_locked && self::is_posted_checkbox_checked(
-			$post,
-			'yoro_ai_api_site_key_clear',
-			'yoro_cloud_site_key_clear'
-		);
+		$ai_api_site_key_clear = ! $ai_api_site_key_locked && ! empty( $post['yoro_ai_api_site_key_clear'] );
 		$new_ai_api_site_key = '';
 
 		if ( ! $ai_api_site_key_locked ) {
-			$new_ai_api_site_key = sanitize_text_field(
-				self::get_posted_value(
-					$post,
-					'yoro_ai_api_site_key',
-					'yoro_cloud_site_key',
-					''
-				)
-			);
+			$new_ai_api_site_key = isset( $post['yoro_ai_api_site_key'] )
+				? sanitize_text_field( wp_unslash( $post['yoro_ai_api_site_key'] ) )
+				: '';
 		}
 
 		$target_ai_api_url      = $ai_api_url_locked ? $previous_ai_api_url : $posted_ai_api_url;
@@ -415,23 +265,17 @@ class YoRo_AI_Settings {
 			'' !== $target_ai_api_url &&
 			'' !== $target_ai_api_site_key
 		) {
-			$connection_result = self::test_cloud_credentials( $target_ai_api_url, $target_ai_api_site_key );
+			$connection_result = self::test_ai_api_credentials( $target_ai_api_url, $target_ai_api_site_key );
 
 			if ( is_wp_error( $connection_result ) ) {
-				$ai_api_connection_can_save                 = false;
-				$result['ai_api_connection_error']          = $connection_result;
-				$result['ai_api_credentials_rejected']      = true;
-				$result['ai_api_connection_changed']        = true;
-				$result['cloud_connection_error']           = $connection_result;
-				$result['cloud_credentials_rejected']       = true;
-				$result['cloud_connection_changed']         = true;
+				$ai_api_connection_can_save            = false;
+				$result['ai_api_connection_error']     = $connection_result;
+				$result['ai_api_credentials_rejected'] = true;
+				$result['ai_api_connection_changed']   = true;
 			} else {
-				$result['ai_api_connection_result']         = $connection_result;
-				$result['ai_api_credentials_verified']      = true;
-				$result['ai_api_connection_changed']        = true;
-				$result['cloud_connection_result']          = $connection_result;
-				$result['cloud_credentials_verified']       = true;
-				$result['cloud_connection_changed']         = true;
+				$result['ai_api_connection_result']       = $connection_result;
+				$result['ai_api_credentials_verified']    = true;
+				$result['ai_api_connection_changed']      = true;
 			}
 		}
 
@@ -457,11 +301,11 @@ class YoRo_AI_Settings {
 		}
 		update_option(
 			self::OPTION_AI_API_ENABLED,
-			self::is_posted_checkbox_checked( $post, 'yoro_ai_api_enabled', 'yoro_cloud_parser_enabled' ) ? 'yes' : 'no'
+			! empty( $post['yoro_ai_api_enabled'] ) ? 'yes' : 'no'
 		);
 		update_option(
 			self::OPTION_AI_API_ENDPOINT_READY,
-			self::is_posted_checkbox_checked( $post, 'yoro_ai_api_endpoint_ready', 'yoro_cloud_endpoint_ready' ) ? 'yes' : 'no'
+			! empty( $post['yoro_ai_api_endpoint_ready'] ) ? 'yes' : 'no'
 		);
 
 		delete_option( 'yoro_' . 'open' . 'ai_api_key' );
@@ -483,14 +327,10 @@ class YoRo_AI_Settings {
 			}
 		}
 
-		if ( $ai_api_connection_can_save ) {
-			self::delete_legacy_ai_api_options();
-		}
-
 		return $result;
 	}
 
-	private static function test_cloud_credentials( $api_url, $site_key ) {
+	private static function test_ai_api_credentials( $api_url, $site_key ) {
 		if ( ! class_exists( 'YoRo_AI_API_Client' ) ) {
 			return new WP_Error(
 				'yoro_ai_api_client_missing',
@@ -501,69 +341,16 @@ class YoRo_AI_Settings {
 		return ( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $site_key, false );
 	}
 
-	private static function get_option_with_legacy( $option, $legacy_option, $default = '' ) {
-		$value = get_option( $option, null );
-
-		if ( null !== $value ) {
-			return $value;
-		}
-
-		return get_option( $legacy_option, $default );
-	}
-
-	private static function copy_legacy_option_if_missing( $option, $legacy_option, $autoload = null ) {
-		if ( null !== get_option( $option, null ) ) {
-			return;
-		}
-
-		$value = get_option( $legacy_option, null );
-
-		if ( null === $value ) {
-			return;
-		}
-
-		if ( null === $autoload ) {
-			update_option( $option, $value );
-			return;
-		}
-
-		update_option( $option, $value, $autoload );
-	}
-
-	private static function delete_legacy_ai_api_options() {
-		delete_option( self::LEGACY_OPTION_CLOUD_API_URL );
-		delete_option( self::LEGACY_OPTION_CLOUD_SITE_KEY );
-		delete_option( self::LEGACY_OPTION_CLOUD_ENABLED );
-		delete_option( self::LEGACY_OPTION_CLOUD_ENDPOINT_READY );
-		delete_option( self::LEGACY_OPTION_CLOUD_STATUS );
-	}
-
-	private static function get_posted_value( array $post, $name, $legacy_name, $default = '' ) {
-		if ( isset( $post[ $name ] ) ) {
-			return wp_unslash( $post[ $name ] );
-		}
-
-		if ( isset( $post[ $legacy_name ] ) ) {
-			return wp_unslash( $post[ $legacy_name ] );
-		}
-
-		return $default;
-	}
-
-	private static function is_posted_checkbox_checked( array $post, $name, $legacy_name ) {
-		return ! empty( $post[ $name ] ) || ! empty( $post[ $legacy_name ] );
-	}
-
 	private static function normalize_provider_preference( $provider ) {
 		return YORO_AI_PROVIDER_YORO_AI_API;
 	}
 
-	private static function sanitize_cloud_status_value( $value ) {
+	private static function sanitize_ai_api_status_value( $value ) {
 		if ( is_array( $value ) ) {
 			$sanitized = [];
 
 			foreach ( $value as $key => $item ) {
-				$sanitized[ sanitize_key( (string) $key ) ] = self::sanitize_cloud_status_value( $item );
+				$sanitized[ sanitize_key( (string) $key ) ] = self::sanitize_ai_api_status_value( $item );
 			}
 
 			return $sanitized;
@@ -576,7 +363,7 @@ class YoRo_AI_Settings {
 		return sanitize_text_field( (string) $value );
 	}
 
-	private static function normalize_cloud_feature( $feature ) {
+	private static function normalize_ai_api_feature( $feature ) {
 		$feature = sanitize_key( (string) $feature );
 
 		switch ( $feature ) {
