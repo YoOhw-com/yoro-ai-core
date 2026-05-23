@@ -48,6 +48,7 @@ class YoRo_AI_Command_Router_Response_Builder {
 			'intent_family'        => sanitize_key( $decision['intent_family'] ?? '' ),
 			'summary'              => sanitize_text_field( $decision['summary'] ?? '' ),
 			'reasoning_summary'    => sanitize_text_field( $decision['reasoning_summary'] ?? '' ),
+			'meta'                 => isset( $decision['meta'] ) && is_array( $decision['meta'] ) ? $decision['meta'] : [],
 			'command_decision'     => self::compact_decision( $decision ),
 			'clarify_reason'       => $clarify_reason,
 			'raw_param_keys'       => isset( $decision['raw_param_keys'] ) && is_array( $decision['raw_param_keys'] ) ? $decision['raw_param_keys'] : [],

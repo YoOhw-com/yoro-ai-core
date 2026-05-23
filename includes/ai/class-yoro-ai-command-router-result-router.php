@@ -69,6 +69,8 @@ class YoRo_AI_Command_Router_Result_Router {
 		$missing = isset( $decision['missing'] ) && is_array( $decision['missing'] )
 			? array_values( array_filter( array_map( 'sanitize_key', $decision['missing'] ) ) )
 			: [];
+		$missing = self::normalize_missing_for_action_contract( $action, $missing, $decision );
+		$decision['missing'] = $missing;
 
 		if ( ! empty( $missing ) ) {
 			return YoRo_AI_Command_Router_Response_Builder::build_clarification_response(
@@ -248,6 +250,55 @@ class YoRo_AI_Command_Router_Result_Router {
 		}
 
 		return null !== $value && false !== $value && '' !== $value;
+	}
+
+	private static function normalize_missing_for_action_contract( $action, $missing, $decision ) {
+		$action = sanitize_text_field( $action );
+		$missing = is_array( $missing )
+			? array_values( array_filter( array_map( 'sanitize_key', $missing ) ) )
+			: [];
+
+		if ( '' === $action || empty( $missing ) || ! class_exists( 'YoRo_Action_Registry' ) ) {
+			return $missing;
+		}
+
+		$action_def = YoRo_Action_Registry::get( $action );
+
+		if ( ! is_array( $action_def ) ) {
+			return $missing;
+		}
+
+		$required_params = isset( $action_def['required_params'] ) && is_array( $action_def['required_params'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $action_def['required_params'] ) ) )
+			: [];
+
+		if ( empty( $required_params ) ) {
+			return [];
+		}
+
+		$params = isset( $decision['params'] ) && is_array( $decision['params'] )
+			? $decision['params']
+			: [];
+		$missing_required = array_values( array_intersect( $missing, $required_params ) );
+
+		return array_values(
+			array_filter(
+				$missing_required,
+				static function( $key ) use ( $params ) {
+					if ( ! array_key_exists( $key, $params ) ) {
+						return true;
+					}
+
+					$value = $params[ $key ];
+
+					if ( is_array( $value ) ) {
+						return empty( array_filter( $value ) );
+					}
+
+					return '' === trim( (string) $value );
+				}
+			)
+		);
 	}
 
 	private static function should_bypass_low_confidence_clarify( $decision ) {
