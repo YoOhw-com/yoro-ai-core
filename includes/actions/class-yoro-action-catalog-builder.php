@@ -7,7 +7,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Action_Catalog_Builder {
 
 	public static function build( $context = [] ) {
-		return self::build_for_command( '', $context );
+		$catalog = [];
+
+		foreach ( YoRo_Action_Registry::all() as $name => $action ) {
+			if ( empty( $action['ai_exposed'] ) ) {
+				continue;
+			}
+
+			$catalog[] = self::build_action_item( $name, $action, $context );
+		}
+
+		return apply_filters(
+			'yoro_ai_action_catalog',
+			array_values( array_filter( $catalog ) ),
+			is_array( $context ) ? $context : []
+		);
 	}
 
 	public static function build_for_command( $command = '', $context = [] ) {

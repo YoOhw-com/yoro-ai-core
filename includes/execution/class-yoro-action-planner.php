@@ -14,6 +14,12 @@ class YoRo_Action_Planner {
 			);
 		}
 
+		$parsed = self::apply_action_plan_contract( $parsed );
+
+		if ( is_wp_error( $parsed ) ) {
+			return $parsed;
+		}
+
 		if ( empty( $parsed['action'] ) ) {
 			return new WP_Error(
 				'yoro_missing_action',
@@ -44,6 +50,59 @@ class YoRo_Action_Planner {
 		}
 
 		return $plan;
+	}
+
+	private static function apply_action_plan_contract( $parsed ) {
+		if ( empty( $parsed['action_plan'] ) || ! is_array( $parsed['action_plan'] ) ) {
+			return $parsed;
+		}
+
+		$action_plan = $parsed['action_plan'];
+		$type = sanitize_key( $action_plan['type'] ?? '' );
+		$plan_action = sanitize_text_field( $action_plan['action'] ?? '' );
+		$parsed_action = sanitize_text_field( $parsed['action'] ?? '' );
+
+		if ( '' !== $plan_action && '' !== $parsed_action && $plan_action !== $parsed_action && 'sequence' !== $type ) {
+			return new WP_Error(
+				'yoro_action_plan_mismatch',
+				__( 'The AI action plan does not match the routed action.', 'yoro-ai-core' )
+			);
+		}
+
+		if ( 'sequence' === $type && ! empty( $action_plan['steps'] ) && is_array( $action_plan['steps'] ) ) {
+			$steps = [];
+
+			foreach ( $action_plan['steps'] as $index => $step ) {
+				if ( empty( $step['action'] ) ) {
+					continue;
+				}
+
+				$step_action = sanitize_text_field( $step['action'] );
+
+				if ( class_exists( 'YoRo_Action_Registry' ) && empty( YoRo_Action_Registry::get( $step_action ) ) ) {
+					return new WP_Error(
+						'yoro_unknown_action_plan_step',
+						__( 'The AI action plan included an action YoRo does not support.', 'yoro-ai-core' )
+					);
+				}
+
+				$steps[] = self::normalize_sequence_step( $step, $index );
+			}
+
+			if ( ! empty( $steps ) ) {
+				$parsed['actions'] = $steps;
+			}
+		}
+
+		if ( 'single' === $type && '' !== $plan_action ) {
+			$parsed['action'] = $plan_action;
+
+			if ( isset( $action_plan['params'] ) && is_array( $action_plan['params'] ) ) {
+				$parsed['params'] = $action_plan['params'];
+			}
+		}
+
+		return $parsed;
 	}
 
 	private static function build_single_plan( $parsed ) {

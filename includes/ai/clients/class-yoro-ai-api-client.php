@@ -694,6 +694,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		$response_meta = isset( $response['meta'] ) && is_array( $response['meta'] )
 			? $this->normalize_response_meta( $response['meta'] )
 			: [];
+		$action_plan = $this->normalize_route_action_plan( $response );
 
 		if ( ! in_array( $mode, [ 'task_request', 'clarify', 'chat_only', 'unsupported_request', 'out_of_scope' ], true ) ) {
 			$mode = 'clarify';
@@ -720,20 +721,96 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'summary'                => sanitize_text_field( $response['summary'] ?? ( $response['message'] ?? '' ) ),
 			'reasoning_summary'      => sanitize_text_field( $response['reasoning_summary'] ?? '' ),
 			'suggestions'            => isset( $response['suggestions'] ) && is_array( $response['suggestions'] ) ? $response['suggestions'] : [],
-				'meta'                   => array_merge(
-					$response_meta,
-					[
-						'routing_provider'             => $this->normalize_public_routing_provider( $response['routing_provider'] ?? '' ),
-						'yoro_ai_api_parser_source'    => sanitize_key( $response['parser_source'] ?? '' ),
-						'yoro_ai_api_request_id'       => sanitize_text_field( $usage['request_id'] ?? '' ),
-						'yoro_ai_api_plan'             => sanitize_key( $usage['plan'] ?? '' ),
-						'yoro_ai_api_usage_period'     => sanitize_text_field( $usage['period'] ?? '' ),
-						'yoro_ai_api_usage_limit'      => isset( $usage['limit'] ) ? absint( $usage['limit'] ) : null,
-						'yoro_ai_api_usage_used'       => isset( $usage['used'] ) ? absint( $usage['used'] ) : null,
-						'yoro_ai_api_usage_remaining'  => isset( $usage['remaining'] ) ? absint( $usage['remaining'] ) : null,
-					]
-				),
-			];
+			'action_plan'            => $action_plan,
+			'meta'                   => array_merge(
+				$response_meta,
+				[
+					'routing_provider'            => $this->normalize_public_routing_provider( $response['routing_provider'] ?? '' ),
+					'yoro_ai_api_parser_source'   => sanitize_key( $response['parser_source'] ?? '' ),
+					'yoro_ai_api_request_id'      => sanitize_text_field( $usage['request_id'] ?? '' ),
+					'yoro_ai_api_plan'            => sanitize_key( $usage['plan'] ?? '' ),
+					'yoro_ai_api_usage_period'    => sanitize_text_field( $usage['period'] ?? '' ),
+					'yoro_ai_api_usage_limit'     => isset( $usage['limit'] ) ? absint( $usage['limit'] ) : null,
+					'yoro_ai_api_usage_used'      => isset( $usage['used'] ) ? absint( $usage['used'] ) : null,
+					'yoro_ai_api_usage_remaining' => isset( $usage['remaining'] ) ? absint( $usage['remaining'] ) : null,
+				]
+			),
+		];
+	}
+
+	private function normalize_route_action_plan( array $response ) {
+		$mode = sanitize_key( $response['mode'] ?? 'clarify' );
+		$action = sanitize_text_field( $response['action'] ?? '' );
+		$params = isset( $response['params'] ) && is_array( $response['params'] ) ? $response['params'] : [];
+		$plan = isset( $response['action_plan'] ) && is_array( $response['action_plan'] )
+			? $response['action_plan']
+			: [];
+		$type = sanitize_key( $plan['type'] ?? '' );
+
+		if ( ! in_array( $type, [ 'single', 'sequence', 'none' ], true ) ) {
+			$type = 'task_request' === $mode && '' !== $action ? 'single' : 'none';
+		}
+
+		$plan_action = sanitize_text_field( $plan['action'] ?? $action );
+		$plan_params = isset( $plan['params'] ) && is_array( $plan['params'] ) ? $plan['params'] : $params;
+		$steps = [];
+
+		if ( isset( $plan['steps'] ) && is_array( $plan['steps'] ) ) {
+			foreach ( $plan['steps'] as $index => $step ) {
+				if ( ! is_array( $step ) ) {
+					continue;
+				}
+
+				$normalized_step = $this->normalize_route_action_plan_step( $step, $index );
+
+				if ( '' !== $normalized_step['action'] ) {
+					$steps[] = $normalized_step;
+				}
+			}
+		}
+
+		if ( 'single' === $type && empty( $steps ) && '' !== $plan_action ) {
+			$steps[] = $this->normalize_route_action_plan_step(
+				[
+					'id'     => 'step_1',
+					'label'  => $plan_action,
+					'action' => $plan_action,
+					'params' => $plan_params,
+				],
+				0
+			);
+		}
+
+		if ( 'none' === $type ) {
+			$plan_action = '';
+			$plan_params = [];
+			$steps = [];
+		}
+
+		return [
+			'type'   => $type,
+			'action' => $plan_action,
+			'params' => $plan_params,
+			'steps'  => $steps,
+		];
+	}
+
+	private function normalize_route_action_plan_step( array $step, $index = 0 ) {
+		$action = sanitize_text_field( $step['action'] ?? '' );
+
+		return [
+			'id'       => ! empty( $step['id'] ) ? sanitize_key( $step['id'] ) : 'step_' . ( absint( $index ) + 1 ),
+			'label'    => ! empty( $step['label'] ) ? sanitize_text_field( $step['label'] ) : $action,
+			'action'   => $action,
+			'params'   => isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [],
+			'when'     => isset( $step['when'] ) && is_array( $step['when'] ) ? $step['when'] : [],
+			'capture'  => isset( $step['capture'] ) && is_array( $step['capture'] ) ? $step['capture'] : [],
+			'on_error' => ! empty( $step['on_error'] ) ? sanitize_key( $step['on_error'] ) : 'stop',
+			'retry'    => isset( $step['retry'] ) && is_array( $step['retry'] )
+				? $step['retry']
+				: [ 'max_attempts' => 1 ],
+			'meta'     => isset( $step['meta'] ) && is_array( $step['meta'] ) ? $step['meta'] : [],
+		];
 	}
 
 	private function normalize_response_meta( array $meta ) {

@@ -85,14 +85,6 @@ class YoRo_AI_Workflow_Candidate_Router {
 			$params['order_id'] = absint( reset( $params['order_ids'] ) );
 		}
 
-		$inferred_instruction = class_exists( 'YoRo_Router_Decision_Validator' )
-			? YoRo_Router_Decision_Validator::infer_email_authoring_instruction_from_command( $command, $normalized, $params )
-			: '';
-
-		if ( '' !== $inferred_instruction ) {
-			$params['instruction'] = $inferred_instruction;
-		}
-
 		if ( 'workflow.write_and_save_email_draft_for_order' === $action ) {
 			$params['delivery_mode'] = 'save_draft';
 		} elseif ( 'workflow.write_and_send_email_for_order' === $action ) {

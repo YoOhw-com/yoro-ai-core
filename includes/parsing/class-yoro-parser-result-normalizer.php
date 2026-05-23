@@ -31,9 +31,6 @@ class YoRo_Parser_Result_Normalizer {
 			$parsed['params'] = [];
 		}
 
-		$parsed = self::normalize_fresh_orders_search_result( $parsed, $command, $normalized );
-		$parsed = self::normalize_status_qualified_order_lookup_result( $parsed, $command, $normalized );
-
 		if (
 			'multi.query_and_apply' !== ( $parsed['action'] ?? '' ) &&
 			empty( $parsed['params']['order_ids'] ) &&

@@ -110,6 +110,7 @@ class YoRo_AI_Command_Router_Result_Router {
 			'reasoning_summary'    => sanitize_text_field( $decision['reasoning_summary'] ?? '' ),
 			'meta'                 => isset( $decision['meta'] ) && is_array( $decision['meta'] ) ? $decision['meta'] : [],
 			'semantic_frame'       => isset( $decision['semantic_frame'] ) && is_array( $decision['semantic_frame'] ) ? $decision['semantic_frame'] : [],
+			'action_plan'          => isset( $decision['action_plan'] ) && is_array( $decision['action_plan'] ) ? $decision['action_plan'] : [],
 			'semantic_frame_validator_changes' => isset( $decision['semantic_frame_validator_changes'] ) && is_array( $decision['semantic_frame_validator_changes'] ) ? $decision['semantic_frame_validator_changes'] : [],
 			'raw_param_keys'       => isset( $decision['raw_param_keys'] ) && is_array( $decision['raw_param_keys'] ) ? $decision['raw_param_keys'] : [],
 			'dropped_param_keys'   => isset( $decision['dropped_param_keys'] ) && is_array( $decision['dropped_param_keys'] ) ? $decision['dropped_param_keys'] : [],
@@ -119,6 +120,12 @@ class YoRo_AI_Command_Router_Result_Router {
 
 		if ( isset( $decision['actions'] ) && is_array( $decision['actions'] ) ) {
 			$parsed['actions'] = $decision['actions'];
+		} elseif (
+			'sequence' === sanitize_key( $parsed['action_plan']['type'] ?? '' ) &&
+			! empty( $parsed['action_plan']['steps'] ) &&
+			is_array( $parsed['action_plan']['steps'] )
+		) {
+			$parsed['actions'] = $parsed['action_plan']['steps'];
 		}
 
 		$normalized_result = self::normalize_parsed_result(
@@ -132,23 +139,6 @@ class YoRo_AI_Command_Router_Result_Router {
 		$resolved_result = YoRo_Entity_Resolver::resolve( $normalized_result, $client_context );
 		$resolved_result = YoRo_Intent_Router::resolve_action( $resolved_result );
 		$resolved_result = self::hydrate_result_intent_family_from_action( $resolved_result, $callbacks );
-		$resolved_result = class_exists( 'YoRo_AI_Router_Result_Corrector' )
-			? YoRo_AI_Router_Result_Corrector::correct_order_status_semantics( $resolved_result, $normalized )
-			: $resolved_result;
-
-		$composition_candidate = class_exists( 'YoRo_AI_Action_Composition_Router' )
-			? YoRo_AI_Action_Composition_Router::maybe_build_validated_candidate(
-				$command,
-				$normalized,
-				$client_context,
-				$resolved_result,
-				self::candidate_router_callbacks( $callbacks )
-			)
-			: null;
-
-		if ( is_array( $composition_candidate ) ) {
-			return $composition_candidate;
-		}
 
 		$direct_workflow_result = class_exists( 'YoRo_AI_Workflow_Candidate_Router' )
 			? YoRo_AI_Workflow_Candidate_Router::maybe_build_validated_direct_ai_workflow_result(
@@ -162,32 +152,6 @@ class YoRo_AI_Command_Router_Result_Router {
 
 		if ( is_array( $direct_workflow_result ) ) {
 			return $direct_workflow_result;
-		}
-
-		$workflow_candidate = class_exists( 'YoRo_AI_Workflow_Candidate_Router' )
-			? YoRo_AI_Workflow_Candidate_Router::maybe_build_validated_workflow_candidate(
-				$command,
-				$normalized,
-				$client_context,
-				$resolved_result,
-				self::candidate_router_callbacks( $callbacks )
-			)
-			: null;
-
-		if ( is_array( $workflow_candidate ) ) {
-			return $workflow_candidate;
-		}
-
-		$dynamic_workflow_candidate = self::maybe_build_dynamic_workflow_candidate(
-			$command,
-			$normalized,
-			$client_context,
-			$resolved_result,
-			self::candidate_router_callbacks( $callbacks )
-		);
-
-		if ( is_array( $dynamic_workflow_candidate ) ) {
-			return $dynamic_workflow_candidate;
 		}
 
 		return YoRo_Entity_Validator::validate( $resolved_result );

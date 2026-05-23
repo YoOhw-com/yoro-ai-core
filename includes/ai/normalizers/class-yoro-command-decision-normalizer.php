@@ -54,6 +54,70 @@ class YoRo_Command_Decision_Normalizer {
 				'semantic_frame' => class_exists( 'YoRo_Semantic_Frame_Normalizer' )
 					? YoRo_Semantic_Frame_Normalizer::schema()
 					: [ 'type' => 'object' ],
+				'action_plan' => [
+					'type'                 => 'object',
+					'additionalProperties' => false,
+					'properties'           => [
+						'type' => [
+							'type' => 'string',
+							'enum' => [ 'single', 'sequence', 'none' ],
+						],
+						'action' => [ 'type' => 'string' ],
+						'params' => [
+							'type'                 => 'object',
+							'additionalProperties' => false,
+							'properties'           => $param_properties,
+							'required'             => array_values( array_keys( $param_properties ) ),
+						],
+						'steps' => [
+							'type'  => 'array',
+							'items' => [
+								'type'                 => 'object',
+								'additionalProperties' => false,
+								'properties'           => [
+									'id' => [ 'type' => 'string' ],
+									'label' => [ 'type' => 'string' ],
+									'action' => [ 'type' => 'string' ],
+									'params' => [
+										'type'                 => 'object',
+										'additionalProperties' => false,
+										'properties'           => $param_properties,
+										'required'             => array_values( array_keys( $param_properties ) ),
+									],
+									'when' => [
+										'type'                 => 'object',
+										'additionalProperties' => false,
+										'properties'           => [],
+										'required'             => [],
+									],
+									'capture' => [
+										'type'                 => 'object',
+										'additionalProperties' => false,
+										'properties'           => [],
+										'required'             => [],
+									],
+									'on_error' => [ 'type' => 'string' ],
+									'retry' => [
+										'type'                 => 'object',
+										'additionalProperties' => false,
+										'properties'           => [
+											'max_attempts' => [ 'type' => 'integer' ],
+										],
+										'required'             => [ 'max_attempts' ],
+									],
+									'meta' => [
+										'type'                 => 'object',
+										'additionalProperties' => false,
+										'properties'           => [],
+										'required'             => [],
+									],
+								],
+								'required'             => [ 'id', 'label', 'action', 'params', 'when', 'capture', 'on_error', 'retry', 'meta' ],
+							],
+						],
+					],
+					'required'             => [ 'type', 'action', 'params', 'steps' ],
+				],
 				'clarification_question' => [ 'type' => 'string' ],
 				'summary' => [ 'type' => 'string' ],
 				'reasoning_summary' => [ 'type' => 'string' ],
@@ -188,6 +252,14 @@ class YoRo_Command_Decision_Normalizer {
 			$dropped_param_keys = $filtered['dropped_param_keys'];
 		}
 
+		$action_plan = self::normalize_action_plan(
+			$decision['action_plan'] ?? [],
+			$action_catalog,
+			$mode,
+			$action,
+			$params
+		);
+
 		return [
 			'mode'                   => $mode,
 			'language'               => self::normalize_language( $decision['language'] ?? '' ),
@@ -199,6 +271,7 @@ class YoRo_Command_Decision_Normalizer {
 			'ambiguities'            => self::normalize_string_list( $decision['ambiguities'] ?? [] ),
 			'evidence'               => isset( $decision['evidence'] ) && is_array( $decision['evidence'] ) ? $decision['evidence'] : [],
 			'semantic_frame'         => class_exists( 'YoRo_Semantic_Frame_Normalizer' ) ? YoRo_Semantic_Frame_Normalizer::normalize( $decision['semantic_frame'] ?? [] ) : [],
+			'action_plan'            => $action_plan,
 			'clarification_question' => self::normalize_response_copy( $decision['clarification_question'] ?? '', $mode ),
 			'summary'                => self::normalize_response_copy( $decision['summary'] ?? '', $mode ),
 			'reasoning_summary'      => self::normalize_response_copy( $decision['reasoning_summary'] ?? '', $mode ),
@@ -369,6 +442,105 @@ class YoRo_Command_Decision_Normalizer {
 		return [
 			'params'             => $filtered,
 			'dropped_param_keys' => array_values( array_diff( self::normalize_param_keys( $params, false ), array_keys( $filtered ) ) ),
+		];
+	}
+
+	private static function normalize_action_plan( $action_plan, $action_catalog, $mode, $action, $params ) {
+		$action_plan = is_array( $action_plan ) ? $action_plan : [];
+		$action_catalog = is_array( $action_catalog ) ? $action_catalog : [];
+		$mode = sanitize_key( (string) $mode );
+		$action = sanitize_text_field( (string) $action );
+		$params = is_array( $params ) ? $params : [];
+		$type = sanitize_key( $action_plan['type'] ?? '' );
+
+		if ( ! in_array( $type, [ 'single', 'sequence', 'none' ], true ) ) {
+			$type = 'task_request' === $mode && '' !== $action ? 'single' : 'none';
+		}
+
+		$plan_action = sanitize_text_field( $action_plan['action'] ?? $action );
+		$plan_params = isset( $action_plan['params'] ) && is_array( $action_plan['params'] )
+			? $action_plan['params']
+			: $params;
+		$steps = [];
+
+		if ( 'none' === $type ) {
+			return [
+				'type'   => 'none',
+				'action' => '',
+				'params' => [],
+				'steps'  => [],
+			];
+		}
+
+		$plan_catalog_item = self::find_catalog_item( $plan_action, $action_catalog );
+
+		if ( $plan_catalog_item ) {
+			$plan_params = self::filter_params_for_action( $plan_params, $plan_catalog_item )['params'];
+		}
+
+		if ( isset( $action_plan['steps'] ) && is_array( $action_plan['steps'] ) ) {
+			foreach ( $action_plan['steps'] as $index => $step ) {
+				if ( ! is_array( $step ) ) {
+					continue;
+				}
+
+				$normalized_step = self::normalize_action_plan_step( $step, $index, $action_catalog );
+
+				if ( ! empty( $normalized_step ) ) {
+					$steps[] = $normalized_step;
+				}
+			}
+		}
+
+		if ( 'single' === $type && empty( $steps ) && '' !== $plan_action && $plan_catalog_item ) {
+			$steps[] = self::normalize_action_plan_step(
+				[
+					'id'     => 'step_1',
+					'label'  => $plan_action,
+					'action' => $plan_action,
+					'params' => $plan_params,
+				],
+				0,
+				$action_catalog
+			);
+		}
+
+		return [
+			'type'   => $type,
+			'action' => $plan_catalog_item ? $plan_action : '',
+			'params' => $plan_catalog_item ? $plan_params : [],
+			'steps'  => array_values( array_filter( $steps ) ),
+		];
+	}
+
+	private static function normalize_action_plan_step( $step, $index, $action_catalog ) {
+		$step = is_array( $step ) ? $step : [];
+		$action = sanitize_text_field( $step['action'] ?? '' );
+		$catalog_item = self::find_catalog_item( $action, $action_catalog );
+
+		if ( '' === $action || ! $catalog_item ) {
+			return [];
+		}
+
+		$params = isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [];
+		$params = self::filter_params_for_action( $params, $catalog_item )['params'];
+
+		return [
+			'id'       => ! empty( $step['id'] ) ? sanitize_key( $step['id'] ) : 'step_' . ( absint( $index ) + 1 ),
+			'label'    => ! empty( $step['label'] ) ? sanitize_text_field( $step['label'] ) : $action,
+			'action'   => $action,
+			'params'   => $params,
+			'when'     => isset( $step['when'] ) && is_array( $step['when'] ) ? $step['when'] : [],
+			'capture'  => isset( $step['capture'] ) && is_array( $step['capture'] ) ? $step['capture'] : [],
+			'on_error' => ! empty( $step['on_error'] ) ? sanitize_key( $step['on_error'] ) : 'stop',
+			'retry'    => isset( $step['retry'] ) && is_array( $step['retry'] )
+				? [
+					'max_attempts' => isset( $step['retry']['max_attempts'] ) ? max( 1, absint( $step['retry']['max_attempts'] ) ) : 1,
+				]
+				: [
+					'max_attempts' => 1,
+				],
+			'meta'     => isset( $step['meta'] ) && is_array( $step['meta'] ) ? $step['meta'] : [],
 		];
 	}
 

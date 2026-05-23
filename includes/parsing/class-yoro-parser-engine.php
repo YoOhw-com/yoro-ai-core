@@ -22,35 +22,9 @@ class YoRo_Parser_Engine {
 			? YoRo_Parser_Context_Preparer::prepare_initial_context( $command, $client_context )
 			: $client_context;
 
-		$active_workflow_continue = class_exists( 'YoRo_Active_Workflow_Continue_Router' )
-			? YoRo_Active_Workflow_Continue_Router::parse(
-				$command,
-				$normalized,
-				$client_context,
-				self::active_workflow_continue_router_callbacks()
-			)
-			: null;
-
-		if ( is_array( $active_workflow_continue ) ) {
-			return $active_workflow_continue;
-		}
-
 		$client_context = class_exists( 'YoRo_Parser_Context_Preparer' )
 			? YoRo_Parser_Context_Preparer::prepare_phrase_context( $command, $client_context )
 			: $client_context;
-
-		$pre_router_guard_result = class_exists( 'YoRo_AI_Pre_Router_Guard_Result_Router' )
-			? YoRo_AI_Pre_Router_Guard_Result_Router::parse(
-				$command,
-				$normalized,
-				$client_context,
-				self::ai_pre_router_guard_result_router_callbacks()
-			)
-			: null;
-
-		if ( is_array( $pre_router_guard_result ) ) {
-			return $pre_router_guard_result;
-		}
 
 		$ai_router_result = class_exists( 'YoRo_AI_Command_Router_Result_Router' )
 			? YoRo_AI_Command_Router_Result_Router::parse(
@@ -75,25 +49,10 @@ class YoRo_Parser_Engine {
 			return $post_ai_router_result;
 		}
 
-		$conversational = class_exists( 'YoRo_AI_Conversation_Result_Router' )
-			? YoRo_AI_Conversation_Result_Router::parse(
+		return class_exists( 'YoRo_Parser_Safety_Fallback_Router' )
+			? YoRo_Parser_Safety_Fallback_Router::build_generic_clarification(
 				$command,
-				$normalized,
-				$client_context,
-				self::ai_conversation_result_router_callbacks()
-			)
-			: null;
-
-		if ( is_array( $conversational ) ) {
-			return $conversational;
-		}
-
-		return class_exists( 'YoRo_Parser_Tail_Router' )
-			? YoRo_Parser_Tail_Router::parse(
-				$command,
-				$normalized,
-				$client_context,
-				self::parser_tail_router_callbacks()
+				$normalized
 			)
 			: null;
 	}

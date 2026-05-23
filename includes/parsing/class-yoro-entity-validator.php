@@ -38,10 +38,6 @@ class YoRo_Entity_Validator {
 
 	private static function validate_orders_update_status( $parsed, $params ) {
 		$params = YoRo_Order_Helper::apply_order_ids_to_params( $params );
-		$params = YoRo_Order_Helper::apply_status_to_params(
-			$params,
-			$parsed['normalized_command'] ?? ''
-		);
 
 		$parsed['params'] = $params;
 
@@ -114,13 +110,6 @@ class YoRo_Entity_Validator {
 	}
 
 	private static function validate_orders_search( $parsed, $params ) {
-
-		$normalized = isset( $parsed['normalized_command'] )
-			? (string) $parsed['normalized_command']
-			: '';
-
-		$params = YoRo_Order_Helper::apply_status_to_params( $params, $normalized );
-
 		if ( ! empty( $params['status'] ) ) {
 			$statuses = (array) $params['status'];
 

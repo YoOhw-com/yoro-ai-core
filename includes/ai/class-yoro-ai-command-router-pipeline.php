@@ -19,7 +19,7 @@ class YoRo_AI_Command_Router_Pipeline {
 		$decision = YoRo_AI_Command_Router::route( $command, $client_context );
 
 		if ( is_wp_error( $decision ) ) {
-			return self::is_recoverable_router_error( $decision ) ? null : $decision;
+			return $decision;
 		}
 
 		if ( ! is_array( $decision ) ) {
@@ -45,33 +45,6 @@ class YoRo_AI_Command_Router_Pipeline {
 		}
 
 		return self::refresh_decision_contract( $decision );
-	}
-
-	private static function is_recoverable_router_error( $error ) {
-		if ( ! is_wp_error( $error ) ) {
-			return false;
-		}
-
-		$error_code = $error->get_error_code();
-
-		if (
-			in_array(
-				$error_code,
-				[
-					'yoro_ai_missing_api_key',
-					'yoro_ai_intent_api_error',
-					'http_request_failed',
-				],
-				true
-			)
-		) {
-			return true;
-		}
-
-		$error_message = sanitize_text_field( $error->get_error_message() );
-
-		return '' !== $error_message &&
-			(bool) preg_match( '/\b(?:cURL error|timed out|timeout|could not resolve host|connection refused)\b/i', $error_message );
 	}
 
 	private static function refresh_decision_contract( $decision ) {

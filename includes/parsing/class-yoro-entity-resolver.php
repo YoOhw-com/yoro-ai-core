@@ -101,11 +101,6 @@ class YoRo_Entity_Resolver {
 			}
 		}
 
-		$params = YoRo_Order_Helper::apply_status_to_params(
-			$params,
-			$parsed['normalized_command'] ?? ''
-		);
-
 		if ( ! empty( $params['status'] ) ) {
 			$params['status'] = YoRo_Order_Helper::normalize_status( $params['status'] );
 		}

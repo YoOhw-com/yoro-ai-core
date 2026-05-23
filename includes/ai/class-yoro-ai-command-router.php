@@ -38,9 +38,7 @@ class YoRo_AI_Command_Router {
 			: [];
 		$catalog_scope = sanitize_key( $router_hints['catalog_scope'] ?? 'default' );
 		$full_catalog = YoRo_Action_Catalog_Builder::build( $context );
-		$catalog = class_exists( 'YoRo_Action_Catalog_Builder' ) && method_exists( 'YoRo_Action_Catalog_Builder', 'build_for_command' )
-			? YoRo_Action_Catalog_Builder::build_for_command( $command, $context )
-			: $full_catalog;
+		$catalog = $full_catalog;
 		$router_hints = array_merge(
 			[
 				'catalog_scope' => $catalog_scope,
@@ -239,7 +237,7 @@ class YoRo_AI_Command_Router {
 			return null;
 		}
 
-		$catalog = YoRo_Action_Catalog_Builder::build_for_command( $command, $context );
+		$catalog = YoRo_Action_Catalog_Builder::build( $context );
 		$router_hints = class_exists( 'YoRo_Action_Catalog_Builder' ) && method_exists( 'YoRo_Action_Catalog_Builder', 'build_router_hints' )
 			? YoRo_Action_Catalog_Builder::build_router_hints( $command, $context )
 			: [];

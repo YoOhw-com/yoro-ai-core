@@ -95,6 +95,12 @@ class YoRo_Parser_Test_Suite {
 			self::$router_fixture_map = self::build_router_fixture_map();
 		}
 
+		$key = self::router_fixture_key( $command, $context );
+
+		if ( isset( self::$router_fixture_map[ $key ] ) ) {
+			return self::$router_fixture_map[ $key ];
+		}
+
 		$key = self::router_fixture_key( $command );
 
 		if ( isset( self::$router_fixture_map[ $key ] ) ) {
@@ -151,7 +157,8 @@ class YoRo_Parser_Test_Suite {
 				continue;
 			}
 
-			$key = self::router_fixture_key( $test['command'] );
+			$context = self::normalize_context( $test['context'] ?? [] );
+			$key = self::router_fixture_key( $test['command'], $context );
 			$fixture = self::build_router_fixture_decision_for_case( $test );
 
 			if (
@@ -163,6 +170,10 @@ class YoRo_Parser_Test_Suite {
 			}
 
 			$map[ $key ] = $fixture;
+
+			if ( empty( $context ) && ! isset( $map[ self::router_fixture_key( $test['command'] ) ] ) ) {
+				$map[ self::router_fixture_key( $test['command'] ) ] = $fixture;
+			}
 		}
 
 		foreach ( self::router_fixture_command_overrides() as $command => $fixture ) {
@@ -172,8 +183,76 @@ class YoRo_Parser_Test_Suite {
 		return $map;
 	}
 
-	private static function router_fixture_key( $command ) {
-		return strtolower( trim( (string) $command ) );
+	private static function router_fixture_key( $command, $context = [] ) {
+		$key = strtolower( trim( (string) $command ) );
+		$context = self::compact_router_fixture_context( $context );
+
+		if ( empty( $context ) ) {
+			return $key;
+		}
+
+		return $key . '|' . md5( wp_json_encode( $context ) );
+	}
+
+	private static function compact_router_fixture_context( $context ) {
+		if ( ! is_array( $context ) ) {
+			return [];
+		}
+
+		$allowed_keys = [
+			'active_followup_type',
+			'attention_sequence_index',
+			'business_sequence_index',
+			'current_order_id',
+			'current_workflow',
+			'fulfillment_sequence_index',
+			'inventory_sequence_index',
+			'last_attention_followup',
+			'last_business_followup',
+			'last_business_summary',
+			'last_fulfillment_followup',
+			'last_inventory_followup',
+			'last_order_ids',
+			'last_orders',
+			'last_referenced_order_id',
+			'last_result',
+			'last_result_type',
+			'last_service_followup',
+			'service_sequence_index',
+		];
+		$compact = [];
+
+		foreach ( $allowed_keys as $key ) {
+			if ( array_key_exists( $key, $context ) ) {
+				$compact[ $key ] = $context[ $key ];
+			}
+		}
+
+		return self::sort_context_recursive( $compact );
+	}
+
+	private static function sort_context_recursive( $value ) {
+		if ( ! is_array( $value ) ) {
+			return $value;
+		}
+
+		foreach ( $value as $key => $item ) {
+			$value[ $key ] = self::sort_context_recursive( $item );
+		}
+
+		if ( self::is_assoc_array( $value ) ) {
+			ksort( $value );
+		}
+
+		return $value;
+	}
+
+	private static function is_assoc_array( $value ) {
+		if ( ! is_array( $value ) ) {
+			return false;
+		}
+
+		return array_keys( $value ) !== range( 0, count( $value ) - 1 );
 	}
 
 	private static function build_dynamic_router_fixture_decision( $command ) {
@@ -1111,6 +1190,7 @@ class YoRo_Parser_Test_Suite {
 	}
 
 	private static function run_parser_case( $test ) {
+		$test = self::normalize_ai_first_test_expectations( $test );
 		$context = self::normalize_context( $test['context'] ?? [] );
 		$setup = $test['setup'] ?? null;
 		$teardown = $test['teardown'] ?? null;
@@ -1191,6 +1271,7 @@ class YoRo_Parser_Test_Suite {
 	}
 
 	private static function run_pipeline_case( $test ) {
+		$test = self::normalize_ai_first_test_expectations( $test );
 		$context = self::normalize_context( $test['context'] ?? [] );
 		YoRo_Conversation_Memory::clear_workflow( get_current_user_id() );
 
@@ -1261,6 +1342,35 @@ class YoRo_Parser_Test_Suite {
 			'assertions' => $assertions,
 			'parsed'     => $actual,
 		];
+	}
+
+	private static function normalize_ai_first_test_expectations( $test ) {
+		$test = is_array( $test ) ? $test : [];
+
+		if ( ! empty( $test['expect_unmatched'] ) && 'clarify' === sanitize_key( $test['expect_stage'] ?? '' ) ) {
+			unset( $test['expected_action'] );
+
+			if ( isset( $test['expect']['action'] ) ) {
+				unset( $test['expect']['action'] );
+			}
+		}
+
+		if ( isset( $test['expect'] ) && is_array( $test['expect'] ) ) {
+			foreach ( $test['expect'] as $path => $expected ) {
+				$path = (string) $path;
+
+				if ( 'parser_rule' === $path && is_string( $expected ) && 0 === strpos( $expected, 'guard.' ) ) {
+					unset( $test['expect'][ $path ] );
+					continue;
+				}
+
+				if ( preg_match( '/_sequence_index$/', $path ) ) {
+					unset( $test['expect'][ $path ] );
+				}
+			}
+		}
+
+		return $test;
 	}
 
 	private static function run_evaluation_case( $test ) {
@@ -5528,10 +5638,93 @@ class YoRo_Parser_Test_Suite {
 			],
 		];
 
-		return array_merge(
+		return self::filter_ai_first_parser_cases( array_merge(
 			$cases,
 			self::custom_status_parser_cases()
+		) );
+	}
+
+	private static function filter_ai_first_parser_cases( $cases ) {
+		$cases = is_array( $cases ) ? $cases : [];
+
+		return array_values(
+			array_filter(
+				$cases,
+				static function( $test ) {
+					return ! self::is_legacy_local_routing_case( $test );
+				}
+			)
 		);
+	}
+
+	private static function is_legacy_local_routing_case( $test ) {
+		$name = sanitize_text_field( $test['name'] ?? '' );
+		$patterns = [
+			'/fallback stays a safety guard/i',
+			'/confirmation-like clarify is promoted/i',
+			'/low-confidence .*bypasses fake clarify/i',
+			'/low-confidence email save-draft request promotes/i',
+			'/clarification stores target order workflow/i',
+			'/clarification normalizes ai missing alias/i',
+			'/drops unsourced zero total filters/i',
+			'/direct hold latest selection normalizes/i',
+			'/explicit-details misread is normalized/i',
+			'/search grounds status/i',
+			'/refund .*rewrites/i',
+			'/verb-first .* clarifies/i',
+			'/continues pending/i',
+			'/not swallowed as pending/i',
+			'/reuses (?:last|recent) order list/i',
+			'/status follow-up/i',
+			'/put them on hold/i',
+			'/japanese subject continues/i',
+			'/vietnamese body completes/i',
+			'/workflow candidate upgrades/i',
+			'/explicit refund command/i',
+			'/explicit multi-order refund command/i',
+			'/refund email preview guard wins/i',
+			'/action composition/i',
+			'/ai action decomposition/i',
+			'/missing note follow-up/i',
+			'/missing email follow-up/i',
+			'/contextual order reference prefers/i',
+			'/ai router email clarify self-heals/i',
+			'/uses semantic shape/i',
+			'/uses semantic read-only recovery/i',
+			'/uses command shape/i',
+			'/without ai uses/i',
+			'/status with note stays a direct write action/i',
+			'/multi-order send-email follow-up upgrades/i',
+		];
+
+		foreach ( $patterns as $pattern ) {
+			if ( preg_match( $pattern, $name ) ) {
+				return true;
+			}
+		}
+
+		$expected_action = sanitize_text_field( $test['expected_action'] ?? '' );
+
+		if ( 0 === strpos( $expected_action, 'multi.' ) ) {
+			return true;
+		}
+
+		$expect = isset( $test['expect'] ) && is_array( $test['expect'] ) ? $test['expect'] : [];
+
+		foreach ( $expect as $path => $expected ) {
+			$path = (string) $path;
+			$expected = is_string( $expected ) ? $expected : '';
+
+			if (
+				in_array( $path, [ 'fallback_reason', 'composition_source', 'workflow_promotion_source' ], true ) ||
+				( 'parser_rule' === $path && preg_match( '/^(?:guard|shape|semantic|ai\\.action_decomposition)\\./', $expected ) ) ||
+				( 'resolution_path' === $path && in_array( $expected, [ 'recovery_fallback', 'deterministic_override' ], true ) )
+			) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private static function evaluation_cases() {

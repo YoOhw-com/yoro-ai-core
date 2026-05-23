@@ -15,70 +15,9 @@ class YoRo_Router_Decision_Validator {
 			$decision['command_shape'] = YoRo_Command_Shape_Extractor::compact_for_prompt( $shape );
 		}
 
-		$decision = self::normalize_query_action_shape_decision(
-			$decision,
-			$shape
-		);
-
-		$decision = self::normalize_write_missing_target_shape_decision(
-			$decision,
-			$shape
-		);
-
-		$decision = self::normalize_order_list_search_shape_decision(
-			$decision,
-			$command,
-			$normalized,
-			$shape
-		);
-
-		$decision = self::normalize_orders_search_decision(
-			$decision,
-			$command,
-			$normalized,
-			$shape
-		);
-
-		$decision = self::normalize_email_authoring_decision(
-			$decision,
-			$command,
-			$normalized
-		);
-
-		$decision = self::normalize_order_target_params_decision(
-			$decision,
-			$command,
-			$client_context
-		);
-
-		$decision = self::normalize_email_instruction_decision(
-			$decision,
-			$command,
-			$normalized
-		);
-
-		$decision = self::normalize_briefing_decision(
-			$decision,
-			$normalized
-		);
-
-		$decision = self::normalize_briefing_window_contract_decision(
-			$decision,
-			$normalized
-		);
-
-		$decision = self::normalize_read_only_window_decision(
-			$decision,
-			$normalized
-		);
-
-		if ( class_exists( 'YoRo_Semantic_Frame_Validator' ) ) {
-			$decision = YoRo_Semantic_Frame_Validator::apply_to_decision( $decision );
+		if ( class_exists( 'YoRo_Semantic_Frame_Normalizer' ) ) {
+			$decision['semantic_frame'] = YoRo_Semantic_Frame_Normalizer::normalize( $decision['semantic_frame'] ?? [] );
 		}
-
-		$decision = self::normalize_write_confirmation_decision( $decision );
-
-		$decision = self::normalize_actionable_clarify_decision( $decision );
 
 		return $decision;
 	}
