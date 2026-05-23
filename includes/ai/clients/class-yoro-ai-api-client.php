@@ -63,9 +63,10 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		$json = json_decode( $raw, true );
 
 		if ( $code < 200 || $code >= 300 ) {
-			$message = is_array( $json ) && ! empty( $json['message'] )
-				? sanitize_text_field( $json['message'] )
-				: __( 'YoRo AI API connection test failed.', 'yoro-ai-core' );
+			$message = $this->public_response_message(
+				$json,
+				__( 'YoRo AI API connection test failed.', 'yoro-ai-core' )
+			);
 
 			$this->record_request( 'handshake', $duration_ms, 'error' );
 
@@ -192,9 +193,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 
 			return new WP_Error(
 				$error_code,
-				is_array( $json ) && ! empty( $json['message'] )
-					? sanitize_text_field( $json['message'] )
-					: $default_message
+				$this->public_response_message( $json, $default_message )
 			);
 		}
 
@@ -269,9 +268,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 
 			return new WP_Error(
 				$error_code,
-				is_array( $json ) && ! empty( $json['message'] )
-					? sanitize_text_field( $json['message'] )
-					: $default_message
+				$this->public_response_message( $json, $default_message )
 			);
 		}
 
@@ -346,9 +343,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 
 			return new WP_Error(
 				$error_code,
-				is_array( $json ) && ! empty( $json['message'] )
-					? sanitize_text_field( $json['message'] )
-					: $default_message
+				$this->public_response_message( $json, $default_message )
 			);
 		}
 
@@ -423,9 +418,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 
 			return new WP_Error(
 				$error_code,
-				is_array( $json ) && ! empty( $json['message'] )
-					? sanitize_text_field( $json['message'] )
-					: $default_message
+				$this->public_response_message( $json, $default_message )
 			);
 		}
 
@@ -442,6 +435,14 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		$this->record_route_usage( $json );
 
 		return wp_json_encode( $this->normalize_suggestions_response( $json ) );
+	}
+
+	private function public_response_message( $json, $default_message ) {
+		$message = is_array( $json ) && ! empty( $json['message'] )
+			? sanitize_text_field( $json['message'] )
+			: $default_message;
+
+		return str_ireplace( 'openai', 'YoRo AI API', $message );
 	}
 
 	private function route_timeout( $operation, array $payload ) {
@@ -722,7 +723,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 				'meta'                   => array_merge(
 					$response_meta,
 					[
-						'routing_provider'             => sanitize_key( $response['routing_provider'] ?? '' ),
+						'routing_provider'             => $this->normalize_public_routing_provider( $response['routing_provider'] ?? '' ),
 						'yoro_ai_api_parser_source'    => sanitize_key( $response['parser_source'] ?? '' ),
 						'yoro_ai_api_request_id'       => sanitize_text_field( $usage['request_id'] ?? '' ),
 						'yoro_ai_api_plan'             => sanitize_key( $usage['plan'] ?? '' ),
@@ -740,6 +741,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 
 		foreach ( $meta as $key => $value ) {
 			$key = sanitize_key( (string) $key );
+			$key = $this->normalize_public_meta_key( $key );
 
 			if ( '' === $key || 0 !== strpos( $key, 'yoro_ai_api_' ) ) {
 				continue;
@@ -751,11 +753,38 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			}
 
 			if ( is_string( $value ) ) {
-				$normalized[ $key ] = sanitize_text_field( $value );
+				$normalized[ $key ] = $this->normalize_public_meta_value( $key, $value );
 			}
 		}
 
 		return $normalized;
+	}
+
+	private function normalize_public_meta_key( $key ) {
+		$key = sanitize_key( (string) $key );
+
+		switch ( $key ) {
+			case 'yoro_ai_api_openai_ms':
+				return 'yoro_ai_api_provider_ms';
+			case 'yoro_ai_api_profile_router_openai_ms':
+				return 'yoro_ai_api_profile_router_provider_ms';
+			default:
+				return $key;
+		}
+	}
+
+	private function normalize_public_meta_value( $key, $value ) {
+		if ( 'routing_provider' === $key ) {
+			return $this->normalize_public_routing_provider( $value );
+		}
+
+		return sanitize_text_field( $value );
+	}
+
+	private function normalize_public_routing_provider( $provider ) {
+		$provider = sanitize_key( (string) $provider );
+
+		return 'mock' === $provider ? 'mock' : 'yoro_ai_api';
 	}
 
 	private function normalize_workflow_plan_response( array $response ) {
@@ -789,7 +818,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'reason'           => sanitize_text_field( $response['reason'] ?? '' ),
 			'workflow_label'   => sanitize_text_field( $response['workflow_label'] ?? '' ),
 			'actions'          => $actions,
-			'routing_provider' => sanitize_key( $response['routing_provider'] ?? '' ),
+			'routing_provider' => $this->normalize_public_routing_provider( $response['routing_provider'] ?? '' ),
 			'meta'             => [
 				'yoro_ai_api_request_id'      => sanitize_text_field( $usage['request_id'] ?? '' ),
 				'yoro_ai_api_plan'            => sanitize_key( $usage['plan'] ?? '' ),
@@ -807,7 +836,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return [
 			'subject'          => sanitize_text_field( $response['subject'] ?? '' ),
 			'body'             => sanitize_textarea_field( $response['body'] ?? '' ),
-			'routing_provider' => sanitize_key( $response['routing_provider'] ?? '' ),
+			'routing_provider' => $this->normalize_public_routing_provider( $response['routing_provider'] ?? '' ),
 			'meta'             => [
 				'yoro_ai_api_request_id'      => sanitize_text_field( $usage['request_id'] ?? '' ),
 				'yoro_ai_api_plan'            => sanitize_key( $usage['plan'] ?? '' ),

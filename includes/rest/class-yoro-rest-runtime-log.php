@@ -11,9 +11,10 @@ class YoRo_REST_Runtime_Log {
 		$extra   = is_array( $extra ) ? $extra : [];
 		$retrieved_examples = self::normalize_retrieved_examples( $extra['retrieved_examples'] ?? [] );
 		$route_candidates = self::normalize_route_candidates( $extra['route_candidates'] ?? [] );
-		$ai_meta = isset( $extra['ai_meta'] ) && is_array( $extra['ai_meta'] ) ? $extra['ai_meta'] : [];
+		$ai_meta = self::normalize_public_ai_meta( $extra['ai_meta'] ?? [] );
 		unset( $extra['retrieved_examples'] );
 		unset( $extra['route_candidates'] );
+		unset( $extra['ai_meta'] );
 
 		$data = [
 			'trace_id'           => sanitize_text_field( $trace_id ),
@@ -31,14 +32,14 @@ class YoRo_REST_Runtime_Log {
 			'language'           => sanitize_key( $extra['language'] ?? '' ),
 			'confidence'         => isset( $extra['confidence'] ) && null !== $extra['confidence'] ? (float) $extra['confidence'] : null,
 			'ai_meta'            => $ai_meta,
-			'routing_provider'   => sanitize_key( $ai_meta['routing_provider'] ?? '' ),
+			'routing_provider'   => self::normalize_public_routing_provider( $ai_meta['routing_provider'] ?? '' ),
 			'yoro_ai_api_request_id' => sanitize_text_field( $ai_meta['yoro_ai_api_request_id'] ?? '' ),
 			'yoro_ai_api_plan'   => sanitize_key( $ai_meta['yoro_ai_api_plan'] ?? '' ),
 			'yoro_ai_api_usage_period' => sanitize_text_field( $ai_meta['yoro_ai_api_usage_period'] ?? '' ),
 			'yoro_ai_api_usage_limit' => isset( $ai_meta['yoro_ai_api_usage_limit'] ) ? absint( $ai_meta['yoro_ai_api_usage_limit'] ) : null,
 			'yoro_ai_api_usage_used' => isset( $ai_meta['yoro_ai_api_usage_used'] ) ? absint( $ai_meta['yoro_ai_api_usage_used'] ) : null,
 			'yoro_ai_api_usage_remaining' => isset( $ai_meta['yoro_ai_api_usage_remaining'] ) ? absint( $ai_meta['yoro_ai_api_usage_remaining'] ) : null,
-			'yoro_ai_api_openai_ms' => isset( $ai_meta['yoro_ai_api_openai_ms'] ) ? absint( $ai_meta['yoro_ai_api_openai_ms'] ) : null,
+			'yoro_ai_api_provider_ms' => isset( $ai_meta['yoro_ai_api_provider_ms'] ) ? absint( $ai_meta['yoro_ai_api_provider_ms'] ) : null,
 			'yoro_ai_api_response_parse_ms' => isset( $ai_meta['yoro_ai_api_response_parse_ms'] ) ? absint( $ai_meta['yoro_ai_api_response_parse_ms'] ) : null,
 			'yoro_ai_api_route_total_ms' => isset( $ai_meta['yoro_ai_api_route_total_ms'] ) ? absint( $ai_meta['yoro_ai_api_route_total_ms'] ) : null,
 			'yoro_ai_api_plan_gate_ms' => isset( $ai_meta['yoro_ai_api_plan_gate_ms'] ) ? absint( $ai_meta['yoro_ai_api_plan_gate_ms'] ) : null,
@@ -78,7 +79,7 @@ class YoRo_REST_Runtime_Log {
 		];
 
 		foreach ( $ai_meta as $key => $value ) {
-			$key = sanitize_key( (string) $key );
+			$key = self::normalize_public_meta_key( $key );
 
 			if ( '' === $key || 0 !== strpos( $key, 'yoro_ai_api_' ) || array_key_exists( $key, $data ) ) {
 				continue;
@@ -90,11 +91,65 @@ class YoRo_REST_Runtime_Log {
 			}
 
 			if ( is_string( $value ) ) {
-				$data[ $key ] = sanitize_text_field( $value );
+				$data[ $key ] = self::normalize_public_meta_value( $key, $value );
 			}
 		}
 
 		return array_merge( $data, $extra );
+	}
+
+	private static function normalize_public_ai_meta( $meta ) {
+		if ( ! is_array( $meta ) ) {
+			return [];
+		}
+
+		$normalized = [];
+
+		foreach ( $meta as $key => $value ) {
+			$key = self::normalize_public_meta_key( $key );
+
+			if ( '' === $key ) {
+				continue;
+			}
+
+			if ( is_bool( $value ) || is_int( $value ) || is_float( $value ) || null === $value ) {
+				$normalized[ $key ] = $value;
+				continue;
+			}
+
+			if ( is_string( $value ) ) {
+				$normalized[ $key ] = self::normalize_public_meta_value( $key, $value );
+			}
+		}
+
+		return $normalized;
+	}
+
+	private static function normalize_public_meta_key( $key ) {
+		$key = sanitize_key( (string) $key );
+
+		switch ( $key ) {
+			case 'yoro_ai_api_openai_ms':
+				return 'yoro_ai_api_provider_ms';
+			case 'yoro_ai_api_profile_router_openai_ms':
+				return 'yoro_ai_api_profile_router_provider_ms';
+			default:
+				return $key;
+		}
+	}
+
+	private static function normalize_public_meta_value( $key, $value ) {
+		if ( in_array( $key, [ 'provider', 'routing_provider' ], true ) ) {
+			return self::normalize_public_routing_provider( $value );
+		}
+
+		return sanitize_text_field( $value );
+	}
+
+	private static function normalize_public_routing_provider( $provider ) {
+		$provider = sanitize_key( (string) $provider );
+
+		return 'mock' === $provider ? 'mock' : 'yoro_ai_api';
 	}
 
 	private static function normalize_retrieved_examples( $examples ) {
