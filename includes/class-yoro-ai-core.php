@@ -42,11 +42,23 @@ class YoRo_AI_Core {
 	}
 
 	private static function include_ai() {
+		self::include_ai_cloud_boundary();
+		self::include_ai_normalizers();
+		self::include_ai_cloud_entrypoints();
+		self::include_ai_conversation();
+		self::include_ai_local_guardrails();
+		self::include_ai_result_routing();
+	}
+
+	private static function include_ai_cloud_boundary() {
 		require_once YORO_AI_CORE_PATH . 'includes/ai/interfaces/interface-yoro-ai-client.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-settings.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-request-tracker.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-provider-resolver.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/clients/class-yoro-ai-api-client.php';
+	}
+
+	private static function include_ai_normalizers() {
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-semantic-frame-normalizer.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-semantic-frame-validator.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-command-decision-normalizer.php';
@@ -55,17 +67,26 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-inferred-action-param-normalizer.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-workflow-result-normalizer.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-email-result-normalizer.php';
+	}
+
+	private static function include_ai_cloud_entrypoints() {
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-parser.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-command-router.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-command-router-pipeline.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-command-router-response-builder.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-command-router-non-action-handlers.php';
+	}
+
+	private static function include_ai_conversation() {
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-conversation-response-helper.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-conversation-predicate-classifier.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-conversation-context-handler.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-conversation-router.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-conversation-gate.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-conversation-result-router.php';
+	}
+
+	private static function include_ai_local_guardrails() {
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-semantic-retrieval-helper.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-hardening-guard-router.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-recovery-fallback-result-router.php';
@@ -74,6 +95,9 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-pre-router-contextual-order-write-guard.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-pre-router-followup-reference-guard.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-pre-router-guard-result-router.php';
+	}
+
+	private static function include_ai_result_routing() {
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-router-result-corrector.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-action-composition-router.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-workflow-candidate-router.php';
