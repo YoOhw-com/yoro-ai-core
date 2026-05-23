@@ -1328,6 +1328,10 @@ class YoRo_Command_Shape_Extractor {
 	private static function extract_note( $command ) {
 		$command = (string) $command;
 
+		if ( preg_match( '/\b(?:add|leave)\s+(?:a\s+)?note\s+to\s+(?:this|that|the|current)\s+order\s*:\s*(.+)$/i', $command, $matches ) ) {
+			return sanitize_textarea_field( trim( $matches[1] ?? '' ) );
+		}
+
 		if ( preg_match( '/\b(?:add|leave)\s+(?:a\s+)?note\s+to\s+order\s+#?\d+\s*:\s*(.+)$/i', $command, $matches ) ) {
 			return sanitize_textarea_field( trim( $matches[1] ?? '' ) );
 		}

@@ -19,6 +19,8 @@ class YoRo_Router_Decision_Validator {
 			$decision['semantic_frame'] = YoRo_Semantic_Frame_Normalizer::normalize( $decision['semantic_frame'] ?? [] );
 		}
 
+		$decision = self::guard_missing_add_note_content( $decision, $shape );
+
 		return $decision;
 	}
 
@@ -292,6 +294,203 @@ class YoRo_Router_Decision_Validator {
 		$decision['reasoning_summary'] = __( 'The command shape starts with a write action and gives only a count, so exact order IDs are required before executing.', 'yoro-ai-core' );
 
 		return $decision;
+	}
+
+	private static function guard_missing_add_note_content( $decision, $shape ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$shape    = is_array( $shape ) ? $shape : [];
+
+		if ( ! self::decision_contains_add_note_action( $decision ) ) {
+			return $decision;
+		}
+
+		$order_ids          = self::extract_add_note_order_ids( $decision, $shape );
+		$note               = self::extract_add_note_note( $decision );
+		$shape_missing_note = self::shape_reports_missing_add_note_content( $shape );
+		$placeholder_note   = self::looks_like_placeholder_add_note( $note );
+		$has_note           = '' !== trim( (string) $note );
+
+		if ( ! $placeholder_note && ( ! $shape_missing_note || $has_note ) ) {
+			return $decision;
+		}
+
+		$params = [];
+
+		if ( ! empty( $order_ids ) ) {
+			$params['order_ids'] = $order_ids;
+			$params['order_id']  = absint( reset( $order_ids ) );
+		}
+
+		$order_id = absint( $params['order_id'] ?? 0 );
+		$question = $order_id > 0
+			? sprintf(
+				/* translators: %d: order id */
+				__( 'What note should I add to order #%d?', 'yoro-ai-core' ),
+				$order_id
+			)
+			: __( 'What note should I add?', 'yoro-ai-core' );
+
+		$decision['mode']                   = 'clarify';
+		$decision['intent_family']          = 'add_note';
+		$decision['action']                 = 'orders.add_note';
+		$decision['params']                 = $params;
+		$decision['missing']                = [ 'note' ];
+		$decision['ambiguities']            = [];
+		$decision['clarification_question'] = $question;
+		$decision['summary']                = $question;
+		$decision['reasoning_summary']      = __( 'The add-note route is valid, but the command does not include literal note content.', 'yoro-ai-core' );
+		$decision['requires_confirmation']  = false;
+		$decision['raw_param_keys']         = ! empty( $order_ids ) ? [ 'order_ids' ] : [];
+		$decision['dropped_param_keys']     = [];
+		$decision['params_trimmed_count']   = 0;
+		$decision['action_plan']            = [
+			'type'   => 'none',
+			'action' => null,
+			'params' => [],
+			'steps'  => [],
+		];
+
+		return $decision;
+	}
+
+	private static function decision_contains_add_note_action( $decision ) {
+		$decision = is_array( $decision ) ? $decision : [];
+
+		if ( 'orders.add_note' === sanitize_text_field( $decision['action'] ?? '' ) ) {
+			return true;
+		}
+
+		$action_plan = isset( $decision['action_plan'] ) && is_array( $decision['action_plan'] )
+			? $decision['action_plan']
+			: [];
+
+		foreach ( (array) ( $action_plan['steps'] ?? [] ) as $step ) {
+			if ( is_array( $step ) && 'orders.add_note' === sanitize_text_field( $step['action'] ?? '' ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static function extract_add_note_note( $decision ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$params   = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+
+		if ( 'orders.add_note' === sanitize_text_field( $decision['action'] ?? '' ) && isset( $params['note'] ) ) {
+			return sanitize_textarea_field( $params['note'] );
+		}
+
+		$action_plan = isset( $decision['action_plan'] ) && is_array( $decision['action_plan'] )
+			? $decision['action_plan']
+			: [];
+
+		foreach ( (array) ( $action_plan['steps'] ?? [] ) as $step ) {
+			if ( ! is_array( $step ) || 'orders.add_note' !== sanitize_text_field( $step['action'] ?? '' ) ) {
+				continue;
+			}
+
+			$step_params = isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [];
+
+			if ( isset( $step_params['note'] ) ) {
+				return sanitize_textarea_field( $step_params['note'] );
+			}
+		}
+
+		return '';
+	}
+
+	private static function extract_add_note_order_ids( $decision, $shape ) {
+		$decision  = is_array( $decision ) ? $decision : [];
+		$shape     = is_array( $shape ) ? $shape : [];
+		$order_ids = [];
+
+		$params = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+		$order_ids = array_merge( $order_ids, self::extract_order_ids_from_params( $params ) );
+
+		$action_plan = isset( $decision['action_plan'] ) && is_array( $decision['action_plan'] )
+			? $decision['action_plan']
+			: [];
+
+		foreach ( (array) ( $action_plan['steps'] ?? [] ) as $step ) {
+			if ( ! is_array( $step ) || 'orders.add_note' !== sanitize_text_field( $step['action'] ?? '' ) ) {
+				continue;
+			}
+
+			$order_ids = array_merge(
+				$order_ids,
+				self::extract_order_ids_from_params( isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [] )
+			);
+		}
+
+		$constraints = isset( $decision['semantic_frame']['constraints'] ) && is_array( $decision['semantic_frame']['constraints'] )
+			? $decision['semantic_frame']['constraints']
+			: [];
+		$order_ids = array_merge( $order_ids, self::extract_order_ids_from_params( $constraints ) );
+
+		if ( isset( $shape['explicit_order_ids'] ) && is_array( $shape['explicit_order_ids'] ) ) {
+			$order_ids = array_merge( $order_ids, array_map( 'absint', $shape['explicit_order_ids'] ) );
+		}
+
+		return array_values( array_unique( array_filter( array_map( 'absint', $order_ids ) ) ) );
+	}
+
+	private static function extract_order_ids_from_params( $params ) {
+		$params = is_array( $params ) ? $params : [];
+		$ids    = [];
+
+		if ( isset( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
+			$ids = array_merge( $ids, array_map( 'absint', $params['order_ids'] ) );
+		}
+
+		if ( ! empty( $params['order_id'] ) ) {
+			$ids[] = absint( $params['order_id'] );
+		}
+
+		return array_values( array_filter( $ids ) );
+	}
+
+	private static function shape_reports_missing_add_note_content( $shape ) {
+		$shape = is_array( $shape ) ? $shape : [];
+		$write_missing_target = isset( $shape['write_missing_target'] ) && is_array( $shape['write_missing_target'] )
+			? $shape['write_missing_target']
+			: [];
+
+		if ( 'orders.add_note' !== sanitize_text_field( $write_missing_target['action'] ?? '' ) ) {
+			return false;
+		}
+
+		$missing = isset( $write_missing_target['missing'] ) && is_array( $write_missing_target['missing'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $write_missing_target['missing'] ) ) )
+			: [];
+
+		return in_array( 'note', $missing, true );
+	}
+
+	private static function looks_like_placeholder_add_note( $note ) {
+		$note = strtolower( trim( wp_strip_all_tags( (string) $note ) ) );
+		$note = trim( preg_replace( '/\s+/', ' ', $note ), " \t\n\r\0\x0B." );
+
+		if ( '' === $note ) {
+			return false;
+		}
+
+		$patterns = [
+			'/^add (?:an? )?(?:internal )?note (?:for|to) (?:the )?order #?\d+ as requested$/',
+			'/^add (?:an? )?(?:internal )?note as requested$/',
+			'/^(?:internal )?note (?:added|created) (?:for|to) (?:the )?order #?\d+ as requested$/',
+			'/^(?:internal )?note (?:added|created) as requested$/',
+		];
+
+		foreach ( $patterns as $pattern ) {
+			if ( preg_match( $pattern, $note ) ) {
+				return true;
+			}
+		}
+
+		return false !== strpos( $note, 'as requested' ) &&
+			false !== strpos( $note, 'note' ) &&
+			strlen( $note ) <= 90;
 	}
 
 	private static function build_query_action_decision_from_shape( $decision, $shape, $query_action ) {
