@@ -43,15 +43,17 @@ class YoRo_AI_Parser {
 	}
 
 	public static function compose_email( WC_Order $order, $instruction ) {
-		$mock_result = apply_filters(
-			'yoro_ai_compose_email_mock_result',
-			null,
-			$order,
-			$instruction
-		);
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			$mock_result = apply_filters(
+				'yoro_ai_compose_email_mock_result',
+				null,
+				$order,
+				$instruction
+			);
 
-		if ( null !== $mock_result ) {
-			return $mock_result;
+			if ( null !== $mock_result ) {
+				return $mock_result;
+			}
 		}
 
 		if ( ! YoRo_AI_Provider_Resolver::supports( 'email_compose' ) ) {

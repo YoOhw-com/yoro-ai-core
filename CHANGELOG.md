@@ -6,6 +6,7 @@
 - Switched command routing to YoRo AI API first, backed by action catalog metadata.
 - Updated runtime preview handling to use `ai_router` parser source.
 - Updated history filtering to focus on active parser sources: rule, guard, ai_router, memory, direct.
+- Restricted test/mock hooks to debug or test mode so release runtime cannot be overridden by fixtures.
 
 ### Added
 - AI metadata on action registry entries.

@@ -11,12 +11,19 @@ class YoRo_AI_Action_Decomposer {
 			return null;
 		}
 
-		$mock_result = apply_filters(
-			'yoro_ai_action_decomposition_mock_result',
-			null,
-			$command,
-			$client_context
-		);
+		$mock_result = null;
+
+		if (
+			( defined( 'WP_DEBUG' ) && WP_DEBUG ) ||
+			( defined( 'YORO_AI_ROUTER_TEST_MODE' ) && YORO_AI_ROUTER_TEST_MODE )
+		) {
+			$mock_result = apply_filters(
+				'yoro_ai_action_decomposition_mock_result',
+				null,
+				$command,
+				$client_context
+			);
+		}
 
 		if ( false === $mock_result ) {
 			return null;

@@ -896,17 +896,21 @@ class YoRo_Orders_Email_Service {
 
 		$message = self::wrap_customer_email_with_woocommerce_template( $subject, $body );
 
-		$sent_override = apply_filters(
-			'yoro_send_customer_email_mock_result',
-			null,
-			[
-				'order'   => $order,
-				'to'      => $to,
-				'subject' => $subject,
-				'body'    => $body,
-				'html'    => $message,
-			]
-		);
+		$sent_override = null;
+
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			$sent_override = apply_filters(
+				'yoro_send_customer_email_mock_result',
+				null,
+				[
+					'order'   => $order,
+					'to'      => $to,
+					'subject' => $subject,
+					'body'    => $body,
+					'html'    => $message,
+				]
+			);
+		}
 
 		$sent = null !== $sent_override
 			? (bool) $sent_override
