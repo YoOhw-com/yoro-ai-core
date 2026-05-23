@@ -185,6 +185,23 @@ class YoRo_Logger {
 			'yoro_ai_api_router_profile' => $ai_meta['yoro_ai_api_router_profile'],
 			'yoro_ai_api_catalog_scope' => $ai_meta['yoro_ai_api_catalog_scope'],
 			'yoro_ai_api_request_bytes' => $ai_meta['yoro_ai_api_request_bytes'],
+			'yoro_ai_api_profile_router_enabled' => $ai_meta['yoro_ai_api_profile_router_enabled'] ?? null,
+			'yoro_ai_api_profile_router_applied' => $ai_meta['yoro_ai_api_profile_router_applied'] ?? null,
+			'yoro_ai_api_profile_router_openai_ms' => $ai_meta['yoro_ai_api_profile_router_openai_ms'] ?? null,
+			'yoro_ai_api_profile_router_response_parse_ms' => $ai_meta['yoro_ai_api_profile_router_response_parse_ms'] ?? null,
+			'yoro_ai_api_profile_router_total_ms' => $ai_meta['yoro_ai_api_profile_router_total_ms'] ?? null,
+			'yoro_ai_api_profile_router_profile' => $ai_meta['yoro_ai_api_profile_router_profile'] ?? '',
+			'yoro_ai_api_profile_router_catalog_scope' => $ai_meta['yoro_ai_api_profile_router_catalog_scope'] ?? '',
+			'yoro_ai_api_profile_router_confidence' => $ai_meta['yoro_ai_api_profile_router_confidence'] ?? null,
+			'yoro_ai_api_profile_router_reason' => $ai_meta['yoro_ai_api_profile_router_reason'] ?? '',
+			'yoro_ai_api_profile_router_input_tokens' => $ai_meta['yoro_ai_api_profile_router_input_tokens'] ?? null,
+			'yoro_ai_api_profile_router_output_tokens' => $ai_meta['yoro_ai_api_profile_router_output_tokens'] ?? null,
+			'yoro_ai_api_profile_router_cached_tokens' => $ai_meta['yoro_ai_api_profile_router_cached_tokens'] ?? null,
+			'yoro_ai_api_profile_router_cache_hit' => $ai_meta['yoro_ai_api_profile_router_cache_hit'] ?? null,
+			'yoro_ai_api_profile_router_original_action_count' => $ai_meta['yoro_ai_api_profile_router_original_action_count'] ?? null,
+			'yoro_ai_api_profile_router_filtered_action_count' => $ai_meta['yoro_ai_api_profile_router_filtered_action_count'] ?? null,
+			'yoro_ai_api_profile_router_request_bytes' => $ai_meta['yoro_ai_api_profile_router_request_bytes'] ?? null,
+			'yoro_ai_api_profile_router_error' => $ai_meta['yoro_ai_api_profile_router_error'] ?? '',
 			'retrieved_examples'    => $retrieved_examples,
 			'route_candidates'      => $route_candidates,
 			'plan_type'             => sanitize_key( $plan['type'] ?? '' ),
@@ -213,7 +230,7 @@ class YoRo_Logger {
 			return [];
 		}
 
-		return [
+		$normalized = [
 			'feature'        => sanitize_key( $meta['feature'] ?? '' ),
 			'provider'       => sanitize_key( $meta['provider'] ?? '' ),
 			'model'          => sanitize_text_field( $meta['model'] ?? '' ),
@@ -248,6 +265,25 @@ class YoRo_Logger {
 			'yoro_ai_api_catalog_scope' => sanitize_key( $meta['yoro_ai_api_catalog_scope'] ?? '' ),
 			'yoro_ai_api_request_bytes' => isset( $meta['yoro_ai_api_request_bytes'] ) ? absint( $meta['yoro_ai_api_request_bytes'] ) : null,
 		];
+
+		foreach ( $meta as $key => $value ) {
+			$key = sanitize_key( (string) $key );
+
+			if ( '' === $key || 0 !== strpos( $key, 'yoro_ai_api_' ) || array_key_exists( $key, $normalized ) ) {
+				continue;
+			}
+
+			if ( is_bool( $value ) || is_int( $value ) || is_float( $value ) || null === $value ) {
+				$normalized[ $key ] = $value;
+				continue;
+			}
+
+			if ( is_string( $value ) ) {
+				$normalized[ $key ] = sanitize_text_field( $value );
+			}
+		}
+
+		return $normalized;
 	}
 
 	private static function normalize_retrieved_examples( $examples ) {

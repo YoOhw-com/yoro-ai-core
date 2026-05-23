@@ -77,6 +77,23 @@ class YoRo_REST_Runtime_Log {
 			'ai_total_ms'        => isset( $extra['ai_total_ms'] ) ? absint( $extra['ai_total_ms'] ) : 0,
 		];
 
+		foreach ( $ai_meta as $key => $value ) {
+			$key = sanitize_key( (string) $key );
+
+			if ( '' === $key || 0 !== strpos( $key, 'yoro_ai_api_' ) || array_key_exists( $key, $data ) ) {
+				continue;
+			}
+
+			if ( is_bool( $value ) || is_int( $value ) || is_float( $value ) || null === $value ) {
+				$data[ $key ] = $value;
+				continue;
+			}
+
+			if ( is_string( $value ) ) {
+				$data[ $key ] = sanitize_text_field( $value );
+			}
+		}
+
 		return array_merge( $data, $extra );
 	}
 
