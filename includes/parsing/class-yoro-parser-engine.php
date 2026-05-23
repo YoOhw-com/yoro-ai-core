@@ -26,6 +26,19 @@ class YoRo_Parser_Engine {
 			? YoRo_Parser_Context_Preparer::prepare_phrase_context( $command, $client_context )
 			: $client_context;
 
+		$active_workflow_result = class_exists( 'YoRo_Active_Workflow_Continue_Router' )
+			? YoRo_Active_Workflow_Continue_Router::parse(
+				$command,
+				$normalized,
+				$client_context,
+				self::active_workflow_continue_router_callbacks()
+			)
+			: null;
+
+		if ( is_array( $active_workflow_result ) ) {
+			return $active_workflow_result;
+		}
+
 		$ai_router_result = class_exists( 'YoRo_AI_Command_Router_Result_Router' )
 			? YoRo_AI_Command_Router_Result_Router::parse(
 				$command,

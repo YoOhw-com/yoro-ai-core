@@ -3437,6 +3437,32 @@ class YoRo_Parser_Test_Suite {
 			],
 			[
 				'domain'          => 'write_followup',
+				'name'            => 'Plain note text continues pending add-note workflow',
+				'command'         => 'A sample testing note',
+				'expected_action' => 'orders.add_note',
+				'expected_source' => 'rule',
+				'context'         => [
+					'current_workflow' => [
+						'type'     => 'order_note',
+						'action'   => 'orders.add_note',
+						'step'     => 'collect_missing_params',
+						'order_id' => 7199,
+						'params'   => [
+							'order_ids' => [ 7199 ],
+						],
+						'missing'  => [ 'note' ],
+					],
+				],
+				'expect'          => [
+					'resolution_path'       => 'deterministic_override',
+					'parser_rule'           => 'rule.workflow.continue.inferred',
+					'params.order_id'       => 7199,
+					'params.order_ids.0'    => 7199,
+					'params.note'           => 'A sample testing note',
+				],
+			],
+			[
+				'domain'          => 'write_followup',
 				'name'            => 'Add note to them reuses last order list and only asks for note',
 				'command'         => 'Add note to them',
 				'expected_stage'  => 'clarify',
