@@ -1,8 +1,11 @@
 <?php
 /**
  * Plugin Name: YoRo AI Core
- * Description: Core runtime and execution layer for YoRo AI.
+ * Description: AI operations assistant runtime for WooCommerce stores.
  * Version: 0.1.5
+ * Requires at least: 6.4
+ * Requires PHP: 7.4
+ * Requires Plugins: woocommerce
  * Author: YoOhw
  * Text Domain: yoro-ai-core
  */
@@ -39,4 +42,31 @@ require_once YORO_AI_CORE_PATH . 'includes/class-yoro-ai-core.php';
 
 register_activation_hook( YORO_AI_CORE_FILE, [ 'YoRo_DB', 'create_tables' ] );
 
-add_action( 'init', [ 'YoRo_AI_Core', 'init' ] );
+function yoro_ai_core_has_woocommerce() {
+	return class_exists( 'WooCommerce' ) && function_exists( 'WC' );
+}
+
+function yoro_ai_core_missing_woocommerce_notice() {
+	if ( ! current_user_can( 'activate_plugins' ) ) {
+		return;
+	}
+
+	?>
+	<div class="notice notice-error">
+		<p>
+			<?php esc_html_e( 'YoRo AI Core requires WooCommerce to be installed and active.', 'yoro-ai-core' ); ?>
+		</p>
+	</div>
+	<?php
+}
+
+function yoro_ai_core_boot() {
+	if ( ! yoro_ai_core_has_woocommerce() ) {
+		add_action( 'admin_notices', 'yoro_ai_core_missing_woocommerce_notice' );
+		return;
+	}
+
+	YoRo_AI_Core::init();
+}
+
+add_action( 'init', 'yoro_ai_core_boot' );

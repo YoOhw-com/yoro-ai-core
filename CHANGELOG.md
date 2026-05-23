@@ -8,6 +8,7 @@
 - Updated history filtering to focus on active parser sources: rule, guard, ai_router, memory, direct.
 - Restricted test/mock hooks to debug or test mode so release runtime cannot be overridden by fixtures.
 - Made debug tooling optional so release packages can omit development fixtures.
+- Added WooCommerce dependency metadata and a runtime guard for missing WooCommerce.
 
 ### Added
 - Release packaging ignore rules for development-only docs and debug test files.
