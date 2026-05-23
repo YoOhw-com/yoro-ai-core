@@ -676,6 +676,9 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	private function normalize_route_response( array $response ) {
 		$mode = sanitize_key( $response['mode'] ?? 'clarify' );
 		$usage = isset( $response['usage'] ) && is_array( $response['usage'] ) ? $response['usage'] : [];
+		$response_meta = isset( $response['meta'] ) && is_array( $response['meta'] )
+			? $this->normalize_response_meta( $response['meta'] )
+			: [];
 
 		if ( ! in_array( $mode, [ 'task_request', 'clarify', 'chat_only', 'unsupported_request', 'out_of_scope' ], true ) ) {
 			$mode = 'clarify';
@@ -702,17 +705,43 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'summary'                => sanitize_text_field( $response['summary'] ?? ( $response['message'] ?? '' ) ),
 			'reasoning_summary'      => sanitize_text_field( $response['reasoning_summary'] ?? '' ),
 			'suggestions'            => isset( $response['suggestions'] ) && is_array( $response['suggestions'] ) ? $response['suggestions'] : [],
-			'meta'                   => [
-				'routing_provider'             => sanitize_key( $response['routing_provider'] ?? '' ),
-				'yoro_ai_api_parser_source'    => sanitize_key( $response['parser_source'] ?? '' ),
-				'yoro_ai_api_request_id'       => sanitize_text_field( $usage['request_id'] ?? '' ),
-				'yoro_ai_api_plan'             => sanitize_key( $usage['plan'] ?? '' ),
-				'yoro_ai_api_usage_period'     => sanitize_text_field( $usage['period'] ?? '' ),
-				'yoro_ai_api_usage_limit'      => isset( $usage['limit'] ) ? absint( $usage['limit'] ) : null,
-				'yoro_ai_api_usage_used'       => isset( $usage['used'] ) ? absint( $usage['used'] ) : null,
-				'yoro_ai_api_usage_remaining'  => isset( $usage['remaining'] ) ? absint( $usage['remaining'] ) : null,
-			],
-		];
+				'meta'                   => array_merge(
+					$response_meta,
+					[
+						'routing_provider'             => sanitize_key( $response['routing_provider'] ?? '' ),
+						'yoro_ai_api_parser_source'    => sanitize_key( $response['parser_source'] ?? '' ),
+						'yoro_ai_api_request_id'       => sanitize_text_field( $usage['request_id'] ?? '' ),
+						'yoro_ai_api_plan'             => sanitize_key( $usage['plan'] ?? '' ),
+						'yoro_ai_api_usage_period'     => sanitize_text_field( $usage['period'] ?? '' ),
+						'yoro_ai_api_usage_limit'      => isset( $usage['limit'] ) ? absint( $usage['limit'] ) : null,
+						'yoro_ai_api_usage_used'       => isset( $usage['used'] ) ? absint( $usage['used'] ) : null,
+						'yoro_ai_api_usage_remaining'  => isset( $usage['remaining'] ) ? absint( $usage['remaining'] ) : null,
+					]
+				),
+			];
+	}
+
+	private function normalize_response_meta( array $meta ) {
+		$normalized = [];
+
+		foreach ( $meta as $key => $value ) {
+			$key = sanitize_key( (string) $key );
+
+			if ( '' === $key || 0 !== strpos( $key, 'yoro_ai_api_' ) ) {
+				continue;
+			}
+
+			if ( is_bool( $value ) || is_int( $value ) || is_float( $value ) || null === $value ) {
+				$normalized[ $key ] = $value;
+				continue;
+			}
+
+			if ( is_string( $value ) ) {
+				$normalized[ $key ] = sanitize_text_field( $value );
+			}
+		}
+
+		return $normalized;
 	}
 
 	private function normalize_workflow_plan_response( array $response ) {
