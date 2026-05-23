@@ -98,7 +98,16 @@ class YoRo_Action_Planner {
 			$parsed['action'] = $plan_action;
 
 			if ( isset( $action_plan['params'] ) && is_array( $action_plan['params'] ) ) {
-				$parsed['params'] = $action_plan['params'];
+				$parsed_params = isset( $parsed['params'] ) && is_array( $parsed['params'] ) ? $parsed['params'] : [];
+				$plan_params   = $action_plan['params'];
+				$merged_params = array_merge( $parsed_params, $plan_params );
+
+				if ( class_exists( 'YoRo_Order_Helper' ) ) {
+					$merged_params = YoRo_Order_Helper::apply_order_ids_to_params( $merged_params );
+				}
+
+				$parsed['params'] = $merged_params;
+				$parsed['action_plan']['params'] = $merged_params;
 			}
 		}
 

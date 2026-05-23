@@ -7986,6 +7986,41 @@ class YoRo_Parser_Test_Suite {
 				],
 			],
 			[
+				'name' => 'Single action plan keeps resolver order ids',
+				'command' => 'synthetic get details with stale single action plan params',
+				'parsed_override' => [
+					'success' => true,
+					'matched' => true,
+					'action'  => 'orders.get_details',
+					'params'  => [
+						'order_id'  => 7199,
+						'order_ids' => [ 7199 ],
+					],
+					'action_plan' => [
+						'type'   => 'single',
+						'action' => 'orders.get_details',
+						'params' => [],
+						'steps'  => [
+							[
+								'id'     => 'step_1',
+								'label'  => 'orders.get_details',
+								'action' => 'orders.get_details',
+								'params' => [],
+							],
+						],
+					],
+					'parser_rule'   => 'test.synthetic',
+					'parser_source' => 'ai_router',
+					'confidence'    => 1,
+				],
+				'expect' => [
+					'plan.type'               => 'single',
+					'plan.action'             => 'orders.get_details',
+					'plan.params.order_id'    => 7199,
+					'plan.params.order_ids.0' => 7199,
+				],
+			],
+			[
 				'name'    => 'Status update should require confirmation',
 				'command' => 'Mark order #123 as completed',
 				'expect'  => [
