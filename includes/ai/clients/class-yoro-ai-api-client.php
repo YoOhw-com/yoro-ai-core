@@ -717,6 +717,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 					'notes'               => 'YoRo AI API route response.',
 				],
 			'semantic_frame'         => isset( $response['semantic_frame'] ) && is_array( $response['semantic_frame'] ) ? $response['semantic_frame'] : [],
+			'requested_operations'   => $this->normalize_route_requested_operations( $response['requested_operations'] ?? [] ),
 			'clarification_question' => sanitize_text_field( $response['clarification_question'] ?? '' ),
 			'summary'                => sanitize_text_field( $response['summary'] ?? ( $response['message'] ?? '' ) ),
 			'reasoning_summary'      => sanitize_text_field( $response['reasoning_summary'] ?? '' ),
@@ -811,6 +812,41 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 				: [ 'max_attempts' => 1 ],
 			'meta'     => isset( $step['meta'] ) && is_array( $step['meta'] ) ? $step['meta'] : [],
 		];
+	}
+
+	private function normalize_route_requested_operations( $operations ) {
+		if ( empty( $operations ) || ! is_array( $operations ) ) {
+			return [];
+		}
+
+		$normalized = [];
+
+		foreach ( array_values( $operations ) as $index => $operation ) {
+			if ( ! is_array( $operation ) ) {
+				continue;
+			}
+
+			$operation_key = sanitize_key( $operation['operation'] ?? '' );
+			$action        = sanitize_text_field( $operation['action'] ?? '' );
+
+			if ( '' === $operation_key && '' === $action ) {
+				continue;
+			}
+
+			$normalized[] = [
+				'id'        => sanitize_key( $operation['id'] ?? ( 'op_' . ( count( $normalized ) + 1 ) ) ),
+				'operation' => $operation_key,
+				'action'    => $action,
+				'params'    => isset( $operation['params'] ) && is_array( $operation['params'] ) ? $operation['params'] : [],
+				'missing'   => isset( $operation['missing'] ) && is_array( $operation['missing'] )
+					? array_values( array_filter( array_map( 'sanitize_key', $operation['missing'] ) ) )
+					: [],
+				'evidence'  => sanitize_text_field( $operation['evidence'] ?? '' ),
+				'position'  => isset( $operation['position'] ) ? absint( $operation['position'] ) : $index + 1,
+			];
+		}
+
+		return $normalized;
 	}
 
 	private function normalize_response_meta( array $meta ) {

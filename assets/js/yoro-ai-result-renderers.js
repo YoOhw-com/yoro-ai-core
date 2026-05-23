@@ -2324,6 +2324,11 @@
 				detail: formatDecisionDetail(parsed, decision)
 			},
 			{
+				label: 'Requested operations',
+				summary: formatRequestedOperationsSummary(parsed, decision),
+				detail: formatRequestedOperationsDetail(parsed, decision)
+			},
+			{
 				label: 'Validator changes',
 				summary: formatValidatorSummary(parsed, plan),
 				detail: formatValidatorDetail(parsed, plan)
@@ -2456,6 +2461,61 @@
 		if (typeof decision.catalog_action_count !== 'undefined') {
 			parts.push('catalog_actions: ' + decision.catalog_action_count);
 		}
+
+		return parts.join(' | ');
+	}
+
+	function requestedOperationsFromTrace(parsed, decision) {
+		if (Array.isArray(parsed.requested_operations) && parsed.requested_operations.length) {
+			return parsed.requested_operations;
+		}
+
+		if (Array.isArray(decision.requested_operations) && decision.requested_operations.length) {
+			return decision.requested_operations;
+		}
+
+		return [];
+	}
+
+	function formatRequestedOperationsSummary(parsed, decision) {
+		const operations = requestedOperationsFromTrace(parsed, decision);
+
+		if (!operations.length) {
+			return '';
+		}
+
+		return operations.map(function (operation, index) {
+			const action = operation.action || operation.operation || ('operation_' + (index + 1));
+			const missing = Array.isArray(operation.missing) && operation.missing.length
+				? ' missing=' + formatArray(operation.missing)
+				: '';
+
+			return (index + 1) + '. ' + action + missing;
+		}).join(' | ');
+	}
+
+	function formatRequestedOperationsDetail(parsed, decision) {
+		const operations = requestedOperationsFromTrace(parsed, decision);
+		const parts = [];
+
+		operations.forEach(function (operation, index) {
+			const params = operation.params && typeof operation.params === 'object' ? operation.params : {};
+			const detail = [];
+
+			if (operation.operation) {
+				detail.push('operation=' + operation.operation);
+			}
+
+			if (Object.keys(params).length) {
+				detail.push('params=' + compactObject(params));
+			}
+
+			if (operation.evidence) {
+				detail.push('evidence=' + operation.evidence);
+			}
+
+			parts.push((index + 1) + ': ' + detail.join(', '));
+		});
 
 		return parts.join(' | ');
 	}

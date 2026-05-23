@@ -110,6 +110,7 @@ class YoRo_AI_Command_Router_Result_Router {
 			'reasoning_summary'    => sanitize_text_field( $decision['reasoning_summary'] ?? '' ),
 			'meta'                 => isset( $decision['meta'] ) && is_array( $decision['meta'] ) ? $decision['meta'] : [],
 			'semantic_frame'       => isset( $decision['semantic_frame'] ) && is_array( $decision['semantic_frame'] ) ? $decision['semantic_frame'] : [],
+			'requested_operations' => isset( $decision['requested_operations'] ) && is_array( $decision['requested_operations'] ) ? $decision['requested_operations'] : [],
 			'action_plan'          => isset( $decision['action_plan'] ) && is_array( $decision['action_plan'] ) ? $decision['action_plan'] : [],
 			'semantic_frame_validator_changes' => isset( $decision['semantic_frame_validator_changes'] ) && is_array( $decision['semantic_frame_validator_changes'] ) ? $decision['semantic_frame_validator_changes'] : [],
 			'raw_param_keys'       => isset( $decision['raw_param_keys'] ) && is_array( $decision['raw_param_keys'] ) ? $decision['raw_param_keys'] : [],

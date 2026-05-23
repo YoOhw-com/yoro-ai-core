@@ -54,6 +54,7 @@ class YoRo_Command_Decision_Normalizer {
 				'semantic_frame' => class_exists( 'YoRo_Semantic_Frame_Normalizer' )
 					? YoRo_Semantic_Frame_Normalizer::schema()
 					: [ 'type' => 'object' ],
+				'requested_operations' => self::requested_operations_schema( $param_properties ),
 				'action_plan' => [
 					'type'                 => 'object',
 					'additionalProperties' => false,
@@ -134,7 +135,37 @@ class YoRo_Command_Decision_Normalizer {
 					],
 				],
 			],
-			'required'             => [ 'mode', 'language', 'intent_family', 'action', 'params', 'confidence', 'missing', 'ambiguities', 'evidence', 'semantic_frame', 'clarification_question', 'summary', 'reasoning_summary', 'suggestions' ],
+			'required'             => [ 'mode', 'language', 'intent_family', 'action', 'params', 'confidence', 'missing', 'ambiguities', 'evidence', 'semantic_frame', 'requested_operations', 'clarification_question', 'summary', 'reasoning_summary', 'suggestions' ],
+		];
+	}
+
+	private static function requested_operations_schema( $param_properties ) {
+		$param_properties = is_array( $param_properties ) ? $param_properties : [];
+
+		return [
+			'type'  => 'array',
+			'items' => [
+				'type'                 => 'object',
+				'additionalProperties' => false,
+				'properties'           => [
+					'id'        => [ 'type' => 'string' ],
+					'operation' => [ 'type' => 'string' ],
+					'action'    => [ 'type' => [ 'string', 'null' ] ],
+					'params'    => [
+						'type'                 => 'object',
+						'additionalProperties' => false,
+						'properties'           => $param_properties,
+						'required'             => array_values( array_keys( $param_properties ) ),
+					],
+					'missing'   => [
+						'type'  => 'array',
+						'items' => [ 'type' => 'string' ],
+					],
+					'evidence'  => [ 'type' => [ 'string', 'null' ] ],
+					'position'  => [ 'type' => 'integer' ],
+				],
+				'required'             => [ 'id', 'operation', 'action', 'params', 'missing', 'evidence', 'position' ],
+			],
 		];
 	}
 
@@ -271,6 +302,7 @@ class YoRo_Command_Decision_Normalizer {
 			'ambiguities'            => self::normalize_string_list( $decision['ambiguities'] ?? [] ),
 			'evidence'               => isset( $decision['evidence'] ) && is_array( $decision['evidence'] ) ? $decision['evidence'] : [],
 			'semantic_frame'         => class_exists( 'YoRo_Semantic_Frame_Normalizer' ) ? YoRo_Semantic_Frame_Normalizer::normalize( $decision['semantic_frame'] ?? [] ) : [],
+			'requested_operations'   => self::normalize_requested_operations( $decision['requested_operations'] ?? [], $action_catalog ),
 			'action_plan'            => $action_plan,
 			'clarification_question' => self::normalize_response_copy( $decision['clarification_question'] ?? '', $mode ),
 			'summary'                => self::normalize_response_copy( $decision['summary'] ?? '', $mode ),
@@ -281,6 +313,56 @@ class YoRo_Command_Decision_Normalizer {
 			'dropped_param_keys'     => $dropped_param_keys,
 			'params_trimmed_count'   => count( $dropped_param_keys ),
 		];
+	}
+
+	private static function normalize_requested_operations( $operations, $action_catalog ) {
+		if ( empty( $operations ) || ! is_array( $operations ) ) {
+			return [];
+		}
+
+		$normalized = [];
+
+		foreach ( array_values( $operations ) as $index => $operation ) {
+			if ( ! is_array( $operation ) ) {
+				continue;
+			}
+
+			$action = sanitize_text_field( $operation['action'] ?? '' );
+
+			if ( '' !== $action && ! self::find_catalog_item( $action, $action_catalog ) ) {
+				$action = '';
+			}
+
+			$operation_key = sanitize_key( $operation['operation'] ?? '' );
+
+			if ( '' === $operation_key && '' === $action ) {
+				continue;
+			}
+
+			$params = isset( $operation['params'] ) && is_array( $operation['params'] ) ? $operation['params'] : [];
+
+			if ( '' !== $action ) {
+				$catalog_item = self::find_catalog_item( $action, $action_catalog );
+
+				if ( $catalog_item ) {
+					$params = self::filter_params_for_action( $params, $catalog_item )['params'];
+				}
+			}
+
+			$normalized[] = [
+				'id'        => sanitize_key( $operation['id'] ?? ( 'op_' . ( count( $normalized ) + 1 ) ) ),
+				'operation' => $operation_key,
+				'action'    => $action,
+				'params'    => $params,
+				'missing'   => isset( $operation['missing'] ) && is_array( $operation['missing'] )
+					? array_values( array_filter( array_map( 'sanitize_key', $operation['missing'] ) ) )
+					: [],
+				'evidence'  => sanitize_text_field( $operation['evidence'] ?? '' ),
+				'position'  => isset( $operation['position'] ) ? absint( $operation['position'] ) : $index + 1,
+			];
+		}
+
+		return $normalized;
 	}
 
 	private static function normalize_intent_family( $intent_family, $action = '' ) {

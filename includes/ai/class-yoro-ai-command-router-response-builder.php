@@ -65,6 +65,10 @@ class YoRo_AI_Command_Router_Response_Builder {
 			$response['semantic_frame'] = $decision['semantic_frame'];
 		}
 
+		if ( isset( $decision['requested_operations'] ) && is_array( $decision['requested_operations'] ) ) {
+			$response['requested_operations'] = $decision['requested_operations'];
+		}
+
 		if ( isset( $decision['action_plan'] ) && is_array( $decision['action_plan'] ) ) {
 			$response['action_plan'] = $decision['action_plan'];
 		}
@@ -287,6 +291,7 @@ class YoRo_AI_Command_Router_Response_Builder {
 			'raw_param_keys'        => isset( $decision['raw_param_keys'] ) && is_array( $decision['raw_param_keys'] ) ? array_values( array_map( 'sanitize_key', $decision['raw_param_keys'] ) ) : [],
 			'dropped_param_keys'    => isset( $decision['dropped_param_keys'] ) && is_array( $decision['dropped_param_keys'] ) ? array_values( array_map( 'sanitize_key', $decision['dropped_param_keys'] ) ) : [],
 			'params_trimmed_count'  => isset( $decision['params_trimmed_count'] ) ? absint( $decision['params_trimmed_count'] ) : 0,
+			'requested_operations'  => isset( $decision['requested_operations'] ) && is_array( $decision['requested_operations'] ) ? $decision['requested_operations'] : [],
 			'action_plan'           => isset( $decision['action_plan'] ) && is_array( $decision['action_plan'] ) ? $decision['action_plan'] : [],
 			'semantic_frame_validator_changes' => isset( $decision['semantic_frame_validator_changes'] ) && is_array( $decision['semantic_frame_validator_changes'] ) ? $decision['semantic_frame_validator_changes'] : [],
 		];

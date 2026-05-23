@@ -117,25 +117,9 @@ class YoRo_AI_Command_Router {
 			'last_result_type'     => sanitize_key( $context['last_result_type'] ?? '' ),
 			'active_followup_type' => sanitize_key( $context['active_followup_type'] ?? '' ),
 			'has_current_workflow' => ! empty( $context['current_workflow'] ),
-			'current_workflow'     => isset( $context['current_workflow'] ) && is_array( $context['current_workflow'] )
-				? [
-					'type'   => sanitize_key( $context['current_workflow']['type'] ?? '' ),
-					'action' => sanitize_text_field( $context['current_workflow']['action'] ?? '' ),
-					'step'   => sanitize_key( $context['current_workflow']['step'] ?? '' ),
-				]
-				: [],
+			'current_workflow'     => self::compact_yoro_ai_api_workflow( $context['current_workflow'] ?? [] ),
 			'memory_context'       => [
-				'active_workflow' => isset( $memory_context['active_workflow'] ) && is_array( $memory_context['active_workflow'] )
-					? [
-						'type'     => sanitize_key( $memory_context['active_workflow']['type'] ?? '' ),
-						'action'   => sanitize_text_field( $memory_context['active_workflow']['action'] ?? '' ),
-						'step'     => sanitize_key( $memory_context['active_workflow']['step'] ?? '' ),
-						'order_id' => absint( $memory_context['active_workflow']['order_id'] ?? 0 ),
-						'missing'  => isset( $memory_context['active_workflow']['missing'] ) && is_array( $memory_context['active_workflow']['missing'] )
-							? array_values( array_filter( array_map( 'sanitize_key', $memory_context['active_workflow']['missing'] ) ) )
-							: [],
-					]
-					: [],
+				'active_workflow' => self::compact_yoro_ai_api_workflow( $memory_context['active_workflow'] ?? [] ),
 				'active_entity'   => isset( $memory_context['active_entity'] ) && is_array( $memory_context['active_entity'] )
 					? [
 						'type' => sanitize_key( $memory_context['active_entity']['type'] ?? '' ),
@@ -163,6 +147,61 @@ class YoRo_AI_Command_Router {
 					: [],
 			],
 		];
+	}
+
+	private static function compact_yoro_ai_api_workflow( $workflow ) {
+		if ( empty( $workflow ) || ! is_array( $workflow ) ) {
+			return [];
+		}
+
+		$params = isset( $workflow['params'] ) && is_array( $workflow['params'] ) ? $workflow['params'] : [];
+
+		return [
+			'type'     => sanitize_key( $workflow['type'] ?? '' ),
+			'action'   => sanitize_text_field( $workflow['action'] ?? '' ),
+			'step'     => sanitize_key( $workflow['step'] ?? '' ),
+			'order_id' => absint( $workflow['order_id'] ?? ( $params['order_id'] ?? 0 ) ),
+			'params'   => [
+				'order_id'  => absint( $params['order_id'] ?? ( $workflow['order_id'] ?? 0 ) ),
+				'order_ids' => isset( $params['order_ids'] ) && is_array( $params['order_ids'] )
+					? array_values( array_filter( array_map( 'absint', $params['order_ids'] ) ) )
+					: [],
+				'_yoro_composed_requested_actions' => self::compact_yoro_ai_api_requested_actions( $params['_yoro_composed_requested_actions'] ?? [] ),
+			],
+			'missing'  => isset( $workflow['missing'] ) && is_array( $workflow['missing'] )
+				? array_values( array_filter( array_map( 'sanitize_key', $workflow['missing'] ) ) )
+				: [],
+		];
+	}
+
+	private static function compact_yoro_ai_api_requested_actions( $actions ) {
+		if ( empty( $actions ) || ! is_array( $actions ) ) {
+			return [];
+		}
+
+		$compact = [];
+
+		foreach ( array_slice( array_values( $actions ), 0, 10 ) as $action ) {
+			if ( ! is_array( $action ) ) {
+				continue;
+			}
+
+			$params = isset( $action['params'] ) && is_array( $action['params'] ) ? $action['params'] : [];
+
+			$compact[] = [
+				'kind'     => sanitize_key( $action['kind'] ?? '' ),
+				'action'   => sanitize_text_field( $action['action'] ?? '' ),
+				'label'    => sanitize_text_field( $action['label'] ?? '' ),
+				'position' => isset( $action['position'] ) ? absint( $action['position'] ) : count( $compact ),
+				'params'   => [
+					'status'        => sanitize_key( $params['status'] ?? '' ),
+					'instruction'   => sanitize_text_field( $params['instruction'] ?? '' ),
+					'delivery_mode' => sanitize_key( $params['delivery_mode'] ?? '' ),
+				],
+			];
+		}
+
+		return $compact;
 	}
 
 	private static function compact_yoro_ai_api_order_list_context( $orders ) {
