@@ -169,6 +169,8 @@
 					customer: 'Khách hàng',
 					case: 'Trường hợp',
 					total: 'Tổng',
+					email: 'Email',
+					date: 'Ngày',
 					age: 'Tuổi',
 					nextAction: 'Hành động tiếp theo',
 					actions: 'Hành động',
@@ -206,6 +208,8 @@
 					customer: 'Cliente',
 					case: 'Caso',
 					total: 'Total',
+					email: 'Correo',
+					date: 'Fecha',
 					age: 'Antigüedad',
 					nextAction: 'Siguiente acción',
 					actions: 'Acciones',
@@ -213,6 +217,8 @@
 					showFirstOrder: 'Ver primer pedido',
 					latestFiveOrders: 'Últimos 5 pedidos',
 					whatNext: 'Qué hacer ahora',
+					decisionRoute: 'Ruta de decisión',
+					confidence: 'Confianza',
 					orderReview: 'Revisión del pedido',
 					customerFallback: 'Cliente'
 				},
@@ -235,6 +241,8 @@
 					customer: 'Client',
 					case: 'Cas',
 					total: 'Total',
+					email: 'E-mail',
+					date: 'Date',
 					age: 'Âge',
 					nextAction: 'Action suivante',
 					actions: 'Actions',
@@ -242,6 +250,8 @@
 					showFirstOrder: 'Voir la première commande',
 					latestFiveOrders: '5 dernières commandes',
 					whatNext: 'Que faire ensuite',
+					decisionRoute: 'Route de décision',
+					confidence: 'Confiance',
 					orderReview: 'Revue de commande'
 				},
 				de: {
@@ -263,6 +273,8 @@
 					customer: 'Kunde',
 					case: 'Fall',
 					total: 'Summe',
+					email: 'E-Mail',
+					date: 'Datum',
 					age: 'Alter',
 					nextAction: 'Nächste Aktion',
 					actions: 'Aktionen',
@@ -270,6 +282,8 @@
 					showFirstOrder: 'Erste Bestellung anzeigen',
 					latestFiveOrders: 'Letzte 5 Bestellungen',
 					whatNext: 'Nächste Schritte',
+					decisionRoute: 'Entscheidungsroute',
+					confidence: 'Vertrauen',
 					orderReview: 'Bestellprüfung'
 				},
 				ja: {
@@ -291,6 +305,8 @@
 					customer: '顧客',
 					case: '内容',
 					total: '合計',
+					email: 'メール',
+					date: '日付',
 					age: '経過時間',
 					nextAction: '次の操作',
 					actions: '操作',
@@ -298,6 +314,8 @@
 					showFirstOrder: '最初の注文を見る',
 					latestFiveOrders: '最新5件の注文',
 					whatNext: '次にできること',
+					decisionRoute: '判定ルート',
+					confidence: '信頼度',
 					orderReview: '注文確認'
 				},
 				th: {
@@ -319,6 +337,8 @@
 					customer: 'ลูกค้า',
 					case: 'กรณี',
 					total: 'ยอดรวม',
+					email: 'อีเมล',
+					date: 'วันที่',
 					age: 'อายุ',
 					nextAction: 'การดำเนินการถัดไป',
 					actions: 'การดำเนินการ',
@@ -326,6 +346,8 @@
 					showFirstOrder: 'ดูคำสั่งซื้อแรก',
 					latestFiveOrders: '5 คำสั่งซื้อล่าสุด',
 					whatNext: 'ขั้นตอนถัดไป',
+					decisionRoute: 'เส้นทางการตัดสินใจ',
+					confidence: 'ความมั่นใจ',
 					orderReview: 'ตรวจสอบคำสั่งซื้อ'
 				},
 				id: {
@@ -347,6 +369,8 @@
 					customer: 'Pelanggan',
 					case: 'Kasus',
 					total: 'Total',
+					email: 'Email',
+					date: 'Tanggal',
 					age: 'Usia',
 					nextAction: 'Tindakan berikutnya',
 					actions: 'Tindakan',
@@ -354,6 +378,8 @@
 					showFirstOrder: 'Lihat pesanan pertama',
 					latestFiveOrders: '5 pesanan terbaru',
 					whatNext: 'Langkah berikutnya',
+					decisionRoute: 'Rute keputusan',
+					confidence: 'Keyakinan',
 					orderReview: 'Tinjauan pesanan'
 				},
 				pt: {
@@ -375,6 +401,8 @@
 					customer: 'Cliente',
 					case: 'Caso',
 					total: 'Total',
+					email: 'E-mail',
+					date: 'Data',
 					age: 'Idade',
 					nextAction: 'Próxima ação',
 					actions: 'Ações',
@@ -382,6 +410,8 @@
 					showFirstOrder: 'Ver primeiro pedido',
 					latestFiveOrders: 'Últimos 5 pedidos',
 					whatNext: 'Próximos passos',
+					decisionRoute: 'Rota de decisão',
+					confidence: 'Confiança',
 					orderReview: 'Revisão do pedido'
 				},
 				ar: {
@@ -403,6 +433,8 @@
 					customer: 'العميل',
 					case: 'الحالة',
 					total: 'الإجمالي',
+					email: 'البريد الإلكتروني',
+					date: 'التاريخ',
 					age: 'العمر',
 					nextAction: 'الإجراء التالي',
 					actions: 'الإجراءات',
@@ -410,6 +442,8 @@
 					showFirstOrder: 'عرض الطلب الأول',
 					latestFiveOrders: 'آخر 5 طلبات',
 					whatNext: 'الخطوة التالية',
+					decisionRoute: 'مسار القرار',
+					confidence: 'الثقة',
 					orderReview: 'مراجعة الطلب'
 				}
 			};
@@ -461,7 +495,8 @@
 					cancelled: 'đã hủy',
 					canceled: 'đã hủy',
 					refunded: 'đã hoàn tiền',
-					failed: 'thất bại'
+					failed: 'thất bại',
+					'request-cancel': 'yêu cầu hủy'
 				},
 				es: {
 					pending: 'pendiente',
@@ -471,7 +506,8 @@
 					cancelled: 'cancelado',
 					canceled: 'cancelado',
 					refunded: 'reembolsado',
-					failed: 'fallido'
+					failed: 'fallido',
+					'request-cancel': 'solicitud de cancelación'
 				},
 				fr: {
 					pending: 'en attente',
@@ -481,7 +517,8 @@
 					cancelled: 'annulée',
 					canceled: 'annulée',
 					refunded: 'remboursée',
-					failed: 'échouée'
+					failed: 'échouée',
+					'request-cancel': 'demande d’annulation'
 				},
 				de: {
 					pending: 'ausstehend',
@@ -491,7 +528,8 @@
 					cancelled: 'storniert',
 					canceled: 'storniert',
 					refunded: 'erstattet',
-					failed: 'fehlgeschlagen'
+					failed: 'fehlgeschlagen',
+					'request-cancel': 'Stornierungsanfrage'
 				},
 				ja: {
 					pending: '保留中',
@@ -501,7 +539,8 @@
 					cancelled: 'キャンセル済み',
 					canceled: 'キャンセル済み',
 					refunded: '返金済み',
-					failed: '失敗'
+					failed: '失敗',
+					'request-cancel': 'キャンセル依頼'
 				},
 				th: {
 					pending: 'รอดำเนินการ',
@@ -511,7 +550,8 @@
 					cancelled: 'ยกเลิกแล้ว',
 					canceled: 'ยกเลิกแล้ว',
 					refunded: 'คืนเงินแล้ว',
-					failed: 'ล้มเหลว'
+					failed: 'ล้มเหลว',
+					'request-cancel': 'คำขอยกเลิก'
 				},
 				id: {
 					pending: 'tertunda',
@@ -521,7 +561,8 @@
 					cancelled: 'dibatalkan',
 					canceled: 'dibatalkan',
 					refunded: 'dikembalikan',
-					failed: 'gagal'
+					failed: 'gagal',
+					'request-cancel': 'permintaan pembatalan'
 				},
 				pt: {
 					pending: 'pendente',
@@ -531,7 +572,8 @@
 					cancelled: 'cancelado',
 					canceled: 'cancelado',
 					refunded: 'reembolsado',
-					failed: 'falhado'
+					failed: 'falhado',
+					'request-cancel': 'pedido de cancelamento'
 				},
 				ar: {
 					pending: 'معلق',
@@ -541,12 +583,589 @@
 					cancelled: 'ملغى',
 					canceled: 'ملغى',
 					refunded: 'مسترد',
-					failed: 'فاشل'
+					failed: 'فاشل',
+					'request-cancel': 'طلب إلغاء'
 				}
 			};
 			const labels = labelsByLocale[locale] || {};
 
 			return labels[status] || status.replace(/-/g, ' ');
+		}
+
+		function operationalUiText(locale, key, fallback) {
+			locale = normalizeLocale(locale);
+			const labelsByLocale = {
+				vi: {
+					operationsSummary: 'Tổng quan vận hành',
+					storeOperations: 'Vận hành cửa hàng',
+					newOrders: 'Đơn mới',
+					openBacklog: 'Tồn đọng đang mở',
+					ordersInWindow: 'Đơn trong khoảng thời gian',
+					status: 'Trạng thái',
+					count: 'Số lượng',
+					currentBacklog: 'Tồn đọng hiện tại',
+					queue: 'Hàng đợi',
+					agedQueues: 'Hàng đợi quá hạn',
+					recentOpenOrders: 'Đơn đang mở gần đây',
+					details: 'Chi tiết',
+					suggestedNextChecks: 'Kiểm tra tiếp theo',
+					pendingOrders: 'Đơn đang chờ',
+					processingOrders: 'Đơn đang xử lý',
+					onHoldOrders: 'Đơn tạm giữ',
+					window: 'Khoảng thời gian',
+					overview: 'Tổng quan'
+				},
+				es: {
+					operationsSummary: 'Resumen operativo',
+					storeOperations: 'Operaciones de la tienda',
+					newOrders: 'Pedidos nuevos',
+					openBacklog: 'Backlog abierto',
+					ordersInWindow: 'Pedidos en el periodo',
+					status: 'Estado',
+					count: 'Cantidad',
+					currentBacklog: 'Backlog actual',
+					queue: 'Cola',
+					agedQueues: 'Colas con antigüedad',
+					recentOpenOrders: 'Pedidos abiertos recientes',
+					details: 'Detalles',
+					suggestedNextChecks: 'Siguientes revisiones sugeridas',
+					pendingOrders: 'Pedidos pendientes',
+					processingOrders: 'Pedidos en proceso',
+					onHoldOrders: 'Pedidos en espera',
+					window: 'Periodo',
+					overview: 'Resumen'
+				},
+				fr: {
+					operationsSummary: 'Résumé opérationnel',
+					storeOperations: 'Opérations de la boutique',
+					newOrders: 'Nouvelles commandes',
+					openBacklog: 'Backlog ouvert',
+					ordersInWindow: 'Commandes sur la période',
+					status: 'Statut',
+					count: 'Nombre',
+					currentBacklog: 'Backlog actuel',
+					queue: 'File',
+					agedQueues: 'Files anciennes',
+					recentOpenOrders: 'Commandes ouvertes récentes',
+					details: 'Détails',
+					suggestedNextChecks: 'Prochaines vérifications',
+					pendingOrders: 'Commandes en attente',
+					processingOrders: 'Commandes en traitement',
+					onHoldOrders: 'Commandes en pause',
+					window: 'Période',
+					overview: 'Vue d’ensemble'
+				},
+				de: {
+					operationsSummary: 'Betriebsübersicht',
+					storeOperations: 'Shop-Betrieb',
+					newOrders: 'Neue Bestellungen',
+					openBacklog: 'Offener Rückstand',
+					ordersInWindow: 'Bestellungen im Zeitraum',
+					status: 'Status',
+					count: 'Anzahl',
+					currentBacklog: 'Aktueller Rückstand',
+					queue: 'Warteschlange',
+					agedQueues: 'Überfällige Warteschlangen',
+					recentOpenOrders: 'Aktuelle offene Bestellungen',
+					details: 'Details',
+					suggestedNextChecks: 'Empfohlene nächste Prüfungen',
+					pendingOrders: 'Ausstehende Bestellungen',
+					processingOrders: 'Bestellungen in Bearbeitung',
+					onHoldOrders: 'Zurückgestellte Bestellungen',
+					window: 'Zeitraum',
+					overview: 'Übersicht'
+				},
+				ja: {
+					operationsSummary: '運用サマリー',
+					storeOperations: 'ストア運用',
+					newOrders: '新規注文',
+					openBacklog: '未処理バックログ',
+					ordersInWindow: '期間内の注文',
+					status: 'ステータス',
+					count: '件数',
+					currentBacklog: '現在のバックログ',
+					queue: 'キュー',
+					agedQueues: '滞留キュー',
+					recentOpenOrders: '最近の未処理注文',
+					details: '詳細',
+					suggestedNextChecks: '次の確認候補',
+					pendingOrders: '保留中の注文',
+					processingOrders: '処理中の注文',
+					onHoldOrders: '保留の注文',
+					window: '期間',
+					overview: '概要'
+				},
+				th: {
+					operationsSummary: 'สรุปการดำเนินงาน',
+					storeOperations: 'การดำเนินงานร้านค้า',
+					newOrders: 'คำสั่งซื้อใหม่',
+					openBacklog: 'งานค้างที่เปิดอยู่',
+					ordersInWindow: 'คำสั่งซื้อในช่วงเวลา',
+					status: 'สถานะ',
+					count: 'จำนวน',
+					currentBacklog: 'งานค้างปัจจุบัน',
+					queue: 'คิว',
+					agedQueues: 'คิวที่ค้างนาน',
+					recentOpenOrders: 'คำสั่งซื้อเปิดล่าสุด',
+					details: 'รายละเอียด',
+					suggestedNextChecks: 'การตรวจสอบถัดไป',
+					pendingOrders: 'คำสั่งซื้อที่รอดำเนินการ',
+					processingOrders: 'คำสั่งซื้อที่กำลังประมวลผล',
+					onHoldOrders: 'คำสั่งซื้อที่พักไว้',
+					window: 'ช่วงเวลา',
+					overview: 'ภาพรวม'
+				},
+				id: {
+					operationsSummary: 'Ringkasan operasional',
+					storeOperations: 'Operasional toko',
+					newOrders: 'Pesanan baru',
+					openBacklog: 'Backlog terbuka',
+					ordersInWindow: 'Pesanan dalam periode',
+					status: 'Status',
+					count: 'Jumlah',
+					currentBacklog: 'Backlog saat ini',
+					queue: 'Antrean',
+					agedQueues: 'Antrean lama',
+					recentOpenOrders: 'Pesanan terbuka terbaru',
+					details: 'Detail',
+					suggestedNextChecks: 'Pemeriksaan berikutnya',
+					pendingOrders: 'Pesanan tertunda',
+					processingOrders: 'Pesanan diproses',
+					onHoldOrders: 'Pesanan ditahan',
+					window: 'Periode',
+					overview: 'Ringkasan'
+				},
+				pt: {
+					operationsSummary: 'Resumo operacional',
+					storeOperations: 'Operações da loja',
+					newOrders: 'Novos pedidos',
+					openBacklog: 'Backlog aberto',
+					ordersInWindow: 'Pedidos no período',
+					status: 'Estado',
+					count: 'Contagem',
+					currentBacklog: 'Backlog atual',
+					queue: 'Fila',
+					agedQueues: 'Filas antigas',
+					recentOpenOrders: 'Pedidos abertos recentes',
+					details: 'Detalhes',
+					suggestedNextChecks: 'Próximas verificações',
+					pendingOrders: 'Pedidos pendentes',
+					processingOrders: 'Pedidos em processamento',
+					onHoldOrders: 'Pedidos em espera',
+					window: 'Período',
+					overview: 'Visão geral'
+				},
+				ar: {
+					operationsSummary: 'ملخص العمليات',
+					storeOperations: 'عمليات المتجر',
+					newOrders: 'طلبات جديدة',
+					openBacklog: 'تراكم مفتوح',
+					ordersInWindow: 'الطلبات في الفترة',
+					status: 'الحالة',
+					count: 'العدد',
+					currentBacklog: 'التراكم الحالي',
+					queue: 'القائمة',
+					agedQueues: 'قوائم قديمة',
+					recentOpenOrders: 'طلبات مفتوحة حديثة',
+					details: 'التفاصيل',
+					suggestedNextChecks: 'الفحوصات التالية المقترحة',
+					pendingOrders: 'طلبات معلقة',
+					processingOrders: 'طلبات قيد المعالجة',
+					onHoldOrders: 'طلبات قيد الانتظار',
+					window: 'الفترة',
+					overview: 'نظرة عامة'
+				}
+			};
+			const labels = labelsByLocale[locale] || {};
+			return labels[key] || fallback;
+		}
+
+		function businessUiText(locale, key, fallback) {
+			locale = normalizeLocale(locale);
+			const labelsByLocale = {
+				vi: {
+					businessSummary: 'Tổng quan kinh doanh',
+					readOnly: 'Tóm tắt chỉ đọc. Không thay đổi dữ liệu cửa hàng.',
+					businessOverview: 'Bức tranh kinh doanh',
+					grossSales: 'Doanh thu gộp',
+					customers: 'Khách hàng',
+					attention: 'Cần chú ý',
+					mainSignal: 'Tín hiệu chính',
+					seeDetailView: 'Xem chi tiết',
+					seeDetailSubtitle: 'Mở chi tiết thương mại, cơ cấu đơn và nhóm nổi bật',
+					orderMix: 'Cơ cấu đơn',
+					operatingPressure: 'Áp lực vận hành',
+					attentionItems: 'Mục cần chú ý',
+					completedSales: 'Doanh thu hoàn tất',
+					topCustomers: 'Khách hàng hàng đầu',
+					topProducts: 'Sản phẩm hàng đầu',
+					product: 'Sản phẩm',
+					qty: 'SL',
+					totalSpent: 'Tổng chi tiêu',
+					recentOrders: 'Đơn gần đây',
+					aov: 'AOV',
+					productLines: 'Dòng sản phẩm',
+					backlog: 'Tồn đọng',
+					otherPressures: 'Áp lực khác cần theo dõi',
+					overview: 'Tổng quan'
+				},
+				es: {
+					businessSummary: 'Resumen de negocio',
+					readOnly: 'Resumen ejecutivo de solo lectura. No se cambia ningún dato de la tienda.',
+					businessOverview: 'Visión general del negocio',
+					grossSales: 'Ventas brutas',
+					customers: 'Clientes',
+					attention: 'Atención',
+					mainSignal: 'Señal principal',
+					seeDetailView: 'Ver detalle',
+					seeDetailSubtitle: 'Abrir detalle comercial, mezcla de pedidos y mejores resultados',
+					orderMix: 'Mezcla de pedidos',
+					operatingPressure: 'Presión operativa',
+					attentionItems: 'Elementos que requieren atención',
+					completedSales: 'Ventas completadas',
+					topCustomers: 'Clientes principales',
+					topProducts: 'Productos principales',
+					product: 'Producto',
+					qty: 'Cant.',
+					totalSpent: 'Gasto total',
+					recentOrders: 'Pedidos recientes',
+					aov: 'AOV',
+					productLines: 'Líneas de producto',
+					backlog: 'Backlog',
+					otherPressures: 'Otras presiones a vigilar',
+					overview: 'Resumen'
+				},
+				fr: {
+					businessSummary: 'Résumé commercial',
+					readOnly: 'Résumé exécutif en lecture seule. Aucune donnée de la boutique n’est modifiée.',
+					businessOverview: 'Vue d’ensemble commerciale',
+					grossSales: 'Ventes brutes',
+					customers: 'Clients',
+					attention: 'Attention',
+					mainSignal: 'Signal principal',
+					seeDetailView: 'Voir le détail',
+					seeDetailSubtitle: 'Ouvrir le détail commercial, le mix de commandes et les meilleurs résultats',
+					orderMix: 'Mix de commandes',
+					operatingPressure: 'Pression opérationnelle',
+					attentionItems: 'Éléments à traiter',
+					completedSales: 'Ventes terminées',
+					topCustomers: 'Meilleurs clients',
+					topProducts: 'Meilleurs produits',
+					product: 'Produit',
+					qty: 'Qté',
+					totalSpent: 'Dépense totale',
+					recentOrders: 'Commandes récentes',
+					aov: 'Panier moyen',
+					productLines: 'Lignes produit',
+					backlog: 'Backlog',
+					otherPressures: 'Autres pressions à surveiller',
+					overview: 'Vue d’ensemble'
+				},
+				id: {
+					businessSummary: 'Ringkasan bisnis',
+					readOnly: 'Ringkasan eksekutif baca-saja. Data toko tidak diubah.',
+					businessOverview: 'Gambaran bisnis',
+					grossSales: 'Penjualan kotor',
+					customers: 'Pelanggan',
+					attention: 'Perhatian',
+					mainSignal: 'Sinyal utama',
+					seeDetailView: 'Lihat detail',
+					seeDetailSubtitle: 'Buka detail komersial, komposisi pesanan, dan performa teratas',
+					orderMix: 'Komposisi pesanan',
+					operatingPressure: 'Tekanan operasional',
+					attentionItems: 'Item yang perlu perhatian',
+					completedSales: 'Penjualan selesai',
+					topCustomers: 'Pelanggan teratas',
+					topProducts: 'Produk teratas',
+					product: 'Produk',
+					qty: 'Jml',
+					totalSpent: 'Total belanja',
+					recentOrders: 'Pesanan terbaru',
+					aov: 'AOV',
+					productLines: 'Lini produk',
+					backlog: 'Backlog',
+					otherPressures: 'Tekanan lain untuk dipantau',
+					overview: 'Ringkasan'
+				},
+				de: {
+					businessSummary: 'Geschäftsübersicht',
+					readOnly: 'Schreibgeschützte Management-Zusammenfassung. Shop-Daten werden nicht geändert.',
+					businessOverview: 'Geschäftsüberblick',
+					grossSales: 'Bruttoumsatz',
+					customers: 'Kunden',
+					attention: 'Aufmerksamkeit',
+					mainSignal: 'Hauptsignal',
+					seeDetailView: 'Details anzeigen',
+					seeDetailSubtitle: 'Kommerzielle Details, Bestellmix und Top-Leistung öffnen',
+					orderMix: 'Bestellmix',
+					operatingPressure: 'Operativer Druck',
+					attentionItems: 'Elemente mit Handlungsbedarf',
+					completedSales: 'Abgeschlossene Verkäufe',
+					topCustomers: 'Top-Kunden',
+					topProducts: 'Top-Produkte',
+					product: 'Produkt',
+					qty: 'Menge',
+					totalSpent: 'Gesamtausgaben',
+					recentOrders: 'Aktuelle Bestellungen',
+					aov: 'AOV',
+					productLines: 'Produktlinien',
+					backlog: 'Rückstand',
+					otherPressures: 'Weitere Druckpunkte beobachten',
+					overview: 'Übersicht'
+				},
+				ja: {
+					businessSummary: 'ビジネスサマリー',
+					readOnly: '読み取り専用の経営サマリーです。ストアデータは変更されません。',
+					businessOverview: 'ビジネス概要',
+					grossSales: '総売上',
+					customers: '顧客',
+					attention: '要対応',
+					mainSignal: '主なシグナル',
+					seeDetailView: '詳細を見る',
+					seeDetailSubtitle: '売上詳細、注文構成、上位実績を開く',
+					orderMix: '注文構成',
+					operatingPressure: '運用負荷',
+					attentionItems: '要対応項目',
+					completedSales: '完了売上',
+					topCustomers: '上位顧客',
+					topProducts: '上位商品',
+					product: '商品',
+					qty: '数量',
+					totalSpent: '合計購入額',
+					recentOrders: '最近の注文',
+					aov: '平均注文額',
+					productLines: '商品ライン',
+					backlog: 'バックログ',
+					otherPressures: '注視すべき他の負荷',
+					overview: '概要'
+				},
+				th: {
+					businessSummary: 'สรุปธุรกิจ',
+					readOnly: 'สรุปสำหรับผู้บริหารแบบอ่านอย่างเดียว ไม่มีการเปลี่ยนแปลงข้อมูลร้านค้า',
+					businessOverview: 'ภาพรวมธุรกิจ',
+					grossSales: 'ยอดขายรวม',
+					customers: 'ลูกค้า',
+					attention: 'ต้องตรวจสอบ',
+					mainSignal: 'สัญญาณหลัก',
+					seeDetailView: 'ดูรายละเอียด',
+					seeDetailSubtitle: 'เปิดรายละเอียดเชิงพาณิชย์ ส่วนผสมคำสั่งซื้อ และรายการเด่น',
+					orderMix: 'ส่วนผสมคำสั่งซื้อ',
+					operatingPressure: 'แรงกดดันด้านปฏิบัติการ',
+					attentionItems: 'รายการที่ต้องตรวจสอบ',
+					completedSales: 'ยอดขายที่เสร็จสมบูรณ์',
+					topCustomers: 'ลูกค้าสูงสุด',
+					topProducts: 'สินค้าสูงสุด',
+					product: 'สินค้า',
+					qty: 'จำนวน',
+					totalSpent: 'ยอดใช้จ่ายรวม',
+					recentOrders: 'คำสั่งซื้อล่าสุด',
+					aov: 'AOV',
+					productLines: 'กลุ่มสินค้า',
+					backlog: 'งานค้าง',
+					otherPressures: 'แรงกดดันอื่นที่ควรติดตาม',
+					overview: 'ภาพรวม'
+				},
+				pt: {
+					businessSummary: 'Resumo do negócio',
+					readOnly: 'Resumo executivo somente leitura. Nenhum dado da loja é alterado.',
+					businessOverview: 'Visão geral do negócio',
+					grossSales: 'Vendas brutas',
+					customers: 'Clientes',
+					attention: 'Atenção',
+					mainSignal: 'Sinal principal',
+					seeDetailView: 'Ver detalhes',
+					seeDetailSubtitle: 'Abrir detalhe comercial, mix de pedidos e melhores desempenhos',
+					orderMix: 'Mix de pedidos',
+					operatingPressure: 'Pressão operacional',
+					attentionItems: 'Itens que precisam de atenção',
+					completedSales: 'Vendas concluídas',
+					topCustomers: 'Principais clientes',
+					topProducts: 'Principais produtos',
+					product: 'Produto',
+					qty: 'Qtd.',
+					totalSpent: 'Total gasto',
+					recentOrders: 'Pedidos recentes',
+					aov: 'AOV',
+					productLines: 'Linhas de produto',
+					backlog: 'Backlog',
+					otherPressures: 'Outras pressões a acompanhar',
+					overview: 'Visão geral'
+				},
+				ar: {
+					businessSummary: 'ملخص الأعمال',
+					readOnly: 'ملخص تنفيذي للقراءة فقط. لا يتم تغيير بيانات المتجر.',
+					businessOverview: 'نظرة عامة على الأعمال',
+					grossSales: 'إجمالي المبيعات',
+					customers: 'العملاء',
+					attention: 'تحتاج إلى مراجعة',
+					mainSignal: 'الإشارة الرئيسية',
+					seeDetailView: 'عرض التفاصيل',
+					seeDetailSubtitle: 'فتح التفاصيل التجارية ومزيج الطلبات وأفضل الأداء',
+					orderMix: 'مزيج الطلبات',
+					operatingPressure: 'ضغط العمليات',
+					attentionItems: 'عناصر تحتاج إلى مراجعة',
+					completedSales: 'المبيعات المكتملة',
+					topCustomers: 'أفضل العملاء',
+					topProducts: 'أفضل المنتجات',
+					product: 'المنتج',
+					qty: 'الكمية',
+					totalSpent: 'إجمالي الإنفاق',
+					recentOrders: 'الطلبات الحديثة',
+					aov: 'متوسط قيمة الطلب',
+					productLines: 'خطوط المنتجات',
+					backlog: 'التراكم',
+					otherPressures: 'ضغوط أخرى للمتابعة',
+					overview: 'نظرة عامة'
+				}
+			};
+			const labels = labelsByLocale[locale] || {};
+			return labels[key] || fallback;
+		}
+
+		function localizedWindowLabel(windowInfo, locale) {
+			const key = String((windowInfo && windowInfo.key) || '').toLowerCase();
+			const fallback = String((windowInfo && windowInfo.label) || '').trim();
+			const labels = {
+				es: { today: 'hoy', this_week: 'esta semana', this_month: 'este mes', last_7_days: 'los últimos 7 días', last_30_days: 'los últimos 30 días' },
+				fr: { today: 'aujourd’hui', this_week: 'cette semaine', this_month: 'ce mois-ci', last_7_days: 'les 7 derniers jours', last_30_days: 'les 30 derniers jours' },
+				de: { today: 'heute', this_week: 'diese Woche', this_month: 'diesen Monat', last_7_days: 'die letzten 7 Tage', last_30_days: 'die letzten 30 Tage' },
+				ja: { today: '今日', this_week: '今週', this_month: '今月', last_7_days: '過去7日間', last_30_days: '過去30日間' },
+				th: { today: 'วันนี้', this_week: 'สัปดาห์นี้', this_month: 'เดือนนี้', last_7_days: '7 วันที่ผ่านมา', last_30_days: '30 วันที่ผ่านมา' },
+				id: { today: 'hari ini', this_week: 'minggu ini', this_month: 'bulan ini', last_7_days: '7 hari terakhir', last_30_days: '30 hari terakhir' },
+				pt: { today: 'hoje', this_week: 'esta semana', this_month: 'este mês', last_7_days: 'últimos 7 dias', last_30_days: 'últimos 30 dias' },
+				ar: { today: 'اليوم', this_week: 'هذا الأسبوع', this_month: 'هذا الشهر', last_7_days: 'آخر 7 أيام', last_30_days: 'آخر 30 يوما' },
+				vi: { today: 'hôm nay', this_week: 'tuần này', this_month: 'tháng này', last_7_days: '7 ngày qua', last_30_days: '30 ngày qua' }
+			};
+			locale = normalizeLocale(locale);
+			return labels[locale] && labels[locale][key] ? labels[locale][key] : fallback;
+		}
+
+		function localizedOperationsSummary(result, locale) {
+			const windowLabel = localizedWindowLabel(result.window || {}, locale);
+			const orders = result.window_order_count || 0;
+			const backlog = result.backlog_total || 0;
+			const attention = result.attention_total || 0;
+			locale = normalizeLocale(locale);
+
+			if (locale === 'es') {
+				return 'Resumen operativo de ' + windowLabel + ': ' + orders + ' pedidos nuevos, ' + backlog + ' en backlog, ' + attention + ' elementos requieren atención.';
+			}
+			if (locale === 'id') {
+				return 'Ringkasan operasional ' + windowLabel + ': ' + orders + ' pesanan baru, ' + backlog + ' backlog terbuka, ' + attention + ' item perlu perhatian.';
+			}
+			if (locale === 'fr') {
+				return 'Résumé opérationnel pour ' + windowLabel + ' : ' + orders + ' nouvelles commandes, ' + backlog + ' en backlog, ' + attention + ' éléments à traiter.';
+			}
+			if (locale === 'de') {
+				return 'Betriebsübersicht für ' + windowLabel + ': ' + orders + ' neue Bestellungen, ' + backlog + ' im Rückstand, ' + attention + ' Elemente benötigen Aufmerksamkeit.';
+			}
+			if (locale === 'ja') {
+				return windowLabel + 'の運用サマリー: 新規注文 ' + orders + ' 件、バックログ ' + backlog + ' 件、要対応 ' + attention + ' 件。';
+			}
+			if (locale === 'th') {
+				return 'สรุปการดำเนินงาน' + windowLabel + ': คำสั่งซื้อใหม่ ' + orders + ' รายการ, งานค้าง ' + backlog + ' รายการ, ต้องตรวจสอบ ' + attention + ' รายการ';
+			}
+			if (locale === 'pt') {
+				return 'Resumo operacional de ' + windowLabel + ': ' + orders + ' novos pedidos, ' + backlog + ' no backlog, ' + attention + ' itens precisam de atenção.';
+			}
+			if (locale === 'ar') {
+				return 'ملخص العمليات لـ ' + windowLabel + ': ' + orders + ' طلبات جديدة، ' + backlog + ' في التراكم، ' + attention + ' عناصر تحتاج إلى مراجعة.';
+			}
+
+			return result.summary || 'Operations summary';
+		}
+
+		function localizedBusinessSummary(result, locale) {
+			const windowLabel = localizedWindowLabel(result.window || {}, locale);
+			const metrics = result.business_metrics || {};
+			const currency = result.meta && result.meta.currency ? (' ' + result.meta.currency) : '';
+			const grossSales = (metrics.gross_sales || 0) + currency;
+			const orders = metrics.order_count || 0;
+			const customers = metrics.unique_customers || 0;
+			locale = normalizeLocale(locale);
+
+			if (locale === 'es') {
+				return 'Resumen de negocio de ' + windowLabel + ': ' + orders + ' pedidos, ' + grossSales + ' en ventas brutas, ' + customers + ' clientes activos.';
+			}
+			if (locale === 'id') {
+				return 'Ringkasan bisnis ' + windowLabel + ': ' + orders + ' pesanan, ' + grossSales + ' penjualan kotor, ' + customers + ' pelanggan aktif.';
+			}
+			if (locale === 'fr') {
+				return 'Résumé commercial pour ' + windowLabel + ' : ' + orders + ' commandes, ' + grossSales + ' de ventes brutes, ' + customers + ' clients actifs.';
+			}
+			if (locale === 'de') {
+				return 'Geschäftsübersicht für ' + windowLabel + ': ' + orders + ' Bestellungen, ' + grossSales + ' Bruttoumsatz, ' + customers + ' aktive Kunden.';
+			}
+			if (locale === 'ja') {
+				return windowLabel + 'のビジネスサマリー: 注文 ' + orders + ' 件、総売上 ' + grossSales + '、アクティブ顧客 ' + customers + ' 名。';
+			}
+			if (locale === 'th') {
+				return 'สรุปธุรกิจ' + windowLabel + ': ' + orders + ' คำสั่งซื้อ, ยอดขายรวม ' + grossSales + ', ลูกค้าที่ใช้งาน ' + customers + ' ราย';
+			}
+			if (locale === 'pt') {
+				return 'Resumo do negócio de ' + windowLabel + ': ' + orders + ' pedidos, ' + grossSales + ' em vendas brutas, ' + customers + ' clientes ativos.';
+			}
+			if (locale === 'ar') {
+				return 'ملخص الأعمال لـ ' + windowLabel + ': ' + orders + ' طلبات، ' + grossSales + ' إجمالي المبيعات، ' + customers + ' عملاء نشطون.';
+			}
+
+			return result.summary || 'Business summary';
+		}
+
+		function queueLabel(key, locale) {
+			const normalized = String(key || '').toLowerCase();
+			const map = {
+				pending_over_24h: {
+					es: 'Pendientes de más de 24 h',
+					id: 'Tertunda lebih dari 24 jam',
+					fr: 'En attente depuis plus de 24 h',
+					de: 'Seit mehr als 24 Std. ausstehend',
+					ja: '24時間超の保留',
+					th: 'รอดำเนินการเกิน 24 ชม.',
+					pt: 'Pendentes há mais de 24 h',
+					ar: 'معلقة لأكثر من 24 ساعة'
+				},
+				processing_over_72h: {
+					es: 'En proceso de más de 72 h',
+					id: 'Diproses lebih dari 72 jam',
+					fr: 'En traitement depuis plus de 72 h',
+					de: 'Seit mehr als 72 Std. in Bearbeitung',
+					ja: '72時間超の処理中',
+					th: 'กำลังประมวลผลเกิน 72 ชม.',
+					pt: 'Em processamento há mais de 72 h',
+					ar: 'قيد المعالجة لأكثر من 72 ساعة'
+				},
+				on_hold_over_48h: {
+					es: 'En espera de más de 48 h',
+					id: 'Ditahan lebih dari 48 jam',
+					fr: 'En pause depuis plus de 48 h',
+					de: 'Seit mehr als 48 Std. zurückgestellt',
+					ja: '48時間超の保留',
+					th: 'พักไว้เกิน 48 ชม.',
+					pt: 'Em espera há mais de 48 h',
+					ar: 'قيد الانتظار لأكثر من 48 ساعة'
+				}
+			};
+			locale = normalizeLocale(locale);
+			if (map[normalized] && map[normalized][locale]) {
+				return map[normalized][locale];
+			}
+			if (['pending', 'processing', 'completed', 'on-hold', 'cancelled', 'refunded', 'failed', 'request-cancel'].indexOf(normalized) !== -1) {
+				return orderStatusLabel(normalized, locale);
+			}
+			return normalized.replace(/_/g, ' ').replace(/\b\w/g, function(char) {
+				return char.toUpperCase();
+			});
+		}
+
+		function localizedFocusLabel(value, locale, textResolver) {
+			const normalized = String(value || 'overview').toLowerCase();
+
+			if (normalized === 'overview') {
+				return textResolver(locale, 'overview', 'overview');
+			}
+
+			return value || textResolver(locale, 'overview', 'overview');
 		}
 
 	function paymentMethodLabel(method, locale) {
@@ -1006,8 +1625,13 @@
 		return html;
 	}	
 
-	function renderAssistantIntro(result, h) {
+	function renderAssistantIntro(result, h, locale) {
 		if (!result || (!result.assistant_summary && !result.assistant_followup && !(result.meta && result.meta.assumption))) {
+			return '';
+		}
+
+		locale = normalizeLocale(locale || '');
+		if (locale && ['en', 'vi'].indexOf(locale) === -1) {
 			return '';
 		}
 
@@ -1402,56 +2026,53 @@
 		return '';
 	}
 
-	function renderOperationsSummaryResult(data, h) {
-		const result = data.result || {};
-		const parsed = data.parsed || {};
-		const windowInfo = result.window || {};
-		const recentOrders = Array.isArray(result.recent_orders) ? result.recent_orders : [];
-		const windowStatusCounts = result.window_status_counts || {};
-		const backlogCounts = result.backlog_counts || {};
-		const attentionCounts = result.attention_counts || {};
+		function renderOperationsSummaryResult(data, h) {
+			const result = data.result || {};
+			const parsed = data.parsed || {};
+			const locale = getResultLocale(data);
+			const windowInfo = result.window || {};
+			const recentOrders = Array.isArray(result.recent_orders) ? result.recent_orders : [];
+			const windowStatusCounts = result.window_status_counts || {};
+			const backlogCounts = result.backlog_counts || {};
+			const attentionCounts = result.attention_counts || {};
 
-		function labelize(key) {
-			return String(key || '')
-				.replace(/_/g, ' ')
-				.replace(/\b\w/g, function(char) {
-					return char.toUpperCase();
-				});
-		}
+			function labelize(key) {
+				return queueLabel(key, locale);
+			}
 
-		let html = renderAssistantIntro(result, h);
-		html += '<div class="yoro-result-summary">';
-		html += '<strong>' + h.escapeHtml(result.summary || 'Operations summary') + '</strong>';
+			let html = renderAssistantIntro(result, h, locale);
+			html += '<div class="yoro-result-summary">';
+			html += '<strong>' + h.escapeHtml(localizedOperationsSummary(result, locale)) + '</strong>';
 
-		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
-			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
-		}
+			if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
+				html += '<span class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'decisionRoute', 'Decision route')) + ': ' + h.escapeHtml(parsed.parser_rule) + '</span>';
+			}
 
-		if (windowInfo.label) {
-			html += '<span class="yoro-result-subtle">Window: ' + h.escapeHtml(windowInfo.label) + '</span>';
-		}
+			if (windowInfo.label) {
+				html += '<span class="yoro-result-subtle">' + h.escapeHtml(operationalUiText(locale, 'window', 'Window')) + ': ' + h.escapeHtml(localizedWindowLabel(windowInfo, locale)) + '</span>';
+			}
 
 		html += '</div>';
 
 		html += '<div class="yoro-order-detail-card">';
-		html += '<div class="yoro-order-detail-header">';
-		html += '<div>';
-		html += '<strong class="yoro-order-detail-title">Store operations</strong>';
-		html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatWindowRange(windowInfo, h)) + '</div>';
-		html += '</div>';
-		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(result.focus || 'overview') + '</span>';
-		html += '</div>';
+			html += '<div class="yoro-order-detail-header">';
+			html += '<div>';
+			html += '<strong class="yoro-order-detail-title">' + h.escapeHtml(operationalUiText(locale, 'storeOperations', 'Store operations')) + '</strong>';
+			html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatWindowRange(windowInfo, h)) + '</div>';
+			html += '</div>';
+			html += '<span class="yoro-current-order-badge">' + h.escapeHtml(localizedFocusLabel(result.focus, locale, operationalUiText)) + '</span>';
+			html += '</div>';
 
-		html += '<div class="yoro-order-detail-metrics">';
-		html += '<div><span>New orders</span><strong>' + h.escapeHtml(result.window_order_count || 0) + '</strong></div>';
-		html += '<div><span>Open backlog</span><strong>' + h.escapeHtml(result.backlog_total || 0) + '</strong></div>';
-		html += '<div><span>Needs attention</span><strong>' + h.escapeHtml(result.attention_total || 0) + '</strong></div>';
-		html += '</div>';
+			html += '<div class="yoro-order-detail-metrics">';
+			html += '<div><span>' + h.escapeHtml(operationalUiText(locale, 'newOrders', 'New orders')) + '</span><strong>' + h.escapeHtml(result.window_order_count || 0) + '</strong></div>';
+			html += '<div><span>' + h.escapeHtml(operationalUiText(locale, 'openBacklog', 'Open backlog')) + '</span><strong>' + h.escapeHtml(result.backlog_total || 0) + '</strong></div>';
+			html += '<div><span>' + h.escapeHtml(orderUiText(locale, 'needsAttention', 'Needs attention')) + '</span><strong>' + h.escapeHtml(result.attention_total || 0) + '</strong></div>';
+			html += '</div>';
 
-		html += '<div class="yoro-order-detail-section">';
-		html += '<h4>Orders in window</h4>';
-		html += '<table class="yoro-orders-table">';
-		html += '<thead><tr><th>Status</th><th>Count</th></tr></thead><tbody>';
+			html += '<div class="yoro-order-detail-section">';
+			html += '<h4>' + h.escapeHtml(operationalUiText(locale, 'ordersInWindow', 'Orders in window')) + '</h4>';
+			html += '<table class="yoro-orders-table">';
+			html += '<thead><tr><th>' + h.escapeHtml(operationalUiText(locale, 'status', 'Status')) + '</th><th>' + h.escapeHtml(operationalUiText(locale, 'count', 'Count')) + '</th></tr></thead><tbody>';
 		Object.keys(windowStatusCounts).forEach(function(key) {
 			html += '<tr>';
 			html += '<td>' + h.escapeHtml(labelize(key)) + '</td>';
@@ -1459,12 +2080,12 @@
 			html += '</tr>';
 		});
 		html += '</tbody></table>';
-		html += '</div>';
+			html += '</div>';
 
-		html += '<div class="yoro-order-detail-section">';
-		html += '<h4>Current backlog</h4>';
-		html += '<table class="yoro-orders-table">';
-		html += '<thead><tr><th>Queue</th><th>Count</th></tr></thead><tbody>';
+			html += '<div class="yoro-order-detail-section">';
+			html += '<h4>' + h.escapeHtml(operationalUiText(locale, 'currentBacklog', 'Current backlog')) + '</h4>';
+			html += '<table class="yoro-orders-table">';
+			html += '<thead><tr><th>' + h.escapeHtml(operationalUiText(locale, 'queue', 'Queue')) + '</th><th>' + h.escapeHtml(operationalUiText(locale, 'count', 'Count')) + '</th></tr></thead><tbody>';
 		Object.keys(backlogCounts).forEach(function(key) {
 			html += '<tr>';
 			html += '<td>' + h.escapeHtml(labelize(key)) + '</td>';
@@ -1472,12 +2093,12 @@
 			html += '</tr>';
 		});
 		html += '</tbody></table>';
-		html += '</div>';
+			html += '</div>';
 
-		html += '<div class="yoro-order-detail-section">';
-		html += '<h4>Aged queues</h4>';
-		html += '<table class="yoro-orders-table">';
-		html += '<thead><tr><th>Queue</th><th>Count</th></tr></thead><tbody>';
+			html += '<div class="yoro-order-detail-section">';
+			html += '<h4>' + h.escapeHtml(operationalUiText(locale, 'agedQueues', 'Aged queues')) + '</h4>';
+			html += '<table class="yoro-orders-table">';
+			html += '<thead><tr><th>' + h.escapeHtml(operationalUiText(locale, 'queue', 'Queue')) + '</th><th>' + h.escapeHtml(operationalUiText(locale, 'count', 'Count')) + '</th></tr></thead><tbody>';
 		Object.keys(attentionCounts).forEach(function(key) {
 			html += '<tr>';
 			html += '<td>' + h.escapeHtml(labelize(key)) + '</td>';
@@ -1487,26 +2108,26 @@
 		html += '</tbody></table>';
 		html += '</div>';
 
-		if (recentOrders.length) {
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>Recent open orders</h4>';
-			html += '<table class="yoro-orders-table">';
-			html += '<thead><tr><th>Order</th><th>Status</th><th>Total</th><th>Email</th><th>Date</th><th>Actions</th></tr></thead><tbody>';
+			if (recentOrders.length) {
+				html += '<div class="yoro-order-detail-section">';
+				html += '<h4>' + h.escapeHtml(operationalUiText(locale, 'recentOpenOrders', 'Recent open orders')) + '</h4>';
+				html += '<table class="yoro-orders-table">';
+				html += '<thead><tr><th>' + h.escapeHtml(orderUiText(locale, 'order', 'Order')) + '</th><th>' + h.escapeHtml(operationalUiText(locale, 'status', 'Status')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'total', 'Total')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'email', 'Email')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'date', 'Date')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'actions', 'Actions')) + '</th></tr></thead><tbody>';
 
 			recentOrders.forEach(function(order) {
 				html += '<tr>';
 				html += '<td><strong>#' + h.escapeHtml(order.number || order.id) + '</strong></td>';
-				html += '<td><span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span></td>';
+					html += '<td><span class="yoro-status-badge">' + h.escapeHtml(orderStatusLabel(order.status || '', locale)) + '</span></td>';
 				html += '<td>' + h.escapeHtml(order.total || '') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
 				html += '<td>' + h.escapeHtml(order.billing_email || '') + '</td>';
 				html += '<td>' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</td>';
 				html += '<td class="yoro-row-actions">';
-				html += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h.escapeHtml(order.id) + '">Details</button> ';
-				html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '" data-action-scope="row" data-has-email-drafts="' + (order.has_email_drafts ? '1' : '0') + '" data-draft-count="' + h.escapeHtml(order.draft_count || 0) + '">Actions</button> ';
+					html += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h.escapeHtml(order.id) + '">' + h.escapeHtml(operationalUiText(locale, 'details', 'Details')) + '</button> ';
+					html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '" data-action-scope="row" data-has-email-drafts="' + (order.has_email_drafts ? '1' : '0') + '" data-draft-count="' + h.escapeHtml(order.draft_count || 0) + '">' + h.escapeHtml(orderUiText(locale, 'actions', 'Actions')) + '</button> ';
 
-				if (order.edit_url) {
-					html += '<a class="button button-small" href="' + h.escapeHtml(order.edit_url) + '" target="_blank" rel="noopener noreferrer">Open</a>';
-				}
+					if (order.edit_url) {
+						html += '<a class="button button-small" href="' + h.escapeHtml(order.edit_url) + '" target="_blank" rel="noopener noreferrer">' + h.escapeHtml(orderUiText(locale, 'open', 'Open')) + '</a>';
+					}
 
 				html += '</td>';
 				html += '</tr>';
@@ -1516,12 +2137,12 @@
 			html += '</div>';
 		}
 
-		html += '<div class="yoro-suggestions">';
-		html += '<strong>Suggested next checks</strong>';
-		html += '<div class="yoro-suggestion-list">';
-		html += renderDirectActionButton('Pending orders', 'Show pending orders', h);
-		html += renderDirectActionButton('Processing orders', 'Show processing orders', h);
-		html += renderDirectActionButton('On-hold orders', 'Show on-hold orders', h);
+			html += '<div class="yoro-suggestions">';
+			html += '<strong>' + h.escapeHtml(operationalUiText(locale, 'suggestedNextChecks', 'Suggested next checks')) + '</strong>';
+			html += '<div class="yoro-suggestion-list">';
+			html += renderDirectActionButton(operationalUiText(locale, 'pendingOrders', 'Pending orders'), 'Show pending orders', h);
+			html += renderDirectActionButton(operationalUiText(locale, 'processingOrders', 'Processing orders'), 'Show processing orders', h);
+			html += renderDirectActionButton(operationalUiText(locale, 'onHoldOrders', 'On-hold orders'), 'Show on-hold orders', h);
 		html += '</div>';
 		html += '</div>';
 
@@ -1531,11 +2152,12 @@
 		return html;
 	}
 
-	function renderBusinessSummaryResult(data, h) {
-		const result = data.result || {};
-		const parsed = data.parsed || {};
-		const windowInfo = result.window || {};
-		const metrics = result.business_metrics || {};
+		function renderBusinessSummaryResult(data, h) {
+			const result = data.result || {};
+			const parsed = data.parsed || {};
+			const locale = getResultLocale(data);
+			const windowInfo = result.window || {};
+			const metrics = result.business_metrics || {};
 		const businessContext = result.business_context || {};
 		const priorityItems = Array.isArray(result.priority_items) ? result.priority_items : [];
 		const recommendedSequence = Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
@@ -1543,10 +2165,11 @@
 		const topCustomers = Array.isArray(result.top_customers) ? result.top_customers : [];
 		const topProducts = Array.isArray(result.top_products) ? result.top_products : [];
 		const recentOrders = Array.isArray(result.recent_orders) ? result.recent_orders : [];
-		const topPriority = priorityItems.length ? priorityItems[0] : null;
-		const mainSignalLabel = humanizeBusinessTopic(businessContext.top_topic || 'overview');
-		const startHere = buildBriefingStartHereFromSequence(recommendedSequence);
-		const supportingPriorityItems = priorityItems.slice(1, 4);
+			const topPriority = priorityItems.length ? priorityItems[0] : null;
+			const mainSignalLabel = humanizeBusinessTopic(businessContext.top_topic || 'overview');
+			const startHere = buildBriefingStartHereFromSequence(recommendedSequence);
+			const supportingPriorityItems = priorityItems.slice(1, 4);
+			const showNarrativeCards = ['en', 'vi', ''].indexOf(normalizeLocale(locale)) !== -1;
 
 		function labelize(key) {
 			return String(key || '')
@@ -1556,88 +2179,101 @@
 				});
 		}
 
-		let html = renderAssistantIntro(result, h);
-		html += '<div class="yoro-result-summary">';
-		html += '<strong>Business summary</strong>';
-		html += '<span class="yoro-result-subtle">Read-only executive summary. No store data is changed.</span>';
+			let html = renderAssistantIntro(result, h, locale);
+			html += '<div class="yoro-result-summary">';
+			html += '<strong>' + h.escapeHtml(businessUiText(locale, 'businessSummary', 'Business summary')) + '</strong>';
+			html += '<span class="yoro-result-subtle">' + h.escapeHtml(businessUiText(locale, 'readOnly', 'Read-only executive summary. No store data is changed.')) + '</span>';
 
-		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
-			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
-		}
+			if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
+				html += '<span class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'decisionRoute', 'Decision route')) + ': ' + h.escapeHtml(parsed.parser_rule) + '</span>';
+			}
 
-		if (windowInfo.label) {
-			html += '<span class="yoro-result-subtle">Window: ' + h.escapeHtml(windowInfo.label) + '</span>';
-		}
+			if (windowInfo.label) {
+				html += '<span class="yoro-result-subtle">' + h.escapeHtml(operationalUiText(locale, 'window', 'Window')) + ': ' + h.escapeHtml(localizedWindowLabel(windowInfo, locale)) + '</span>';
+			}
 
 		html += '</div>';
 
 		html += '<div class="yoro-order-detail-card">';
-		html += '<div class="yoro-order-detail-header">';
-		html += '<div>';
-		html += '<strong class="yoro-order-detail-title">Business overview</strong>';
-		html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatWindowRange(windowInfo, h)) + '</div>';
-		html += '</div>';
-		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(result.focus || 'overview') + '</span>';
-		html += '</div>';
+			html += '<div class="yoro-order-detail-header">';
+			html += '<div>';
+			html += '<strong class="yoro-order-detail-title">' + h.escapeHtml(businessUiText(locale, 'businessOverview', 'Business overview')) + '</strong>';
+			html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatWindowRange(windowInfo, h)) + '</div>';
+			html += '</div>';
+			html += '<span class="yoro-current-order-badge">' + h.escapeHtml(localizedFocusLabel(result.focus, locale, businessUiText)) + '</span>';
+			html += '</div>';
 
-		if (topPriority) {
-			html += renderQueueWorkbenchHero(topPriority, [
-				{ label: 'Orders', value: metrics.order_count || 0 },
-				{ label: 'Gross sales', value: metrics.gross_sales || 0 },
-				{ label: 'Customers', value: metrics.unique_customers || 0 },
-				{ label: 'Attention', value: result.attention_total || 0 },
-				{ label: 'Main signal', value: mainSignalLabel }
+			html += '<div class="yoro-result-summary">';
+			html += '<strong>' + h.escapeHtml(localizedBusinessSummary(result, locale)) + '</strong>';
+			html += '</div>';
+
+			if (!showNarrativeCards) {
+				html += renderQueueMetaMetrics([
+					{ label: orderUiText(locale, 'orders', 'Orders'), value: metrics.order_count || 0 },
+					{ label: businessUiText(locale, 'grossSales', 'Gross sales'), value: metrics.gross_sales || 0 },
+					{ label: businessUiText(locale, 'customers', 'Customers'), value: metrics.unique_customers || 0 },
+					{ label: businessUiText(locale, 'attention', 'Attention'), value: result.attention_total || 0 }
+				], h);
+			} else if (topPriority) {
+				html += renderQueueWorkbenchHero(topPriority, [
+					{ label: orderUiText(locale, 'orders', 'Orders'), value: metrics.order_count || 0 },
+					{ label: businessUiText(locale, 'grossSales', 'Gross sales'), value: metrics.gross_sales || 0 },
+					{ label: businessUiText(locale, 'customers', 'Customers'), value: metrics.unique_customers || 0 },
+					{ label: businessUiText(locale, 'attention', 'Attention'), value: result.attention_total || 0 },
+					{ label: businessUiText(locale, 'mainSignal', 'Main signal'), value: mainSignalLabel }
+				], h);
+			}
+
+			if (showNarrativeCards && startHere) {
+				html += renderQueueStartHereCard(startHere, h);
+			}
+			if (showNarrativeCards) {
+				html += renderWorklistModeCard(result, h);
+			}
+
+			if (showNarrativeCards && supportingPriorityItems.length) {
+				html += renderQueuePriorityCards(supportingPriorityItems, h, businessUiText(locale, 'otherPressures', 'Other pressures to watch'));
+			}
+
+			html += '<details class="yoro-order-detail-section yoro-briefing-disclosure">';
+			html += '<summary><strong>' + h.escapeHtml(businessUiText(locale, 'seeDetailView', 'See detail view')) + '</strong><span>' + h.escapeHtml(businessUiText(locale, 'seeDetailSubtitle', 'Open commercial detail, order mix, and top performers')) + '</span></summary>';
+			html += '<div class="yoro-briefing-disclosure-body">';
+			html += renderQueueMetaMetrics([
+				{ label: orderUiText(locale, 'orders', 'Orders'), value: metrics.order_count || 0 },
+				{ label: businessUiText(locale, 'grossSales', 'Gross sales'), value: metrics.gross_sales || 0 },
+				{ label: businessUiText(locale, 'aov', 'AOV'), value: metrics.average_order_value || 0 },
+				{ label: businessUiText(locale, 'customers', 'Customers'), value: metrics.unique_customers || 0 },
+				{ label: businessUiText(locale, 'productLines', 'Product lines'), value: metrics.product_lines || 0 },
+				{ label: businessUiText(locale, 'backlog', 'Backlog'), value: result.backlog_total || 0 }
 			], h);
-		}
 
-		if (startHere) {
-			html += renderQueueStartHereCard(startHere, h);
-		}
-		html += renderWorklistModeCard(result, h);
-
-		if (supportingPriorityItems.length) {
-			html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
-		}
-
-		html += '<details class="yoro-order-detail-section yoro-briefing-disclosure">';
-		html += '<summary><strong>See detail view</strong><span>Open commercial detail, order mix, and top performers</span></summary>';
-		html += '<div class="yoro-briefing-disclosure-body">';
-		html += renderQueueMetaMetrics([
-			{ label: 'Orders', value: metrics.order_count || 0 },
-			{ label: 'Gross sales', value: metrics.gross_sales || 0 },
-			{ label: 'AOV', value: metrics.average_order_value || 0 },
-			{ label: 'Customers', value: metrics.unique_customers || 0 },
-			{ label: 'Product lines', value: metrics.product_lines || 0 },
-			{ label: 'Backlog', value: result.backlog_total || 0 }
-		], h);
-
-		html += '<div class="yoro-order-detail-section">';
-		html += '<h4>Order mix</h4>';
-		html += '<table class="yoro-orders-table">';
-		html += '<thead><tr><th>Status</th><th>Count</th></tr></thead><tbody>';
-		Object.keys(statusCounts).forEach(function(key) {
-			html += '<tr>';
-			html += '<td>' + h.escapeHtml(labelize(key)) + '</td>';
-			html += '<td>' + h.escapeHtml(statusCounts[key] || 0) + '</td>';
-			html += '</tr>';
-		});
+			html += '<div class="yoro-order-detail-section">';
+			html += '<h4>' + h.escapeHtml(businessUiText(locale, 'orderMix', 'Order mix')) + '</h4>';
+			html += '<table class="yoro-orders-table">';
+			html += '<thead><tr><th>' + h.escapeHtml(operationalUiText(locale, 'status', 'Status')) + '</th><th>' + h.escapeHtml(operationalUiText(locale, 'count', 'Count')) + '</th></tr></thead><tbody>';
+			Object.keys(statusCounts).forEach(function(key) {
+				html += '<tr>';
+				html += '<td>' + h.escapeHtml(queueLabel(key, locale)) + '</td>';
+				html += '<td>' + h.escapeHtml(statusCounts[key] || 0) + '</td>';
+				html += '</tr>';
+			});
 		html += '</tbody></table>';
 		html += '</div>';
 
-		html += '<div class="yoro-order-detail-section">';
-		html += '<h4>Operating pressure</h4>';
-		html += '<div class="yoro-order-detail-metrics">';
-		html += '<div><span>Backlog</span><strong>' + h.escapeHtml(result.backlog_total || 0) + '</strong></div>';
-		html += '<div><span>Attention items</span><strong>' + h.escapeHtml(result.attention_total || 0) + '</strong></div>';
-		html += '<div><span>Completed sales</span><strong>' + h.escapeHtml(metrics.completed_sales || 0) + '</strong></div>';
-		html += '</div>';
-		html += '</div>';
-
-		if (topCustomers.length) {
 			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>Top customers</h4>';
-			html += '<table class="yoro-orders-table">';
-			html += '<thead><tr><th>Customer</th><th>Email</th><th>Orders</th><th>Total spent</th></tr></thead><tbody>';
+			html += '<h4>' + h.escapeHtml(businessUiText(locale, 'operatingPressure', 'Operating pressure')) + '</h4>';
+			html += '<div class="yoro-order-detail-metrics">';
+			html += '<div><span>' + h.escapeHtml(businessUiText(locale, 'backlog', 'Backlog')) + '</span><strong>' + h.escapeHtml(result.backlog_total || 0) + '</strong></div>';
+			html += '<div><span>' + h.escapeHtml(businessUiText(locale, 'attentionItems', 'Attention items')) + '</span><strong>' + h.escapeHtml(result.attention_total || 0) + '</strong></div>';
+			html += '<div><span>' + h.escapeHtml(businessUiText(locale, 'completedSales', 'Completed sales')) + '</span><strong>' + h.escapeHtml(metrics.completed_sales || 0) + '</strong></div>';
+			html += '</div>';
+			html += '</div>';
+
+			if (topCustomers.length) {
+				html += '<div class="yoro-order-detail-section">';
+				html += '<h4>' + h.escapeHtml(businessUiText(locale, 'topCustomers', 'Top customers')) + '</h4>';
+				html += '<table class="yoro-orders-table">';
+				html += '<thead><tr><th>' + h.escapeHtml(orderUiText(locale, 'customer', 'Customer')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'email', 'Email')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'orders', 'Orders')) + '</th><th>' + h.escapeHtml(businessUiText(locale, 'totalSpent', 'Total spent')) + '</th></tr></thead><tbody>';
 			topCustomers.forEach(function(customer) {
 				html += '<tr>';
 				html += '<td>' + h.escapeHtml(customer.name || '—') + '</td>';
@@ -1650,11 +2286,11 @@
 			html += '</div>';
 		}
 
-		if (topProducts.length) {
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>Top products</h4>';
-			html += '<table class="yoro-orders-table">';
-			html += '<thead><tr><th>Product</th><th>Qty</th><th>Total</th></tr></thead><tbody>';
+			if (topProducts.length) {
+				html += '<div class="yoro-order-detail-section">';
+				html += '<h4>' + h.escapeHtml(businessUiText(locale, 'topProducts', 'Top products')) + '</h4>';
+				html += '<table class="yoro-orders-table">';
+				html += '<thead><tr><th>' + h.escapeHtml(businessUiText(locale, 'product', 'Product')) + '</th><th>' + h.escapeHtml(businessUiText(locale, 'qty', 'Qty')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'total', 'Total')) + '</th></tr></thead><tbody>';
 			topProducts.forEach(function(product) {
 				html += '<tr>';
 				html += '<td>' + h.escapeHtml(product.name || ('#' + product.id)) + '</td>';
@@ -1666,15 +2302,15 @@
 			html += '</div>';
 		}
 
-		if (recentOrders.length) {
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>Recent orders</h4>';
-			html += '<table class="yoro-orders-table">';
-			html += '<thead><tr><th>Order</th><th>Status</th><th>Total</th><th>Email</th><th>Date</th></tr></thead><tbody>';
-			recentOrders.forEach(function(order) {
-				html += '<tr>';
-				html += '<td><strong>#' + h.escapeHtml(order.number || order.id) + '</strong></td>';
-				html += '<td><span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span></td>';
+			if (recentOrders.length) {
+				html += '<div class="yoro-order-detail-section">';
+				html += '<h4>' + h.escapeHtml(businessUiText(locale, 'recentOrders', 'Recent orders')) + '</h4>';
+				html += '<table class="yoro-orders-table">';
+				html += '<thead><tr><th>' + h.escapeHtml(orderUiText(locale, 'order', 'Order')) + '</th><th>' + h.escapeHtml(operationalUiText(locale, 'status', 'Status')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'total', 'Total')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'email', 'Email')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'date', 'Date')) + '</th></tr></thead><tbody>';
+				recentOrders.forEach(function(order) {
+					html += '<tr>';
+					html += '<td><strong>#' + h.escapeHtml(order.number || order.id) + '</strong></td>';
+					html += '<td><span class="yoro-status-badge">' + h.escapeHtml(orderStatusLabel(order.status || '', locale)) + '</span></td>';
 				html += '<td>' + h.escapeHtml(order.total || '') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
 				html += '<td>' + h.escapeHtml(order.billing_email || '') + '</td>';
 				html += '<td>' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</td>';
