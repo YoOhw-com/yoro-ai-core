@@ -7690,6 +7690,36 @@ class YoRo_Parser_Test_Suite {
 				],
 			],
 			[
+				'name'            => 'AI follow-up Vietnamese ordinal target is grounded from recent order list',
+				'command'         => 'Đổi đơn thứ 2 sang processing',
+				'expected_action' => 'orders.update_status',
+				'expected_source' => 'ai_router',
+				'context'         => [
+					'last_result_type' => 'orders',
+					'last_orders'      => [
+						[ 'id' => 7199, 'status' => 'pending' ],
+						[ 'id' => 7200, 'status' => 'pending' ],
+					],
+					'last_order_ids'   => [ 7199, 7200 ],
+				],
+				'router_fixture'  => self::base_router_fixture_decision(
+					'task_request',
+					'orders.update_status',
+					[
+						'status' => 'processing',
+					],
+					0.88
+				),
+				'expect'          => [
+					'params.order_id'                      => 7200,
+					'params.order_ids.0'                   => 7200,
+					'params.status'                        => 'processing',
+					'semantic_frame.constraints.order_id'   => 7200,
+					'semantic_frame.constraints.order_ids.0' => 7200,
+					'command_decision.catalog_action_count' => 51,
+				],
+			],
+			[
 				'name'            => 'Follow-up all of them resolves all last orders',
 				'command'         => 'Mark all of them on hold',
 				'expected_action' => 'orders.update_status',

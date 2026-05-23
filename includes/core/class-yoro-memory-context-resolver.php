@@ -239,6 +239,31 @@ class YoRo_Memory_Context_Resolver {
 			return $available_count - 1;
 		}
 
+		$vietnamese_map = [
+			0 => [ 'dau tien', 'thu nhat', 'thu 1', 'so 1' ],
+			1 => [ 'thu hai', 'thu 2', 'so 2' ],
+			2 => [ 'thu ba', 'thu 3', 'so 3' ],
+			3 => [ 'thu tu', 'thu 4', 'so 4' ],
+			4 => [ 'thu nam', 'thu 5', 'so 5' ],
+			5 => [ 'thu sau', 'thu 6', 'so 6' ],
+			6 => [ 'thu bay', 'thu 7', 'so 7' ],
+			7 => [ 'thu tam', 'thu 8', 'so 8' ],
+			8 => [ 'thu chin', 'thu 9', 'so 9' ],
+			9 => [ 'thu muoi', 'thu 10', 'so 10' ],
+		];
+
+		foreach ( $vietnamese_map as $index => $patterns ) {
+			foreach ( $patterns as $pattern ) {
+				if ( preg_match( '/\b(?:(?:don hang|ket qua|cai|don|muc)\s+)?' . preg_quote( $pattern, '/' ) . '\b/i', $normalized ) ) {
+					return $index < $available_count ? $index : null;
+				}
+			}
+		}
+
+		if ( preg_match( '/\b(?:(?:don hang|ket qua|cai|don|muc)\s+)?cuoi cung\b/i', $normalized ) ) {
+			return $available_count - 1;
+		}
+
 		if ( preg_match( '/\b(\d+)(?:st|nd|rd|th)\s+(?:one|order|item|result)\b/i', $normalized, $matches ) ) {
 			$index = max( 1, absint( $matches[1] ?? 0 ) ) - 1;
 
@@ -276,7 +301,7 @@ class YoRo_Memory_Context_Resolver {
 		}
 
 		return (bool) preg_match(
-			'/\b(?:the\s+)?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last)\s+(?:one|order|item|result)\b|\b\d+(?:st|nd|rd|th)\s+(?:one|order|item|result)\b/i',
+			'/\b(?:the\s+)?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last)\s+(?:one|order|item|result)\b|\b\d+(?:st|nd|rd|th)\s+(?:one|order|item|result)\b|\b(?:(?:don hang|ket qua|cai|don|muc)\s+)?(?:dau tien|thu nhat|thu hai|thu ba|thu tu|thu nam|thu sau|thu bay|thu tam|thu chin|thu muoi|thu\s+\d+|so\s+\d+|cuoi cung)\b/i',
 			$normalized
 		);
 	}
