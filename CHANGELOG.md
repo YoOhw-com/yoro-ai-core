@@ -12,6 +12,7 @@
 
 ### Added
 - Release packaging ignore rules for development-only docs and debug test files.
+- WordPress plugin readme with YoRo AI API setup and dependency requirements.
 - AI metadata on action registry entries.
 - Action catalog builder for AI-safe routing to registered actions.
 - Strict Command Decision schema and normalizer for AI router output.
