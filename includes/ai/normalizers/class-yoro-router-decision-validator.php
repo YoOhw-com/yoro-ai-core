@@ -19,7 +19,9 @@ class YoRo_Router_Decision_Validator {
 			$decision['semantic_frame'] = YoRo_Semantic_Frame_Normalizer::normalize( $decision['semantic_frame'] ?? [] );
 		}
 
-		$decision = self::guard_missing_add_note_content( $decision, $shape );
+		$decision = self::guard_missing_add_note_content( $decision, $shape, $command, $normalized );
+		$decision = self::normalize_email_instruction_decision( $decision, $command, $normalized );
+		$decision = self::guard_missing_email_instruction_content( $decision, $command, $normalized );
 
 		return $decision;
 	}
@@ -296,7 +298,7 @@ class YoRo_Router_Decision_Validator {
 		return $decision;
 	}
 
-	private static function guard_missing_add_note_content( $decision, $shape ) {
+	private static function guard_missing_add_note_content( $decision, $shape, $command = '', $normalized = '' ) {
 		$decision = is_array( $decision ) ? $decision : [];
 		$shape    = is_array( $shape ) ? $shape : [];
 
@@ -308,9 +310,10 @@ class YoRo_Router_Decision_Validator {
 		$note               = self::extract_add_note_note( $decision );
 		$shape_missing_note = self::shape_reports_missing_add_note_content( $shape );
 		$placeholder_note   = self::looks_like_placeholder_add_note( $note );
+		$echoed_command     = self::looks_like_echoed_add_note_command( $note, $command, $normalized );
 		$has_note           = '' !== trim( (string) $note );
 
-		if ( ! $placeholder_note && ( ! $shape_missing_note || $has_note ) ) {
+		if ( ! $placeholder_note && ! $echoed_command && ( ! $shape_missing_note || $has_note ) ) {
 			return $decision;
 		}
 
@@ -476,6 +479,7 @@ class YoRo_Router_Decision_Validator {
 		}
 
 		$patterns = [
+			'/^note (?:the )?order #?\d+$/',
 			'/^add (?:an? )?(?:internal )?note (?:for|to) (?:the )?order #?\d+$/',
 			'/^add (?:an? )?(?:internal )?note to order #?\d+$/',
 			'/^add (?:an? )?(?:internal )?note to the order #?\d+$/',
@@ -494,6 +498,201 @@ class YoRo_Router_Decision_Validator {
 		return false !== strpos( $note, 'as requested' ) &&
 			false !== strpos( $note, 'note' ) &&
 			strlen( $note ) <= 90;
+	}
+
+	private static function looks_like_echoed_add_note_command( $note, $command, $normalized ) {
+		$note = self::normalize_add_note_echo_text( $note );
+
+		if ( '' === $note ) {
+			return false;
+		}
+
+		$candidates = [
+			self::normalize_add_note_echo_text( $command ),
+			self::normalize_add_note_echo_text( $normalized ),
+		];
+
+		return in_array( $note, array_filter( $candidates ), true );
+	}
+
+	private static function normalize_add_note_echo_text( $text ) {
+		$text = strtolower( trim( wp_strip_all_tags( (string) $text ) ) );
+		$text = preg_replace( '/\s+/', ' ', $text );
+
+		return trim( (string) $text, " \t\n\r\0\x0B.!?" );
+	}
+
+	private static function guard_missing_email_instruction_content( $decision, $command, $normalized ) {
+		$decision = is_array( $decision ) ? $decision : [];
+
+		if ( ! self::decision_contains_email_authoring_action( $decision ) ) {
+			return $decision;
+		}
+
+		$instruction = self::extract_email_instruction( $decision );
+
+		if ( ! self::looks_like_missing_email_instruction( $instruction, $command, $normalized ) ) {
+			return $decision;
+		}
+
+		$order_ids = self::extract_email_order_ids( $decision );
+		$params    = [];
+
+		if ( ! empty( $order_ids ) ) {
+			$params['order_id']  = absint( reset( $order_ids ) );
+			$params['order_ids'] = $order_ids;
+		}
+
+		$order_id = absint( $params['order_id'] ?? 0 );
+		$question = $order_id > 0
+			? sprintf(
+				/* translators: %d: order id */
+				__( 'What should the customer email say for order #%d?', 'yoro-ai-core' ),
+				$order_id
+			)
+			: __( 'What should the customer email say?', 'yoro-ai-core' );
+
+		$decision['mode']                   = 'clarify';
+		$decision['intent_family']          = 'customer_email';
+		$decision['action']                 = 'orders.compose_customer_email';
+		$decision['params']                 = $params;
+		$decision['missing']                = [ 'instruction' ];
+		$decision['ambiguities']            = [];
+		$decision['clarification_question'] = $question;
+		$decision['summary']                = $question;
+		$decision['reasoning_summary']      = __( 'The email route is valid, but the command does not include a concrete customer-email instruction.', 'yoro-ai-core' );
+		$decision['requires_confirmation']  = false;
+		$decision['raw_param_keys']         = ! empty( $order_ids ) ? [ 'order_id', 'order_ids' ] : [];
+		$decision['dropped_param_keys']     = [];
+		$decision['params_trimmed_count']   = 0;
+		$decision['action_plan']            = [
+			'type'   => 'none',
+			'action' => null,
+			'params' => [],
+			'steps'  => [],
+		];
+
+		return $decision;
+	}
+
+	private static function decision_contains_email_authoring_action( $decision ) {
+		$decision = is_array( $decision ) ? $decision : [];
+
+		if ( self::is_email_authoring_action( sanitize_text_field( $decision['action'] ?? '' ) ) ) {
+			return true;
+		}
+
+		$action_plan = isset( $decision['action_plan'] ) && is_array( $decision['action_plan'] )
+			? $decision['action_plan']
+			: [];
+
+		foreach ( (array) ( $action_plan['steps'] ?? [] ) as $step ) {
+			if ( is_array( $step ) && self::is_email_authoring_action( sanitize_text_field( $step['action'] ?? '' ) ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static function is_email_authoring_action( $action ) {
+		return in_array(
+			sanitize_text_field( $action ),
+			[
+				'orders.compose_customer_email',
+				'workflow.write_email_for_order',
+				'workflow.write_and_save_email_draft_for_order',
+				'workflow.write_and_send_email_for_order',
+				'workflow.write_email_for_orders',
+				'workflow.write_and_save_email_drafts_for_orders',
+				'workflow.write_and_send_emails_for_orders',
+			],
+			true
+		);
+	}
+
+	private static function extract_email_instruction( $decision ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$params   = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+
+		if ( self::is_email_authoring_action( sanitize_text_field( $decision['action'] ?? '' ) ) && isset( $params['instruction'] ) ) {
+			return sanitize_textarea_field( $params['instruction'] );
+		}
+
+		$action_plan = isset( $decision['action_plan'] ) && is_array( $decision['action_plan'] )
+			? $decision['action_plan']
+			: [];
+
+		foreach ( (array) ( $action_plan['steps'] ?? [] ) as $step ) {
+			if ( ! is_array( $step ) || ! self::is_email_authoring_action( sanitize_text_field( $step['action'] ?? '' ) ) ) {
+				continue;
+			}
+
+			$step_params = isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [];
+
+			if ( isset( $step_params['instruction'] ) ) {
+				return sanitize_textarea_field( $step_params['instruction'] );
+			}
+		}
+
+		return '';
+	}
+
+	private static function extract_email_order_ids( $decision ) {
+		$decision  = is_array( $decision ) ? $decision : [];
+		$order_ids = [];
+		$params    = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+
+		$order_ids = array_merge( $order_ids, self::extract_order_ids_from_params( $params ) );
+
+		$action_plan = isset( $decision['action_plan'] ) && is_array( $decision['action_plan'] )
+			? $decision['action_plan']
+			: [];
+
+		foreach ( (array) ( $action_plan['steps'] ?? [] ) as $step ) {
+			if ( ! is_array( $step ) || ! self::is_email_authoring_action( sanitize_text_field( $step['action'] ?? '' ) ) ) {
+				continue;
+			}
+
+			$order_ids = array_merge(
+				$order_ids,
+				self::extract_order_ids_from_params( isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [] )
+			);
+		}
+
+		$constraints = isset( $decision['semantic_frame']['constraints'] ) && is_array( $decision['semantic_frame']['constraints'] )
+			? $decision['semantic_frame']['constraints']
+			: [];
+		$order_ids = array_merge( $order_ids, self::extract_order_ids_from_params( $constraints ) );
+
+		return array_values( array_unique( array_filter( array_map( 'absint', $order_ids ) ) ) );
+	}
+
+	private static function looks_like_missing_email_instruction( $instruction, $command, $normalized ) {
+		$instruction = trim( sanitize_textarea_field( $instruction ) );
+
+		if ( '' === $instruction ) {
+			return true;
+		}
+
+		$inferred = self::infer_email_authoring_instruction_from_command(
+			$command,
+			$normalized,
+			[ 'instruction' => $instruction ]
+		);
+
+		return ! self::has_meaningful_email_instruction_text( $inferred );
+	}
+
+	private static function has_meaningful_email_instruction_text( $instruction ) {
+		$instruction = trim( wp_strip_all_tags( (string) $instruction ) );
+		$instruction = trim( $instruction, " \t\n\r\0\x0B.!?:;,-" );
+
+		if ( '' === $instruction ) {
+			return false;
+		}
+
+		return (bool) preg_match( '/[\p{L}\p{N}]/u', $instruction );
 	}
 
 	private static function build_query_action_decision_from_shape( $decision, $shape, $query_action ) {
