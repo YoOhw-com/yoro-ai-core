@@ -476,6 +476,9 @@ class YoRo_Router_Decision_Validator {
 		}
 
 		$patterns = [
+			'/^add (?:an? )?(?:internal )?note (?:for|to) (?:the )?order #?\d+$/',
+			'/^add (?:an? )?(?:internal )?note to order #?\d+$/',
+			'/^add (?:an? )?(?:internal )?note to the order #?\d+$/',
 			'/^add (?:an? )?(?:internal )?note (?:for|to) (?:the )?order #?\d+ as requested$/',
 			'/^add (?:an? )?(?:internal )?note as requested$/',
 			'/^(?:internal )?note (?:added|created) (?:for|to) (?:the )?order #?\d+ as requested$/',

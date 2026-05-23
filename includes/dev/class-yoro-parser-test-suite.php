@@ -2130,6 +2130,36 @@ class YoRo_Parser_Test_Suite {
 			],
 			[
 				'domain'          => 'router_hardening',
+				'name'            => 'AI router echoed add-note command is clarified',
+				'command'         => 'Add note to order 7199',
+				'expected_action' => 'orders.add_note',
+				'expected_source' => 'ai_router',
+				'expect_stage'    => 'clarify',
+				'router_fixture'  => self::base_router_fixture_decision(
+					'task_request',
+					'orders.add_note',
+					[
+						'order_id'  => 7199,
+						'order_ids' => [ 7199 ],
+						'note'      => 'Add note to order 7199',
+					],
+					0.72
+				),
+				'expect'          => [
+					'resolution_path'                  => 'ai_primary',
+					'parser_rule'                      => 'ai.command_router.clarify',
+					'params.order_id'                  => 7199,
+					'params.order_ids.0'               => 7199,
+					'params.note'                      => null,
+					'missing.0'                        => 'note',
+					'command_decision.mode'            => 'clarify',
+					'command_decision.missing.0'       => 'note',
+					'command_shape.write_missing_target.action' => 'orders.add_note',
+					'command_shape.write_missing_target.missing.0' => 'note',
+				],
+			],
+			[
+				'domain'          => 'router_hardening',
 				'name'            => 'AI router low-confidence email save-draft request promotes into workflow instead of clarify',
 				'command'         => 'Write a payment follow-up email for order 6864 and save as draft',
 				'expected_action' => 'workflow.write_and_save_email_draft_for_order',
