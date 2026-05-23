@@ -1276,7 +1276,7 @@ class YoRo_Action_Catalog_Builder {
 		}
 
 		return (bool) preg_match(
-			'/\b(?:this order|that order|the order|order\b|đơn này|đơn hàng này|don nay|don hang nay)\b/u',
+			'/\b(?:this order|that order|the order|order\b|đơn này|đơn hàng này|don nay|don hang nay)\b|\b(?:the\s+)?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last)\s+(?:one|order|item|result)\b|\b\d+(?:st|nd|rd|th)\s+(?:one|order|item|result)\b/u',
 			$normalized
 		);
 	}

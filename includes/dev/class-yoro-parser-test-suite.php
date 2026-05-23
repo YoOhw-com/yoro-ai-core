@@ -7623,23 +7623,23 @@ class YoRo_Parser_Test_Suite {
 
 	private static function pipeline_cases() {
 		return [
-				[
-					'name'            => 'Follow-up first one resolves to first last_order_id',
-					'command'         => 'Hold the first one',
-					'expected_action' => 'orders.hold',
-					'context'         => [
-						'last_orders'    => [
-							[ 'id' => 101 ],
-							[ 'id' => 102 ],
-						],
-						'last_order_ids' => [ 101, 102 ],
+			[
+				'name'            => 'Follow-up first one resolves to first last_order_id',
+				'command'         => 'Hold the first one',
+				'expected_action' => 'orders.hold',
+				'context'         => [
+					'last_orders'    => [
+						[ 'id' => 101 ],
+						[ 'id' => 102 ],
 					],
-					'expect'          => [
-						'params.order_id'    => 101,
-						'params.order_ids.0' => 101,
-						'parser_rule'        => 'guard.follow_up.orders.hold',
-					],
+					'last_order_ids' => [ 101, 102 ],
 				],
+				'expect'          => [
+					'params.order_id'    => 101,
+					'params.order_ids.0' => 101,
+					'parser_rule'        => 'guard.follow_up.orders.hold',
+				],
+			],
 			[
 				'name'            => 'Follow-up add note to first one',
 				'command'         => 'Add note to the first one: test note',
@@ -7655,6 +7655,38 @@ class YoRo_Parser_Test_Suite {
 					'params.order_id'    => 101,
 					'params.order_ids.0' => 101,
 					'params.note'        => 'test note',
+				],
+			],
+			[
+				'name'            => 'AI follow-up ordinal write target is grounded from recent order list',
+				'command'         => 'Change the first one to pending and add note: Cannot contact',
+				'expected_action' => 'orders.bulk_update_status_with_note',
+				'expected_source' => 'ai_router',
+				'context'         => [
+					'last_result_type' => 'orders',
+					'last_orders'      => [
+						[ 'id' => 7199, 'status' => 'pending' ],
+						[ 'id' => 7200, 'status' => 'pending' ],
+					],
+					'last_order_ids'   => [ 7199, 7200 ],
+				],
+				'router_fixture'  => self::base_router_fixture_decision(
+					'task_request',
+					'orders.bulk_update_status_with_note',
+					[
+						'status' => 'pending',
+						'note'   => 'Cannot contact',
+					],
+					0.91
+				),
+				'expect'          => [
+					'params.order_id'                      => 7199,
+					'params.order_ids.0'                   => 7199,
+					'params.status'                        => 'pending',
+					'params.note'                          => 'Cannot contact',
+					'semantic_frame.constraints.order_id'   => 7199,
+					'semantic_frame.constraints.order_ids.0' => 7199,
+					'command_decision.catalog_action_count' => 51,
 				],
 			],
 			[

@@ -107,9 +107,13 @@ class YoRo_AI_Command_Router {
 
 		return [
 			'current_order_id'     => absint( $context['current_order_id'] ?? 0 ),
+			'resolved_order_ids'   => isset( $context['resolved_order_ids'] ) && is_array( $context['resolved_order_ids'] )
+				? array_values( array_slice( array_filter( array_map( 'absint', $context['resolved_order_ids'] ) ), 0, 10 ) )
+				: [],
 			'last_order_ids'       => isset( $context['last_order_ids'] ) && is_array( $context['last_order_ids'] )
 				? array_values( array_slice( array_filter( array_map( 'absint', $context['last_order_ids'] ) ), 0, 10 ) )
 				: [],
+			'last_orders'          => self::compact_yoro_ai_api_order_list_context( $context['last_orders'] ?? [] ),
 			'last_result_type'     => sanitize_key( $context['last_result_type'] ?? '' ),
 			'active_followup_type' => sanitize_key( $context['active_followup_type'] ?? '' ),
 			'has_current_workflow' => ! empty( $context['current_workflow'] ),
@@ -159,6 +163,34 @@ class YoRo_AI_Command_Router {
 					: [],
 			],
 		];
+	}
+
+	private static function compact_yoro_ai_api_order_list_context( $orders ) {
+		if ( empty( $orders ) || ! is_array( $orders ) ) {
+			return [];
+		}
+
+		$compact = [];
+
+		foreach ( array_slice( array_values( $orders ), 0, 10 ) as $order ) {
+			if ( ! is_array( $order ) ) {
+				continue;
+			}
+
+			$order_id = absint( $order['id'] ?? 0 );
+
+			if ( ! $order_id ) {
+				continue;
+			}
+
+			$compact[] = [
+				'id'     => $order_id,
+				'number' => sanitize_text_field( $order['number'] ?? (string) $order_id ),
+				'status' => sanitize_key( $order['status'] ?? '' ),
+			];
+		}
+
+		return $compact;
 	}
 
 	private static function compact_yoro_ai_api_router_hints( $router_hints ) {

@@ -35,6 +35,12 @@ class YoRo_Entity_Phrase_Resolver {
 				?? 0
 		);
 
+		$ordinal_index = self::resolve_order_list_reference_index( $normalized, count( $order_ids ) );
+
+		if ( null !== $ordinal_index && ! empty( $order_ids[ $ordinal_index ] ) ) {
+			return [ absint( $order_ids[ $ordinal_index ] ) ];
+		}
+
 		// OTHER / REMAINING ORDERS
 		if (
 			false !== strpos( $normalized, 'other orders' ) ||
@@ -80,5 +86,44 @@ class YoRo_Entity_Phrase_Resolver {
 		}
 
 		return [];
+	}
+
+	private static function resolve_order_list_reference_index( $normalized, $available_count ) {
+		$available_count = absint( $available_count );
+
+		if ( $available_count <= 0 ) {
+			return null;
+		}
+
+		$ordinal_map = [
+			'first'   => 0,
+			'second'  => 1,
+			'third'   => 2,
+			'fourth'  => 3,
+			'fifth'   => 4,
+			'sixth'   => 5,
+			'seventh' => 6,
+			'eighth'  => 7,
+			'ninth'   => 8,
+			'tenth'   => 9,
+		];
+
+		foreach ( $ordinal_map as $word => $index ) {
+			if ( preg_match( '/\b(?:the\s+)?' . preg_quote( $word, '/' ) . '\s+(?:one|order|item|result)\b/i', $normalized ) ) {
+				return $index < $available_count ? $index : null;
+			}
+		}
+
+		if ( preg_match( '/\b(?:the\s+)?last\s+(?:one|order|item|result)\b/i', $normalized ) ) {
+			return $available_count - 1;
+		}
+
+		if ( preg_match( '/\b(\d+)(?:st|nd|rd|th)\s+(?:one|order|item|result)\b/i', $normalized, $matches ) ) {
+			$index = max( 1, absint( $matches[1] ?? 0 ) ) - 1;
+
+			return $index < $available_count ? $index : null;
+		}
+
+		return null;
 	}
 }

@@ -7,6 +7,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Router_Context_Decision_Hydrator {
 
 	public static function hydrate( $decision, $command, $normalized, $client_context = [] ) {
+		$decision = self::hydrate_order_target_params(
+			$decision,
+			$client_context
+		);
+
 		$decision = self::hydrate_queue_preview_decision(
 			$decision,
 			$command,
@@ -15,6 +20,160 @@ class YoRo_Router_Context_Decision_Hydrator {
 		);
 
 		return $decision;
+	}
+
+	private static function hydrate_order_target_params( $decision, $client_context = [] ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$order_ids = self::context_resolved_order_ids( $client_context );
+
+		if ( empty( $order_ids ) ) {
+			return $decision;
+		}
+
+		$action = sanitize_text_field( $decision['action'] ?? '' );
+
+		if ( self::action_accepts_context_order_target( $action ) ) {
+			$params = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+			$decision['params'] = self::hydrate_order_target_params_for_action( $action, $params, $order_ids );
+			$decision = self::hydrate_order_target_semantic_frame( $decision, $order_ids );
+		}
+
+		if ( ! empty( $decision['action_plan']['steps'] ) && is_array( $decision['action_plan']['steps'] ) ) {
+			foreach ( $decision['action_plan']['steps'] as &$step ) {
+				if ( ! is_array( $step ) ) {
+					continue;
+				}
+
+				$step_action = sanitize_text_field( $step['action'] ?? '' );
+
+				if ( ! self::action_accepts_context_order_target( $step_action ) ) {
+					continue;
+				}
+
+				$step['params'] = self::hydrate_order_target_params_for_action(
+					$step_action,
+					isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [],
+					$order_ids
+				);
+			}
+			unset( $step );
+		}
+
+		return $decision;
+	}
+
+	private static function hydrate_order_target_semantic_frame( $decision, $order_ids ) {
+		if ( empty( $decision['semantic_frame'] ) || ! is_array( $decision['semantic_frame'] ) ) {
+			return $decision;
+		}
+
+		if ( empty( $decision['semantic_frame']['constraints'] ) || ! is_array( $decision['semantic_frame']['constraints'] ) ) {
+			$decision['semantic_frame']['constraints'] = [];
+		}
+
+		$order_ids = array_values( array_filter( array_map( 'absint', (array) $order_ids ) ) );
+
+		if ( empty( $order_ids ) ) {
+			return $decision;
+		}
+
+		if ( empty( $decision['semantic_frame']['constraints']['order_ids'] ) ) {
+			$decision['semantic_frame']['constraints']['order_ids'] = $order_ids;
+		}
+
+		if ( empty( $decision['semantic_frame']['constraints']['order_id'] ) ) {
+			$decision['semantic_frame']['constraints']['order_id'] = absint( $order_ids[0] );
+		}
+
+		return $decision;
+	}
+
+	private static function hydrate_order_target_params_for_action( $action, $params, $order_ids ) {
+		$action = sanitize_text_field( $action );
+		$params = is_array( $params ) ? $params : [];
+		$order_ids = array_values( array_filter( array_map( 'absint', (array) $order_ids ) ) );
+
+		if ( empty( $order_ids ) ) {
+			return $params;
+		}
+
+		if ( 'orders.compose_customer_email' === $action ) {
+			if ( empty( $params['order_id'] ) ) {
+				$params['order_id'] = absint( $order_ids[0] );
+			}
+
+			return $params;
+		}
+
+		if ( empty( $params['order_ids'] ) || ! is_array( $params['order_ids'] ) ) {
+			$params['order_ids'] = $order_ids;
+		}
+
+		if ( empty( $params['order_id'] ) ) {
+			$params['order_id'] = absint( $order_ids[0] );
+		}
+
+		return $params;
+	}
+
+	private static function context_resolved_order_ids( $client_context = [] ) {
+		$client_context = is_array( $client_context ) ? $client_context : [];
+		$order_ids = [];
+
+		if ( ! empty( $client_context['resolved_order_ids'] ) && is_array( $client_context['resolved_order_ids'] ) ) {
+			$order_ids = $client_context['resolved_order_ids'];
+		}
+
+		if (
+			empty( $order_ids ) &&
+			! empty( $client_context['resolved_reference'] ) &&
+			is_array( $client_context['resolved_reference'] ) &&
+			'order' === sanitize_key( $client_context['resolved_reference']['target_type'] ?? '' ) &&
+			! empty( $client_context['resolved_reference']['target_ids'] ) &&
+			is_array( $client_context['resolved_reference']['target_ids'] )
+		) {
+			$order_ids = $client_context['resolved_reference']['target_ids'];
+		}
+
+		if (
+			empty( $order_ids ) &&
+			! empty( $client_context['memory_context']['reference'] ) &&
+			is_array( $client_context['memory_context']['reference'] ) &&
+			'order' === sanitize_key( $client_context['memory_context']['reference']['target_type'] ?? '' ) &&
+			! empty( $client_context['memory_context']['reference']['target_ids'] ) &&
+			is_array( $client_context['memory_context']['reference']['target_ids'] )
+		) {
+			$order_ids = $client_context['memory_context']['reference']['target_ids'];
+		}
+
+		return array_values(
+			array_filter(
+				array_unique(
+					array_map( 'absint', (array) $order_ids )
+				)
+			)
+		);
+	}
+
+	private static function action_accepts_context_order_target( $action ) {
+		return in_array(
+			sanitize_text_field( $action ),
+			[
+				'orders.add_note',
+				'orders.bulk_update_status_with_note',
+				'orders.compose_customer_email',
+				'orders.hold',
+				'orders.update_status',
+				'orders.get_details',
+				'orders.refund_preview',
+				'orders.email_customer_preview',
+				'orders.email_customer_template',
+				'orders.use_email_template',
+				'orders.save_customer_email_draft',
+				'orders.send_customer_email',
+			],
+			true
+		);
 	}
 
 	private static function hydrate_queue_preview_decision( $decision, $command, $normalized, $client_context = [] ) {

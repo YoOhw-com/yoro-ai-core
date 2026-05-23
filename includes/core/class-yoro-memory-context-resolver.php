@@ -32,6 +32,8 @@ class YoRo_Memory_Context_Resolver {
 					1.0,
 					'The command explicitly names the target order.'
 				);
+			} elseif ( self::looks_like_contextual_order_ordinal_reference( $normalized ) ) {
+				$reference = self::resolve_contextual_order_ordinal_reference( $normalized, $context );
 			} elseif ( self::looks_like_contextual_order_list_reference( $normalized ) ) {
 				$reference = self::resolve_contextual_order_list_reference( $context );
 			} elseif ( self::looks_like_contextual_order_reference( $normalized ) ) {
@@ -141,30 +143,7 @@ class YoRo_Memory_Context_Resolver {
 	}
 
 	private static function resolve_contextual_order_list_reference( $context ) {
-		$order_ids = isset( $context['last_order_ids'] ) && is_array( $context['last_order_ids'] )
-			? array_values(
-				array_filter(
-					array_unique(
-						array_map( 'absint', $context['last_order_ids'] )
-					)
-				)
-			)
-			: [];
-
-		if ( empty( $order_ids ) && ! empty( $context['last_orders'] ) && is_array( $context['last_orders'] ) ) {
-			$order_ids = array_values(
-				array_filter(
-					array_unique(
-						array_map(
-							static function( $order ) {
-								return is_array( $order ) ? absint( $order['id'] ?? 0 ) : 0;
-							},
-							$context['last_orders']
-						)
-					)
-				)
-			);
-		}
+		$order_ids = self::last_order_ids_from_context( $context );
 
 		if ( empty( $order_ids ) ) {
 			return self::build_empty_reference();
@@ -176,6 +155,97 @@ class YoRo_Memory_Context_Resolver {
 			0.92,
 			'The command uses a plural contextual order reference and there is a recent order list in memory.'
 		);
+	}
+
+	private static function resolve_contextual_order_ordinal_reference( $normalized, $context ) {
+		$order_ids = self::last_order_ids_from_context( $context );
+
+		if ( empty( $order_ids ) ) {
+			return self::build_empty_reference();
+		}
+
+		$index = self::resolve_order_list_reference_index( $normalized, count( $order_ids ) );
+
+		if ( null === $index || empty( $order_ids[ $index ] ) ) {
+			return self::build_empty_reference();
+		}
+
+		return self::order_reference(
+			[ $order_ids[ $index ] ],
+			'last_order_list_ordinal',
+			0.94,
+			'The command uses an ordinal reference to a recent order list.'
+		);
+	}
+
+	private static function last_order_ids_from_context( $context ) {
+		$context = is_array( $context ) ? $context : [];
+		$order_ids = [];
+
+		if ( ! empty( $context['last_orders'] ) && is_array( $context['last_orders'] ) ) {
+			foreach ( $context['last_orders'] as $order ) {
+				if ( ! is_array( $order ) ) {
+					continue;
+				}
+
+				$order_id = absint( $order['id'] ?? 0 );
+
+				if ( $order_id > 0 ) {
+					$order_ids[] = $order_id;
+				}
+			}
+		}
+
+		if ( empty( $order_ids ) && ! empty( $context['last_order_ids'] ) && is_array( $context['last_order_ids'] ) ) {
+			$order_ids = array_map( 'absint', $context['last_order_ids'] );
+		}
+
+		return array_values(
+			array_filter(
+				array_unique(
+					array_map( 'absint', $order_ids )
+				)
+			)
+		);
+	}
+
+	private static function resolve_order_list_reference_index( $normalized, $available_count ) {
+		$available_count = absint( $available_count );
+
+		if ( $available_count <= 0 ) {
+			return null;
+		}
+
+		$ordinal_map = [
+			'first'   => 0,
+			'second'  => 1,
+			'third'   => 2,
+			'fourth'  => 3,
+			'fifth'   => 4,
+			'sixth'   => 5,
+			'seventh' => 6,
+			'eighth'  => 7,
+			'ninth'   => 8,
+			'tenth'   => 9,
+		];
+
+		foreach ( $ordinal_map as $word => $index ) {
+			if ( preg_match( '/\b(?:the\s+)?' . preg_quote( $word, '/' ) . '\s+(?:one|order|item|result)\b/i', $normalized ) ) {
+				return $index < $available_count ? $index : null;
+			}
+		}
+
+		if ( preg_match( '/\b(?:the\s+)?last\s+(?:one|order|item|result)\b/i', $normalized ) ) {
+			return $available_count - 1;
+		}
+
+		if ( preg_match( '/\b(\d+)(?:st|nd|rd|th)\s+(?:one|order|item|result)\b/i', $normalized, $matches ) ) {
+			$index = max( 1, absint( $matches[1] ?? 0 ) ) - 1;
+
+			return $index < $available_count ? $index : null;
+		}
+
+		return null;
 	}
 
 	private static function looks_like_contextual_order_list_reference( $normalized ) {
@@ -196,6 +266,17 @@ class YoRo_Memory_Context_Resolver {
 
 		return (bool) preg_match(
 			'/\b(this|that|same|current|selected|opened)\s+order\b|\b(this|that|same)\s+one\b|\bit\b/i',
+			$normalized
+		);
+	}
+
+	private static function looks_like_contextual_order_ordinal_reference( $normalized ) {
+		if ( '' === $normalized ) {
+			return false;
+		}
+
+		return (bool) preg_match(
+			'/\b(?:the\s+)?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last)\s+(?:one|order|item|result)\b|\b\d+(?:st|nd|rd|th)\s+(?:one|order|item|result)\b/i',
 			$normalized
 		);
 	}
@@ -246,7 +327,7 @@ class YoRo_Memory_Context_Resolver {
 			'type'    => sanitize_key( $workflow['type'] ?? '' ),
 			'action'  => sanitize_text_field( $workflow['action'] ?? '' ),
 			'step'    => sanitize_key( $workflow['step'] ?? '' ),
-			'order_id'=> absint( $workflow['order_id'] ?? 0 ),
+			'order_id' => absint( $workflow['order_id'] ?? 0 ),
 			'missing' => isset( $workflow['missing'] ) && is_array( $workflow['missing'] )
 				? array_values( array_filter( array_map( 'sanitize_key', $workflow['missing'] ) ) )
 				: [],
