@@ -33,7 +33,7 @@ class YoRo_Admin_Page {
 			self::MENU_SLUG,
 			[ __CLASS__, 'render_page' ],
 			self::get_menu_icon(),
-			2
+			1
 		);
 
 		self::$admin_screen_ids[] = add_submenu_page(
