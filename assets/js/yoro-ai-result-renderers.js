@@ -1163,6 +1163,15 @@
 		html += '<span><strong>Needs approval:</strong> ' + h.escapeHtml(preview.requires_confirmation ? 'Yes' : 'No') + '</span>';
 		html += '</div>';
 
+		const riskReasons = data.risk && Array.isArray(data.risk.reasons)
+			? data.risk.reasons
+			: [];
+
+		const policyReasons = data.policy && Array.isArray(data.policy.reasons)
+			? data.policy.reasons
+			: [];
+
+		const reasons = riskReasons.concat(policyReasons);
 		const changeLines = [];
 
 		if (action === 'orders.add_note') {
