@@ -21,20 +21,6 @@ class YoRo_Suggestions {
 			return [];
 		}
 
-		$suggestions = self::rule_suggestions( $action, $result, $parsed, $context );
-
-		$suggestions = array_merge(
-			$suggestions,
-			self::context_suggestions( $action, $result, $parsed, $context )
-		);
-
-		if ( self::should_use_ai() ) {
-			$suggestions = array_merge(
-				$suggestions,
-				self::ai_suggestions( $action, $result, $parsed, $context )
-			);
-		}
-
 		$max = absint( get_option( 'yoro_ai_max_suggestions', 4 ) );
 
 		if ( $max <= 0 ) {
@@ -42,6 +28,32 @@ class YoRo_Suggestions {
 		}
 
 		$max = min( $max, 10 );
+		$use_ai = self::should_use_ai();
+		$language = self::normalize_language_code( $parsed['language'] ?? '' );
+
+		if ( $use_ai && '' !== $language && 'en' !== $language ) {
+			$ai_suggestions = self::normalize_suggestions(
+				self::ai_suggestions( $action, $result, $parsed, $context )
+			);
+
+			if ( ! empty( $ai_suggestions ) ) {
+				return array_slice( $ai_suggestions, 0, $max );
+			}
+		}
+
+		$suggestions = self::rule_suggestions( $action, $result, $parsed, $context );
+
+		$suggestions = array_merge(
+			$suggestions,
+			self::context_suggestions( $action, $result, $parsed, $context )
+		);
+
+		if ( $use_ai ) {
+			$suggestions = array_merge(
+				$suggestions,
+				self::ai_suggestions( $action, $result, $parsed, $context )
+			);
+		}
 
 		return array_slice(
 			self::normalize_suggestions( $suggestions ),
@@ -577,12 +589,44 @@ class YoRo_Suggestions {
 	}
 
 	private static function build_ai_suggestion_payload( $action, $result, $parsed, $context ) {
+		$prompt = '';
+
+		foreach ( [ 'original_command', 'command', 'summary', 'reasoning_summary' ] as $key ) {
+			if ( ! empty( $parsed[ $key ] ) && is_string( $parsed[ $key ] ) ) {
+				$prompt = $parsed[ $key ];
+				break;
+			}
+		}
+
+		if ( '' === $prompt && ! empty( $result['summary'] ) && is_string( $result['summary'] ) ) {
+			$prompt = $result['summary'];
+		}
+
+		if ( '' === $prompt ) {
+			$prompt = $action;
+		}
+
+		$language = self::normalize_language_code( $parsed['language'] ?? '' );
+
 		return [
 			'action'         => sanitize_text_field( $action ),
-			'prompt'         => sanitize_text_field( $action ),
+			'prompt'         => sanitize_text_field( $prompt ),
 			'site_url'       => home_url(),
 			'plugin_version' => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+			'language_context' => [
+				'preferred_language' => $language,
+				'site_locale'        => function_exists( 'get_locale' ) ? get_locale() : '',
+				'user_locale'        => function_exists( 'get_user_locale' ) ? get_user_locale() : '',
+			],
 		];
+	}
+
+	private static function normalize_language_code( $language ) {
+		$language = sanitize_key( (string) $language );
+		$language = strtolower( str_replace( '_', '-', $language ) );
+		$language = explode( '-', $language )[0] ?? '';
+
+		return preg_match( '/^[a-z]{2,3}$/', $language ) ? $language : '';
 	}
 
 	private static function normalize_suggestions( $suggestions ) {
@@ -594,6 +638,25 @@ class YoRo_Suggestions {
 			}
 
 			$type = sanitize_key( $suggestion['type'] ?? 'action' );
+			$command = sanitize_text_field( $suggestion['command'] ?? $suggestion['value'] ?? '' );
+
+			if ( 'command' === $type ) {
+				if ( '' === $command ) {
+					continue;
+				}
+
+				$key = sanitize_key( $suggestion['label'] . '_' . $command );
+
+				$normalized[ $key ] = [
+					'type'           => 'command',
+					'label'          => sanitize_text_field( $suggestion['label'] ),
+					'value'          => $command,
+					'command'        => $command,
+					'requires_input' => ! empty( $suggestion['requires_input'] ),
+				];
+
+				continue;
+			}
 
 			if ( ! in_array( $type, [ 'action', 'direct_action' ], true ) ) {
 				continue;

@@ -1413,6 +1413,14 @@
 		return html;
 	}
 
+	function renderInlineResultSuggestions(data, h) {
+		if (!h || typeof h.getResultSuggestions !== 'function' || typeof h.renderSuggestions !== 'function') {
+			return '';
+		}
+
+		return h.renderSuggestions(h.getResultSuggestions(data) || []);
+	}
+
 	function executeOrderUiAction(h, action, params, preview) {
 		if (!action || !h.executeActionDirect) {
 			return;
@@ -1698,6 +1706,7 @@
 
 		if (!orders.length) {
 			html += renderOrdersEmptyState(result, parsed, contextMeta, h);
+			html += renderInlineResultSuggestions(data, h);
 			html += h.renderDebugJson(data);
 
 			return html;
@@ -1780,6 +1789,7 @@
 		].filter(Boolean), h, orderUiText(locale, 'whatNext', 'What to do next'));
 		html += '</div>';
 
+		html += renderInlineResultSuggestions(data, h);
 		html += h.renderDebugJson(data);
 
 		return html;
