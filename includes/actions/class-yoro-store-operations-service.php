@@ -13,14 +13,18 @@ class YoRo_Store_Operations_Service {
 
 		$window_key = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( $params['window'] ?? 'today' );
 		$focus      = ! empty( $params['focus'] ) ? sanitize_key( $params['focus'] ) : 'overview';
+		$language   = ! empty( $params['original_command'] ) && YoRo_Date_Helper::is_likely_vietnamese( $params['original_command'] )
+			? 'vi'
+			: 'en';
 
 		return YoRo_Action_Cache::remember(
 			'operations_summary',
 			[
 				'window' => $window_key,
 				'focus'  => $focus,
+				'language' => $language,
 			],
-			function() use ( $window_key, $focus ) {
+			function() use ( $window_key, $focus, $language ) {
 				$window = YoRo_Orders_Read_Service::briefing_get_operations_window( $window_key );
 
 				$window_statuses = [
@@ -91,23 +95,27 @@ class YoRo_Store_Operations_Service {
 					}
 				}
 
+				$summary = 'vi' === $language
+					? sprintf(
+						'Tổng quan vận hành trong %1$s: %2$d đơn mới, %3$d mục tồn đọng, %4$d mục cần chú ý.',
+						YoRo_Date_Helper::get_window_label( $window_key, 'vi' ),
+						$window_total,
+						$backlog_total,
+						$attention_total
+					)
+					: sprintf(
+						'Operations summary for %1$s: %2$d new orders, %3$d open backlog, %4$d attention items.',
+						$window['label'],
+						$window_total,
+						$backlog_total,
+						$attention_total
+					);
+
 				return [
 					'success'              => true,
 					'action'               => 'operations.get_summary',
-					'summary'              => sprintf(
-						'Operations summary for %1$s: %2$d new orders, %3$d open backlog, %4$d attention items.',
-						$window['label'],
-						$window_total,
-						$backlog_total,
-						$attention_total
-					),
-					'message'              => sprintf(
-						'Operations summary for %1$s: %2$d new orders, %3$d open backlog, %4$d attention items.',
-						$window['label'],
-						$window_total,
-						$backlog_total,
-						$attention_total
-					),
+					'summary'              => $summary,
+					'message'              => $summary,
 					'count'                => $window_total,
 					'read_only'            => true,
 					'undoable'             => false,

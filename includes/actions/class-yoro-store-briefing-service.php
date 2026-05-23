@@ -423,6 +423,9 @@ class YoRo_Store_Briefing_Service {
 		$window_key           = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( $params['window'] ?? 'today' );
 		$yesterday_window_key = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( $params['yesterday_window'] ?? 'yesterday' );
 		$limit                = isset( $params['limit'] ) ? min( max( absint( $params['limit'] ), 1 ), 5 ) : 5;
+		$language             = ! empty( $params['original_command'] ) && YoRo_Date_Helper::is_likely_vietnamese( $params['original_command'] )
+			? 'vi'
+			: 'en';
 		$today_window         = YoRo_Orders_Read_Service::briefing_get_operations_window( $window_key );
 		$yesterday_window     = YoRo_Orders_Read_Service::briefing_get_operations_window( $yesterday_window_key );
 
@@ -471,7 +474,8 @@ class YoRo_Store_Briefing_Service {
 		$headline = self::build_morning_briefing_headline(
 			$business_context,
 			$briefing_context,
-			$top_priority
+			$top_priority,
+			$language
 		);
 
 		$yesterday_snapshot = [
@@ -516,7 +520,8 @@ class YoRo_Store_Briefing_Service {
 			'assistant_summary'   => self::build_morning_briefing_assistant_summary(
 				$headline,
 				$yesterday_window,
-				$business_metrics
+				$business_metrics,
+				$language
 			),
 			'assistant_followup'  => ! empty( $first_recommended_action['reason'] )
 				? sanitize_text_field( $first_recommended_action['reason'] )
@@ -1559,10 +1564,23 @@ class YoRo_Store_Briefing_Service {
 		];
 	}
 
-	private static function build_morning_briefing_headline( $business_context, $briefing_context, $top_priority ) {
+	private static function build_morning_briefing_headline( $business_context, $briefing_context, $top_priority, $language = 'en' ) {
 		$business_state = sanitize_key( $business_context['state'] ?? '' );
 		$briefing_state = sanitize_key( $briefing_context['state'] ?? '' );
 		$top_message    = sanitize_text_field( $top_priority['message'] ?? '' );
+		$language       = sanitize_key( $language ?: 'en' );
+
+		if ( 'vi' === $language ) {
+			if ( 'positive' === $business_state && in_array( $briefing_state, [ 'high_pressure', 'focused_pressure', 'split_pressure' ], true ) ) {
+				return 'Doanh số hôm qua vẫn ổn, nhưng sáng nay vẫn cần tập trung xử lý một số hàng đợi.';
+			}
+
+			if ( in_array( $briefing_state, [ 'high_pressure', 'focused_pressure' ], true ) ) {
+				return 'Một hàng đợi đang cần ưu tiên hơn các phần còn lại trong sáng nay.';
+			}
+
+			return 'Cửa hàng đang ở trạng thái ổn định sáng nay, nhưng vẫn có vài mục nên kiểm tra trước.';
+		}
 
 		if ( 'positive' === $business_state && in_array( $briefing_state, [ 'high_pressure', 'focused_pressure', 'split_pressure' ], true ) ) {
 			return __( 'Sales held up yesterday, but this morning still needs focused attention.', 'yoro-ai-core' );
@@ -1579,7 +1597,19 @@ class YoRo_Store_Briefing_Service {
 		return __( 'Your store is in a stable place this morning, with a few items worth checking first.', 'yoro-ai-core' );
 	}
 
-	private static function build_morning_briefing_assistant_summary( $headline, $yesterday_window, $business_metrics ) {
+	private static function build_morning_briefing_assistant_summary( $headline, $yesterday_window, $business_metrics, $language = 'en' ) {
+		$language = sanitize_key( $language ?: 'en' );
+
+		if ( 'vi' === $language ) {
+			return sprintf(
+				'%1$s Trong %2$s, cửa hàng có %3$d đơn và %4$s doanh thu gộp.',
+				sanitize_text_field( $headline ),
+				YoRo_Date_Helper::get_window_label( sanitize_key( $yesterday_window['key'] ?? 'yesterday' ), 'vi' ),
+				absint( $business_metrics['order_count'] ?? 0 ),
+				sanitize_text_field( $business_metrics['gross_sales'] ?? '0' )
+			);
+		}
+
 		return sprintf(
 			/* translators: 1: headline, 2: yesterday label, 3: order count, 4: gross sales */
 			__( '%1$s Over %2$s, the store closed with %3$d orders and %4$s in gross sales.', 'yoro-ai-core' ),
