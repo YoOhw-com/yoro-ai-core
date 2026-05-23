@@ -7,8 +7,10 @@
 - Updated runtime preview handling to use `ai_router` parser source.
 - Updated history filtering to focus on active parser sources: rule, guard, ai_router, memory, direct.
 - Restricted test/mock hooks to debug or test mode so release runtime cannot be overridden by fixtures.
+- Made debug tooling optional so release packages can omit development fixtures.
 
 ### Added
+- Release packaging ignore rules for development-only docs and debug test files.
 - AI metadata on action registry entries.
 - Action catalog builder for AI-safe routing to registered actions.
 - Strict Command Decision schema and normalizer for AI router output.

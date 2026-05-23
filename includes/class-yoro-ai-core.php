@@ -151,9 +151,19 @@ class YoRo_AI_Core {
 			return;
 		}
 
-		require_once YORO_AI_CORE_PATH . 'includes/dev/class-yoro-trace-review-formatter.php';
-		require_once YORO_AI_CORE_PATH . 'includes/dev/class-yoro-real-command-eval-pack.php';
-		require_once YORO_AI_CORE_PATH . 'includes/dev/class-yoro-parser-test-suite.php';
+		foreach (
+			[
+				'includes/dev/class-yoro-trace-review-formatter.php',
+				'includes/dev/class-yoro-real-command-eval-pack.php',
+				'includes/dev/class-yoro-parser-test-suite.php',
+			] as $dev_file
+		) {
+			$path = YORO_AI_CORE_PATH . $dev_file;
+
+			if ( is_readable( $path ) ) {
+				require_once $path;
+			}
+		}
 	}
 
 	private static function include_rest() {
