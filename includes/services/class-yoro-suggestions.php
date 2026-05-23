@@ -507,9 +507,9 @@ class YoRo_Suggestions {
 			return [];
 		}
 
-		$prompt = self::build_ai_suggestion_prompt( $action, $result, $parsed, $context );
+		$payload = self::build_ai_suggestion_payload( $action, $result, $parsed, $context );
 
-		$response = YoRo_AI_Parser::parse_freeform( $prompt );
+		$response = YoRo_AI_Parser::generate_suggestions( $payload );
 
 		if ( is_wp_error( $response ) || empty( $response ) ) {
 			return [];
@@ -576,8 +576,13 @@ class YoRo_Suggestions {
 			: false;
 	}
 
-	private static function build_ai_suggestion_prompt( $action, $result, $parsed, $context ) {
-		return YoRo_AI_Suggestions_Prompt::build( $action );
+	private static function build_ai_suggestion_payload( $action, $result, $parsed, $context ) {
+		return [
+			'action'         => sanitize_text_field( $action ),
+			'prompt'         => sanitize_text_field( $action ),
+			'site_url'       => home_url(),
+			'plugin_version' => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+		];
 	}
 
 	private static function normalize_suggestions( $suggestions ) {

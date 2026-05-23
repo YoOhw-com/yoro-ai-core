@@ -15,9 +15,9 @@ class YoRo_AI_Workflow_Planner {
 			return null;
 		}
 
-		$prompt = self::build_prompt( $command, $client_context );
+		$payload = self::build_payload( $command, $client_context );
 
-		$response = YoRo_AI_Parser::parse_workflow_plan( $prompt );
+		$response = YoRo_AI_Parser::parse_workflow_plan( $payload );
 
 		if ( is_wp_error( $response ) || empty( $response ) ) {
 			return null;
@@ -57,7 +57,7 @@ class YoRo_AI_Workflow_Planner {
 		return $parsed;
 	}
 
-	private static function build_prompt( $command, $client_context = [] ) {
+	private static function build_payload( $command, $client_context = [] ) {
 		$actions = [];
 		$scope = self::detect_workflow_scope( $command, $client_context );
 		$allowed_action_names = self::get_allowed_actions_for_scope( $scope );
@@ -107,51 +107,30 @@ class YoRo_AI_Workflow_Planner {
 			)
 		);
 
-		return YoRo_AI_Workflow_Prompt::build(
-			[
-				'instruction' => 'Build a safe WooCommerce workflow plan. Return JSON only. Never invent actions. Use only available_actions. Do not use actions outside allowed_action_names. Follow action_dependency_rules strictly. Use condition_rules when a later step depends on captured context from previous steps. If an action requires context from a previous action, ensure the workflow includes the required previous step and capture flow. Prefer read-only steps before write steps. Never generate semantically incomplete workflows. For uncertain or risky commands, set matched=false.',
-				'command' => $command,
-				'workflow_scope' => $scope,
-				'allowed_action_names' => $allowed_action_names,
-				'context' => [
-					'order_id'  => $context_order_id,
-					'order_ids' => $context_order_ids,
-				],
-				'client_context' => [
-					'current_order_id'         => absint( $client_context['current_order_id'] ?? 0 ),
-					'last_referenced_order_id' => absint( $client_context['last_referenced_order_id'] ?? 0 ),
-					'last_order_ids'           => isset( $client_context['last_order_ids'] ) && is_array( $client_context['last_order_ids'] )
-						? array_values( array_map( 'absint', $client_context['last_order_ids'] ) )
-						: [],
-					'resolved_order_ids'       => isset( $client_context['resolved_order_ids'] ) && is_array( $client_context['resolved_order_ids'] )
-						? array_values( array_map( 'absint', $client_context['resolved_order_ids'] ) )
-						: [],
-				],
-				'available_actions' => $actions,
-				'action_dependency_rules' => self::get_action_dependency_rules(),
-				'condition_rules' => self::get_condition_rules(),
-				'output_schema' => [
-					'matched' => 'boolean',
-					'confidence' => 'number 0..1',
-					'reason' => 'string',
-					'workflow_label' => 'string',
-					'actions' => [
-						[
-							'id' => 'string',
-							'label' => 'string',
-							'action' => 'registered action name',
-							'params' => 'object',
-							'when' => 'object optional',
-							'capture' => 'object optional',
-							'on_error' => 'stop|continue|rollback|skip_remaining',
-							'retry' => [
-								'max_attempts' => 'integer 1..3',
-							],
-						],
-					],
-				],
-			]
-		);
+		return [
+			'command'                 => $command,
+			'site_url'                => home_url(),
+			'plugin_version'          => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+			'workflow_scope'          => $scope,
+			'allowed_action_names'    => $allowed_action_names,
+			'context'                 => [
+				'order_id'  => $context_order_id,
+				'order_ids' => $context_order_ids,
+			],
+			'client_context'          => [
+				'current_order_id'         => absint( $client_context['current_order_id'] ?? 0 ),
+				'last_referenced_order_id' => absint( $client_context['last_referenced_order_id'] ?? 0 ),
+				'last_order_ids'           => isset( $client_context['last_order_ids'] ) && is_array( $client_context['last_order_ids'] )
+					? array_values( array_map( 'absint', $client_context['last_order_ids'] ) )
+					: [],
+				'resolved_order_ids'       => isset( $client_context['resolved_order_ids'] ) && is_array( $client_context['resolved_order_ids'] )
+					? array_values( array_map( 'absint', $client_context['resolved_order_ids'] ) )
+					: [],
+			],
+			'available_actions'       => $actions,
+			'action_dependency_rules' => self::get_action_dependency_rules(),
+			'condition_rules'         => self::get_condition_rules(),
+		];
 	}
 
 	private static function normalize_ai_plan( $data, $command, $client_context = [] ) {

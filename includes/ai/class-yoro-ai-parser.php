@@ -25,16 +25,14 @@ class YoRo_AI_Parser {
 		);
 	}
 
-	public static function parse_freeform( $prompt ) {
+	public static function generate_suggestions( array $payload ) {
 		return YoRo_AI_Provider_Resolver::get_client()->generate_suggestions(
-			[
-				'prompt' => $prompt,
-			]
+			$payload
 		);
 	}
 
-	public static function parse_workflow_plan( $prompt ) {
-		return self::parse_workflow_plan_yoro_ai_api( $prompt );
+	public static function parse_workflow_plan( array $payload ) {
+		return self::parse_workflow_plan_yoro_ai_api( $payload );
 	}
 
 	public static function parse_action_decomposition( array $payload ) {
@@ -113,7 +111,7 @@ class YoRo_AI_Parser {
 			'shipping_complete'   => $shipping_complete,
 			'ready_to_fulfill'    => $ready_to_fulfill,
 			'fulfillment_state'   => $fulfillment_state,
-			'fulfillment_guidance'=> [
+			'fulfillment_guidance' => [
 				'tracking_available' => 'Safe to say the package has shipped or is on the way. You may mention tracking updates.',
 				'pre_shipment'       => 'Do not say shipped, dispatched, handed to carrier, or on the way. Use wording like being prepared for shipment or will ship soon.',
 				'not_ready_to_fulfill' => 'Avoid promising dispatch timing. Explain the order is still being prepared or reviewed before shipment.',
@@ -123,7 +121,12 @@ class YoRo_AI_Parser {
 		];
 
 		$trace_id = self::generate_trace_id();
-		$payload = YoRo_AI_Email_Prompt::build( $order_context, $instruction );
+		$payload = [
+			'instruction'    => (string) $instruction,
+			'site_url'       => home_url(),
+			'plugin_version' => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+			'order_context'  => $order_context,
+		];
 		$result  = YoRo_AI_Provider_Resolver::get_client()->compose_email( $payload );
 
 		if ( is_wp_error( $result ) ) {
@@ -242,16 +245,7 @@ class YoRo_AI_Parser {
 		}
 	}
 
-	private static function parse_workflow_plan_yoro_ai_api( $prompt ) {
-		$payload = json_decode( (string) $prompt, true );
-
-		if ( ! is_array( $payload ) ) {
-			return new WP_Error(
-				'yoro_ai_workflow_invalid_payload',
-				__( 'I could not prepare a workflow planning request.', 'yoro-ai-core' )
-			);
-		}
-
+	private static function parse_workflow_plan_yoro_ai_api( array $payload ) {
 		$client = YoRo_AI_Provider_Resolver::get_client();
 
 		if ( ! $client instanceof YoRo_AI_API_Client ) {

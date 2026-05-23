@@ -20,6 +20,7 @@
 ### Removed
 - Local third-party AI direct support from plugin settings and runtime.
 - Local command-router prompt runtime from the plugin.
+- Plugin-side prompt builder classes for workflow, email, and suggestions.
 - Pre-release API compatibility aliases and settings migration code.
 - Pre-release table/option migration code.
 

@@ -53,9 +53,6 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-router-decision-validator.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-router-context-decision-hydrator.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-inferred-action-param-normalizer.php';
-		require_once YORO_AI_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-workflow-prompt.php';
-		require_once YORO_AI_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-email-prompt.php';
-		require_once YORO_AI_CORE_PATH . 'includes/ai/prompts/class-yoro-ai-suggestions-prompt.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-workflow-result-normalizer.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/normalizers/class-yoro-ai-email-result-normalizer.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-parser.php';

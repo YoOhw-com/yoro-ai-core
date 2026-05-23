@@ -476,10 +476,6 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	}
 
 	private function build_workflow_plan_payload( array $payload ) {
-		if ( isset( $payload['input'] ) && is_array( $payload['input'] ) ) {
-			$payload = $this->extract_user_payload( $payload );
-		}
-
 		return [
 			'command'                 => sanitize_textarea_field( $payload['command'] ?? '' ),
 			'site_url'                => esc_url_raw( $payload['site_url'] ?? home_url() ),
@@ -507,10 +503,6 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	}
 
 	private function build_email_compose_payload( array $payload ) {
-		if ( isset( $payload['input'] ) && is_array( $payload['input'] ) ) {
-			$payload = $this->extract_user_payload( $payload );
-		}
-
 		return [
 			'instruction'    => sanitize_textarea_field( $payload['instruction'] ?? '' ),
 			'site_url'       => esc_url_raw( $payload['site_url'] ?? home_url() ),
@@ -522,17 +514,8 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	}
 
 	private function build_suggestions_payload( array $payload ) {
-		$prompt = isset( $payload['prompt'] ) ? (string) $payload['prompt'] : '';
-
-		if ( '' === trim( $prompt ) && isset( $payload['input'] ) && is_array( $payload['input'] ) ) {
-			$prompt = $this->extract_user_content( $payload );
-		}
-
 		$action = isset( $payload['action'] ) ? sanitize_text_field( $payload['action'] ) : '';
-
-		if ( '' === $action ) {
-			$action = $this->extract_action_from_suggestions_prompt( $prompt );
-		}
+		$prompt = isset( $payload['prompt'] ) ? (string) $payload['prompt'] : $action;
 
 		return [
 			'prompt'         => sanitize_textarea_field( $prompt ),
@@ -540,51 +523,6 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'site_url'       => esc_url_raw( $payload['site_url'] ?? home_url() ),
 			'plugin_version' => sanitize_text_field( $payload['plugin_version'] ?? ( defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '' ) ),
 		];
-	}
-
-	private function extract_user_payload( array $payload ) {
-		$input = isset( $payload['input'] ) && is_array( $payload['input'] )
-			? $payload['input']
-			: [];
-
-		foreach ( $input as $message ) {
-			if ( ! is_array( $message ) || 'user' !== ( $message['role'] ?? '' ) ) {
-				continue;
-			}
-
-			$content = isset( $message['content'] ) ? (string) $message['content'] : '';
-			$decoded = json_decode( $content, true );
-
-			if ( is_array( $decoded ) ) {
-				return $decoded;
-			}
-		}
-
-		return [];
-	}
-
-	private function extract_user_content( array $payload ) {
-		$input = isset( $payload['input'] ) && is_array( $payload['input'] )
-			? $payload['input']
-			: [];
-
-		foreach ( $input as $message ) {
-			if ( ! is_array( $message ) || 'user' !== ( $message['role'] ?? '' ) ) {
-				continue;
-			}
-
-			return isset( $message['content'] ) ? (string) $message['content'] : '';
-		}
-
-		return '';
-	}
-
-	private function extract_action_from_suggestions_prompt( $prompt ) {
-		if ( preg_match( '/^Action:\s*(.+)$/mi', (string) $prompt, $matches ) ) {
-			return sanitize_text_field( trim( $matches[1] ) );
-		}
-
-		return '';
 	}
 
 	private function build_route_endpoint_url( $api_url ) {
