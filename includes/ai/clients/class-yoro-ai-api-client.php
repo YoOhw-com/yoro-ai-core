@@ -464,7 +464,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'command'        => sanitize_textarea_field( $payload['command'] ?? '' ),
 			'site_url'       => esc_url_raw( $payload['site_url'] ?? home_url() ),
 			'plugin_version' => sanitize_text_field( $payload['plugin_version'] ?? ( defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '' ) ),
-			'language_context' => $this->build_language_context( $payload ),
+			'language_context' => $this->build_command_route_language_context( $payload ),
 			'context'        => isset( $payload['context'] ) && is_array( $payload['context'] )
 				? $payload['context']
 				: [],
@@ -549,6 +549,20 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'user_locale'        => $user_locale,
 			'preferred_language' => $preferred_language ?: 'en',
 		];
+	}
+
+	private function build_command_route_language_context( array $payload = [] ) {
+		$context = $this->build_language_context( $payload );
+		$incoming = isset( $payload['language_context'] ) && is_array( $payload['language_context'] )
+			? $payload['language_context']
+			: [];
+		$has_explicit_preference = isset( $incoming['preferred_language'] ) || isset( $payload['preferred_language'] );
+
+		if ( ! $has_explicit_preference ) {
+			$context['preferred_language'] = '';
+		}
+
+		return $context;
 	}
 
 	private function language_from_locale( $locale ) {
