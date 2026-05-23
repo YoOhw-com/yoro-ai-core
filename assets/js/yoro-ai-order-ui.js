@@ -129,99 +129,425 @@
 		return text;
 	}
 
-	function getResultLocale(data) {
-		data = data || {};
-		const parsed = data.parsed || {};
-		const result = data.result || {};
-		const decision = parsed.command_decision || {};
-		const language = String(parsed.language || decision.language || result.language || '').toLowerCase();
-		const locale = String(parsed.locale || result.locale || '').toLowerCase();
+		function getResultLocale(data) {
+			data = data || {};
+			const parsed = data.parsed || {};
+			const result = data.result || {};
+			const decision = parsed.command_decision || {};
+			const language = String(parsed.language || decision.language || result.language || '').toLowerCase();
+			const locale = String(parsed.locale || result.locale || '').toLowerCase();
+			const detected = normalizeLocale(language || locale);
 
-		if (language.indexOf('vi') === 0 || locale.indexOf('vi') === 0) {
-			return 'vi';
+			return detected || 'en';
 		}
 
-		return 'en';
-	}
-
-	function isVietnamese(locale) {
-		return String(locale || '').toLowerCase().indexOf('vi') === 0;
-	}
-
-	function orderUiText(locale, key, fallback) {
-		if (!isVietnamese(locale)) {
-			return fallback;
+		function isVietnamese(locale) {
+			return String(locale || '').toLowerCase().indexOf('vi') === 0;
 		}
 
-		const labels = {
-			orders: 'Đơn hàng',
-			needsAttention: 'Cần chú ý',
-			needsAttentionSubtle: 'Đang chờ xử lý, tạm giữ hoặc thất bại',
-			combinedTotal: 'Tổng cộng',
-			combinedTotalSubtle: 'Trong các kết quả đang hiển thị',
-			averageAge: 'Tuổi trung bình',
-			visibleResults: 'Kết quả đang hiển thị',
-			hold: 'Tạm giữ',
-			viewDetails: 'Xem chi tiết',
-			addNote: 'Thêm ghi chú',
-			updateStatus: 'Cập nhật trạng thái',
-			statusNote: 'Trạng thái + ghi chú',
-			order: 'Đơn',
-			customer: 'Khách hàng',
-			case: 'Trường hợp',
-			total: 'Tổng',
-			age: 'Tuổi',
-			nextAction: 'Hành động tiếp theo',
-			actions: 'Hành động',
-			open: 'Mở',
-			compareDetails: 'So sánh chi tiết',
-			showFirstOrder: 'Xem đơn đầu tiên',
-			customerSummary: 'Tóm tắt khách hàng',
-			showSourceOrder: 'Xem đơn gốc',
-			latestFiveOrders: '5 đơn gần nhất',
-			whatNext: 'Tiếp theo nên làm gì',
-			noVisibleOrders: 'Không có đơn hiển thị',
-			tryWiderFilters: 'Thử mở rộng bộ lọc hoặc xem danh sách đơn gần đây rộng hơn.',
-			tryNext: 'Thử tiếp',
-			decisionRoute: 'Tuyến quyết định',
-			confidence: 'Độ tin cậy',
-			orderReview: 'Cần xem lại đơn hàng',
-			customerFallback: 'Khách hàng'
-		};
-
-		return labels[key] || fallback;
-	}
-
-	function orderCountLabel(count, locale) {
-		count = parseInt(count || 0, 10) || 0;
-
-		if (isVietnamese(locale)) {
-			return count + ' đơn';
+		function normalizeLocale(locale) {
+			return String(locale || '').toLowerCase().split(/[_-]/)[0] || '';
 		}
 
-		return count + ' order' + (count === 1 ? '' : 's');
-	}
+		function orderUiText(locale, key, fallback) {
+			locale = normalizeLocale(locale);
+			const labelsByLocale = {
+				vi: {
+					orders: 'Đơn hàng',
+					needsAttention: 'Cần chú ý',
+					needsAttentionSubtle: 'Đang chờ xử lý, tạm giữ hoặc thất bại',
+					combinedTotal: 'Tổng cộng',
+					combinedTotalSubtle: 'Trong các kết quả đang hiển thị',
+					averageAge: 'Tuổi trung bình',
+					visibleResults: 'Kết quả đang hiển thị',
+					hold: 'Tạm giữ',
+					viewDetails: 'Xem chi tiết',
+					addNote: 'Thêm ghi chú',
+					updateStatus: 'Cập nhật trạng thái',
+					statusNote: 'Trạng thái + ghi chú',
+					order: 'Đơn',
+					customer: 'Khách hàng',
+					case: 'Trường hợp',
+					total: 'Tổng',
+					age: 'Tuổi',
+					nextAction: 'Hành động tiếp theo',
+					actions: 'Hành động',
+					open: 'Mở',
+					compareDetails: 'So sánh chi tiết',
+					showFirstOrder: 'Xem đơn đầu tiên',
+					customerSummary: 'Tóm tắt khách hàng',
+					showSourceOrder: 'Xem đơn gốc',
+					latestFiveOrders: '5 đơn gần nhất',
+					whatNext: 'Tiếp theo nên làm gì',
+					noVisibleOrders: 'Không có đơn hiển thị',
+					tryWiderFilters: 'Thử mở rộng bộ lọc hoặc xem danh sách đơn gần đây rộng hơn.',
+					tryNext: 'Thử tiếp',
+					decisionRoute: 'Tuyến quyết định',
+					confidence: 'Độ tin cậy',
+					orderReview: 'Cần xem lại đơn hàng',
+					customerFallback: 'Khách hàng'
+				},
+				es: {
+					orders: 'Pedidos',
+					recentMatching: 'Pedidos coincidentes recientes',
+					recentMatchingSubtle: 'Los pedidos coincidentes recientes se muestran abajo.',
+					needsAttention: 'Necesitan atención',
+					needsAttentionSubtle: 'Pendientes, en espera o fallidos',
+					combinedTotal: 'Total combinado',
+					combinedTotalSubtle: 'En los resultados visibles',
+					averageAge: 'Antigüedad media',
+					visibleResults: 'Resultados visibles',
+					hold: 'Poner en espera',
+					viewDetails: 'Ver detalles',
+					addNote: 'Añadir nota',
+					updateStatus: 'Actualizar estado',
+					statusNote: 'Estado + nota',
+					order: 'Pedido',
+					customer: 'Cliente',
+					case: 'Caso',
+					total: 'Total',
+					age: 'Antigüedad',
+					nextAction: 'Siguiente acción',
+					actions: 'Acciones',
+					open: 'Abrir',
+					showFirstOrder: 'Ver primer pedido',
+					latestFiveOrders: 'Últimos 5 pedidos',
+					whatNext: 'Qué hacer ahora',
+					orderReview: 'Revisión del pedido',
+					customerFallback: 'Cliente'
+				},
+				fr: {
+					orders: 'Commandes',
+					recentMatching: 'Commandes correspondantes récentes',
+					recentMatchingSubtle: 'Les commandes correspondantes récentes sont listées ci-dessous.',
+					needsAttention: 'À traiter',
+					needsAttentionSubtle: 'En attente, en pause ou échouées',
+					combinedTotal: 'Total combiné',
+					combinedTotalSubtle: 'Dans les résultats visibles',
+					averageAge: 'Âge moyen',
+					visibleResults: 'Résultats visibles',
+					hold: 'Mettre en pause',
+					viewDetails: 'Voir les détails',
+					addNote: 'Ajouter une note',
+					updateStatus: 'Mettre à jour le statut',
+					statusNote: 'Statut + note',
+					order: 'Commande',
+					customer: 'Client',
+					case: 'Cas',
+					total: 'Total',
+					age: 'Âge',
+					nextAction: 'Action suivante',
+					actions: 'Actions',
+					open: 'Ouvrir',
+					showFirstOrder: 'Voir la première commande',
+					latestFiveOrders: '5 dernières commandes',
+					whatNext: 'Que faire ensuite',
+					orderReview: 'Revue de commande'
+				},
+				de: {
+					orders: 'Bestellungen',
+					recentMatching: 'Aktuelle passende Bestellungen',
+					recentMatchingSubtle: 'Die aktuell passenden Bestellungen sind unten aufgeführt.',
+					needsAttention: 'Benötigt Aufmerksamkeit',
+					needsAttentionSubtle: 'Ausstehend, zurückgestellt oder fehlgeschlagen',
+					combinedTotal: 'Gesamtsumme',
+					combinedTotalSubtle: 'In den sichtbaren Ergebnissen',
+					averageAge: 'Durchschnittsalter',
+					visibleResults: 'Sichtbare Ergebnisse',
+					hold: 'Zurückstellen',
+					viewDetails: 'Details ansehen',
+					addNote: 'Notiz hinzufügen',
+					updateStatus: 'Status aktualisieren',
+					statusNote: 'Status + Notiz',
+					order: 'Bestellung',
+					customer: 'Kunde',
+					case: 'Fall',
+					total: 'Summe',
+					age: 'Alter',
+					nextAction: 'Nächste Aktion',
+					actions: 'Aktionen',
+					open: 'Öffnen',
+					showFirstOrder: 'Erste Bestellung anzeigen',
+					latestFiveOrders: 'Letzte 5 Bestellungen',
+					whatNext: 'Nächste Schritte',
+					orderReview: 'Bestellprüfung'
+				},
+				ja: {
+					orders: '注文',
+					recentMatching: '最近一致した注文',
+					recentMatchingSubtle: '最近一致した注文を下に表示します。',
+					needsAttention: '要対応',
+					needsAttentionSubtle: '保留中、保留、または失敗',
+					combinedTotal: '合計',
+					combinedTotalSubtle: '表示中の結果',
+					averageAge: '平均経過時間',
+					visibleResults: '表示中の結果',
+					hold: '保留にする',
+					viewDetails: '詳細を見る',
+					addNote: 'メモを追加',
+					updateStatus: 'ステータス更新',
+					statusNote: 'ステータス + メモ',
+					order: '注文',
+					customer: '顧客',
+					case: '内容',
+					total: '合計',
+					age: '経過時間',
+					nextAction: '次の操作',
+					actions: '操作',
+					open: '開く',
+					showFirstOrder: '最初の注文を見る',
+					latestFiveOrders: '最新5件の注文',
+					whatNext: '次にできること',
+					orderReview: '注文確認'
+				},
+				th: {
+					orders: 'คำสั่งซื้อ',
+					recentMatching: 'คำสั่งซื้อที่ตรงกันล่าสุด',
+					recentMatchingSubtle: 'คำสั่งซื้อที่ตรงกันล่าสุดแสดงอยู่ด้านล่าง',
+					needsAttention: 'ต้องตรวจสอบ',
+					needsAttentionSubtle: 'รอดำเนินการ พักไว้ หรือล้มเหลว',
+					combinedTotal: 'ยอดรวม',
+					combinedTotalSubtle: 'ในผลลัพธ์ที่แสดง',
+					averageAge: 'อายุเฉลี่ย',
+					visibleResults: 'ผลลัพธ์ที่แสดง',
+					hold: 'พักไว้',
+					viewDetails: 'ดูรายละเอียด',
+					addNote: 'เพิ่มบันทึก',
+					updateStatus: 'อัปเดตสถานะ',
+					statusNote: 'สถานะ + บันทึก',
+					order: 'คำสั่งซื้อ',
+					customer: 'ลูกค้า',
+					case: 'กรณี',
+					total: 'ยอดรวม',
+					age: 'อายุ',
+					nextAction: 'การดำเนินการถัดไป',
+					actions: 'การดำเนินการ',
+					open: 'เปิด',
+					showFirstOrder: 'ดูคำสั่งซื้อแรก',
+					latestFiveOrders: '5 คำสั่งซื้อล่าสุด',
+					whatNext: 'ขั้นตอนถัดไป',
+					orderReview: 'ตรวจสอบคำสั่งซื้อ'
+				},
+				id: {
+					orders: 'Pesanan',
+					recentMatching: 'Pesanan terbaru yang cocok',
+					recentMatchingSubtle: 'Pesanan terbaru yang cocok ditampilkan di bawah.',
+					needsAttention: 'Perlu perhatian',
+					needsAttentionSubtle: 'Tertunda, ditahan, atau gagal',
+					combinedTotal: 'Total gabungan',
+					combinedTotalSubtle: 'Dalam hasil yang terlihat',
+					averageAge: 'Usia rata-rata',
+					visibleResults: 'Hasil yang terlihat',
+					hold: 'Tahan',
+					viewDetails: 'Lihat detail',
+					addNote: 'Tambah catatan',
+					updateStatus: 'Perbarui status',
+					statusNote: 'Status + catatan',
+					order: 'Pesanan',
+					customer: 'Pelanggan',
+					case: 'Kasus',
+					total: 'Total',
+					age: 'Usia',
+					nextAction: 'Tindakan berikutnya',
+					actions: 'Tindakan',
+					open: 'Buka',
+					showFirstOrder: 'Lihat pesanan pertama',
+					latestFiveOrders: '5 pesanan terbaru',
+					whatNext: 'Langkah berikutnya',
+					orderReview: 'Tinjauan pesanan'
+				},
+				pt: {
+					orders: 'Pedidos',
+					recentMatching: 'Pedidos correspondentes recentes',
+					recentMatchingSubtle: 'Os pedidos correspondentes recentes aparecem abaixo.',
+					needsAttention: 'Precisam de atenção',
+					needsAttentionSubtle: 'Pendentes, em espera ou falhados',
+					combinedTotal: 'Total combinado',
+					combinedTotalSubtle: 'Nos resultados visíveis',
+					averageAge: 'Idade média',
+					visibleResults: 'Resultados visíveis',
+					hold: 'Colocar em espera',
+					viewDetails: 'Ver detalhes',
+					addNote: 'Adicionar nota',
+					updateStatus: 'Atualizar estado',
+					statusNote: 'Estado + nota',
+					order: 'Pedido',
+					customer: 'Cliente',
+					case: 'Caso',
+					total: 'Total',
+					age: 'Idade',
+					nextAction: 'Próxima ação',
+					actions: 'Ações',
+					open: 'Abrir',
+					showFirstOrder: 'Ver primeiro pedido',
+					latestFiveOrders: 'Últimos 5 pedidos',
+					whatNext: 'Próximos passos',
+					orderReview: 'Revisão do pedido'
+				},
+				ar: {
+					orders: 'الطلبات',
+					recentMatching: 'الطلبات المطابقة الأخيرة',
+					recentMatchingSubtle: 'تظهر الطلبات المطابقة الأخيرة أدناه.',
+					needsAttention: 'تحتاج إلى مراجعة',
+					needsAttentionSubtle: 'معلقة أو قيد الانتظار أو فاشلة',
+					combinedTotal: 'الإجمالي',
+					combinedTotalSubtle: 'ضمن النتائج الظاهرة',
+					averageAge: 'متوسط العمر',
+					visibleResults: 'النتائج الظاهرة',
+					hold: 'تعليق',
+					viewDetails: 'عرض التفاصيل',
+					addNote: 'إضافة ملاحظة',
+					updateStatus: 'تحديث الحالة',
+					statusNote: 'الحالة + ملاحظة',
+					order: 'الطلب',
+					customer: 'العميل',
+					case: 'الحالة',
+					total: 'الإجمالي',
+					age: 'العمر',
+					nextAction: 'الإجراء التالي',
+					actions: 'الإجراءات',
+					open: 'فتح',
+					showFirstOrder: 'عرض الطلب الأول',
+					latestFiveOrders: 'آخر 5 طلبات',
+					whatNext: 'الخطوة التالية',
+					orderReview: 'مراجعة الطلب'
+				}
+			};
+			const labels = labelsByLocale[locale] || {};
 
-	function orderStatusLabel(status, locale) {
-		status = String(status || '').trim();
-
-		if (!isVietnamese(locale)) {
-			return status;
+			return labels[key] || fallback;
 		}
 
-		const labels = {
-			pending: 'đang chờ xử lý',
-			processing: 'đang xử lý',
-			completed: 'hoàn tất',
-			'on-hold': 'tạm giữ',
-			cancelled: 'đã hủy',
-			canceled: 'đã hủy',
-			refunded: 'đã hoàn tiền',
-			failed: 'thất bại'
-		};
+		function orderCountLabel(count, locale) {
+			count = parseInt(count || 0, 10) || 0;
+			locale = normalizeLocale(locale);
 
-		return labels[status] || status.replace(/-/g, ' ');
-	}
+			if (isVietnamese(locale)) {
+				return count + ' đơn';
+			}
+
+			const nouns = {
+				es: ['pedido', 'pedidos'],
+				fr: ['commande', 'commandes'],
+				de: ['Bestellung', 'Bestellungen'],
+				ja: ['件の注文', '件の注文'],
+				th: ['คำสั่งซื้อ', 'คำสั่งซื้อ'],
+				id: ['pesanan', 'pesanan'],
+				pt: ['pedido', 'pedidos'],
+				ar: ['طلب', 'طلبات']
+			};
+
+			if (locale === 'ja') {
+				return count + nouns.ja[1];
+			}
+
+			if (nouns[locale]) {
+				return count + ' ' + (count === 1 ? nouns[locale][0] : nouns[locale][1]);
+			}
+
+			return count + ' order' + (count === 1 ? '' : 's');
+		}
+
+		function orderStatusLabel(status, locale) {
+			status = String(status || '').trim();
+			locale = normalizeLocale(locale);
+
+			const labelsByLocale = {
+				vi: {
+					pending: 'đang chờ xử lý',
+					processing: 'đang xử lý',
+					completed: 'hoàn tất',
+					'on-hold': 'tạm giữ',
+					cancelled: 'đã hủy',
+					canceled: 'đã hủy',
+					refunded: 'đã hoàn tiền',
+					failed: 'thất bại'
+				},
+				es: {
+					pending: 'pendiente',
+					processing: 'en proceso',
+					completed: 'completado',
+					'on-hold': 'en espera',
+					cancelled: 'cancelado',
+					canceled: 'cancelado',
+					refunded: 'reembolsado',
+					failed: 'fallido'
+				},
+				fr: {
+					pending: 'en attente',
+					processing: 'en traitement',
+					completed: 'terminée',
+					'on-hold': 'en pause',
+					cancelled: 'annulée',
+					canceled: 'annulée',
+					refunded: 'remboursée',
+					failed: 'échouée'
+				},
+				de: {
+					pending: 'ausstehend',
+					processing: 'in Bearbeitung',
+					completed: 'abgeschlossen',
+					'on-hold': 'zurückgestellt',
+					cancelled: 'storniert',
+					canceled: 'storniert',
+					refunded: 'erstattet',
+					failed: 'fehlgeschlagen'
+				},
+				ja: {
+					pending: '保留中',
+					processing: '処理中',
+					completed: '完了済み',
+					'on-hold': '保留',
+					cancelled: 'キャンセル済み',
+					canceled: 'キャンセル済み',
+					refunded: '返金済み',
+					failed: '失敗'
+				},
+				th: {
+					pending: 'รอดำเนินการ',
+					processing: 'กำลังประมวลผล',
+					completed: 'เสร็จสมบูรณ์',
+					'on-hold': 'พักไว้',
+					cancelled: 'ยกเลิกแล้ว',
+					canceled: 'ยกเลิกแล้ว',
+					refunded: 'คืนเงินแล้ว',
+					failed: 'ล้มเหลว'
+				},
+				id: {
+					pending: 'tertunda',
+					processing: 'sedang diproses',
+					completed: 'selesai',
+					'on-hold': 'ditahan',
+					cancelled: 'dibatalkan',
+					canceled: 'dibatalkan',
+					refunded: 'dikembalikan',
+					failed: 'gagal'
+				},
+				pt: {
+					pending: 'pendente',
+					processing: 'em processamento',
+					completed: 'concluído',
+					'on-hold': 'em espera',
+					cancelled: 'cancelado',
+					canceled: 'cancelado',
+					refunded: 'reembolsado',
+					failed: 'falhado'
+				},
+				ar: {
+					pending: 'معلق',
+					processing: 'قيد المعالجة',
+					completed: 'مكتمل',
+					'on-hold': 'قيد الانتظار',
+					cancelled: 'ملغى',
+					canceled: 'ملغى',
+					refunded: 'مسترد',
+					failed: 'فاشل'
+				}
+			};
+			const labels = labelsByLocale[locale] || {};
+
+			return labels[status] || status.replace(/-/g, ' ');
+		}
 
 	function paymentMethodLabel(method, locale) {
 		method = String(method || '').trim();
@@ -688,7 +1014,7 @@
 		const assumption = result.meta && result.meta.assumption ? result.meta.assumption : null;
 		let html = '<div class="yoro-result-notice yoro-result-success">';
 
-		if (result.assistant_summary) {
+		if (result.assistant_summary && result.assistant_summary !== result.summary) {
 			html += '<p>' + h.escapeHtml(result.assistant_summary) + '</p>';
 		}
 
@@ -888,14 +1214,14 @@
 			};
 		}
 
-		return {
-			title: isVietnamese(locale) ? 'Đơn hàng' : 'Orders',
-			meta: isVietnamese(locale) ? 'Các đơn phù hợp gần đây' : 'Most recent matching orders',
-			summary: result.summary || (isVietnamese(locale) ? ('Tìm thấy ' + orders.length + ' đơn.') : ('Found ' + orders.length + ' orders.')),
-			subtle: isVietnamese(locale) ? 'Các đơn phù hợp gần đây được liệt kê bên dưới.' : 'The most recent matching orders are listed below.',
-			metricSubtle: isVietnamese(locale) ? 'Hiển thị trong danh sách này' : 'Visible in this list'
-		};
-	}
+			return {
+				title: orderUiText(locale, 'orders', isVietnamese(locale) ? 'Đơn hàng' : 'Orders'),
+				meta: orderUiText(locale, 'recentMatching', isVietnamese(locale) ? 'Các đơn phù hợp gần đây' : 'Most recent matching orders'),
+				summary: result.summary || (isVietnamese(locale) ? ('Tìm thấy ' + orders.length + ' đơn.') : ('Found ' + orders.length + ' orders.')),
+				subtle: orderUiText(locale, 'recentMatchingSubtle', isVietnamese(locale) ? 'Các đơn phù hợp gần đây được liệt kê bên dưới.' : 'The most recent matching orders are listed below.'),
+				metricSubtle: orderUiText(locale, 'visibleResults', isVietnamese(locale) ? 'Hiển thị trong danh sách này' : 'Visible in this list')
+			};
+		}
 
 	function buildOrdersListCaseLabel(order, action, locale) {
 		if (action === 'orders.find_by_identity') {

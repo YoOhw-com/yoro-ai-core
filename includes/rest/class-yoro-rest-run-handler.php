@@ -241,6 +241,7 @@ class YoRo_REST_Run_Handler {
 		}
 
 		$parsed = YoRo_Intent_Router::resolve_action( $parsed );
+		$parsed = self::attach_response_language_to_parsed_params( $parsed );
 
 		if ( empty( $parsed['action'] ) ) {
 			return new WP_Error(
@@ -730,6 +731,29 @@ class YoRo_REST_Run_Handler {
 				'ai_total_ms'      => $telemetry['ai']['total_ms'],
 			]
 		);
+	}
+
+	private static function attach_response_language_to_parsed_params( $parsed ) {
+		if ( ! is_array( $parsed ) ) {
+			return $parsed;
+		}
+
+		$language = sanitize_key(
+			$parsed['language']
+				?? ( $parsed['command_decision']['language'] ?? '' )
+		);
+
+		if ( '' === $language ) {
+			return $parsed;
+		}
+
+		if ( empty( $parsed['params'] ) || ! is_array( $parsed['params'] ) ) {
+			$parsed['params'] = [];
+		}
+
+		$parsed['params']['response_language'] = $language;
+
+		return $parsed;
 	}
 
 	private static function attach_telemetry_to_response( $response, $trace_id, $parsed, $plan, $runtime, $request_started_at, $timings ) {

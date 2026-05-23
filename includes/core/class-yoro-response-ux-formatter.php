@@ -50,7 +50,7 @@ class YoRo_Response_UX_Formatter {
 	public static function order_search_summary( $mode, $count, $params = [], $resolved_window = [], $source = [], $locale = 'en' ) {
 		$params = is_array( $params ) ? $params : [];
 		$count  = absint( $count );
-		$locale = sanitize_key( $locale ?: 'en' );
+		$locale = self::normalize_response_locale( $locale ?: 'en' );
 
 		$status = self::order_status_label( $params, $locale );
 		$subject = '' !== $status
@@ -65,6 +65,18 @@ class YoRo_Response_UX_Formatter {
 			return 'showing' === sanitize_key( $mode )
 				? sprintf( 'Hiển thị %1$d đơn%2$s%3$s.', $count, $status_text, $filter_text )
 				: sprintf( 'Tìm thấy %1$d đơn%2$s%3$s.', $count, $status_text, $filter_text );
+		}
+
+		$localized_summary = self::localized_order_search_summary(
+			$mode,
+			$count,
+			$status,
+			$filter_text,
+			$locale
+		);
+
+		if ( '' !== $localized_summary ) {
+			return $localized_summary;
 		}
 
 		if ( 0 === $count ) {
@@ -96,11 +108,102 @@ class YoRo_Response_UX_Formatter {
 		return sprintf( 'I found %1$d %2$s%3$s.', $count, $subject, $filter_text );
 	}
 
+	private static function normalize_response_locale( $locale ) {
+		$locale = strtolower( sanitize_key( (string) $locale ) );
+		$parts  = preg_split( '/[_-]/', $locale );
+
+		return ! empty( $parts[0] ) ? $parts[0] : 'en';
+	}
+
+	private static function localized_order_search_summary( $mode, $count, $status, $filter_text, $locale ) {
+		$locale = self::normalize_response_locale( $locale );
+
+		if ( '' !== trim( (string) $filter_text ) ) {
+			return '';
+		}
+
+		$templates = [
+			'es' => [
+				'orders'       => 'pedidos',
+				'status_order' => 'pedidos %s',
+				'found'        => 'Encontré %1$d %2$s.',
+				'showing'      => 'Aquí tienes %1$d %2$s.',
+				'none'         => 'No encontré %s.',
+			],
+			'fr' => [
+				'orders'       => 'commandes',
+				'status_order' => 'commandes %s',
+				'found'        => 'J’ai trouvé %1$d %2$s.',
+				'showing'      => 'Voici %1$d %2$s.',
+				'none'         => 'Je n’ai trouvé aucune %s.',
+			],
+			'de' => [
+				'orders'       => 'Bestellungen',
+				'status_order' => '%s Bestellungen',
+				'found'        => 'Ich habe %1$d %2$s gefunden.',
+				'showing'      => 'Hier sind %1$d %2$s.',
+				'none'         => 'Ich habe keine %s gefunden.',
+			],
+			'ja' => [
+				'orders'       => '注文',
+				'status_order' => '%sの注文',
+				'found'        => '%2$sが%1$d件見つかりました。',
+				'showing'      => '%2$sを%1$d件表示します。',
+				'none'         => '%sは見つかりませんでした。',
+			],
+			'th' => [
+				'orders'       => 'คำสั่งซื้อ',
+				'status_order' => 'คำสั่งซื้อ%s',
+				'found'        => 'พบ%2$s %1$d รายการ',
+				'showing'      => 'แสดง%2$s %1$d รายการ',
+				'none'         => 'ไม่พบ%s',
+			],
+			'id' => [
+				'orders'       => 'pesanan',
+				'status_order' => 'pesanan %s',
+				'found'        => 'Saya menemukan %1$d %2$s.',
+				'showing'      => 'Berikut %1$d %2$s.',
+				'none'         => 'Saya tidak menemukan %s.',
+			],
+			'pt' => [
+				'orders'       => 'pedidos',
+				'status_order' => 'pedidos %s',
+				'found'        => 'Encontrei %1$d %2$s.',
+				'showing'      => 'Aqui estão %1$d %2$s.',
+				'none'         => 'Não encontrei %s.',
+			],
+			'ar' => [
+				'orders'       => 'طلبات',
+				'status_order' => 'طلبات %s',
+				'found'        => 'عثرت على %1$d %2$s.',
+				'showing'      => 'إليك %1$d %2$s.',
+				'none'         => 'لم أجد أي %s.',
+			],
+		];
+
+		if ( empty( $templates[ $locale ] ) ) {
+			return '';
+		}
+
+		$template = $templates[ $locale ];
+		$subject  = '' !== $status
+			? sprintf( $template['status_order'], $status )
+			: $template['orders'];
+
+		if ( 0 === $count ) {
+			return sprintf( $template['none'], $subject );
+		}
+
+		$key = 'showing' === sanitize_key( $mode ) ? 'showing' : 'found';
+
+		return sprintf( $template[ $key ], $count, $subject );
+	}
+
 	public static function order_search_filter_phrases( $params = [], $resolved_window = [], $source = [], $locale = 'en' ) {
 		$params = is_array( $params ) ? $params : [];
 		$source = is_array( $source ) ? $source : [];
 		$phrases = [];
-		$locale = sanitize_key( $locale ?: 'en' );
+		$locale = self::normalize_response_locale( $locale ?: 'en' );
 		$min_age_hours = isset( $params['min_age_hours'] ) ? absint( $params['min_age_hours'] ) : 0;
 
 		if ( $min_age_hours > 0 ) {
@@ -152,7 +255,7 @@ class YoRo_Response_UX_Formatter {
 		}
 
 		$source = is_array( $source ) ? $source : [];
-		$locale = sanitize_key( $locale ?: 'en' );
+		$locale = self::normalize_response_locale( $locale ?: 'en' );
 		$shape = isset( $source['shape'] ) && is_array( $source['shape'] ) ? $source['shape'] : [];
 		$shape_label = self::age_threshold_label_from_shape( $shape, $min_age_hours, $locale );
 
@@ -177,7 +280,7 @@ class YoRo_Response_UX_Formatter {
 			return '';
 		}
 
-		return 'vi' === sanitize_key( $locale )
+		return 'vi' === self::normalize_response_locale( $locale )
 			? sprintf( 'cũ hơn %s', $label )
 			: sprintf( 'older than %s', $label );
 	}
@@ -186,7 +289,7 @@ class YoRo_Response_UX_Formatter {
 		$action = sanitize_text_field( $action );
 		$target_status = sanitize_key( $target_status );
 		$quantity = absint( $quantity );
-		$locale = sanitize_key( $locale ?: 'en' );
+		$locale = self::normalize_response_locale( $locale ?: 'en' );
 
 		if ( 'vi' === $locale ) {
 			if ( 'orders.hold' === $action ) {
@@ -217,7 +320,7 @@ class YoRo_Response_UX_Formatter {
 
 	private static function order_status_label( $params, $locale = 'en' ) {
 		$params = is_array( $params ) ? $params : [];
-		$locale = sanitize_key( $locale ?: 'en' );
+		$locale = self::normalize_response_locale( $locale ?: 'en' );
 
 		if ( empty( $params['status'] ) ) {
 			return '';
@@ -236,16 +339,88 @@ class YoRo_Response_UX_Formatter {
 				'refunded'   => 'refunded',
 				'failed'     => 'failed',
 			],
-			'vi' => [
-				'pending'    => 'đang chờ xử lý',
-				'processing' => 'đang xử lý',
-				'completed'  => 'hoàn tất',
-				'on-hold'    => 'tạm giữ',
-				'cancelled'  => 'đã hủy',
-				'refunded'   => 'đã hoàn tiền',
-				'failed'     => 'thất bại',
-			],
-		];
+				'vi' => [
+					'pending'    => 'đang chờ xử lý',
+					'processing' => 'đang xử lý',
+					'completed'  => 'hoàn tất',
+					'on-hold'    => 'tạm giữ',
+					'cancelled'  => 'đã hủy',
+					'refunded'   => 'đã hoàn tiền',
+					'failed'     => 'thất bại',
+				],
+				'es' => [
+					'pending'    => 'pendientes',
+					'processing' => 'en proceso',
+					'completed'  => 'completados',
+					'on-hold'    => 'en espera',
+					'cancelled'  => 'cancelados',
+					'refunded'   => 'reembolsados',
+					'failed'     => 'fallidos',
+				],
+				'fr' => [
+					'pending'    => 'en attente',
+					'processing' => 'en traitement',
+					'completed'  => 'terminées',
+					'on-hold'    => 'en pause',
+					'cancelled'  => 'annulées',
+					'refunded'   => 'remboursées',
+					'failed'     => 'échouées',
+				],
+				'de' => [
+					'pending'    => 'ausstehende',
+					'processing' => 'in Bearbeitung',
+					'completed'  => 'abgeschlossene',
+					'on-hold'    => 'zurückgestellte',
+					'cancelled'  => 'stornierte',
+					'refunded'   => 'erstattete',
+					'failed'     => 'fehlgeschlagene',
+				],
+				'ja' => [
+					'pending'    => '保留中',
+					'processing' => '処理中',
+					'completed'  => '完了済み',
+					'on-hold'    => '保留',
+					'cancelled'  => 'キャンセル済み',
+					'refunded'   => '返金済み',
+					'failed'     => '失敗',
+				],
+				'th' => [
+					'pending'    => 'ที่รอดำเนินการ',
+					'processing' => 'ที่กำลังประมวลผล',
+					'completed'  => 'ที่เสร็จสมบูรณ์',
+					'on-hold'    => 'ที่พักไว้',
+					'cancelled'  => 'ที่ยกเลิกแล้ว',
+					'refunded'   => 'ที่คืนเงินแล้ว',
+					'failed'     => 'ที่ล้มเหลว',
+				],
+				'id' => [
+					'pending'    => 'tertunda',
+					'processing' => 'sedang diproses',
+					'completed'  => 'selesai',
+					'on-hold'    => 'ditahan',
+					'cancelled'  => 'dibatalkan',
+					'refunded'   => 'dikembalikan',
+					'failed'     => 'gagal',
+				],
+				'pt' => [
+					'pending'    => 'pendentes',
+					'processing' => 'em processamento',
+					'completed'  => 'concluídos',
+					'on-hold'    => 'em espera',
+					'cancelled'  => 'cancelados',
+					'refunded'   => 'reembolsados',
+					'failed'     => 'falhados',
+				],
+				'ar' => [
+					'pending'    => 'معلقة',
+					'processing' => 'قيد المعالجة',
+					'completed'  => 'مكتملة',
+					'on-hold'    => 'قيد الانتظار',
+					'cancelled'  => 'ملغاة',
+					'refunded'   => 'مستردة',
+					'failed'     => 'فاشلة',
+				],
+			];
 
 		if ( isset( $labels[ $locale ][ $status ] ) ) {
 			return $labels[ $locale ][ $status ];

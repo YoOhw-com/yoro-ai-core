@@ -435,9 +435,10 @@ class YoRo_Orders_Read_Service {
 	private static function build_search_summary( $count, $params, $resolved_window = [] ) {
 		$count = absint( $count );
 		$command = strtolower( sanitize_text_field( (string) ( $params['original_command'] ?? '' ) ) );
-		$is_vietnamese = YoRo_Date_Helper::is_likely_vietnamese( $command );
+		$response_language = sanitize_key( $params['response_language'] ?? '' );
+		$is_vietnamese = 'vi' === $response_language || YoRo_Date_Helper::is_likely_vietnamese( $command );
 		$min_age_hours = isset( $params['min_age_hours'] ) ? absint( $params['min_age_hours'] ) : 0;
-		$locale = $is_vietnamese ? 'vi' : 'en';
+		$locale = $response_language ?: ( $is_vietnamese ? 'vi' : 'en' );
 
 		if ( class_exists( 'YoRo_Response_UX_Formatter' ) ) {
 			return YoRo_Response_UX_Formatter::order_search_summary(
