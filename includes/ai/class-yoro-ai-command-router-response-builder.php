@@ -366,10 +366,15 @@ class YoRo_AI_Command_Router_Response_Builder {
 				}
 
 				$order_id = absint( reset( $order_ids ) );
-				$workflow_type = 'order_note';
-				$workflow_params = [
-					'order_ids' => $order_ids,
-				];
+				$workflow_type = ! empty( $params['_yoro_composed_requested_actions'] ) && is_array( $params['_yoro_composed_requested_actions'] )
+					? 'composed_actions'
+					: 'order_note';
+				$workflow_params = 'composed_actions' === $workflow_type
+					? $params
+					: [ 'order_ids' => $order_ids ];
+				$workflow_params['order_ids'] = $order_ids;
+				$workflow_params['order_id']  = $order_id;
+				unset( $workflow_params['note'] );
 				break;
 
 			case 'orders.update_status':

@@ -23,6 +23,7 @@ class YoRo_Router_Decision_Validator {
 		$decision = self::normalize_email_instruction_decision( $decision, $command, $normalized );
 		$decision = self::guard_missing_email_instruction_content( $decision, $command, $normalized );
 		$decision = self::guard_missing_compound_add_note_content( $decision, $shape, $command, $normalized );
+		$decision = self::preserve_compound_add_note_workflow_context( $decision, $shape, $command, $normalized );
 
 		return $decision;
 	}
@@ -411,6 +412,215 @@ class YoRo_Router_Decision_Validator {
 		];
 
 		return $decision;
+	}
+
+	private static function preserve_compound_add_note_workflow_context( $decision, $shape, $command = '', $normalized = '' ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$shape    = is_array( $shape ) ? $shape : [];
+		$action   = sanitize_text_field( $decision['action'] ?? '' );
+		$missing  = isset( $decision['missing'] ) && is_array( $decision['missing'] )
+			? array_values( array_filter( array_map( 'sanitize_key', $decision['missing'] ) ) )
+			: [];
+
+		if ( 'orders.add_note' !== $action || ! in_array( 'note', $missing, true ) ) {
+			return $decision;
+		}
+
+		if ( ! self::command_requests_add_note_without_content( $command, $normalized ) ) {
+			return $decision;
+		}
+
+		$params = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+
+		if ( ! empty( $params['_yoro_composed_requested_actions'] ) && is_array( $params['_yoro_composed_requested_actions'] ) ) {
+			return $decision;
+		}
+
+		$order_ids = self::extract_compound_order_ids( $decision, $shape );
+		$requested = self::build_missing_note_composed_requested_actions( $decision, $shape, $command );
+
+		if ( empty( $order_ids ) || empty( $requested ) ) {
+			return $decision;
+		}
+
+		$params['order_ids'] = $order_ids;
+		$params['order_id']  = absint( reset( $order_ids ) );
+		$params['_yoro_composed_requested_actions']    = $requested;
+		$params['_yoro_composed_unavailable_requests'] = [];
+		$params['_yoro_composed_original_command']     = sanitize_textarea_field( $command );
+		$params['_yoro_composed_parser_rule']          = sanitize_text_field( $decision['parser_rule'] ?? 'ai.command_router.v2' );
+		$params['_yoro_composed_parser_source']        = 'ai_router';
+		$params['_yoro_composed_confidence']           = isset( $decision['confidence'] ) ? (float) $decision['confidence'] : 0.85;
+		$params['_yoro_composed_source']               = 'ai_router';
+
+		unset( $params['note'] );
+
+		$decision['params'] = $params;
+
+		return $decision;
+	}
+
+	private static function build_missing_note_composed_requested_actions( $decision, $shape, $command ) {
+		$decision  = is_array( $decision ) ? $decision : [];
+		$shape     = is_array( $shape ) ? $shape : [];
+		$requested = self::requested_actions_from_action_plan( $decision );
+
+		if ( ! empty( $requested ) ) {
+			return $requested;
+		}
+
+		$status = self::compound_status_from_decision_or_shape( $decision, $shape );
+
+		if ( '' !== $status ) {
+			$requested[] = [
+				'kind'     => 'update_status',
+				'action'   => 'orders.update_status',
+				'label'    => __( 'Update order status', 'yoro-ai-core' ),
+				'position' => count( $requested ),
+				'params'   => [
+					'status' => $status,
+				],
+			];
+		}
+
+		$instruction = self::compound_email_instruction_from_command( $command );
+
+		if ( '' !== $instruction ) {
+			$requested[] = [
+				'kind'     => 'write_email',
+				'action'   => 'orders.compose_customer_email',
+				'label'    => __( 'Compose customer email', 'yoro-ai-core' ),
+				'position' => count( $requested ),
+				'params'   => [
+					'instruction'   => $instruction,
+					'delivery_mode' => 'preview',
+				],
+			];
+		}
+
+		return count( $requested ) > 1 ? $requested : [];
+	}
+
+	private static function requested_actions_from_action_plan( $decision ) {
+		$action_plan = isset( $decision['action_plan'] ) && is_array( $decision['action_plan'] )
+			? $decision['action_plan']
+			: [];
+		$requested   = [];
+
+		foreach ( (array) ( $action_plan['steps'] ?? [] ) as $step ) {
+			if ( ! is_array( $step ) ) {
+				continue;
+			}
+
+			$action = sanitize_text_field( $step['action'] ?? '' );
+			$params = isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [];
+
+			if ( 'orders.add_note' === $action ) {
+				continue;
+			}
+
+			if ( in_array( $action, [ 'orders.update_status', 'orders.hold' ], true ) ) {
+				$status = self::normalize_order_status_slug( $params['status'] ?? ( 'orders.hold' === $action ? 'on-hold' : '' ) );
+
+				if ( '' === $status ) {
+					continue;
+				}
+
+				$requested[] = [
+					'kind'     => 'orders.hold' === $action ? 'hold' : 'update_status',
+					'action'   => $action,
+					'label'    => sanitize_text_field( $step['label'] ?? __( 'Update order status', 'yoro-ai-core' ) ),
+					'position' => count( $requested ),
+					'params'   => 'orders.hold' === $action ? [] : [ 'status' => $status ],
+				];
+				continue;
+			}
+
+			if ( self::is_email_authoring_action( $action ) ) {
+				$instruction = sanitize_textarea_field( $params['instruction'] ?? '' );
+
+				if ( '' === $instruction ) {
+					continue;
+				}
+
+				$requested[] = [
+					'kind'     => 'write_email',
+					'action'   => 'orders.compose_customer_email',
+					'label'    => sanitize_text_field( $step['label'] ?? __( 'Compose customer email', 'yoro-ai-core' ) ),
+					'position' => count( $requested ),
+					'params'   => [
+						'instruction'   => $instruction,
+						'delivery_mode' => sanitize_key( $params['delivery_mode'] ?? 'preview' ),
+					],
+				];
+			}
+		}
+
+		return count( $requested ) > 1 ? $requested : [];
+	}
+
+	private static function compound_status_from_decision_or_shape( $decision, $shape ) {
+		$params = isset( $decision['params'] ) && is_array( $decision['params'] ) ? $decision['params'] : [];
+		$status = self::normalize_order_status_slug( $params['status'] ?? '' );
+
+		if ( '' !== $status ) {
+			return $status;
+		}
+
+		$constraints = isset( $decision['semantic_frame']['constraints'] ) && is_array( $decision['semantic_frame']['constraints'] )
+			? $decision['semantic_frame']['constraints']
+			: [];
+		$status = self::normalize_order_status_slug( $constraints['status'] ?? '' );
+
+		if ( '' !== $status ) {
+			return $status;
+		}
+
+		return self::normalize_order_status_slug( $shape['status'] ?? '' );
+	}
+
+	private static function compound_email_instruction_from_command( $command ) {
+		$text = trim( wp_strip_all_tags( (string) $command ) );
+
+		if ( '' === $text || ! preg_match( '/\b(?:email|e-mail|mail|message|notify|contact)\b/i', $text ) ) {
+			return '';
+		}
+
+		$patterns = [
+			'/\b(?:email|e-mail|mail|message|notify|contact)(?:\s+the\s+customer)?\s+(?:to\s+say\s+that|to\s+say|to|about|regarding)\s+(.+)$/iu',
+			'/\b(?:email|e-mail|mail|message|notify|contact)(?:\s+the\s+customer)?\s*[:,-]\s*(.+)$/iu',
+		];
+
+		foreach ( $patterns as $pattern ) {
+			if ( preg_match( $pattern, $text, $matches ) ) {
+				$topic = trim( sanitize_textarea_field( $matches[1] ?? '' ) );
+
+				if ( '' !== $topic ) {
+					return self::normalize_compound_email_instruction( $topic );
+				}
+			}
+		}
+
+		return '';
+	}
+
+	private static function normalize_compound_email_instruction( $topic ) {
+		$topic = trim( sanitize_textarea_field( $topic ) );
+		$topic = trim( preg_replace( '/\s+/', ' ', $topic ), " \t\n\r\0\x0B.!?:;,-" );
+
+		if ( '' === $topic ) {
+			return '';
+		}
+
+		if ( preg_match( '/^that\b/i', $topic ) ) {
+			return 'Tell the customer ' . $topic . '.';
+		}
+
+		if ( preg_match( '/^the\b/i', $topic ) ) {
+			return 'Tell the customer that ' . $topic . '.';
+		}
+
+		return 'Tell the customer about ' . $topic . '.';
 	}
 
 	private static function decision_contains_add_note_action( $decision ) {
