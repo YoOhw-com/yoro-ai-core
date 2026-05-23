@@ -8,6 +8,8 @@ class YoRo_Parser_Test_Suite {
 
 	private static $action_decomposition_fixture = false;
 
+	private static $previous_action_decomposition_enabled = null;
+
 	private static $router_fixture_map = null;
 
 	public static function run() {
@@ -4049,6 +4051,24 @@ class YoRo_Parser_Test_Suite {
 					'current_workflow.steps.3.id'                                 => 'compose_email',
 					'current_workflow.steps.4.id'                                 => 'save_draft',
 					'current_workflow.artifacts.composition.requested_actions.2.kind' => 'write_email',
+					'parser_rule'                                                 => 'guard.action_composition',
+				],
+			],
+			[
+				'domain'          => 'workflow_composition',
+				'name'            => 'Action composition builds status change and customer email workflow',
+				'command'         => 'Change order 7199 to on-hold and email about payment verification needed',
+				'expected_action' => 'workflow.composed_actions',
+				'expected_source' => 'guard',
+				'expect'          => [
+					'current_workflow.definition_id'                              => 'composed_actions',
+					'current_workflow.status'                                     => 'ready_to_execute',
+					'current_workflow.steps.0.id'                                 => 'load_order',
+					'current_workflow.steps.1.action'                             => 'orders.update_status',
+					'current_workflow.steps.1.params.status'                      => 'on-hold',
+					'current_workflow.steps.2.action'                             => 'orders.compose_customer_email',
+					'current_workflow.steps.2.params.instruction'                 => 'payment verification needed',
+					'current_workflow.artifacts.composition.requested_actions.1.kind' => 'write_email',
 					'parser_rule'                                                 => 'guard.action_composition',
 				],
 			],
@@ -11321,11 +11341,21 @@ class YoRo_Parser_Test_Suite {
 	}
 
 	private static function enable_mock_action_decomposition( $result ) {
+		if ( null === self::$previous_action_decomposition_enabled ) {
+			self::$previous_action_decomposition_enabled = get_option( 'yoro_ai_action_decomposition_enabled', 'no' );
+		}
+
+		update_option( 'yoro_ai_action_decomposition_enabled', 'yes' );
 		self::$action_decomposition_fixture = $result;
 	}
 
 	private static function disable_mock_action_decomposition() {
 		self::$action_decomposition_fixture = false;
+
+		if ( null !== self::$previous_action_decomposition_enabled ) {
+			update_option( 'yoro_ai_action_decomposition_enabled', self::$previous_action_decomposition_enabled );
+			self::$previous_action_decomposition_enabled = null;
+		}
 	}
 
 	private static function cleanup_test_order_fixture( $fixture ) {

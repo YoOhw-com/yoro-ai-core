@@ -118,7 +118,7 @@ class YoRo_Action_Intent_Extractor {
 		$unsupported_count = count( $unavailable );
 		$should_compose = (
 			$supported_count >= 3
-			|| ( $supported_count >= 2 && $has_connectors && ( $note_requested || '' !== $note || $unsupported_count > 0 ) )
+			|| ( $supported_count >= 2 && $has_connectors )
 			|| ( $supported_count >= 2 && $unsupported_count > 0 )
 			|| ( $supported_count >= 1 && $unsupported_count > 0 && $has_connectors )
 		);
@@ -185,7 +185,7 @@ class YoRo_Action_Intent_Extractor {
 	private static function find_email_position( $command ) {
 		return self::find_first_position(
 			$command,
-			'/\b(?:write|draft|compose|prepare|create|save|send)\b.*?\b(?:customer\s+)?(?:email|reply|message)\b/i'
+			'/\b(?:(?:write|draft|compose|prepare|create|save|send)\b.*?\b(?:customer\s+)?(?:email|reply|message)\b|(?:email|mail|message|notify)\b(?:\s+(?:the\s+)?customer)?\b)/i'
 		);
 	}
 
@@ -327,7 +327,7 @@ class YoRo_Action_Intent_Extractor {
 
 		$email_segment = (string) $command;
 
-		if ( preg_match( '/\b(?:write|draft|compose|prepare|create|save|send)\b(?=[^.!?]*\b(?:email|reply|message)\b)/i', (string) $command, $matches, PREG_OFFSET_CAPTURE ) && isset( $matches[0][1] ) ) {
+		if ( preg_match( '/\b(?:(?:write|draft|compose|prepare|create|save|send)\b(?=[^.!?]*\b(?:email|reply|message)\b)|(?:email|mail|message|notify)\b(?:\s+(?:the\s+)?customer)?\b)/i', (string) $command, $matches, PREG_OFFSET_CAPTURE ) && isset( $matches[0][1] ) ) {
 			$email_segment = substr( (string) $command, (int) $matches[0][1] );
 		}
 
@@ -338,7 +338,7 @@ class YoRo_Action_Intent_Extractor {
 		);
 
 		$instruction = preg_replace(
-			'/^\s*(?:write|draft|compose|prepare|create|save|send)(?:\s+and\s+(?:save|send))?\b\s*(?:a|an)?\s*/i',
+			'/^\s*(?:write|draft|compose|prepare|create|save|send|email|mail|message|notify)(?:\s+and\s+(?:save|send))?\b\s*(?:(?:the\s+)?customer\s+)?(?:(?:a|an)\s+)?/i',
 			'',
 			$instruction
 		);
@@ -351,6 +351,12 @@ class YoRo_Action_Intent_Extractor {
 
 		$instruction = preg_replace(
 			'/^\s*(?:customer\s+)?(?:email|reply|message)\b[:\s-]*/i',
+			'',
+			$instruction
+		);
+
+		$instruction = preg_replace(
+			'/^\s*(?:about|regarding|re|for)\b[:\s-]*/i',
 			'',
 			$instruction
 		);
