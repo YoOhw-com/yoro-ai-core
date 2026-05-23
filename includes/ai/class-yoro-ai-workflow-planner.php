@@ -561,6 +561,12 @@ class YoRo_AI_Workflow_Planner {
 	}
 
 	private static function detect_workflow_scope( $command, $client_context = [] ) {
+		$structured_scope = self::detect_structured_workflow_scope( $client_context );
+
+		if ( '' !== $structured_scope ) {
+			return $structured_scope;
+		}
+
 		$normalized = strtolower( (string) $command );
 
 		$order_write_markers = [
@@ -631,6 +637,14 @@ class YoRo_AI_Workflow_Planner {
 		}
 
 		return 'general';
+	}
+
+	private static function detect_structured_workflow_scope( $client_context = [] ) {
+		$client_context = is_array( $client_context ) ? $client_context : [];
+		$scope = sanitize_key( $client_context['ai_workflow_scope'] ?? ( $client_context['workflow_scope'] ?? '' ) );
+		$allowed_scopes = [ 'email', 'refund', 'review', 'order_single', 'general' ];
+
+		return in_array( $scope, $allowed_scopes, true ) ? $scope : '';
 	}
 
 	private static function get_allowed_actions_for_scope( $scope ) {

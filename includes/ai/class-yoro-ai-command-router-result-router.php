@@ -178,7 +178,129 @@ class YoRo_AI_Command_Router_Result_Router {
 			return $workflow_candidate;
 		}
 
+		$dynamic_workflow_candidate = self::maybe_build_dynamic_workflow_candidate(
+			$command,
+			$normalized,
+			$client_context,
+			$resolved_result,
+			self::candidate_router_callbacks( $callbacks )
+		);
+
+		if ( is_array( $dynamic_workflow_candidate ) ) {
+			return $dynamic_workflow_candidate;
+		}
+
 		return YoRo_Entity_Validator::validate( $resolved_result );
+	}
+
+	private static function maybe_build_dynamic_workflow_candidate( $command, $normalized, $client_context, $resolved_result, $callbacks = [] ) {
+		if (
+			! class_exists( 'YoRo_AI_Workflow_Planner' ) ||
+			! self::should_delegate_to_dynamic_workflow_planner( $resolved_result )
+		) {
+			return null;
+		}
+
+		$workflow_context = self::build_dynamic_workflow_context( $client_context, $resolved_result );
+		$candidate = YoRo_AI_Workflow_Planner::parse( $command, $workflow_context );
+
+		if ( ! is_array( $candidate ) ) {
+			return null;
+		}
+
+		$normalized_result = self::normalize_parsed_result(
+			$candidate,
+			$command,
+			$normalized,
+			$workflow_context,
+			$callbacks
+		);
+
+		if (
+			class_exists( 'YoRo_Entity_Resolver' ) &&
+			class_exists( 'YoRo_Intent_Router' ) &&
+			class_exists( 'YoRo_Entity_Validator' )
+		) {
+			$resolved = YoRo_Entity_Resolver::resolve( $normalized_result, $workflow_context );
+			$resolved = YoRo_Intent_Router::resolve_action( $resolved );
+
+			return YoRo_Entity_Validator::validate( $resolved );
+		}
+
+		return $normalized_result;
+	}
+
+	private static function should_delegate_to_dynamic_workflow_planner( $result ) {
+		if ( ! is_array( $result ) ) {
+			return false;
+		}
+
+		if ( ! empty( $result['actions'] ) && is_array( $result['actions'] ) ) {
+			return false;
+		}
+
+		if ( 'ai_router' !== sanitize_key( $result['parser_source'] ?? '' ) ) {
+			return false;
+		}
+
+		$action = sanitize_text_field( $result['action'] ?? '' );
+
+		if ( '' === $action || 0 === strpos( $action, 'workflow.' ) ) {
+			return false;
+		}
+
+		$frame = isset( $result['semantic_frame'] ) && is_array( $result['semantic_frame'] )
+			? $result['semantic_frame']
+			: [];
+		$surface = sanitize_key( $frame['surface'] ?? '' );
+		$operation = sanitize_key( $frame['operation'] ?? '' );
+		$target_type = sanitize_key( $frame['target_type'] ?? '' );
+
+		return 'workflows' === $surface ||
+			'workflow' === $target_type ||
+			in_array( $operation, [ 'workflow_preview', 'workflow_control' ], true );
+	}
+
+	private static function build_dynamic_workflow_context( $client_context, $resolved_result ) {
+		$context = is_array( $client_context ) ? $client_context : [];
+		$result = is_array( $resolved_result ) ? $resolved_result : [];
+
+		$context['ai_workflow_scope'] = self::dynamic_workflow_scope_for_result( $result );
+		$context['ai_router_action'] = sanitize_text_field( $result['action'] ?? '' );
+
+		if ( ! empty( $result['semantic_frame'] ) && is_array( $result['semantic_frame'] ) ) {
+			$context['ai_router_semantic_frame'] = $result['semantic_frame'];
+		}
+
+		return $context;
+	}
+
+	private static function dynamic_workflow_scope_for_result( $result ) {
+		$action = sanitize_text_field( $result['action'] ?? '' );
+		$frame = isset( $result['semantic_frame'] ) && is_array( $result['semantic_frame'] )
+			? $result['semantic_frame']
+			: [];
+		$operation = sanitize_key( $frame['operation'] ?? '' );
+
+		if (
+			in_array( $action, [ 'orders.compose_customer_email', 'orders.render_customer_email_preview', 'orders.save_customer_email_draft' ], true ) ||
+			in_array( $operation, [ 'compose_email', 'save_email_draft', 'send_email' ], true )
+		) {
+			return 'email';
+		}
+
+		if ( 'orders.refund_preview' === $action || 'refund_preview' === $operation ) {
+			return 'refund';
+		}
+
+		if (
+			in_array( $action, [ 'orders.add_note', 'orders.hold', 'orders.update_status' ], true ) ||
+			in_array( $operation, [ 'add_note', 'hold', 'update_status', 'bulk_update_status' ], true )
+		) {
+			return 'order_single';
+		}
+
+		return 'review';
 	}
 
 	private static function normalize_parsed_result( $result, $command, $normalized, $client_context = [], $callbacks = [] ) {

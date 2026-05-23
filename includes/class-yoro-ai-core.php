@@ -101,6 +101,8 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-router-result-corrector.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-action-composition-router.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-workflow-candidate-router.php';
+		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-workflow-validator.php';
+		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-workflow-planner.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-command-router-result-router.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-post-command-router-result-router.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-inferred-action-grounding.php';
