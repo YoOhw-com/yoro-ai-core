@@ -59,7 +59,7 @@ Never commit real site API keys to source control.
 
 == Frequently Asked Questions ==
 
-= Does this plugin use direct OpenAI API keys? =
+= Does this plugin use direct AI provider keys? =
 
 No. The plugin connects only to YoRo AI API. Provider keys and prompts are managed by YoRo AI API.
 

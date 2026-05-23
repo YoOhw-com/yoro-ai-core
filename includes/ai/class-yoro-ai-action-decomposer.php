@@ -7,7 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_AI_Action_Decomposer {
 
 	public static function decompose( $command, $client_context = [] ) {
-		if ( 'yes' !== get_option( 'yoro_ai_action_decomposition_enabled', 'yes' ) ) {
+		if ( 'yes' !== get_option( 'yoro_ai_action_decomposition_enabled', 'no' ) ) {
 			return null;
 		}
 
@@ -33,7 +33,7 @@ class YoRo_AI_Action_Decomposer {
 			return self::normalize_result( $mock_result );
 		}
 
-		if ( ! YoRo_AI_Provider_Resolver::supports( 'workflow_plan' ) ) {
+		if ( ! YoRo_AI_Provider_Resolver::supports( 'action_decomposition' ) ) {
 			return null;
 		}
 

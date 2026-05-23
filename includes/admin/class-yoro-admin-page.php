@@ -1943,7 +1943,6 @@ class YoRo_Admin_Page {
 		$ai_suggestions_enabled = $settings['ai_suggestions_enabled'] ?? 'no';
 		$ai_email_compose_enabled = $settings['ai_email_compose_enabled'] ?? 'yes';
 		$ai_command_router_enabled = $settings['ai_command_router_enabled'] ?? 'yes';
-		$ai_action_decomposition_enabled = $settings['ai_action_decomposition_enabled'] ?? 'yes';
 		$ai_dynamic_workflows_enabled = $settings['ai_dynamic_workflows_enabled'] ?? 'no';
 		$memory_enabled = $settings['memory_enabled'] ?? 'yes';
 		$rate_limit_count = absint( $settings['rate_limit_count'] ?? 10 );
@@ -2081,16 +2080,6 @@ class YoRo_Admin_Page {
 								<label>
 									<input type="checkbox" name="yoro_ai_email_compose_enabled" value="yes" <?php checked( $ai_email_compose_enabled, 'yes' ); ?> />
 									<?php esc_html_e( 'Allow YoRo to draft customer emails with AI.', 'yoro-ai-core' ); ?>
-								</label>
-							</td>
-						</tr>
-
-						<tr>
-							<th scope="row"><?php esc_html_e( 'AI action decomposition', 'yoro-ai-core' ); ?></th>
-							<td>
-								<label>
-									<input type="checkbox" name="yoro_ai_action_decomposition_enabled" value="yes" <?php checked( $ai_action_decomposition_enabled, 'yes' ); ?> />
-									<?php esc_html_e( 'Let YoRo split certain compound commands into multiple supported write actions before execution.', 'yoro-ai-core' ); ?>
 								</label>
 							</td>
 						</tr>

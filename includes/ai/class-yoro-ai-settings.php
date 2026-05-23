@@ -160,7 +160,7 @@ class YoRo_AI_Settings {
 			'ai_suggestions_enabled'   => get_option( 'yoro_ai_suggestions_enabled', 'no' ),
 			'ai_email_compose_enabled' => get_option( 'yoro_ai_email_compose_enabled', 'yes' ),
 			'ai_command_router_enabled' => get_option( 'yoro_ai_command_router_enabled', 'yes' ),
-			'ai_action_decomposition_enabled' => get_option( 'yoro_ai_action_decomposition_enabled', 'yes' ),
+			'ai_action_decomposition_enabled' => 'no',
 			'ai_dynamic_workflows_enabled' => get_option( 'yoro_ai_dynamic_workflows_enabled', 'no' ),
 			'memory_enabled'           => get_option( 'yoro_memory_enabled', 'yes' ),
 			'suggestions_enabled'      => get_option( 'yoro_enable_suggestions', 'yes' ),
@@ -282,7 +282,7 @@ class YoRo_AI_Settings {
 		update_option( 'yoro_ai_max_suggestions', min( max( $ai_max_suggestions, 1 ), 10 ) );
 		update_option( 'yoro_ai_email_compose_enabled', isset( $post['yoro_ai_email_compose_enabled'] ) ? 'yes' : 'no' );
 		update_option( 'yoro_ai_command_router_enabled', isset( $post['yoro_ai_command_router_enabled'] ) ? 'yes' : 'no' );
-		update_option( 'yoro_ai_action_decomposition_enabled', isset( $post['yoro_ai_action_decomposition_enabled'] ) ? 'yes' : 'no' );
+		update_option( 'yoro_ai_action_decomposition_enabled', 'no' );
 		update_option( 'yoro_ai_dynamic_workflows_enabled', isset( $post['yoro_ai_dynamic_workflows_enabled'] ) ? 'yes' : 'no' );
 		update_option( 'yoro_memory_enabled', isset( $post['yoro_memory_enabled'] ) ? 'yes' : 'no' );
 		update_option( 'yoro_rate_limit_count', max( 1, $rate_limit_count ) );

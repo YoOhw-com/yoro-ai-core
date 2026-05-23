@@ -9,6 +9,7 @@
 - Restricted test/mock hooks to debug or test mode so release runtime cannot be overridden by fixtures.
 - Made debug tooling optional so release packages can omit development fixtures.
 - Added WooCommerce dependency metadata and a runtime guard for missing WooCommerce.
+- Disabled plugin action decomposition until it has a dedicated YoRo AI API endpoint.
 
 ### Added
 - Release packaging ignore rules for development-only docs and debug test files.
