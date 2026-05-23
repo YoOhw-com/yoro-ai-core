@@ -156,7 +156,7 @@ class YoRo_Logger {
 			'confidence'            => isset( $runtime['confidence'] ) ? (float) $runtime['confidence'] : ( isset( $data['confidence'] ) ? (float) $data['confidence'] : null ),
 			'ai_feature'            => sanitize_key( $ai_meta['feature'] ?? '' ),
 			'ai_provider'           => self::normalize_public_routing_provider( $ai_meta['provider'] ?? '' ),
-			'ai_model'              => sanitize_text_field( $ai_meta['model'] ?? '' ),
+			'ai_model'              => self::normalize_public_ai_model( $ai_meta['model'] ?? '' ),
 			'prompt_version'        => sanitize_text_field( $ai_meta['prompt_version'] ?? '' ),
 			'routing_provider'      => self::normalize_public_routing_provider( $ai_meta['routing_provider'] ?? '' ),
 			'yoro_ai_api_request_id' => sanitize_text_field( $ai_meta['yoro_ai_api_request_id'] ?? '' ),
@@ -233,7 +233,7 @@ class YoRo_Logger {
 		$normalized = [
 			'feature'        => sanitize_key( $meta['feature'] ?? '' ),
 			'provider'       => self::normalize_public_routing_provider( $meta['provider'] ?? '' ),
-			'model'          => sanitize_text_field( $meta['model'] ?? '' ),
+			'model'          => self::normalize_public_ai_model( $meta['model'] ?? '' ),
 			'prompt_version' => sanitize_text_field( $meta['prompt_version'] ?? '' ),
 			'trace_id'       => sanitize_text_field( $meta['trace_id'] ?? '' ),
 			'routing_provider' => self::normalize_public_routing_provider( $meta['routing_provider'] ?? '' ),
@@ -304,6 +304,10 @@ class YoRo_Logger {
 			return self::normalize_public_routing_provider( $value );
 		}
 
+		if ( in_array( $key, [ 'model', 'yoro_ai_api_model' ], true ) ) {
+			return self::normalize_public_ai_model( $value );
+		}
+
 		return sanitize_text_field( $value );
 	}
 
@@ -311,6 +315,10 @@ class YoRo_Logger {
 		$provider = sanitize_key( (string) $provider );
 
 		return 'mock' === $provider ? 'mock' : 'yoro_ai_api';
+	}
+
+	private static function normalize_public_ai_model( $model ) {
+		return '' === trim( (string) $model ) ? '' : 'yoro-ai-api';
 	}
 
 	private static function normalize_retrieved_examples( $examples ) {

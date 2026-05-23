@@ -778,6 +778,10 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			return $this->normalize_public_routing_provider( $value );
 		}
 
+		if ( 'yoro_ai_api_model' === $key ) {
+			return 'yoro-ai-api';
+		}
+
 		return sanitize_text_field( $value );
 	}
 
