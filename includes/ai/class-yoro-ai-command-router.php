@@ -172,7 +172,7 @@ class YoRo_AI_Command_Router {
 
 		$compact = [];
 
-		foreach ( array_slice( array_values( $orders ), 0, 10 ) as $order ) {
+		foreach ( array_slice( array_values( $orders ), 0, 10 ) as $index => $order ) {
 			if ( ! is_array( $order ) ) {
 				continue;
 			}
@@ -184,9 +184,10 @@ class YoRo_AI_Command_Router {
 			}
 
 			$compact[] = [
-				'id'     => $order_id,
-				'number' => sanitize_text_field( $order['number'] ?? (string) $order_id ),
-				'status' => sanitize_key( $order['status'] ?? '' ),
+				'position' => absint( $index ) + 1,
+				'id'       => $order_id,
+				'number'   => sanitize_text_field( $order['number'] ?? (string) $order_id ),
+				'status'   => sanitize_key( $order['status'] ?? '' ),
 			];
 		}
 
