@@ -22,6 +22,7 @@ class YoRo_Router_Decision_Validator {
 		$decision = self::guard_missing_add_note_content( $decision, $shape, $command, $normalized );
 		$decision = self::normalize_email_instruction_decision( $decision, $command, $normalized );
 		$decision = self::guard_missing_email_instruction_content( $decision, $command, $normalized );
+		$decision = self::guard_missing_compound_add_note_content( $decision, $shape, $command, $normalized );
 
 		return $decision;
 	}
@@ -356,6 +357,62 @@ class YoRo_Router_Decision_Validator {
 		return $decision;
 	}
 
+	private static function guard_missing_compound_add_note_content( $decision, $shape, $command = '', $normalized = '' ) {
+		$decision = is_array( $decision ) ? $decision : [];
+		$shape    = is_array( $shape ) ? $shape : [];
+
+		if ( 'task_request' !== sanitize_key( $decision['mode'] ?? '' ) ) {
+			return $decision;
+		}
+
+		if ( self::decision_contains_add_note_action( $decision ) ) {
+			return $decision;
+		}
+
+		if ( ! self::command_requests_add_note_without_content( $command, $normalized ) ) {
+			return $decision;
+		}
+
+		$order_ids = self::extract_compound_order_ids( $decision, $shape );
+		$params    = [];
+
+		if ( ! empty( $order_ids ) ) {
+			$params['order_ids'] = $order_ids;
+			$params['order_id']  = absint( reset( $order_ids ) );
+		}
+
+		$order_id = absint( $params['order_id'] ?? 0 );
+		$question = $order_id > 0
+			? sprintf(
+				/* translators: %d: order id */
+				__( 'What note should I add to order #%d?', 'yoro-ai-core' ),
+				$order_id
+			)
+			: __( 'What note should I add?', 'yoro-ai-core' );
+
+		$decision['mode']                   = 'clarify';
+		$decision['intent_family']          = 'add_note';
+		$decision['action']                 = 'orders.add_note';
+		$decision['params']                 = $params;
+		$decision['missing']                = [ 'note' ];
+		$decision['ambiguities']            = [];
+		$decision['clarification_question'] = $question;
+		$decision['summary']                = $question;
+		$decision['reasoning_summary']      = __( 'The command also asks for an order note, but it does not include literal note content.', 'yoro-ai-core' );
+		$decision['requires_confirmation']  = false;
+		$decision['raw_param_keys']         = ! empty( $order_ids ) ? [ 'order_ids' ] : [];
+		$decision['dropped_param_keys']     = [];
+		$decision['params_trimmed_count']   = 0;
+		$decision['action_plan']            = [
+			'type'   => 'none',
+			'action' => null,
+			'params' => [],
+			'steps'  => [],
+		];
+
+		return $decision;
+	}
+
 	private static function decision_contains_add_note_action( $decision ) {
 		$decision = is_array( $decision ) ? $decision : [];
 
@@ -433,6 +490,29 @@ class YoRo_Router_Decision_Validator {
 
 		if ( isset( $shape['explicit_order_ids'] ) && is_array( $shape['explicit_order_ids'] ) ) {
 			$order_ids = array_merge( $order_ids, array_map( 'absint', $shape['explicit_order_ids'] ) );
+		}
+
+		return array_values( array_unique( array_filter( array_map( 'absint', $order_ids ) ) ) );
+	}
+
+	private static function extract_compound_order_ids( $decision, $shape ) {
+		$decision  = is_array( $decision ) ? $decision : [];
+		$shape     = is_array( $shape ) ? $shape : [];
+		$order_ids = self::extract_add_note_order_ids( $decision, $shape );
+
+		$action_plan = isset( $decision['action_plan'] ) && is_array( $decision['action_plan'] )
+			? $decision['action_plan']
+			: [];
+
+		foreach ( (array) ( $action_plan['steps'] ?? [] ) as $step ) {
+			if ( ! is_array( $step ) ) {
+				continue;
+			}
+
+			$order_ids = array_merge(
+				$order_ids,
+				self::extract_order_ids_from_params( isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [] )
+			);
 		}
 
 		return array_values( array_unique( array_filter( array_map( 'absint', $order_ids ) ) ) );
@@ -520,6 +600,71 @@ class YoRo_Router_Decision_Validator {
 		$text = preg_replace( '/\s+/', ' ', $text );
 
 		return trim( (string) $text, " \t\n\r\0\x0B.!?" );
+	}
+
+	private static function command_requests_add_note_without_content( $command, $normalized = '' ) {
+		$text = strtolower( trim( wp_strip_all_tags( (string) ( '' !== trim( (string) $command ) ? $command : $normalized ) ) ) );
+		$text = trim( preg_replace( '/\s+/', ' ', $text ) );
+
+		if ( '' === $text ) {
+			return false;
+		}
+
+		$patterns = [
+			'/\b(?:add|leave|create|write|put|include)\s+(?:an?\s+|the\s+)?(?:internal\s+|order\s+|customer\s+)?(?:note|comment|memo)\b/iu',
+			'/\b(?:and|then|also|plus|with)\s+(?:an?\s+|the\s+)?(?:internal\s+|order\s+|customer\s+)?(?:note|comment|memo)\b/iu',
+			'/\b(?:thêm|ghi)\s+(?:ghi chú|note)\b/iu',
+			'/\b(?:và|rồi|sau đó)\s+(?:ghi chú|note)\b/iu',
+		];
+
+		$matched_note_request = false;
+
+		foreach ( $patterns as $pattern ) {
+			if ( ! preg_match_all( $pattern, $text, $matches, PREG_OFFSET_CAPTURE ) ) {
+				continue;
+			}
+
+			foreach ( (array) ( $matches[0] ?? [] ) as $match ) {
+				$matched_note_request = true;
+				$offset               = isset( $match[1] ) ? (int) $match[1] : 0;
+				$length               = strlen( (string) ( $match[0] ?? '' ) );
+				$suffix               = substr( $text, $offset + $length );
+				$suffix               = self::trim_add_note_target_prefix( $suffix );
+
+				if ( self::has_inline_add_note_content( $suffix ) ) {
+					return false;
+				}
+			}
+		}
+
+		return $matched_note_request;
+	}
+
+	private static function trim_add_note_target_prefix( $text ) {
+		$text = trim( (string) $text );
+		$text = preg_replace( '/^\s*(?:to|for)\s+(?:the\s+)?(?:order\s*)?#?\d+\b/iu', '', (string) $text );
+		$text = preg_replace( '/^\s*(?:to|for)\s+(?:this|that|the|current)\s+order\b/iu', '', (string) $text );
+		$text = preg_replace( '/^\s*(?:for|to)\s+(?:them|these|those|it)\b/iu', '', (string) $text );
+
+		return trim( (string) $text, " \t\n\r\0\x0B:,-" );
+	}
+
+	private static function has_inline_add_note_content( $suffix ) {
+		$suffix = trim( wp_strip_all_tags( (string) $suffix ) );
+		$suffix = trim( preg_replace( '/\s+/', ' ', $suffix ), " \t\n\r\0\x0B:,-" );
+
+		if ( '' === $suffix ) {
+			return false;
+		}
+
+		if ( preg_match( '/^(?:and|then|also|plus|và|rồi|sau đó)\s+(?:email|e-mail|mail|message|contact|notify|write|draft|compose|send|change|update|set|mark|move|hold|gửi|nhắn|liên hệ|đổi|chuyển|cập nhật)\b/iu', $suffix ) ) {
+			return false;
+		}
+
+		$suffix = preg_replace( '/^(?:that|saying|says|to say|about|regarding|re)\b[\s:,-]*/iu', '', $suffix );
+		$suffix = trim( (string) $suffix, " \t\n\r\0\x0B:,-" );
+
+		return '' !== $suffix && (bool) preg_match( '/[\p{L}\p{N}]/u', $suffix );
 	}
 
 	private static function guard_missing_email_instruction_content( $decision, $command, $normalized ) {

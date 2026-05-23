@@ -2216,6 +2216,77 @@ class YoRo_Parser_Test_Suite {
 			],
 			[
 				'domain'          => 'router_hardening',
+				'name'            => 'AI router omitted compound note step is clarified',
+				'command'         => 'Change order 7199 to processing and note and email the customer to say that the shipping is prepared',
+				'expected_action' => 'orders.add_note',
+				'expected_source' => 'ai_router',
+				'expect_stage'    => 'clarify',
+				'router_fixture'  => array_merge(
+					self::base_router_fixture_decision(
+						'task_request',
+						'orders.update_status',
+						[
+							'order_ids' => [ 7199 ],
+							'status'    => 'processing',
+						],
+						0.66
+					),
+					[
+						'intent_family' => 'composed_actions',
+						'action_plan'   => [
+							'type'   => 'sequence',
+							'action' => 'orders.update_status',
+							'params' => [
+								'order_ids' => [ 7199 ],
+								'status'    => 'processing',
+							],
+							'steps'  => [
+								[
+									'id'       => 'step_1',
+									'label'    => 'Update order status',
+									'action'   => 'orders.update_status',
+									'params'   => [
+										'order_ids' => [ 7199 ],
+										'status'    => 'processing',
+									],
+									'when'     => [],
+									'capture'  => [],
+									'on_error' => 'stop',
+									'retry'    => [ 'max_attempts' => 1 ],
+									'meta'     => [],
+								],
+								[
+									'id'       => 'step_2',
+									'label'    => 'Compose customer email',
+									'action'   => 'orders.compose_customer_email',
+									'params'   => [
+										'order_id'    => 7199,
+										'instruction' => 'Tell the customer that the shipping is prepared.',
+									],
+									'when'     => [],
+									'capture'  => [],
+									'on_error' => 'stop',
+									'retry'    => [ 'max_attempts' => 1 ],
+									'meta'     => [],
+								],
+							],
+						],
+					]
+				),
+				'expect'          => [
+					'resolution_path'           => 'ai_primary',
+					'parser_rule'               => 'ai.command_router.clarify',
+					'params.order_id'           => 7199,
+					'params.order_ids.0'        => 7199,
+					'params.note'               => null,
+					'missing.0'                 => 'note',
+					'command_decision.mode'     => 'clarify',
+					'command_decision.missing.0'=> 'note',
+					'command_decision.action_plan.type' => 'none',
+				],
+			],
+			[
+				'domain'          => 'router_hardening',
 				'name'            => 'AI router low-confidence email save-draft request promotes into workflow instead of clarify',
 				'command'         => 'Write a payment follow-up email for order 6864 and save as draft',
 				'expected_action' => 'workflow.write_and_save_email_draft_for_order',
