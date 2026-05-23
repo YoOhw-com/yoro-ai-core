@@ -52,7 +52,7 @@ class YoRo_Response_UX_Formatter {
 		$count  = absint( $count );
 		$locale = sanitize_key( $locale ?: 'en' );
 
-		$status = self::order_status_label( $params );
+		$status = self::order_status_label( $params, $locale );
 		$subject = '' !== $status
 			? trim( $status . ' orders' )
 			: 'orders';
@@ -215,8 +215,9 @@ class YoRo_Response_UX_Formatter {
 			: sprintf( 'Which order IDs should I %s?', $action_label );
 	}
 
-	private static function order_status_label( $params ) {
+	private static function order_status_label( $params, $locale = 'en' ) {
 		$params = is_array( $params ) ? $params : [];
+		$locale = sanitize_key( $locale ?: 'en' );
 
 		if ( empty( $params['status'] ) ) {
 			return '';
@@ -224,6 +225,31 @@ class YoRo_Response_UX_Formatter {
 
 		$status_values = is_array( $params['status'] ) ? $params['status'] : [ $params['status'] ];
 		$status = sanitize_key( reset( $status_values ) );
+
+		$labels = [
+			'en' => [
+				'pending'    => 'pending',
+				'processing' => 'processing',
+				'completed'  => 'completed',
+				'on-hold'    => 'on-hold',
+				'cancelled'  => 'cancelled',
+				'refunded'   => 'refunded',
+				'failed'     => 'failed',
+			],
+			'vi' => [
+				'pending'    => 'đang chờ xử lý',
+				'processing' => 'đang xử lý',
+				'completed'  => 'hoàn tất',
+				'on-hold'    => 'tạm giữ',
+				'cancelled'  => 'đã hủy',
+				'refunded'   => 'đã hoàn tiền',
+				'failed'     => 'thất bại',
+			],
+		];
+
+		if ( isset( $labels[ $locale ][ $status ] ) ) {
+			return $labels[ $locale ][ $status ];
+		}
 
 		return trim( preg_replace( '/\s+/', ' ', str_replace( '-', ' ', $status ) ) );
 	}
@@ -233,12 +259,12 @@ class YoRo_Response_UX_Formatter {
 
 		if ( 'vi' === sanitize_key( $locale ) ) {
 			$labels = [
-				'refunded'   => 'refund',
+				'refunded'   => 'hoàn tiền',
 				'completed'  => 'hoàn tất',
 				'cancelled'  => 'hủy',
-				'processing' => 'chuyển sang processing',
-				'pending'    => 'chuyển sang pending',
-				'on-hold'    => 'chuyển sang on-hold',
+				'processing' => 'chuyển sang đang xử lý',
+				'pending'    => 'chuyển sang đang chờ xử lý',
+				'on-hold'    => 'tạm giữ',
 			];
 
 			return $labels[ $status ] ?? sprintf( 'chuyển sang %s', str_replace( '-', ' ', $status ) );
@@ -275,7 +301,9 @@ class YoRo_Response_UX_Formatter {
 			return $label;
 		}
 
-		return 'in ' . $label;
+		return 'vi' === sanitize_key( $locale )
+			? 'trong ' . $label
+			: 'in ' . $label;
 	}
 
 	private static function money_filter_phrase( $params, $source, $locale ) {
@@ -294,19 +322,29 @@ class YoRo_Response_UX_Formatter {
 		$currency = sanitize_text_field( $money_filter['currency'] ?? 'USD' );
 
 		if ( null !== $total_min && null !== $total_max ) {
-			return sprintf(
-				'between %1$s and %2$s',
-				self::format_money_label( $total_min, $currency, $locale ),
-				self::format_money_label( $total_max, $currency, $locale )
-			);
+			return 'vi' === sanitize_key( $locale )
+				? sprintf(
+					'từ %1$s đến %2$s',
+					self::format_money_label( $total_min, $currency, $locale ),
+					self::format_money_label( $total_max, $currency, $locale )
+				)
+				: sprintf(
+					'between %1$s and %2$s',
+					self::format_money_label( $total_min, $currency, $locale ),
+					self::format_money_label( $total_max, $currency, $locale )
+				);
 		}
 
 		if ( null !== $total_min ) {
-			return sprintf( 'over %s', self::format_money_label( $total_min, $currency, $locale ) );
+			return 'vi' === sanitize_key( $locale )
+				? sprintf( 'trên %s', self::format_money_label( $total_min, $currency, $locale ) )
+				: sprintf( 'over %s', self::format_money_label( $total_min, $currency, $locale ) );
 		}
 
 		if ( null !== $total_max ) {
-			return sprintf( 'under %s', self::format_money_label( $total_max, $currency, $locale ) );
+			return 'vi' === sanitize_key( $locale )
+				? sprintf( 'dưới %s', self::format_money_label( $total_max, $currency, $locale ) )
+				: sprintf( 'under %s', self::format_money_label( $total_max, $currency, $locale ) );
 		}
 
 		return '';
@@ -320,7 +358,9 @@ class YoRo_Response_UX_Formatter {
 			return '';
 		}
 
-		return sprintf( 'paid by %s', self::payment_method_label( $method ) );
+		return 'vi' === sanitize_key( $locale )
+			? sprintf( 'thanh toán bằng %s', self::payment_method_label( $method ) )
+			: sprintf( 'paid by %s', self::payment_method_label( $method ) );
 	}
 
 	private static function shipping_state_phrase( $params, $source, $locale ) {
@@ -333,26 +373,36 @@ class YoRo_Response_UX_Formatter {
 			return '';
 		}
 
-		return sprintf( 'shipping to %s', $state );
+		return 'vi' === sanitize_key( $locale )
+			? sprintf( 'giao đến %s', $state )
+			: sprintf( 'shipping to %s', $state );
 	}
 
 	private static function customer_identity_phrase( $params, $source, $locale ) {
 		$params = is_array( $params ) ? $params : [];
 
 		if ( ! empty( $params['email'] ) ) {
-			return sprintf( 'for %s', sanitize_email( $params['email'] ) );
+			return 'vi' === sanitize_key( $locale )
+				? sprintf( 'cho email %s', sanitize_email( $params['email'] ) )
+				: sprintf( 'for %s', sanitize_email( $params['email'] ) );
 		}
 
 		if ( ! empty( $params['phone'] ) ) {
-			return sprintf( 'for phone %s', sanitize_text_field( $params['phone'] ) );
+			return 'vi' === sanitize_key( $locale )
+				? sprintf( 'cho số điện thoại %s', sanitize_text_field( $params['phone'] ) )
+				: sprintf( 'for phone %s', sanitize_text_field( $params['phone'] ) );
 		}
 
 		if ( ! empty( $params['customer_id'] ) ) {
-			return sprintf( 'for customer #%d', absint( $params['customer_id'] ) );
+			return 'vi' === sanitize_key( $locale )
+				? sprintf( 'cho khách hàng #%d', absint( $params['customer_id'] ) )
+				: sprintf( 'for customer #%d', absint( $params['customer_id'] ) );
 		}
 
 		if ( ! empty( $params['customer_name'] ) ) {
-			return sprintf( 'for %s', sanitize_text_field( $params['customer_name'] ) );
+			return 'vi' === sanitize_key( $locale )
+				? sprintf( 'cho %s', sanitize_text_field( $params['customer_name'] ) )
+				: sprintf( 'for %s', sanitize_text_field( $params['customer_name'] ) );
 		}
 
 		return '';

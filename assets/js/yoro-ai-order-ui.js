@@ -129,6 +129,155 @@
 		return text;
 	}
 
+	function getResultLocale(data) {
+		data = data || {};
+		const parsed = data.parsed || {};
+		const result = data.result || {};
+		const decision = parsed.command_decision || {};
+		const language = String(parsed.language || decision.language || result.language || '').toLowerCase();
+		const locale = String(parsed.locale || result.locale || '').toLowerCase();
+
+		if (language.indexOf('vi') === 0 || locale.indexOf('vi') === 0) {
+			return 'vi';
+		}
+
+		return 'en';
+	}
+
+	function isVietnamese(locale) {
+		return String(locale || '').toLowerCase().indexOf('vi') === 0;
+	}
+
+	function orderUiText(locale, key, fallback) {
+		if (!isVietnamese(locale)) {
+			return fallback;
+		}
+
+		const labels = {
+			orders: 'Đơn hàng',
+			needsAttention: 'Cần chú ý',
+			needsAttentionSubtle: 'Đang chờ xử lý, tạm giữ hoặc thất bại',
+			combinedTotal: 'Tổng cộng',
+			combinedTotalSubtle: 'Trong các kết quả đang hiển thị',
+			averageAge: 'Tuổi trung bình',
+			visibleResults: 'Kết quả đang hiển thị',
+			hold: 'Tạm giữ',
+			viewDetails: 'Xem chi tiết',
+			addNote: 'Thêm ghi chú',
+			updateStatus: 'Cập nhật trạng thái',
+			statusNote: 'Trạng thái + ghi chú',
+			order: 'Đơn',
+			customer: 'Khách hàng',
+			case: 'Trường hợp',
+			total: 'Tổng',
+			age: 'Tuổi',
+			nextAction: 'Hành động tiếp theo',
+			actions: 'Hành động',
+			open: 'Mở',
+			compareDetails: 'So sánh chi tiết',
+			showFirstOrder: 'Xem đơn đầu tiên',
+			customerSummary: 'Tóm tắt khách hàng',
+			showSourceOrder: 'Xem đơn gốc',
+			latestFiveOrders: '5 đơn gần nhất',
+			whatNext: 'Tiếp theo nên làm gì',
+			noVisibleOrders: 'Không có đơn hiển thị',
+			tryWiderFilters: 'Thử mở rộng bộ lọc hoặc xem danh sách đơn gần đây rộng hơn.',
+			tryNext: 'Thử tiếp',
+			decisionRoute: 'Tuyến quyết định',
+			confidence: 'Độ tin cậy',
+			orderReview: 'Cần xem lại đơn hàng',
+			customerFallback: 'Khách hàng'
+		};
+
+		return labels[key] || fallback;
+	}
+
+	function orderCountLabel(count, locale) {
+		count = parseInt(count || 0, 10) || 0;
+
+		if (isVietnamese(locale)) {
+			return count + ' đơn';
+		}
+
+		return count + ' order' + (count === 1 ? '' : 's');
+	}
+
+	function orderStatusLabel(status, locale) {
+		status = String(status || '').trim();
+
+		if (!isVietnamese(locale)) {
+			return status;
+		}
+
+		const labels = {
+			pending: 'đang chờ xử lý',
+			processing: 'đang xử lý',
+			completed: 'hoàn tất',
+			'on-hold': 'tạm giữ',
+			cancelled: 'đã hủy',
+			canceled: 'đã hủy',
+			refunded: 'đã hoàn tiền',
+			failed: 'thất bại'
+		};
+
+		return labels[status] || status.replace(/-/g, ' ');
+	}
+
+	function paymentMethodLabel(method, locale) {
+		method = String(method || '').trim();
+
+		if (!isVietnamese(locale)) {
+			return method;
+		}
+
+		const normalized = method.toLowerCase();
+		const labels = {
+			cod: 'Thanh toán khi nhận hàng',
+			'cash on delivery': 'Thanh toán khi nhận hàng'
+		};
+
+		return labels[normalized] || method;
+	}
+
+	function formatAgeHoursForLocale(value, locale) {
+		if (!isVietnamese(locale)) {
+			return formatAgeHours(value);
+		}
+
+		const hours = parseInt(value || 0, 10) || 0;
+
+		if (hours <= 0) {
+			return '<1 giờ';
+		}
+
+		if (hours < 24) {
+			return hours + ' giờ';
+		}
+
+		const days = Math.floor(hours / 24);
+		const remainingHours = hours % 24;
+
+		if (days < 7) {
+			return remainingHours ? (days + ' ngày ' + remainingHours + ' giờ') : (days + ' ngày');
+		}
+
+		const weeks = Math.floor(days / 7);
+		const remainingDays = days % 7;
+
+		if (weeks < 5) {
+			return remainingDays ? (weeks + ' tuần ' + remainingDays + ' ngày') : (weeks + ' tuần');
+		}
+
+		const months = Math.floor(days / 30);
+		const remainingMonthDays = days % 30;
+
+		if (months > 0) {
+			return remainingMonthDays ? (months + ' tháng ' + remainingMonthDays + ' ngày') : (months + ' tháng');
+		}
+
+		return days + ' ngày';
+	}
+
 	function shouldShowDecisionRoute(h) {
 		return !!(h && typeof h.shouldShowDebugJson === 'function' && h.shouldShowDebugJson());
 	}
@@ -565,8 +714,9 @@
 		const orders = Array.isArray(result.orders) ? result.orders : [];
 		const parsed = data.parsed || {};
 		const action = parsed.action || result.action || '';
+		const locale = getResultLocale(data);
 		const firstOrder = orders.length ? orders[0] : null;
-		const contextMeta = getOrdersListContextMeta(result, parsed, orders);
+		const contextMeta = getOrdersListContextMeta(result, parsed, orders, locale);
 		const needsAttentionCount = orders.filter(function(order) {
 			return ['pending', 'on-hold', 'failed'].indexOf(String(order && order.status ? order.status : '')) !== -1;
 		}).length;
@@ -585,11 +735,11 @@
 		html += '<span class="yoro-result-subtle">' + h.escapeHtml(contextMeta.subtle) + '</span>';
 
 		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
-			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
+			html += '<span class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'decisionRoute', 'Decision route')) + ': ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
 		if (typeof parsed.confidence !== 'undefined' && action === 'orders.find_by_identity') {
-			html += '<span class="yoro-result-subtle">Confidence: ' + h.escapeHtml(Math.round(parsed.confidence * 100)) + '%</span>';
+			html += '<span class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'confidence', 'Confidence')) + ': ' + h.escapeHtml(Math.round(parsed.confidence * 100)) + '%</span>';
 		}
 
 		html += '</div>';
@@ -609,55 +759,57 @@
 		html += '<strong class="yoro-order-detail-title">' + h.escapeHtml(contextMeta.title) + '</strong>';
 		html += '<div class="yoro-result-subtle">' + h.escapeHtml(contextMeta.meta) + '</div>';
 		html += '</div>';
-		html += '<span class="yoro-current-order-badge">' + h.escapeHtml((result.count || orders.length) + ' orders') + '</span>';
+		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(orderCountLabel(result.count || orders.length, locale)) + '</span>';
 		html += '</div>';
 
 		html += '<div class="yoro-order-detail-metrics yoro-order-detail-metrics-compact">';
-		html += '<div><span>Orders</span><strong>' + h.escapeHtml(String(result.count || orders.length)) + '</strong><small class="yoro-result-subtle">' + h.escapeHtml(contextMeta.metricSubtle) + '</small></div>';
-		html += '<div><span>Needs attention</span><strong>' + h.escapeHtml(String(needsAttentionCount)) + '</strong><small class="yoro-result-subtle">Pending, on-hold, or failed</small></div>';
-		html += '<div><span>Combined total</span><strong>' + h.escapeHtml(combinedTotal.toFixed(2) + ' ' + getOrdersListCurrency(orders)) + '</strong><small class="yoro-result-subtle">Across visible results</small></div>';
-		html += '<div><span>Average age</span><strong>' + h.escapeHtml(formatAgeHours(averageAge)) + '</strong><small class="yoro-result-subtle">Visible results</small></div>';
+		html += '<div><span>' + h.escapeHtml(orderUiText(locale, 'orders', 'Orders')) + '</span><strong>' + h.escapeHtml(String(result.count || orders.length)) + '</strong><small class="yoro-result-subtle">' + h.escapeHtml(contextMeta.metricSubtle) + '</small></div>';
+		html += '<div><span>' + h.escapeHtml(orderUiText(locale, 'needsAttention', 'Needs attention')) + '</span><strong>' + h.escapeHtml(String(needsAttentionCount)) + '</strong><small class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'needsAttentionSubtle', 'Pending, on-hold, or failed')) + '</small></div>';
+		html += '<div><span>' + h.escapeHtml(orderUiText(locale, 'combinedTotal', 'Combined total')) + '</span><strong>' + h.escapeHtml(combinedTotal.toFixed(2) + ' ' + getOrdersListCurrency(orders)) + '</strong><small class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'combinedTotalSubtle', 'Across visible results')) + '</small></div>';
+		html += '<div><span>' + h.escapeHtml(orderUiText(locale, 'averageAge', 'Average age')) + '</span><strong>' + h.escapeHtml(formatAgeHoursForLocale(averageAge, locale)) + '</strong><small class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'visibleResults', 'Visible results')) + '</small></div>';
 		html += '</div>';
 
 		html += '<div class="yoro-bulk-actions">';
-		html += '<button type="button" class="button yoro-run-hold">Hold</button>';
-		html += '<button type="button" class="button yoro-bulk-details">View details</button>';
-		html += '<button type="button" class="button yoro-bulk-add-note">Add note</button>';
-		html += '<button type="button" class="button yoro-bulk-update-status">Update status</button>';
-		html += '<button type="button" class="button yoro-bulk-status-note">Status + Note</button>';
+		html += '<button type="button" class="button yoro-run-hold">' + h.escapeHtml(orderUiText(locale, 'hold', 'Hold')) + '</button>';
+		html += '<button type="button" class="button yoro-bulk-details">' + h.escapeHtml(orderUiText(locale, 'viewDetails', 'View details')) + '</button>';
+		html += '<button type="button" class="button yoro-bulk-add-note">' + h.escapeHtml(orderUiText(locale, 'addNote', 'Add note')) + '</button>';
+		html += '<button type="button" class="button yoro-bulk-update-status">' + h.escapeHtml(orderUiText(locale, 'updateStatus', 'Update status')) + '</button>';
+		html += '<button type="button" class="button yoro-bulk-status-note">' + h.escapeHtml(orderUiText(locale, 'statusNote', 'Status + Note')) + '</button>';
 		html += '</div>';
 
 		html += '<table class="yoro-orders-table">';
 		html += '<thead>';
 		html += '<tr>';
 		html += '<th><input type="checkbox" class="yoro-select-all"></th>';
-		html += '<th>Order</th>';
-		html += '<th>Customer</th>';
-		html += '<th>Case</th>';
-		html += '<th>Total</th>';
-		html += '<th>Age</th>';
-		html += '<th>Next action</th>';
+		html += '<th>' + h.escapeHtml(orderUiText(locale, 'order', 'Order')) + '</th>';
+		html += '<th>' + h.escapeHtml(orderUiText(locale, 'customer', 'Customer')) + '</th>';
+		html += '<th>' + h.escapeHtml(orderUiText(locale, 'case', 'Case')) + '</th>';
+		html += '<th>' + h.escapeHtml(orderUiText(locale, 'total', 'Total')) + '</th>';
+		html += '<th>' + h.escapeHtml(orderUiText(locale, 'age', 'Age')) + '</th>';
+		html += '<th>' + h.escapeHtml(orderUiText(locale, 'nextAction', 'Next action')) + '</th>';
 		html += '</tr>';
 		html += '</thead>';
 		html += '<tbody>';
 
 		orders.forEach(function (order) {
-			const customerLabel = order.customer_name || order.billing_email || order.billing_phone || 'Customer';
-			const caseLabel = buildOrdersListCaseLabel(order, action);
-			const nextActionLabel = action === 'orders.find_by_identity' ? 'Compare details' : 'Open details';
+			const customerLabel = order.customer_name || order.billing_email || order.billing_phone || orderUiText(locale, 'customerFallback', 'Customer');
+			const caseLabel = buildOrdersListCaseLabel(order, action, locale);
+			const nextActionLabel = action === 'orders.find_by_identity'
+				? orderUiText(locale, 'compareDetails', 'Compare details')
+				: orderUiText(locale, 'viewDetails', 'Open details');
 			html += '<tr>';
 			html += '<td><input type="checkbox" class="yoro-order-checkbox" value="' + h.escapeHtml(order.id) + '"></td>';
 			html += '<td><strong>#' + h.escapeHtml(order.number || order.id) + '</strong></td>';
 			html += '<td><strong>' + h.escapeHtml(customerLabel) + '</strong><div class="yoro-result-subtle">' + h.escapeHtml(order.billing_email || order.billing_phone || '—') + '</div></td>';
-			html += '<td><span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span><div class="yoro-result-subtle">' + h.escapeHtml(caseLabel) + '</div></td>';
+			html += '<td><span class="yoro-status-badge">' + h.escapeHtml(orderStatusLabel(order.status || '', locale)) + '</span><div class="yoro-result-subtle">' + h.escapeHtml(caseLabel) + '</div></td>';
 			html += '<td>' + h.escapeHtml(order.total || '') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
-			html += '<td>' + h.escapeHtml(formatAgeHours(order.age_hours)) + '<div class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</div></td>';
+			html += '<td>' + h.escapeHtml(formatAgeHoursForLocale(order.age_hours, locale)) + '<div class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</div></td>';
 			html += '<td class="yoro-row-actions">';
 			html += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h.escapeHtml(order.id) + '">' + h.escapeHtml(nextActionLabel) + '</button> ';
-			html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '" data-action-scope="row" data-has-email-drafts="' + (order.has_email_drafts ? '1' : '0') + '" data-draft-count="' + h.escapeHtml(order.draft_count || 0) + '">Actions</button> ';
+			html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '" data-action-scope="row" data-has-email-drafts="' + (order.has_email_drafts ? '1' : '0') + '" data-draft-count="' + h.escapeHtml(order.draft_count || 0) + '">' + h.escapeHtml(orderUiText(locale, 'actions', 'Actions')) + '</button> ';
 
 			if (order.edit_url) {
-				html += '<a class="button button-small" href="' + h.escapeHtml(order.edit_url) + '" target="_blank" rel="noopener noreferrer">Open</a>';
+				html += '<a class="button button-small" href="' + h.escapeHtml(order.edit_url) + '" target="_blank" rel="noopener noreferrer">' + h.escapeHtml(orderUiText(locale, 'open', 'Open')) + '</a>';
 			}
 
 			html += '</td>';
@@ -667,15 +819,15 @@
 		html += '</tbody>';
 		html += '</table>';
 		html += renderQueueActionStrip([
-			firstOrder ? { label: 'Show first order', command: 'Show order #' + (firstOrder.number || firstOrder.id) + ' details' } : null,
+			firstOrder ? { label: orderUiText(locale, 'showFirstOrder', 'Show first order'), command: 'Show order #' + (firstOrder.number || firstOrder.id) + ' details' } : null,
 			action === 'orders.find_by_customer' && (result.email || result.phone)
-				? { label: 'Customer summary', command: buildCustomerSummaryCommand(result) }
+				? { label: orderUiText(locale, 'customerSummary', 'Customer summary'), command: buildCustomerSummaryCommand(result) }
 				: null,
 			action === 'orders.find_by_identity' && result.order_id
-				? { label: 'Show source order', command: 'Show order #' + result.order_id + ' details' }
+				? { label: orderUiText(locale, 'showSourceOrder', 'Show source order'), command: 'Show order #' + result.order_id + ' details' }
 				: null,
-			{ label: 'Latest 5 orders', command: 'Show latest 5 orders' }
-		].filter(Boolean), h, 'What to do next');
+			{ label: orderUiText(locale, 'latestFiveOrders', 'Latest 5 orders'), command: 'Show latest 5 orders' }
+		].filter(Boolean), h, orderUiText(locale, 'whatNext', 'What to do next'));
 		html += '</div>';
 
 		html += h.renderDebugJson(data);
@@ -684,27 +836,28 @@
 	}
 
 	function renderOrdersEmptyState(result, parsed, contextMeta, h) {
+		const locale = parsed && parsed.language ? parsed.language : 'en';
 		const emptyState = result && result.empty_state && typeof result.empty_state === 'object'
 			? result.empty_state
 			: {};
-		const title = emptyState.title || 'No matching orders found.';
-		const description = emptyState.description || 'No orders matched this request.';
+		const title = emptyState.title || (isVietnamese(locale) ? 'Không tìm thấy đơn phù hợp.' : 'No matching orders found.');
+		const description = emptyState.description || (isVietnamese(locale) ? 'Không có đơn nào khớp với yêu cầu này.' : 'No orders matched this request.');
 		const actions = Array.isArray(emptyState.actions) ? emptyState.actions : [];
 		let html = '<div class="yoro-order-detail-card yoro-empty-orders-card">';
 		html += '<div class="yoro-order-detail-header">';
 		html += '<div>';
 		html += '<strong class="yoro-order-detail-title">' + h.escapeHtml(title) + '</strong>';
-		html += '<div class="yoro-result-subtle">' + h.escapeHtml(contextMeta.meta || 'No visible orders') + '</div>';
+		html += '<div class="yoro-result-subtle">' + h.escapeHtml(contextMeta.meta || orderUiText(locale, 'noVisibleOrders', 'No visible orders')) + '</div>';
 		html += '</div>';
-		html += '<span class="yoro-current-order-badge">0 orders</span>';
+		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(orderCountLabel(0, locale)) + '</span>';
 		html += '</div>';
 		html += '<p>' + h.escapeHtml(description) + '</p>';
-		html += '<p class="yoro-result-subtle">Try widening the filters or checking a broader recent order list.</p>';
+		html += '<p class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'tryWiderFilters', 'Try widening the filters or checking a broader recent order list.')) + '</p>';
 
 		if (actions.length) {
 			html += renderQueueActionStrip(actions.filter(function(action) {
 				return action && action.label && action.command;
-			}), h, 'Try next');
+			}), h, orderUiText(locale, 'tryNext', 'Try next'));
 		}
 
 		html += '</div>';
@@ -712,46 +865,50 @@
 		return html;
 	}
 
-	function getOrdersListContextMeta(result, parsed, orders) {
+	function getOrdersListContextMeta(result, parsed, orders, locale) {
 		const action = parsed.action || result.action || '';
 		if (action === 'orders.find_by_customer') {
-			const target = result.email || result.phone || 'this customer';
+			const target = result.email || result.phone || (isVietnamese(locale) ? 'khách hàng này' : 'this customer');
 			return {
-				title: 'Customer order history',
-				meta: 'Orders linked to ' + target,
-				summary: result.summary || ('Found ' + orders.length + ' customer orders.'),
-				subtle: 'Recent customer history is listed below.',
-				metricSubtle: 'Linked to the same customer'
+				title: isVietnamese(locale) ? 'Lịch sử đơn hàng của khách' : 'Customer order history',
+				meta: isVietnamese(locale) ? ('Đơn liên quan đến ' + target) : ('Orders linked to ' + target),
+				summary: result.summary || (isVietnamese(locale) ? ('Tìm thấy ' + orders.length + ' đơn của khách hàng.') : ('Found ' + orders.length + ' customer orders.')),
+				subtle: isVietnamese(locale) ? 'Lịch sử đơn gần đây của khách được liệt kê bên dưới.' : 'Recent customer history is listed below.',
+				metricSubtle: isVietnamese(locale) ? 'Liên quan đến cùng khách hàng' : 'Linked to the same customer'
 			};
 		}
 
 		if (action === 'orders.find_by_identity') {
 			return {
-				title: 'Related orders by identity',
-				meta: 'Compared against order #' + (result.order_id || ''),
-				summary: result.summary || ('Found ' + orders.length + ' identity-matched orders.'),
-				subtle: 'These orders share customer or identity signals.',
-				metricSubtle: 'Matched by identity signals'
+				title: isVietnamese(locale) ? 'Đơn liên quan theo định danh' : 'Related orders by identity',
+				meta: isVietnamese(locale) ? ('So sánh với đơn #' + (result.order_id || '')) : ('Compared against order #' + (result.order_id || '')),
+				summary: result.summary || (isVietnamese(locale) ? ('Tìm thấy ' + orders.length + ' đơn khớp định danh.') : ('Found ' + orders.length + ' identity-matched orders.')),
+				subtle: isVietnamese(locale) ? 'Các đơn này có tín hiệu khách hàng hoặc định danh giống nhau.' : 'These orders share customer or identity signals.',
+				metricSubtle: isVietnamese(locale) ? 'Khớp theo tín hiệu định danh' : 'Matched by identity signals'
 			};
 		}
 
 		return {
-			title: 'Orders',
-			meta: 'Most recent matching orders',
-			summary: result.summary || ('Found ' + orders.length + ' orders.'),
-			subtle: 'The most recent matching orders are listed below.',
-			metricSubtle: 'Visible in this list'
+			title: isVietnamese(locale) ? 'Đơn hàng' : 'Orders',
+			meta: isVietnamese(locale) ? 'Các đơn phù hợp gần đây' : 'Most recent matching orders',
+			summary: result.summary || (isVietnamese(locale) ? ('Tìm thấy ' + orders.length + ' đơn.') : ('Found ' + orders.length + ' orders.')),
+			subtle: isVietnamese(locale) ? 'Các đơn phù hợp gần đây được liệt kê bên dưới.' : 'The most recent matching orders are listed below.',
+			metricSubtle: isVietnamese(locale) ? 'Hiển thị trong danh sách này' : 'Visible in this list'
 		};
 	}
 
-	function buildOrdersListCaseLabel(order, action) {
+	function buildOrdersListCaseLabel(order, action, locale) {
 		if (action === 'orders.find_by_identity') {
 			const reasons = Array.isArray(order.match_reasons) ? order.match_reasons : [];
 			if (reasons.length) {
-				return 'Matched by ' + reasons.join(', ');
+				return isVietnamese(locale)
+					? 'Khớp theo ' + reasons.join(', ')
+					: 'Matched by ' + reasons.join(', ');
 			}
 		}
-		return order.payment_method_title || order.payment_method || 'Order review';
+
+		return paymentMethodLabel(order.payment_method_title || order.payment_method || '', locale)
+			|| orderUiText(locale, 'orderReview', 'Order review');
 	}
 
 	function getOrdersListCurrency(orders) {

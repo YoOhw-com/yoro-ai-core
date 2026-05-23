@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 0.1.5
+Stable tag: 0.1.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -72,6 +72,11 @@ YoRo AI Core will not boot its runtime. Administrators will see a notice explain
 Yes. The repository includes `.distignore` rules for omitting development docs and debug test fixtures from release packages.
 
 == Changelog ==
+
+= 0.1.6 =
+* Restored Vietnamese response copy for YoRo AI API routed order searches.
+* Added language context to YoRo AI API requests.
+* Localized the orders list UI when YoRo detects Vietnamese commands.
 
 = 0.1.5 =
 * Routed AI features through YoRo AI API.

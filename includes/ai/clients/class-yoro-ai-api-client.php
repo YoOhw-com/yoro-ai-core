@@ -39,8 +39,9 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 				],
 				'body'    => wp_json_encode(
 					[
-						'site_url'       => home_url(),
-						'plugin_version' => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+						'site_url'         => home_url(),
+						'plugin_version'   => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+						'language_context' => $this->build_language_context(),
 					]
 				),
 			]
@@ -463,6 +464,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'command'        => sanitize_textarea_field( $payload['command'] ?? '' ),
 			'site_url'       => esc_url_raw( $payload['site_url'] ?? home_url() ),
 			'plugin_version' => sanitize_text_field( $payload['plugin_version'] ?? ( defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '' ) ),
+			'language_context' => $this->build_language_context( $payload ),
 			'context'        => isset( $payload['context'] ) && is_array( $payload['context'] )
 				? $payload['context']
 				: [],
@@ -480,6 +482,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'command'                 => sanitize_textarea_field( $payload['command'] ?? '' ),
 			'site_url'                => esc_url_raw( $payload['site_url'] ?? home_url() ),
 			'plugin_version'          => sanitize_text_field( $payload['plugin_version'] ?? ( defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '' ) ),
+			'language_context'        => $this->build_language_context( $payload ),
 			'workflow_scope'          => sanitize_key( $payload['workflow_scope'] ?? 'general' ),
 			'allowed_action_names'    => isset( $payload['allowed_action_names'] ) && is_array( $payload['allowed_action_names'] )
 				? array_values( array_filter( array_map( 'sanitize_text_field', $payload['allowed_action_names'] ) ) )
@@ -507,6 +510,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'instruction'    => sanitize_textarea_field( $payload['instruction'] ?? '' ),
 			'site_url'       => esc_url_raw( $payload['site_url'] ?? home_url() ),
 			'plugin_version' => sanitize_text_field( $payload['plugin_version'] ?? ( defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '' ) ),
+			'language_context' => $this->build_language_context( $payload ),
 			'order_context'  => isset( $payload['order_context'] ) && is_array( $payload['order_context'] )
 				? $payload['order_context']
 				: [],
@@ -522,7 +526,41 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'action'         => sanitize_text_field( $action ),
 			'site_url'       => esc_url_raw( $payload['site_url'] ?? home_url() ),
 			'plugin_version' => sanitize_text_field( $payload['plugin_version'] ?? ( defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '' ) ),
+			'language_context' => $this->build_language_context( $payload ),
 		];
+	}
+
+	private function build_language_context( array $payload = [] ) {
+		$incoming = isset( $payload['language_context'] ) && is_array( $payload['language_context'] )
+			? $payload['language_context']
+			: [];
+		$site_locale = sanitize_text_field( $incoming['site_locale'] ?? ( $payload['site_locale'] ?? get_locale() ) );
+		$user_locale = sanitize_text_field(
+			$incoming['user_locale']
+				?? ( $payload['user_locale'] ?? ( function_exists( 'get_user_locale' ) ? get_user_locale() : $site_locale ) )
+		);
+		$preferred_language = sanitize_key(
+			$incoming['preferred_language']
+				?? ( $payload['preferred_language'] ?? $this->language_from_locale( $user_locale ?: $site_locale ) )
+		);
+
+		return [
+			'site_locale'        => $site_locale,
+			'user_locale'        => $user_locale,
+			'preferred_language' => $preferred_language ?: 'en',
+		];
+	}
+
+	private function language_from_locale( $locale ) {
+		$locale = strtolower( sanitize_text_field( (string) $locale ) );
+
+		if ( '' === $locale ) {
+			return 'en';
+		}
+
+		$parts = preg_split( '/[_-]/', $locale );
+
+		return sanitize_key( $parts[0] ?? 'en' ) ?: 'en';
 	}
 
 	private function build_route_endpoint_url( $api_url ) {
