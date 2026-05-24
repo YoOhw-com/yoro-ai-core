@@ -520,11 +520,39 @@ class YoRo_Command_Decision_Normalizer {
 		}
 
 		$filtered = self::apply_action_param_defaults( $filtered, $catalog_item, $schema );
+		$filtered = self::preserve_internal_workflow_params( $filtered, $params );
 
 		return [
 			'params'             => $filtered,
 			'dropped_param_keys' => array_values( array_diff( self::normalize_param_keys( $params, false ), array_keys( $filtered ) ) ),
 		];
+	}
+
+	private static function preserve_internal_workflow_params( $filtered, $params ) {
+		$filtered = is_array( $filtered ) ? $filtered : [];
+		$params   = is_array( $params ) ? $params : [];
+
+		foreach ( $params as $key => $value ) {
+			$key = sanitize_key( (string) $key );
+
+			if ( 0 !== strpos( $key, '_yoro_composed_' ) ) {
+				continue;
+			}
+
+			if ( is_array( $value ) ) {
+				$filtered[ $key ] = $value;
+				continue;
+			}
+
+			if ( is_bool( $value ) || is_int( $value ) || is_float( $value ) ) {
+				$filtered[ $key ] = $value;
+				continue;
+			}
+
+			$filtered[ $key ] = sanitize_text_field( (string) $value );
+		}
+
+		return $filtered;
 	}
 
 	private static function normalize_action_plan( $action_plan, $action_catalog, $mode, $action, $params ) {

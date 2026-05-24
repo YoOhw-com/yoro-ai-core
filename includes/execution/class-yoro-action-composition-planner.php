@@ -1147,7 +1147,21 @@ class YoRo_Action_Composition_Planner {
 		$insert_at = count( $requested );
 
 		foreach ( $requested as $index => $item ) {
-			if ( in_array( sanitize_key( $item['kind'] ?? '' ), [ 'hold', 'update_status', 'status_with_note' ], true ) ) {
+			$kind   = sanitize_key( $item['kind'] ?? '' );
+			$params = isset( $item['params'] ) && is_array( $item['params'] ) ? $item['params'] : [];
+
+			if ( in_array( $kind, [ 'add_note', 'status_with_note' ], true ) ) {
+				$current_note = sanitize_textarea_field( $params['note'] ?? '' );
+
+				if ( '' === $current_note || self::is_placeholder_note_text( $current_note, sanitize_key( $params['status'] ?? '' ) ) ) {
+					$params['note'] = $note;
+					$requested[ $index ]['params'] = $params;
+
+					return $requested;
+				}
+			}
+
+			if ( in_array( $kind, [ 'hold', 'update_status', 'status_with_note' ], true ) ) {
 				$insert_at = $index + 1;
 			}
 		}
