@@ -94,7 +94,7 @@ class YoRo_Order_Helper {
 			$status = substr( $status, 3 );
 		}
 
-		if ( 'on_hold' === $status ) {
+		if ( in_array( $status, [ 'on_hold', 'onhold' ], true ) ) {
 			$status = 'on-hold';
 		}
 
@@ -118,6 +118,7 @@ class YoRo_Order_Helper {
 			'processing'      => 'processing',
 			'on hold'         => 'on-hold',
 			'on-hold'         => 'on-hold',
+			'onhold'          => 'on-hold',
 			'completed'       => 'completed',
 			'complete'        => 'completed',
 			'cancelled'       => 'cancelled',
@@ -195,6 +196,7 @@ class YoRo_Order_Helper {
 				'hold',
 				'on hold',
 				'on-hold',
+				'onhold',
 			],
 		];
 
