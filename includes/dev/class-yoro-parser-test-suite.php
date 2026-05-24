@@ -2326,6 +2326,134 @@ class YoRo_Parser_Test_Suite {
 			],
 			[
 				'domain'          => 'router_hardening',
+				'name'            => 'AI router clarify preserves requested note and status operations',
+				'command'         => 'Add note to the order 7199 and update the status to on hold',
+				'expected_action' => 'orders.add_note',
+				'expected_source' => 'ai_router',
+				'expect_stage'    => 'clarify',
+				'router_fixture'  => array_merge(
+					self::base_router_fixture_decision(
+						'clarify',
+						'orders.add_note',
+						[
+							'order_id'  => 7199,
+							'order_ids' => [ 7199 ],
+						],
+						0.75,
+						[ 'note' ],
+						'What note should I add to order #7199?'
+					),
+					[
+						'requested_operations' => [
+							[
+								'id'        => 'op_hint_add_note',
+								'operation' => 'add_note',
+								'action'    => 'orders.add_note',
+								'params'    => [
+									'order_id'  => 7199,
+									'order_ids' => [ 7199 ],
+								],
+								'missing'   => [ 'note' ],
+								'evidence'  => 'AI requested an add-note operation without note content.',
+								'position'  => 1,
+							],
+							[
+								'id'        => 'op1',
+								'operation' => 'update_status',
+								'action'    => 'orders.update_status',
+								'params'    => [
+									'order_ids' => [ 7199 ],
+									'status'    => 'on-hold',
+								],
+								'missing'   => [],
+								'evidence'  => 'AI requested status update for the same order.',
+								'position'  => 2,
+							],
+						],
+						'action_plan' => [
+							'type'   => 'none',
+							'action' => null,
+							'params' => [],
+							'steps'  => [],
+						],
+					]
+				),
+				'expect'          => [
+					'resolution_path'           => 'ai_primary',
+					'parser_rule'               => 'ai.command_router.clarify',
+					'missing.0'                 => 'note',
+					'current_workflow.type'     => 'composed_actions',
+					'current_workflow.action'   => 'orders.add_note',
+					'current_workflow.order_id' => 7199,
+					'current_workflow.params._yoro_composed_requested_actions.0.kind' => 'add_note',
+					'current_workflow.params._yoro_composed_requested_actions.0.params.note' => null,
+					'current_workflow.params._yoro_composed_requested_actions.1.kind' => 'update_status',
+					'current_workflow.params._yoro_composed_requested_actions.1.params.status' => 'on-hold',
+				],
+			],
+			[
+				'domain'          => 'router_hardening',
+				'name'            => 'AI router clarify preserves requested email and status operations',
+				'command'         => 'Write an email to order 7199 and update the status to pending',
+				'expected_action' => 'orders.compose_customer_email',
+				'expected_source' => 'ai_router',
+				'expect_stage'    => 'clarify',
+				'router_fixture'  => array_merge(
+					self::base_router_fixture_decision(
+						'clarify',
+						'orders.compose_customer_email',
+						[
+							'order_id'  => 7199,
+							'order_ids' => [ 7199 ],
+						],
+						0.73,
+						[ 'instruction' ],
+						'What should the email say?'
+					),
+					[
+						'requested_operations' => [
+							[
+								'id'        => 'op1',
+								'operation' => 'compose_customer_email',
+								'action'    => 'orders.compose_customer_email',
+								'params'    => [
+									'order_id'  => 7199,
+									'order_ids' => [ 7199 ],
+								],
+								'missing'   => [ 'instruction' ],
+								'evidence'  => 'AI requested customer email without instruction content.',
+								'position'  => 1,
+							],
+							[
+								'id'        => 'op2',
+								'operation' => 'update_status',
+								'action'    => 'orders.update_status',
+								'params'    => [
+									'order_ids' => [ 7199 ],
+									'status'    => 'pending',
+								],
+								'missing'   => [],
+								'evidence'  => 'AI requested status update for the same order.',
+								'position'  => 2,
+							],
+						],
+					]
+				),
+				'expect'          => [
+					'resolution_path'           => 'ai_primary',
+					'parser_rule'               => 'ai.command_router.clarify',
+					'missing.0'                 => 'instruction',
+					'current_workflow.type'     => 'composed_actions',
+					'current_workflow.action'   => 'orders.compose_customer_email',
+					'current_workflow.order_id' => 7199,
+					'current_workflow.params._yoro_composed_requested_actions.0.kind' => 'write_email',
+					'current_workflow.params._yoro_composed_requested_actions.0.params.instruction' => null,
+					'current_workflow.params._yoro_composed_requested_actions.1.kind' => 'update_status',
+					'current_workflow.params._yoro_composed_requested_actions.1.params.status' => 'pending',
+				],
+			],
+			[
+				'domain'          => 'router_hardening',
 				'name'            => 'AI router low-confidence email save-draft request promotes into workflow instead of clarify',
 				'command'         => 'Write a payment follow-up email for order 6864 and save as draft',
 				'expected_action' => 'workflow.write_and_save_email_draft_for_order',
