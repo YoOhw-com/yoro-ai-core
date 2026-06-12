@@ -8,7 +8,7 @@ class YoRo_Orders_Read_Service {
 
 	public static function search_orders( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
 		}
 
 		$limit = isset( $params['limit'] )
@@ -82,9 +82,7 @@ class YoRo_Orders_Read_Service {
 		$min_age_hours = ! empty( $params['min_age_hours'] )
 			? min( max( absint( $params['min_age_hours'] ), 1 ), 8760 )
 			: 0;
-		$date_window = ! empty( $params['date_window'] )
-			? YoRo_Date_Helper::normalize_window_key( $params['date_window'] )
-			: YoRo_Date_Helper::infer_window_key_from_text( $params['original_command'] ?? '' );
+		$date_window = YoRo_Date_Helper::window_key_from_params( $params, 'date_window', '' );
 		$resolved_window = $date_window ? YoRo_Date_Helper::resolve_window( $date_window ) : [];
 
 		if ( $min_age_hours > 0 ) {
@@ -151,19 +149,15 @@ class YoRo_Orders_Read_Service {
 		}
 
 		if ( $min_age_hours > 0 ) {
-			$is_vietnamese = YoRo_Date_Helper::is_likely_vietnamese(
-				strtolower( sanitize_text_field( (string) ( $params['original_command'] ?? '' ) ) )
-			);
+			$locale = sanitize_key( $params['response_language'] ?? '' ) ?: 'en';
 			$response['min_age_hours'] = $min_age_hours;
-			$response['age_filter_label'] = class_exists( 'YoRo_Response_UX_Formatter' )
-				? YoRo_Response_UX_Formatter::age_threshold_label(
-					$min_age_hours,
-					[
-						'command' => $params['original_command'] ?? '',
-					],
-					$is_vietnamese ? 'vi' : 'en'
-				)
-				: '';
+			$response['age_filter_label'] = YoRo_Response_UX_Formatter::age_threshold_label(
+				$min_age_hours,
+				[
+					'command' => $params['original_command'] ?? '',
+				],
+				$locale
+			);
 		}
 
 		return $response;
@@ -388,19 +382,16 @@ class YoRo_Orders_Read_Service {
 
 	private static function build_orders_search_empty_state( $params, $resolved_window = [] ) {
 		$params = is_array( $params ) ? $params : [];
-		$command = strtolower( sanitize_text_field( (string) ( $params['original_command'] ?? '' ) ) );
-		$is_vietnamese = YoRo_Date_Helper::is_likely_vietnamese( $command );
-		$locale = $is_vietnamese ? 'vi' : 'en';
-		$phrases = class_exists( 'YoRo_Response_UX_Formatter' )
-			? YoRo_Response_UX_Formatter::order_search_filter_phrases(
-				$params,
-				$resolved_window,
-				[
-					'command' => $params['original_command'] ?? '',
-				],
-				$locale
-			)
-			: [];
+		$locale = sanitize_key( $params['response_language'] ?? '' ) ?: 'en';
+		$is_vietnamese = 'vi' === $locale;
+		$phrases = YoRo_Response_UX_Formatter::order_search_filter_phrases(
+			$params,
+			$resolved_window,
+			[
+				'command' => $params['original_command'] ?? '',
+			],
+			$locale
+		);
 		$criteria = ! empty( $phrases ) ? implode( ', ', $phrases ) : '';
 
 		if ( $is_vietnamese ) {
@@ -434,65 +425,19 @@ class YoRo_Orders_Read_Service {
 
 	private static function build_search_summary( $count, $params, $resolved_window = [] ) {
 		$count = absint( $count );
-		$command = strtolower( sanitize_text_field( (string) ( $params['original_command'] ?? '' ) ) );
 		$response_language = sanitize_key( $params['response_language'] ?? '' );
-		$is_vietnamese = 'vi' === $response_language || YoRo_Date_Helper::is_likely_vietnamese( $command );
-		$min_age_hours = isset( $params['min_age_hours'] ) ? absint( $params['min_age_hours'] ) : 0;
-		$locale = $response_language ?: ( $is_vietnamese ? 'vi' : 'en' );
+		$locale = $response_language ?: 'en';
 
-		if ( class_exists( 'YoRo_Response_UX_Formatter' ) ) {
-			return YoRo_Response_UX_Formatter::order_search_summary(
-				'found',
-				$count,
-				$params,
-				$resolved_window,
-				[
-					'command' => $params['original_command'] ?? '',
-				],
-				$locale
-			);
-		}
-
-		if ( $is_vietnamese ) {
-			$status = self::first_status_filter( $params );
-			$status_text = $status ? ' ' . $status : '';
-			$window_text = ! empty( $resolved_window['key'] )
-				? ' trong ' . YoRo_Date_Helper::get_window_label( $resolved_window['key'], 'vi' )
-				: '';
-			$age_text = $min_age_hours > 0 && class_exists( 'YoRo_Response_UX_Formatter' )
-				? ' ' . YoRo_Response_UX_Formatter::age_threshold_phrase(
-					$min_age_hours,
-					[
-						'command' => $params['original_command'] ?? '',
-					],
-					'vi'
-				)
-				: '';
-
-			return sprintf( 'Tìm thấy %d đơn%s%s%s.', $count, $status_text, $window_text, $age_text );
-		}
-
-		if ( ! empty( $resolved_window['label'] ) ) {
-			return sprintf( 'Found %d orders in %s.', $count, strtolower( $resolved_window['label'] ) );
-		}
-
-		if ( $min_age_hours > 0 ) {
-			$status = self::first_status_filter( $params );
-			$status_text = $status ? ' ' . str_replace( '-', ' ', $status ) : '';
-			$age_phrase = class_exists( 'YoRo_Response_UX_Formatter' )
-				? YoRo_Response_UX_Formatter::age_threshold_phrase(
-					$min_age_hours,
-					[
-						'command' => $params['original_command'] ?? '',
-					],
-					'en'
-				)
-				: sprintf( 'older than %d hours', $min_age_hours );
-
-			return sprintf( 'Found %1$d%2$s orders %3$s.', $count, $status_text, $age_phrase );
-		}
-
-		return sprintf( 'Found %d orders.', $count );
+		return YoRo_Response_UX_Formatter::order_search_summary(
+			'found',
+			$count,
+			$params,
+			$resolved_window,
+			[
+				'command' => $params['original_command'] ?? '',
+			],
+			$locale
+		);
 	}
 
 	private static function first_status_filter( $params ) {
@@ -511,12 +456,12 @@ class YoRo_Orders_Read_Service {
 	public static function get_order_details( $params ) {
 		$order_ids = YoRo_Order_Helper::normalize_order_ids( $params );
 
-		if ( empty( $order_ids ) ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Order ID is required.', 'yoro-ai-core' )
-			);
-		}
+			if ( empty( $order_ids ) ) {
+				return new WP_Error(
+					'invalid_params',
+					__( 'Please choose an order first.', 'yoro-ai-core' )
+				);
+			}
 
 		$data = [];
 
@@ -530,12 +475,12 @@ class YoRo_Orders_Read_Service {
 			$data[] = YoRo_Order_Presenter::format_order_details( $order );
 		}
 
-		if ( empty( $data ) ) {
-			return new WP_Error(
-				'order_not_found',
-				__( 'Order not found.', 'yoro-ai-core' )
-			);
-		}
+			if ( empty( $data ) ) {
+				return new WP_Error(
+					'order_not_found',
+					__( 'I could not find that order.', 'yoro-ai-core' )
+				);
+			}
 
 		return [
 			'success'      => true,
@@ -570,18 +515,17 @@ class YoRo_Orders_Read_Service {
 
 	public static function get_store_insights( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) || ! function_exists( 'wc_get_products' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
 		}
 
-		$window_key = self::normalize_operations_window_key( $params['window'] ?? 'last_7_days' );
+		$window_key = self::normalize_operations_window_key( YoRo_Date_Helper::window_key_from_params( $params, 'window', 'last_7_days' ) );
 		$window     = self::get_operations_window( $window_key );
 		$limit      = isset( $params['limit'] ) ? absint( $params['limit'] ) : 5;
 		$limit      = min( max( $limit, 1 ), 20 );
 
-		$orders = wc_get_orders(
+		$orders = self::report_query_orders(
 			[
-				'limit'        => 100,
-				'status'       => self::get_all_order_status_slugs(),
+				'status'       => self::get_revenue_order_status_slugs(),
 				'date_created' => $window['query'],
 				'orderby'      => 'date',
 				'order'        => 'DESC',
@@ -591,8 +535,11 @@ class YoRo_Orders_Read_Service {
 		$order_status_counts = [];
 		$customer_map        = [];
 		$product_map         = [];
+		$category_map        = [];
+		$category_cache      = [];
 		$order_total         = 0;
 		$order_count         = 0;
+		$items_sold          = 0.0;
 
 		foreach ( $orders as $order ) {
 			if ( ! $order instanceof WC_Order ) {
@@ -630,19 +577,32 @@ class YoRo_Orders_Read_Service {
 
 				$product = $item->get_product();
 				$key     = $product instanceof WC_Product ? $product->get_id() : $item->get_name();
+				$product_id = $item->get_product_id();
+				$category_context = self::get_product_category_context( $product_id, $category_cache );
 
 				if ( ! isset( $product_map[ $key ] ) ) {
 					$product_map[ $key ] = [
-						'id'       => $product instanceof WC_Product ? $product->get_id() : 0,
-						'name'     => $item->get_name(),
-						'sku'      => $product instanceof WC_Product ? $product->get_sku() : '',
-						'quantity' => 0,
-						'total'    => 0,
+						'id'         => $product instanceof WC_Product ? $product->get_id() : 0,
+						'name'       => $item->get_name(),
+						'sku'        => $product instanceof WC_Product ? $product->get_sku() : '',
+						'category'   => $category_context['primary_name'] ?? '',
+						'categories' => array_map(
+							function( $category ) {
+								return sanitize_text_field( $category['name'] ?? '' );
+							},
+							is_array( $category_context['categories'] ?? null ) ? $category_context['categories'] : []
+						),
+						'quantity'   => 0,
+						'total'      => 0,
 					];
 				}
 
-				$product_map[ $key ]['quantity'] += (float) $item->get_quantity();
-				$product_map[ $key ]['total'] += (float) $item->get_total();
+				$quantity = (float) $item->get_quantity();
+				$line_total = (float) $item->get_total();
+				$items_sold += $quantity;
+				$product_map[ $key ]['quantity'] += $quantity;
+				$product_map[ $key ]['total'] += $line_total;
+				self::record_category_mix( $category_map, $category_context, $key, $quantity, $line_total );
 			}
 		}
 
@@ -671,8 +631,10 @@ class YoRo_Orders_Read_Service {
 
 		foreach ( $top_products as &$product ) {
 			$product['total'] = wc_format_decimal( $product['total'], 2 );
+			$product['categories'] = array_values( array_filter( is_array( $product['categories'] ?? null ) ? $product['categories'] : [] ) );
 		}
 		unset( $product );
+		$top_categories = self::format_category_mix( $category_map, $limit );
 
 		$inventory_counts = [
 			'out_of_stock' => self::count_products_by_stock_status( 'outofstock' ),
@@ -681,6 +643,34 @@ class YoRo_Orders_Read_Service {
 		];
 
 		$average_order_value = $order_count > 0 ? $order_total / $order_count : 0;
+		$repeat_customer_count = count(
+			array_filter(
+				$customer_map,
+				function( $customer ) {
+					return is_array( $customer ) && absint( $customer['order_count'] ?? 0 ) > 1;
+				}
+			)
+		);
+		$repeat_customer_rate = count( $customer_map ) > 0 ? ( $repeat_customer_count / count( $customer_map ) ) * 100 : 0;
+		$items_per_order      = $order_count > 0 ? $items_sold / $order_count : 0;
+		$previous_window = YoRo_Date_Helper::build_previous_window( $window );
+		$previous_signal_metrics = self::summarize_store_signal_window( $previous_window );
+		$comparison = self::build_store_signal_comparison(
+			[
+				'orders'              => $order_count,
+				'gross_sales'         => $order_total,
+				'average_order_value' => $average_order_value,
+				'unique_customers'    => count( $customer_map ),
+				'repeat_customers'    => $repeat_customer_count,
+				'repeat_customer_rate' => $repeat_customer_rate,
+				'items_sold'          => $items_sold,
+				'items_per_order'     => $items_per_order,
+				'product_lines'       => count( $product_map ),
+				'product_categories'  => count( $category_map ),
+			],
+			$previous_signal_metrics,
+			$previous_window
+		);
 
 		$insights = [
 			[
@@ -698,6 +688,8 @@ class YoRo_Orders_Read_Service {
 				'label'   => __( 'Customers', 'yoro-ai-core' ),
 				'metrics' => [
 					'unique_customers' => count( $customer_map ),
+					'repeat_customers' => $repeat_customer_count,
+					'repeat_customer_rate' => wc_format_decimal( $repeat_customer_rate, 1 ),
 				],
 				'items'   => $top_customers,
 			],
@@ -705,22 +697,41 @@ class YoRo_Orders_Read_Service {
 				'key'     => 'products',
 				'label'   => __( 'Products', 'yoro-ai-core' ),
 				'metrics' => $inventory_counts,
+				'category_mix' => $top_categories,
 				'items'   => $top_products,
 			],
 		];
+		$report = self::build_store_insights_report(
+			$window,
+			$order_count,
+			$order_total,
+			$average_order_value,
+			count( $customer_map ),
+			$repeat_customer_count,
+			$repeat_customer_rate,
+			count( $product_map ),
+			count( $category_map ),
+			$items_sold,
+			$items_per_order,
+			$inventory_counts,
+			$top_customers,
+			$top_products,
+			$top_categories,
+			$comparison
+		);
 
 		return [
 			'success'      => true,
 			'action'       => 'store.get_insights',
 			'summary'      => sprintf(
-				'Grouped store snapshot for %1$s: %2$d orders, %3$d customers, %4$d product lines.',
+				'Store signal report for %1$s: %2$d orders, %3$d customers, %4$d product lines.',
 				$window['label'],
 				$order_count,
 				count( $customer_map ),
 				count( $product_map )
 			),
 			'message'      => sprintf(
-				'Grouped store snapshot for %1$s: %2$d orders, %3$d customers, %4$d product lines.',
+				'Store signal report for %1$s: %2$d orders, %3$d customers, %4$d product lines.',
 				$window['label'],
 				$order_count,
 				count( $customer_map ),
@@ -742,9 +753,279 @@ class YoRo_Orders_Read_Service {
 			'errors'       => [],
 			'window'       => YoRo_Date_Helper::build_window_payload( $window ),
 			'insights'     => $insights,
+			'top_products' => $top_products,
+			'top_categories' => $top_categories,
+			'comparison'   => $comparison,
+			'report'       => $report,
 			'result_type'  => 'store_insights',
 			'display_type' => 'store_insights',
 		];
+	}
+
+	private static function summarize_store_signal_window( $window ) {
+		$summary = [
+			'orders'              => 0,
+			'gross_sales'         => 0.0,
+			'average_order_value' => 0.0,
+			'unique_customers'    => 0,
+			'repeat_customers'    => 0,
+			'repeat_customer_rate' => 0.0,
+			'items_sold'          => 0.0,
+			'items_per_order'     => 0.0,
+			'product_lines'       => 0,
+			'product_categories'  => 0,
+		];
+
+		if ( empty( $window['query'] ) || ! function_exists( 'wc_get_orders' ) ) {
+			return $summary;
+		}
+
+		$customer_map = [];
+		$product_map  = [];
+		$category_map = [];
+		$category_cache = [];
+		$orders       = wc_get_orders(
+			[
+				'limit'        => 100,
+				'status'       => self::get_revenue_order_status_slugs(),
+				'date_created' => $window['query'],
+				'orderby'      => 'date',
+				'order'        => 'DESC',
+			]
+		);
+
+		foreach ( $orders as $order ) {
+			if ( ! $order instanceof WC_Order ) {
+				continue;
+			}
+
+			$summary['orders']++;
+			$summary['gross_sales'] += (float) $order->get_total();
+
+			$email = strtolower( sanitize_email( $order->get_billing_email() ) );
+			if ( $email ) {
+				if ( ! isset( $customer_map[ $email ] ) ) {
+					$customer_map[ $email ] = 0;
+				}
+
+				$customer_map[ $email ]++;
+			}
+
+			foreach ( $order->get_items( 'line_item' ) as $item ) {
+				if ( ! $item instanceof WC_Order_Item_Product ) {
+					continue;
+				}
+
+				$product = $item->get_product();
+				$key     = $product instanceof WC_Product ? $product->get_id() : $item->get_name();
+				$product_id = $item->get_product_id();
+				$category_context = self::get_product_category_context( $product_id, $category_cache );
+				$quantity = (float) $item->get_quantity();
+				$line_total = (float) $item->get_total();
+				$product_map[ $key ] = true;
+				$summary['items_sold'] += $quantity;
+				self::record_category_mix( $category_map, $category_context, $key, $quantity, $line_total );
+			}
+		}
+
+		$summary['average_order_value'] = $summary['orders'] > 0 ? $summary['gross_sales'] / $summary['orders'] : 0.0;
+		$summary['unique_customers'] = count( $customer_map );
+		$summary['repeat_customers'] = count(
+			array_filter(
+				$customer_map,
+				function( $order_count ) {
+					return absint( $order_count ) > 1;
+				}
+			)
+		);
+		$summary['repeat_customer_rate'] = $summary['unique_customers'] > 0 ? ( $summary['repeat_customers'] / $summary['unique_customers'] ) * 100 : 0.0;
+		$summary['product_lines'] = count( $product_map );
+		$summary['product_categories'] = count( $category_map );
+		$summary['items_per_order'] = $summary['orders'] > 0 ? $summary['items_sold'] / $summary['orders'] : 0.0;
+
+		return $summary;
+	}
+
+	private static function build_store_signal_comparison( $current_metrics, $previous_metrics, $previous_window ) {
+		$keys = [ 'orders', 'gross_sales', 'average_order_value', 'unique_customers', 'repeat_customers', 'repeat_customer_rate', 'items_sold', 'items_per_order', 'product_lines', 'product_categories' ];
+		$comparison = [
+			'window'  => YoRo_Date_Helper::build_window_payload( is_array( $previous_window ) ? $previous_window : [] ),
+			'metrics' => [],
+		];
+
+		foreach ( $keys as $key ) {
+			$current = (float) ( $current_metrics[ $key ] ?? 0 );
+			$previous = (float) ( $previous_metrics[ $key ] ?? 0 );
+			$comparison['metrics'][ $key ] = YoRo_Report_Builder::metric_comparison( $current, $previous );
+			$comparison['metrics'][ $key ]['previous'] = wc_format_decimal( $previous, in_array( $key, [ 'gross_sales', 'average_order_value', 'items_per_order' ], true ) ? 2 : ( 'repeat_customer_rate' === $key ? 1 : 0 ) );
+		}
+
+		return $comparison;
+	}
+
+	private static function report_comparison_for_metric( $comparison, $key ) {
+		return is_array( $comparison ) && ! empty( $comparison['metrics'][ $key ] ) && is_array( $comparison['metrics'][ $key ] )
+			? $comparison['metrics'][ $key ]
+			: [];
+	}
+
+	private static function build_store_insights_report( $window, $order_count, $order_total, $average_order_value, $customer_count, $repeat_customer_count, $repeat_customer_rate, $product_line_count, $product_category_count, $items_sold, $items_per_order, $inventory_counts, $top_customers, $top_products, $top_categories, $comparison = [] ) {
+		$window_label         = $window['label'] ?? __( 'selected window', 'yoro-ai-core' );
+		$currency             = get_woocommerce_currency();
+		$inventory_risk_count = absint( $inventory_counts['out_of_stock'] ?? 0 )
+			+ absint( $inventory_counts['low_stock'] ?? 0 )
+			+ absint( $inventory_counts['on_backorder'] ?? 0 );
+		$health               = $inventory_risk_count > 0 ? 'watch' : ( $order_count > 0 ? 'good' : 'watch' );
+		$headline             = sprintf(
+			__( 'Store signals for %1$s: %2$d orders, %3$d customers, %4$d product lines.', 'yoro-ai-core' ),
+			$window_label,
+			$order_count,
+			$customer_count,
+			$product_line_count
+		);
+		$order_comparison = self::report_comparison_for_metric( $comparison, 'orders' );
+		$gross_comparison = self::report_comparison_for_metric( $comparison, 'gross_sales' );
+		$aov_comparison = self::report_comparison_for_metric( $comparison, 'average_order_value' );
+		$customer_comparison = self::report_comparison_for_metric( $comparison, 'unique_customers' );
+		$repeat_customer_comparison = self::report_comparison_for_metric( $comparison, 'repeat_customers' );
+		$repeat_customer_rate_comparison = self::report_comparison_for_metric( $comparison, 'repeat_customer_rate' );
+		$item_comparison = self::report_comparison_for_metric( $comparison, 'items_sold' );
+		$items_per_order_comparison = self::report_comparison_for_metric( $comparison, 'items_per_order' );
+		$product_line_comparison = self::report_comparison_for_metric( $comparison, 'product_lines' );
+		$product_category_comparison = self::report_comparison_for_metric( $comparison, 'product_categories' );
+		$profile_context = YoRo_Report_Builder::store_profile_context( [ 'reporting', 'sales', 'inventory', 'customers' ] );
+		$profile_insights = array_merge(
+			YoRo_Report_Builder::business_profile_insights(
+				$profile_context,
+				[
+					'average_order_value' => $average_order_value,
+				],
+				$window
+			),
+			YoRo_Report_Builder::inventory_profile_insights( $profile_context )
+		);
+
+		$metrics = [
+			YoRo_Report_Builder::metric( 'orders', __( 'Orders', 'yoro-ai-core' ), $order_count, 'orders', 'number', 'neutral', $order_comparison['trend'] ?? '', $order_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'gross_sales', __( 'Gross sales', 'yoro-ai-core' ), wc_format_decimal( $order_total, 2 ), $currency, 'currency', $order_total > 0 ? 'positive' : 'neutral', $gross_comparison['trend'] ?? '', $gross_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'average_order_value', __( 'Average order value', 'yoro-ai-core' ), wc_format_decimal( $average_order_value, 2 ), $currency, 'currency', 'neutral', $aov_comparison['trend'] ?? '', $aov_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'unique_customers', __( 'Customers', 'yoro-ai-core' ), $customer_count, 'customers', 'number', 'neutral', $customer_comparison['trend'] ?? '', $customer_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'repeat_customers', __( 'Repeat customers', 'yoro-ai-core' ), $repeat_customer_count, 'customers', 'number', 'neutral', $repeat_customer_comparison['trend'] ?? '', $repeat_customer_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'repeat_customer_rate', __( 'Repeat customer rate', 'yoro-ai-core' ), wc_format_decimal( $repeat_customer_rate, 1 ), '%', 'percent', $repeat_customer_count > 0 ? 'positive' : 'neutral', $repeat_customer_rate_comparison['trend'] ?? '', $repeat_customer_rate_comparison['delta'] ?? null, 'store', 'customers', __( 'Share of active customers with more than one order in this window.', 'yoro-ai-core' ), 35 ),
+			YoRo_Report_Builder::metric( 'items_sold', __( 'Items sold', 'yoro-ai-core' ), wc_format_decimal( $items_sold, 0 ), 'items', 'number', 'neutral', $item_comparison['trend'] ?? '', $item_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'items_per_order', __( 'Items per order', 'yoro-ai-core' ), wc_format_decimal( $items_per_order, 2 ), 'items', 'number', 'neutral', $items_per_order_comparison['trend'] ?? '', $items_per_order_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'product_lines', __( 'Product lines', 'yoro-ai-core' ), $product_line_count, 'products', 'number', 'neutral', $product_line_comparison['trend'] ?? '', $product_line_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'product_categories', __( 'Categories sold', 'yoro-ai-core' ), $product_category_count, 'categories', 'number', 'neutral', $product_category_comparison['trend'] ?? '', $product_category_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'inventory_risk', __( 'Inventory risk', 'yoro-ai-core' ), $inventory_risk_count, 'items', 'number', $inventory_risk_count > 0 ? 'watch' : 'positive' ),
+		];
+
+		$insights = [];
+
+		if ( $order_count > 0 ) {
+			$insights[] = YoRo_Report_Builder::insight(
+				__( 'Demand snapshot', 'yoro-ai-core' ),
+				sprintf( __( 'The selected window contains %1$d orders with %2$s %3$s in gross sales.', 'yoro-ai-core' ), $order_count, wc_format_decimal( $order_total, 2 ), $currency ),
+				'orders',
+				'positive'
+			);
+		} else {
+			$insights[] = YoRo_Report_Builder::insight(
+				__( 'No order activity', 'yoro-ai-core' ),
+				__( 'No orders were found in the selected window, so customer and product signals may be sparse.', 'yoro-ai-core' ),
+				'orders',
+				'watch'
+			);
+		}
+
+		if ( $repeat_customer_count > 0 ) {
+			$insights[] = YoRo_Report_Builder::insight(
+				__( 'Repeat buyer signal', 'yoro-ai-core' ),
+				sprintf(
+					__( '%1$d customers ordered more than once, giving this window a %2$s%% repeat customer rate.', 'yoro-ai-core' ),
+					$repeat_customer_count,
+					wc_format_decimal( $repeat_customer_rate, 1 )
+				),
+				'customers',
+				$repeat_customer_rate >= 25 ? 'positive' : 'neutral'
+			);
+		}
+
+		if ( $items_per_order >= 2 ) {
+			$insights[] = YoRo_Report_Builder::insight(
+				__( 'Basket size signal', 'yoro-ai-core' ),
+				sprintf( __( 'Customers are buying %s items per order on average in this window.', 'yoro-ai-core' ), wc_format_decimal( $items_per_order, 2 ) ),
+				'orders',
+				'positive'
+			);
+		}
+
+		$top_customer = is_array( $top_customers ) && ! empty( $top_customers ) ? $top_customers[0] : null;
+		if ( is_array( $top_customer ) ) {
+			$customer_label = trim( (string) ( $top_customer['name'] ?? '' ) );
+			if ( '' === $customer_label ) {
+				$customer_label = (string) ( $top_customer['email'] ?? __( 'Top customer', 'yoro-ai-core' ) );
+			}
+			$insights[] = YoRo_Report_Builder::insight(
+				__( 'Customer concentration', 'yoro-ai-core' ),
+				sprintf( __( '%1$s is the highest-value customer in this window with %2$s %3$s tracked.', 'yoro-ai-core' ), $customer_label, $top_customer['total_spent'] ?? '0.00', $currency ),
+				'customers',
+				'neutral'
+			);
+		}
+
+		$top_product = is_array( $top_products ) && ! empty( $top_products ) ? $top_products[0] : null;
+		if ( is_array( $top_product ) ) {
+			$insights[] = YoRo_Report_Builder::insight(
+				__( 'Top product signal', 'yoro-ai-core' ),
+				sprintf( __( '%1$s is the strongest product signal with %2$s units sold.', 'yoro-ai-core' ), $top_product['name'] ?? __( 'Top product', 'yoro-ai-core' ), $top_product['quantity'] ?? 0 ),
+				'products',
+				'neutral'
+			);
+		}
+
+		$top_category = is_array( $top_categories ) && ! empty( $top_categories ) ? $top_categories[0] : null;
+		if ( is_array( $top_category ) ) {
+			$insights[] = YoRo_Report_Builder::insight(
+				__( 'Top category signal', 'yoro-ai-core' ),
+				sprintf( __( '%1$s is the strongest category signal with %2$s units sold across %3$d product lines.', 'yoro-ai-core' ), $top_category['name'] ?? __( 'Top category', 'yoro-ai-core' ), $top_category['quantity'] ?? 0, absint( $top_category['product_lines'] ?? 0 ) ),
+				'products',
+				'neutral',
+				'products',
+				46
+			);
+		}
+
+		$insights = array_merge( $insights, $profile_insights );
+
+		$alerts = [];
+
+		if ( $inventory_risk_count > 0 ) {
+			$alerts[] = YoRo_Report_Builder::alert(
+				__( 'Inventory needs review', 'yoro-ai-core' ),
+				sprintf( __( '%d products are out of stock, low stock, or on backorder.', 'yoro-ai-core' ), $inventory_risk_count ),
+				'watch',
+				'inventory',
+				'inventory',
+				20
+			);
+		}
+
+		$window_command = $window['label'] ?? 'this week';
+		$actions        = [
+			YoRo_Report_Builder::action( __( 'Sales report', 'yoro-ai-core' ), 'Show sales report for ' . $window_command, 'view', 'sales', 30, __( 'Open the revenue and sales readout for the same window.', 'yoro-ai-core' ) ),
+			YoRo_Report_Builder::action( __( 'Operations report', 'yoro-ai-core' ), 'Show operations report for ' . $window_command, 'view', 'operations', 40, __( 'Check whether the signal is creating order-work pressure.', 'yoro-ai-core' ) ),
+			YoRo_Report_Builder::action( __( 'Inventory queue', 'yoro-ai-core' ), 'Show inventory queue', 'view', 'inventory', 50, __( 'Review stock pressure behind the product signals.', 'yoro-ai-core' ) ),
+		];
+
+		$breakdowns = YoRo_Store_Briefing_Service::report_build_product_mix_breakdowns( $top_products, $top_categories, $currency, (float) $order_total );
+		$report     = YoRo_Report_Builder::build( 'store_insights', $window, $health, $headline, $metrics, $insights, $alerts, $actions, $actions, $breakdowns );
+		$report     = YoRo_Report_Builder::attach_profile_context( $report, $profile_context );
+
+		if ( ! empty( $comparison ) ) {
+			$report['comparison'] = $comparison;
+		}
+
+		return $report;
 	}
 
 	public static function get_business_summary( $params ) {
@@ -755,28 +1036,24 @@ class YoRo_Orders_Read_Service {
 		return YoRo_Store_Briefing_Service::get_daily_briefing( $params );
 	}
 
-	public static function get_morning_briefing( $params ) {
-		return YoRo_Store_Briefing_Service::get_morning_briefing( $params );
-	}
-
 	public static function refund_preview( $params ) {
 		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
 
 		if ( ! $order_id ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Order ID is required.', 'yoro-ai-core' )
-			);
-		}
+				return new WP_Error(
+					'invalid_params',
+					__( 'Please choose an order first.', 'yoro-ai-core' )
+				);
+			}
 
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
-			return new WP_Error(
-				'order_not_found',
-				__( 'Order not found.', 'yoro-ai-core' )
-			);
-		}
+				return new WP_Error(
+					'order_not_found',
+					__( 'I could not find that order.', 'yoro-ai-core' )
+				);
+			}
 
 		$total          = (float) $order->get_total();
 		$total_refunded = (float) $order->get_total_refunded();
@@ -852,6 +1129,7 @@ class YoRo_Orders_Read_Service {
 				'id'             => $order->get_id(),
 				'number'         => $order->get_order_number(),
 				'status'         => $order->get_status(),
+				'status_label'   => YoRo_Order_Helper::get_order_status_label( $order->get_status() ),
 				'currency'       => $order->get_currency(),
 				'total'          => wc_format_decimal( $total, 2 ),
 				'total_refunded' => wc_format_decimal( $total_refunded, 2 ),
@@ -885,9 +1163,24 @@ class YoRo_Orders_Read_Service {
 	public static function get_customer_summary( $params ) {
 		$email         = ! empty( $params['email'] ) ? sanitize_email( $params['email'] ) : '';
 		$phone         = ! empty( $params['phone'] ) ? sanitize_text_field( $params['phone'] ) : '';
+		$customer_id   = ! empty( $params['customer_id'] ) ? absint( $params['customer_id'] ) : 0;
 		$customer_name = ! empty( $params['customer_name'] ) ? sanitize_text_field( $params['customer_name'] ) : '';
 		$order_id      = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
 		$limit         = ! empty( $params['limit'] ) ? min( max( absint( $params['limit'] ), 1 ), 50 ) : 20;
+
+		if ( $customer_id ) {
+			$customer = get_userdata( $customer_id );
+
+			if ( $customer instanceof WP_User ) {
+				if ( empty( $email ) ) {
+					$email = sanitize_email( $customer->user_email );
+				}
+
+				if ( empty( $customer_name ) ) {
+					$customer_name = sanitize_text_field( $customer->display_name );
+				}
+			}
+		}
 
 		if ( $order_id ) {
 			$order = wc_get_order( $order_id );
@@ -901,24 +1194,27 @@ class YoRo_Orders_Read_Service {
 					$phone = sanitize_text_field( $order->get_billing_phone() );
 				}
 
+				if ( empty( $customer_id ) ) {
+					$customer_id = (int) $order->get_customer_id();
+				}
+
 				if ( empty( $customer_name ) ) {
 					$customer_name = trim( $order->get_formatted_billing_full_name() );
 				}
 			}
 		}
 
-		if ( empty( $email ) && empty( $phone ) && empty( $customer_name ) ) {
-			return new WP_Error( 'invalid_params', __( 'Email, phone, or customer name is required.', 'yoro-ai-core' ) );
+		if ( empty( $email ) && empty( $phone ) && empty( $customer_id ) && empty( $customer_name ) ) {
+			return new WP_Error( 'invalid_params', __( 'Please provide a customer email, phone number, ID, or name first.', 'yoro-ai-core' ) );
 		}
 
-		$orders           = self::get_customer_orders( $email, $phone, $limit, $customer_name );
+		$orders           = self::get_customer_orders( $email, $phone, $limit, $customer_name, $customer_id );
 		$total_spent      = 0;
 		$status_counts    = [];
 		$payment_methods  = [];
 		$first_order_timestamp = 0;
 		$last_order_timestamp  = 0;
 		$resolved_customer_name = '';
-		$customer_id      = 0;
 		$latest_order_id  = 0;
 		$latest_order_no  = '';
 		$data             = [];
@@ -954,6 +1250,14 @@ class YoRo_Orders_Read_Service {
 				$resolved_customer_name = trim( $order->get_formatted_billing_full_name() );
 			}
 
+			if ( empty( $email ) ) {
+				$email = sanitize_email( $order->get_billing_email() );
+			}
+
+			if ( empty( $phone ) ) {
+				$phone = sanitize_text_field( $order->get_billing_phone() );
+			}
+
 			if ( 0 === $customer_id ) {
 				$customer_id = (int) $order->get_customer_id();
 			}
@@ -966,23 +1270,70 @@ class YoRo_Orders_Read_Service {
 			$data[] = YoRo_Order_Presenter::format_order_summary( $order );
 		}
 
+		$masked_email = YoRo_Order_Presenter::mask_email( $email );
+		$masked_phone = YoRo_Order_Presenter::mask_phone( $phone );
+		$resolved_name = '' !== $resolved_customer_name ? $resolved_customer_name : $customer_name;
+		$currency = get_woocommerce_currency();
+		$total_spent_decimal = wc_format_decimal( $total_spent, 2 );
+		$first_order_date = $first_order_timestamp > 0 ? YoRo_Date_Helper::format_timestamp( $first_order_timestamp ) : '';
+		$last_order_date = $last_order_timestamp > 0 ? YoRo_Date_Helper::format_timestamp( $last_order_timestamp ) : '';
+
+		$summary = '' !== $resolved_name
+			? sprintf(
+				'Found customer profile for %1$s with %2$d related orders.',
+				$resolved_name,
+				count( $data )
+			)
+			: sprintf(
+				'Found this customer profile with %d related orders.',
+				count( $data )
+			);
+
 		return [
 			'success'          => true,
-			'action'           => 'customers.get_summary',
-			'summary'          => sprintf( 'Found %d orders for this customer.', count( $data ) ),
+			'action'           => 'customers.lookup',
+			'summary'          => $summary,
 			'count'            => count( $data ),
-			'customer_name'    => '' !== $resolved_customer_name ? $resolved_customer_name : $customer_name,
+			'customer'         => [
+				'id'             => $customer_id,
+				'edit_url'       => $customer_id > 0 && current_user_can( 'edit_user', $customer_id )
+					? esc_url_raw( admin_url( 'user-edit.php?user_id=' . $customer_id ) )
+					: '',
+				'email'          => $masked_email,
+				'phone'          => $masked_phone,
+				'name'           => $resolved_name,
+				'status'         => count( $data ) > 0 ? 'active' : 'unknown',
+				'orders_count'   => count( $data ),
+				'lifetime_value' => $total_spent_decimal,
+				'currency'       => $currency,
+				'first_order_at' => $first_order_date,
+				'last_order_at'  => $last_order_date,
+				'segments'       => count( $data ) > 1 ? [ 'repeat_customer' ] : [],
+				'risk_flags'     => [],
+				'meta'           => [
+					'status_counts'   => $status_counts,
+					'payment_methods' => $payment_methods,
+				],
+			],
+			'related'          => [
+				'recent_orders' => $data,
+				'open_orders'   => [],
+				'recent_notes'  => [],
+				'draft_emails'  => [],
+			],
+			'customer_name'    => $resolved_name,
 			'customer_id'      => $customer_id,
 			'read_only'        => true,
-			'email'            => YoRo_Order_Presenter::mask_email( $email ),
-			'phone'            => YoRo_Order_Presenter::mask_phone( $phone ),
-			'total_spent'      => wc_format_decimal( $total_spent, 2 ),
-			'currency'         => get_woocommerce_currency(),
+			'email'            => $masked_email,
+			'phone'            => $masked_phone,
+			'total_spent'      => $total_spent_decimal,
+			'currency'         => $currency,
 			'status_counts'    => $status_counts,
+			'status_count_labels' => self::order_status_count_labels( $status_counts ),
 			'payment_methods'  => $payment_methods,
-			'first_order_date' => $first_order_timestamp > 0 ? YoRo_Date_Helper::format_timestamp( $first_order_timestamp ) : '',
+			'first_order_date' => $first_order_date,
 			'first_order_date_ts' => $first_order_timestamp,
-			'last_order_date'  => $last_order_timestamp > 0 ? YoRo_Date_Helper::format_timestamp( $last_order_timestamp ) : '',
+			'last_order_date'  => $last_order_date,
 			'last_order_date_ts' => $last_order_timestamp,
 			'latest_order_id'  => $latest_order_id,
 			'latest_order_no'  => $latest_order_no,
@@ -1001,7 +1352,7 @@ class YoRo_Orders_Read_Service {
 
 	public static function find_orders_by_customer( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
 		}
 
 		$email       = ! empty( $params['email'] ) ? sanitize_email( $params['email'] ) : '';
@@ -1033,12 +1384,12 @@ class YoRo_Orders_Read_Service {
 			}
 		}
 
-		if ( empty( $email ) && empty( $phone ) && empty( $customer_id ) && empty( $customer_name ) ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Email, phone, customer ID, or customer name is required.', 'yoro-ai-core' )
-			);
-		}
+			if ( empty( $email ) && empty( $phone ) && empty( $customer_id ) && empty( $customer_name ) ) {
+				return new WP_Error(
+					'invalid_params',
+					__( 'Please provide a customer email, phone number, ID, or name first.', 'yoro-ai-core' )
+				);
+			}
 
 		$args = [
 			'limit'   => $limit,
@@ -1138,15 +1489,15 @@ class YoRo_Orders_Read_Service {
 		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
 		$limit    = ! empty( $params['limit'] ) ? min( max( absint( $params['limit'] ), 1 ), 50 ) : 20;
 
-		if ( ! $order_id ) {
-			return new WP_Error( 'invalid_params', __( 'Order ID is required.', 'yoro-ai-core' ) );
-		}
+			if ( ! $order_id ) {
+				return new WP_Error( 'invalid_params', __( 'Please choose an order first.', 'yoro-ai-core' ) );
+			}
 
-		$order = wc_get_order( $order_id );
+			$order = wc_get_order( $order_id );
 
-		if ( ! $order ) {
-			return new WP_Error( 'order_not_found', __( 'Order not found.', 'yoro-ai-core' ) );
-		}
+			if ( ! $order ) {
+				return new WP_Error( 'order_not_found', __( 'I could not find that order.', 'yoro-ai-core' ) );
+			}
 
 		$identity = self::build_order_identity( $order );
 
@@ -1240,14 +1591,14 @@ class YoRo_Orders_Read_Service {
 		return [
 			'type'            => 'read',
 			'will_execute'    => false,
-			'action'          => 'Search WooCommerce orders',
+			'action'          => 'Search store orders',
 			'status'          => $status,
 			'limit'           => min( max( $limit, 1 ), 50 ),
 			'order_id'        => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
 			'email'           => ! empty( $params['email'] ) ? sanitize_email( $params['email'] ) : '',
 			'phone'           => ! empty( $params['phone'] ) ? sanitize_text_field( $params['phone'] ) : '',
 			'payment_method'  => ! empty( $params['payment_method'] ) ? sanitize_key( $params['payment_method'] ) : '',
-			'date_window'     => ! empty( $params['date_window'] ) ? YoRo_Date_Helper::normalize_window_key( $params['date_window'] ) : '',
+			'date_window'     => YoRo_Date_Helper::window_key_from_params( $params, 'date_window', '' ),
 			'date_from'       => ! empty( $params['date_from'] ) ? sanitize_text_field( $params['date_from'] ) : '',
 			'date_to'         => ! empty( $params['date_to'] ) ? sanitize_text_field( $params['date_to'] ) : '',
 			'min_age_hours'   => ! empty( $params['min_age_hours'] ) ? min( max( absint( $params['min_age_hours'] ), 1 ), 8760 ) : 0,
@@ -1260,29 +1611,61 @@ class YoRo_Orders_Read_Service {
 	}
 
 	public static function preview_get_order_details( $params ) {
-		$order_ids = isset( $params['order_ids'] ) && is_array( $params['order_ids'] )
-			? array_map( 'absint', $params['order_ids'] )
-			: [];
+		$order_ids = YoRo_Order_Helper::normalize_order_ids( $params );
+		$orders = [];
+		$missing_order_ids = [];
+		$block_reason = '';
+		$message = __( 'This order detail lookup is ready.', 'yoro-ai-core' );
+
+		foreach ( $order_ids as $order_id ) {
+			$order = wc_get_order( $order_id );
+
+			if ( ! $order ) {
+				$missing_order_ids[] = $order_id;
+			}
+
+			$orders[] = [
+				'id'     => $order_id,
+				'exists' => (bool) $order,
+			];
+		}
+
+		if ( empty( $order_ids ) ) {
+			$block_reason = 'missing_order_target';
+			$message = __( 'Please choose an order before this can continue.', 'yoro-ai-core' );
+		} elseif ( ! empty( $missing_order_ids ) ) {
+			$block_reason = 'order_not_found';
+			$message = sprintf(
+				/* translators: %s: comma-separated order IDs */
+				__( 'I could not find order %s. Choose an existing order before continuing.', 'yoro-ai-core' ),
+				implode( ', ', $missing_order_ids )
+			);
+		}
 
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
-			'action'        => 'Get WooCommerce order details',
+			'action'        => 'Get store order details',
+			'summary'       => $message,
+			'message'       => $message,
+			'blocked'       => '' !== $block_reason,
+			'block_reason'  => $block_reason,
 			'order_ids'     => $order_ids,
+			'orders'        => $orders,
 			'count'         => count( $order_ids ),
 			'changes_store' => false,
 		];
 	}
 
 	public static function preview_get_operations_summary( $params ) {
-		$window_key = self::normalize_operations_window_key( $params['window'] ?? 'today' );
+		$window_key = self::normalize_operations_window_key( YoRo_Date_Helper::window_key_from_params( $params, 'window', 'today' ) );
 		$focus      = ! empty( $params['focus'] ) ? sanitize_key( $params['focus'] ) : 'overview';
 		$window     = self::get_operations_window( $window_key );
 
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
-			'action'        => 'Get store operations summary',
+			'action'        => 'Get operations report',
 			'window'        => $window['label'],
 			'focus'         => $focus,
 			'changes_store' => false,
@@ -1322,13 +1705,13 @@ class YoRo_Orders_Read_Service {
 	}
 
 	public static function preview_get_store_insights( $params ) {
-		$window_key = self::normalize_operations_window_key( $params['window'] ?? 'last_7_days' );
+		$window_key = self::normalize_operations_window_key( YoRo_Date_Helper::window_key_from_params( $params, 'window', 'last_7_days' ) );
 		$window     = self::get_operations_window( $window_key );
 
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
-			'action'        => 'Get store insights',
+			'action'        => 'Get store signal report',
 			'window'        => $window['label'],
 			'limit'         => isset( $params['limit'] ) ? min( max( absint( $params['limit'] ), 1 ), 20 ) : 5,
 			'changes_store' => false,
@@ -1336,13 +1719,13 @@ class YoRo_Orders_Read_Service {
 	}
 
 	public static function preview_get_business_summary( $params ) {
-		$window_key = self::normalize_operations_window_key( $params['window'] ?? 'last_7_days' );
+		$window_key = self::normalize_operations_window_key( YoRo_Date_Helper::window_key_from_params( $params, 'window', 'last_7_days' ) );
 		$window     = self::get_operations_window( $window_key );
 
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
-			'action'        => 'Get business summary',
+			'action'        => 'Get sales report',
 			'window'        => $window['label'],
 			'focus'         => ! empty( $params['focus'] ) ? sanitize_key( $params['focus'] ) : 'overview',
 			'changes_store' => false,
@@ -1350,35 +1733,47 @@ class YoRo_Orders_Read_Service {
 	}
 
 	public static function preview_get_daily_briefing( $params ) {
-		$window_key = self::normalize_operations_window_key( $params['window'] ?? 'today' );
+		$window_key = self::normalize_operations_window_key( YoRo_Date_Helper::window_key_from_params( $params, 'window', 'today' ) );
 		$window     = self::get_operations_window( $window_key );
 
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
-			'action'        => 'Get daily store briefing',
+			'action'        => 'Get store report',
 			'window'        => $window['label'],
 			'limit'         => isset( $params['limit'] ) ? min( max( absint( $params['limit'] ), 1 ), 10 ) : 5,
 			'changes_store' => false,
 		];
 	}
 
-	public static function preview_get_morning_briefing( $params ) {
-		return [
-			'type'          => 'read',
-			'will_execute'  => false,
-			'action'        => 'Get morning briefing',
-			'window'        => __( 'Yesterday and this morning', 'yoro-ai-core' ),
-			'changes_store' => false,
-		];
-	}
-
 	public static function preview_refund_preview( $params ) {
+		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
+		$order = $order_id ? wc_get_order( $order_id ) : false;
+		$block_reason = '';
+		$message = __( 'This refund preview lookup is ready.', 'yoro-ai-core' );
+
+		if ( $order_id <= 0 ) {
+			$block_reason = 'missing_order_target';
+			$message = __( 'Please choose an order before this can continue.', 'yoro-ai-core' );
+		} elseif ( ! $order ) {
+			$block_reason = 'order_not_found';
+			$message = sprintf(
+				/* translators: %d: order ID */
+				__( 'I could not find order %d. Choose an existing order before continuing.', 'yoro-ai-core' ),
+				$order_id
+			);
+		}
+
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
-			'action'        => 'Preview WooCommerce refund context',
-			'order_id'      => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
+			'action'        => 'Preview store refund context',
+			'summary'       => $message,
+			'message'       => $message,
+			'blocked'       => '' !== $block_reason,
+			'block_reason'  => $block_reason,
+			'order_id'      => $order_id,
+			'order_exists'  => (bool) $order,
 			'changes_store' => false,
 		];
 	}
@@ -1387,9 +1782,11 @@ class YoRo_Orders_Read_Service {
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
-			'action'        => 'Get customer order summary',
+			'action'        => 'Look up customer',
 			'email'         => ! empty( $params['email'] ) ? YoRo_Order_Presenter::mask_email( $params['email'] ) : '',
 			'phone'         => ! empty( $params['phone'] ) ? YoRo_Order_Presenter::mask_phone( $params['phone'] ) : '',
+			'customer_id'   => ! empty( $params['customer_id'] ) ? absint( $params['customer_id'] ) : 0,
+			'customer_name' => ! empty( $params['customer_name'] ) ? sanitize_text_field( $params['customer_name'] ) : '',
 			'limit'         => ! empty( $params['limit'] ) ? absint( $params['limit'] ) : 20,
 			'changes_store' => false,
 		];
@@ -1410,7 +1807,7 @@ class YoRo_Orders_Read_Service {
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
-			'action'        => 'Find WooCommerce orders by customer',
+			'action'        => 'Find store orders by customer',
 			'email'         => ! empty( $params['email'] ) ? YoRo_Order_Presenter::mask_email( $params['email'] ) : '',
 			'phone'         => ! empty( $params['phone'] ) ? YoRo_Order_Presenter::mask_phone( $params['phone'] ) : '',
 			'customer_id'   => ! empty( $params['customer_id'] ) ? absint( $params['customer_id'] ) : 0,
@@ -1423,7 +1820,7 @@ class YoRo_Orders_Read_Service {
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
-			'action'        => 'Find WooCommerce orders by shared identity',
+			'action'        => 'Find store orders by shared identity',
 			'order_id'      => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
 			'limit'         => ! empty( $params['limit'] ) ? absint( $params['limit'] ) : 20,
 			'changes_store' => false,
@@ -1445,12 +1842,73 @@ class YoRo_Orders_Read_Service {
 		return self::get_all_order_status_slugs();
 	}
 
+	public static function briefing_get_revenue_order_status_slugs() {
+		return self::get_revenue_order_status_slugs();
+	}
+
+	public static function briefing_is_revenue_order_status( $status ) {
+		return self::is_revenue_order_status( $status );
+	}
+
 	public static function briefing_count_orders( $args ) {
 		return self::count_orders( $args );
 	}
 
 	public static function briefing_build_relative_cutoff( $modifier ) {
 		return self::build_relative_cutoff( $modifier );
+	}
+
+	public static function report_query_orders( $args, $max_orders = 10000, $page_size = 250 ) {
+		if ( ! function_exists( 'wc_get_orders' ) ) {
+			return [];
+		}
+
+		$args       = is_array( $args ) ? $args : [];
+		$max_orders = min( max( absint( $max_orders ), 1 ), 20000 );
+		$page_size  = min( max( absint( $page_size ), 1 ), 500 );
+		$orders     = [];
+		$page       = 1;
+
+		unset( $args['offset'], $args['page'], $args['paged'], $args['paginate'] );
+
+		while ( count( $orders ) < $max_orders ) {
+			$query_args = $args;
+			$query_args['limit']    = min( $page_size, $max_orders - count( $orders ) );
+			$query_args['page']     = $page;
+			$query_args['paginate'] = true;
+
+			if ( $query_args['limit'] <= 0 ) {
+				break;
+			}
+
+			$result      = wc_get_orders( $query_args );
+			$page_orders = is_object( $result ) && isset( $result->orders ) ? $result->orders : $result;
+			$page_orders = is_array( $page_orders ) ? $page_orders : [];
+			$page_count  = count( $page_orders );
+			$max_pages   = is_object( $result ) && isset( $result->max_num_pages ) ? absint( $result->max_num_pages ) : 0;
+
+			if ( 0 === $page_count ) {
+				break;
+			}
+
+			foreach ( $page_orders as $order ) {
+				if ( $order instanceof WC_Order ) {
+					$orders[] = $order;
+				}
+			}
+
+			if ( $max_pages > 0 && $page >= $max_pages ) {
+				break;
+			}
+
+			if ( 0 === $max_pages && $page_count < $query_args['limit'] ) {
+				break;
+			}
+
+			$page++;
+		}
+
+		return $orders;
 	}
 
 	public static function operations_build_attention_queue( $key, $label, $description, $query_args, $limit ) {
@@ -1513,7 +1971,134 @@ class YoRo_Orders_Read_Service {
 		return self::product_is_low_stock( $product );
 	}
 
-	private static function get_customer_orders( $email = '', $phone = '', $limit = 20, $customer_name = '' ) {
+	public static function report_get_product_category_context( $product_id, &$category_cache = [] ) {
+		return self::get_product_category_context( $product_id, $category_cache );
+	}
+
+	public static function report_record_category_mix( &$category_map, $category_context, $product_key, $quantity, $total ) {
+		self::record_category_mix( $category_map, $category_context, $product_key, $quantity, $total );
+	}
+
+	public static function report_format_category_mix( $category_map, $limit = 5 ) {
+		return self::format_category_mix( $category_map, $limit );
+	}
+
+	private static function get_product_category_context( $product_id, &$category_cache = [] ) {
+		$product_id = absint( $product_id );
+
+		if ( $product_id <= 0 || ! function_exists( 'taxonomy_exists' ) || ! taxonomy_exists( 'product_cat' ) ) {
+			return self::default_product_category_context();
+		}
+
+		if ( isset( $category_cache[ $product_id ] ) ) {
+			return $category_cache[ $product_id ];
+		}
+
+		$terms = wp_get_post_terms(
+			$product_id,
+			'product_cat',
+			[
+				'orderby' => 'name',
+				'order'   => 'ASC',
+			]
+		);
+
+		if ( is_wp_error( $terms ) || empty( $terms ) ) {
+			$category_cache[ $product_id ] = self::default_product_category_context();
+			return $category_cache[ $product_id ];
+		}
+
+		$categories = [];
+
+		foreach ( $terms as $term ) {
+			if ( ! $term instanceof WP_Term ) {
+				continue;
+			}
+
+			$categories[] = [
+				'id'   => absint( $term->term_id ),
+				'name' => sanitize_text_field( $term->name ),
+				'slug' => sanitize_key( $term->slug ),
+			];
+		}
+
+		if ( empty( $categories ) ) {
+			$category_cache[ $product_id ] = self::default_product_category_context();
+			return $category_cache[ $product_id ];
+		}
+
+		$primary = $categories[0];
+
+		$category_cache[ $product_id ] = [
+			'primary_id'   => absint( $primary['id'] ?? 0 ),
+			'primary_name' => sanitize_text_field( $primary['name'] ?? __( 'Uncategorized', 'yoro-ai-core' ) ),
+			'categories'   => $categories,
+		];
+
+		return $category_cache[ $product_id ];
+	}
+
+	private static function default_product_category_context() {
+		return [
+			'primary_id'   => 0,
+			'primary_name' => __( 'Uncategorized', 'yoro-ai-core' ),
+			'categories'   => [],
+		];
+	}
+
+	private static function record_category_mix( &$category_map, $category_context, $product_key, $quantity, $total ) {
+		$category_context = is_array( $category_context ) ? $category_context : self::default_product_category_context();
+		$category_id      = absint( $category_context['primary_id'] ?? 0 );
+		$category_name    = sanitize_text_field( $category_context['primary_name'] ?? __( 'Uncategorized', 'yoro-ai-core' ) );
+		$category_key     = $category_id > 0 ? 'category:' . $category_id : 'category:uncategorized';
+
+		if ( ! isset( $category_map[ $category_key ] ) ) {
+			$category_map[ $category_key ] = [
+				'id'           => $category_id,
+				'name'         => $category_name,
+				'quantity'     => 0.0,
+				'total'        => 0.0,
+				'product_keys' => [],
+			];
+		}
+
+		$category_map[ $category_key ]['quantity'] += (float) $quantity;
+		$category_map[ $category_key ]['total']    += (float) $total;
+
+		$product_key = sanitize_text_field( $product_key );
+
+		if ( '' !== $product_key ) {
+			$category_map[ $category_key ]['product_keys'][ $product_key ] = true;
+		}
+	}
+
+	private static function format_category_mix( $category_map, $limit = 5 ) {
+		$categories = array_values( is_array( $category_map ) ? $category_map : [] );
+
+		usort(
+			$categories,
+			function( $a, $b ) {
+				return ( $b['total'] ?? 0 ) <=> ( $a['total'] ?? 0 );
+			}
+		);
+
+		$categories = array_slice( $categories, 0, min( max( absint( $limit ), 1 ), 20 ) );
+
+		return array_map(
+			function( $category ) {
+				return [
+					'id'            => absint( $category['id'] ?? 0 ),
+					'name'          => sanitize_text_field( $category['name'] ?? __( 'Uncategorized', 'yoro-ai-core' ) ),
+					'quantity'      => wc_format_decimal( $category['quantity'] ?? 0, 0 ),
+					'total'         => wc_format_decimal( $category['total'] ?? 0, 2 ),
+					'product_lines' => count( is_array( $category['product_keys'] ?? null ) ? $category['product_keys'] : [] ),
+				];
+			},
+			$categories
+		);
+	}
+
+	private static function get_customer_orders( $email = '', $phone = '', $limit = 20, $customer_name = '', $customer_id = 0 ) {
 		$args = [
 			'limit'   => min( max( absint( $limit ), 1 ), 50 ),
 			'orderby' => 'date',
@@ -1523,6 +2108,10 @@ class YoRo_Orders_Read_Service {
 
 		if ( $email ) {
 			$args['billing_email'] = sanitize_email( $email );
+		}
+
+		if ( $customer_id ) {
+			$args['customer_id'] = absint( $customer_id );
 		}
 
 		$orders = wc_get_orders( $args );
@@ -1777,7 +2366,7 @@ class YoRo_Orders_Read_Service {
 		foreach ( $counts as $key => $count ) {
 			$items[] = [
 				'key'   => $key,
-				'label' => ucwords( str_replace( [ '_', '-' ], ' ', $key ) ),
+				'label' => YoRo_Order_Helper::get_order_status_label( $key ),
 				'count' => absint( $count ),
 			];
 		}
@@ -1790,6 +2379,16 @@ class YoRo_Orders_Read_Service {
 		);
 
 		return $items;
+	}
+
+	private static function order_status_count_labels( $counts ) {
+		$labels = [];
+
+		foreach ( is_array( $counts ) ? $counts : [] as $status => $count ) {
+			$labels[ $status ] = YoRo_Order_Helper::get_order_status_label( $status );
+		}
+
+		return $labels;
 	}
 
 	private static function count_products_by_stock_status( $stock_status ) {
@@ -1935,21 +2534,37 @@ class YoRo_Orders_Read_Service {
 	private static function format_inventory_product( WC_Product $product ) {
 		$stock_quantity = $product->get_stock_quantity();
 		$low_threshold  = self::get_product_low_stock_threshold( $product );
+		$product_id     = $product->get_id();
+		$edit_url       = get_edit_post_link( $product_id, 'raw' );
 
-		return [
-			'id'                  => $product->get_id(),
+		if ( ! $edit_url ) {
+			$edit_url = admin_url( 'post.php?post=' . absint( $product_id ) . '&action=edit' );
+		}
+
+		$inventory_target_meta = class_exists( 'YoRo_Store_Inventory_Service' )
+			? YoRo_Store_Inventory_Service::product_inventory_target_meta( $product )
+			: [];
+
+		return array_merge(
+			[
+			'id'                  => $product_id,
 			'name'                => $product->get_name(),
 			'sku'                 => $product->get_sku(),
 			'type'                => $product->get_type(),
+			'type_label'          => YoRo_Product_Helper::get_product_type_label( $product->get_type() ),
 			'status'              => $product->get_status(),
+			'status_label'        => YoRo_Product_Helper::get_product_status_label( $product->get_status() ),
 			'stock_status'        => $product->get_stock_status(),
+			'stock_status_label'  => YoRo_Product_Helper::get_stock_status_label( $product->get_stock_status() ),
 			'manage_stock'        => $product->managing_stock(),
 			'stock_quantity'      => null === $stock_quantity ? '' : $stock_quantity,
 			'low_stock_threshold' => $low_threshold,
 			'backorders_allowed'  => $product->backorders_allowed(),
 			'price'               => $product->get_price(),
-			'edit_url'            => get_edit_post_link( $product->get_id(), 'raw' ),
-		];
+			'edit_url'            => $edit_url,
+			],
+			$inventory_target_meta
+		);
 	}
 
 	private static function product_is_low_stock( WC_Product $product ) {
@@ -2190,6 +2805,45 @@ class YoRo_Orders_Read_Service {
 			},
 			array_keys( wc_get_order_statuses() )
 		);
+	}
+
+	private static function get_revenue_order_status_slugs() {
+		$statuses = function_exists( 'wc_get_is_paid_statuses' ) ? wc_get_is_paid_statuses() : [];
+
+		if ( empty( $statuses ) || ! is_array( $statuses ) ) {
+			$statuses = [ 'processing', 'completed' ];
+		}
+
+		// WooCommerce reports commonly treat on-hold orders as reportable sales activity.
+		$statuses[] = 'on-hold';
+		$statuses   = apply_filters( 'yoro_ai_sales_report_order_statuses', $statuses );
+		$statuses   = is_array( $statuses ) ? $statuses : [];
+		$normalized = [];
+
+		foreach ( $statuses as $status ) {
+			$status = self::normalize_order_status_slug( $status );
+
+			if ( '' !== $status ) {
+				$normalized[] = $status;
+			}
+		}
+
+		$available  = self::get_all_order_status_slugs();
+		$normalized = array_values( array_unique( array_intersect( $normalized, $available ) ) );
+
+		if ( ! empty( $normalized ) ) {
+			return $normalized;
+		}
+
+		return array_values( array_intersect( [ 'processing', 'completed', 'on-hold' ], $available ) );
+	}
+
+	private static function is_revenue_order_status( $status ) {
+		return in_array( self::normalize_order_status_slug( $status ), self::get_revenue_order_status_slugs(), true );
+	}
+
+	private static function normalize_order_status_slug( $status ) {
+		return sanitize_key( preg_replace( '/^wc-/', '', (string) $status ) );
 	}
 
 	private static function build_order_identity( WC_Order $order ) {

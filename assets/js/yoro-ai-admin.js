@@ -70,36 +70,40 @@
 			}
 		}
 
+		function padDatePart(value) {
+			return String(value).padStart(2, '0');
+		}
+
 		function formatToken(token, date) {
 			switch (token) {
 				case 'd':
-					return getPart('day-2d', { day: '2-digit' }, 'day', date);
+					return padDatePart(date.getDate());
 				case 'j':
-					return getPart('day-n', { day: 'numeric' }, 'day', date);
+					return String(date.getDate());
 				case 'm':
-					return getPart('month-2d', { month: '2-digit' }, 'month', date);
+					return padDatePart(date.getMonth() + 1);
 				case 'n':
-					return getPart('month-n', { month: 'numeric' }, 'month', date);
+					return String(date.getMonth() + 1);
 				case 'F':
 					return getPart('month-long', { month: 'long' }, 'month', date);
 				case 'M':
 					return getPart('month-short', { month: 'short' }, 'month', date);
 				case 'Y':
-					return getPart('year-4d', { year: 'numeric' }, 'year', date);
+					return String(date.getFullYear());
 				case 'y':
-					return getPart('year-2d', { year: '2-digit' }, 'year', date);
+					return padDatePart(date.getFullYear() % 100);
 				case 'H':
-					return getPart('hour-24-2d', { hour: '2-digit', hour12: false }, 'hour', date);
+					return padDatePart(date.getHours());
 				case 'G':
-					return getPart('hour-24-n', { hour: 'numeric', hour12: false }, 'hour', date);
+					return String(date.getHours());
 				case 'h':
-					return getPart('hour-12-2d', { hour: '2-digit', hour12: true }, 'hour', date);
+					return padDatePart((date.getHours() % 12) || 12);
 				case 'g':
-					return getPart('hour-12-n', { hour: 'numeric', hour12: true }, 'hour', date);
+					return String((date.getHours() % 12) || 12);
 				case 'i':
-					return getPart('minute-2d', { minute: '2-digit' }, 'minute', date);
+					return padDatePart(date.getMinutes());
 				case 's':
-					return getPart('second-2d', { second: '2-digit' }, 'second', date);
+					return padDatePart(date.getSeconds());
 				case 'a':
 					return getDayPeriod(date, false);
 				case 'A':
@@ -148,12 +152,10 @@
 		const runButton = document.getElementById('yoro-ai-run');
 		const clearButton = document.getElementById('yoro-ai-clear');
 		const contextButton = document.getElementById('yoro-ai-load-context');
+		const adminPanelsButton = document.getElementById('yoro-ai-open-admin-panels');
+		const adminPanelsSource = document.querySelector('[data-yoro-admin-panels]');
 		const chatThread = document.getElementById('yoro-chat-thread');
 		const exampleButtons = document.querySelectorAll('.yoro-ai-example');
-		const parserTestButton = document.getElementById('yoro-run-parser-tests');
-		const parserTestResults = document.getElementById('yoro-parser-test-results');
-		const realQueryPackButton = document.getElementById('yoro-build-real-query-pack');
-		const realQueryPackResults = document.getElementById('yoro-real-query-pack-results');
 		const quickActionsRoot = document.querySelector('[data-yoro-quick-actions]');
 		const quickActionsPanel = quickActionsRoot ? quickActionsRoot.querySelector('[data-yoro-quick-panel]') : null;
 		const quickActionsToggle = quickActionsRoot ? quickActionsRoot.querySelector('[data-yoro-quick-toggle]') : null;
@@ -165,9 +167,9 @@
 		const aiApiStatusLabel = aiApiStatusRoot ? aiApiStatusRoot.querySelector('[data-yoro-ai-api-status-label]') : null;
 		const aiApiStatusBody = aiApiStatusRoot ? aiApiStatusRoot.querySelector('[data-yoro-ai-api-status-body]') : null;
 		const aiApiStatusRefresh = aiApiStatusRoot ? aiApiStatusRoot.querySelector('[data-yoro-ai-api-status-refresh]') : null;
+		let aiApiStatusData = null;
 
 		registerHistoryHandlers();
-		registerDeveloperTools();
 		registerAiApiStatus();
 
 		if (!commandField || !runButton || !chatThread) {
@@ -176,20 +178,8 @@
 
 		let protectedWorkCount = 0;
 		let unloadGuardEnabled = false;
-
-		function hasActiveWorkflow() {
-			const workflow = conversationState.current_workflow;
-
-			return !!(
-				workflow &&
-				typeof workflow === 'object' &&
-				Object.keys(workflow).length &&
-				workflow.status !== 'done' &&
-				workflow.status !== 'executed' &&
-				workflow.status !== 'cancelled' &&
-				workflow.status !== 'failed'
-			);
-		}
+		let conversationHydrationInFlight = false;
+		let conversationHydrationDirty = false;
 
 		function hasVisibleConfirmationActions() {
 			return Array.prototype.some.call(
@@ -203,9 +193,8 @@
 		function shouldWarnBeforeUnload() {
 			return (
 				protectedWorkCount > 0 ||
-				!!conversationState.pending_plan_token ||
+				!!conversationState.pending_operation_token ||
 				hasVisibleConfirmationActions() ||
-				hasActiveWorkflow() ||
 				commandField.value.trim() !== ''
 			);
 		}
@@ -267,7 +256,7 @@
 			if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
 				return {
 					label: 'Find customer orders',
-					description: 'Search WooCommerce orders for ' + raw + '.',
+					description: 'Search store orders for ' + raw + '.',
 					action: 'orders.find_by_customer',
 					params: {
 						email: raw,
@@ -302,7 +291,7 @@
 			if (phoneLike && (hasPhoneFormatting || digitCount >= 8 || normalized.indexOf('phone') !== -1)) {
 				return {
 					label: 'Find customer orders',
-					description: 'Search WooCommerce orders for phone ' + raw + '.',
+					description: 'Search store orders for phone ' + raw + '.',
 					action: 'orders.find_by_customer',
 					params: {
 						phone: digitsOnly,
@@ -325,8 +314,8 @@
 							order_ids: [orderId]
 						},
 						intentType: 'order_lookup',
-						fallbackAction: 'orders.find_by_customer',
-						fallbackParams: {
+						secondaryAction: 'orders.find_by_customer',
+						secondaryParams: {
 							phone: digitsOnly,
 							limit: 10
 						}
@@ -337,7 +326,7 @@
 			if (phoneLike && digitCount >= 7) {
 				return {
 					label: 'Find customer orders',
-					description: 'Search WooCommerce orders for phone ' + raw + '.',
+					description: 'Search store orders for phone ' + raw + '.',
 					action: 'orders.find_by_customer',
 					params: {
 						phone: digitsOnly,
@@ -383,7 +372,7 @@
 				return;
 			}
 
-			if (intent.intentType === 'order_lookup' && intent.fallbackAction) {
+			if (intent.intentType === 'order_lookup' && intent.secondaryAction) {
 				quickSearchResults.innerHTML = ''
 					+ '<div class="yoro-chat-quick-search-card yoro-chat-quick-search-card-ambiguous">'
 					+   '<div class="yoro-chat-quick-search-copy">'
@@ -395,12 +384,12 @@
 					+       ' data-yoro-quick-run="1"'
 					+       ' data-action="' + escapeHtml(intent.action) + '"'
 					+       ' data-params="' + escapeHtml(JSON.stringify(intent.params || {})) + '"'
-					+       ' data-fallback-action="' + escapeHtml(intent.fallbackAction) + '"'
-					+       ' data-fallback-params="' + escapeHtml(JSON.stringify(intent.fallbackParams || {})) + '">Open order</button>'
+					+       ' data-secondary-action="' + escapeHtml(intent.secondaryAction) + '"'
+					+       ' data-secondary-params="' + escapeHtml(JSON.stringify(intent.secondaryParams || {})) + '">Open order</button>'
 					+     '<button type="button" class="button yoro-chat-quick-search-button-secondary"'
 					+       ' data-yoro-quick-run="1"'
-					+       ' data-action="' + escapeHtml(intent.fallbackAction) + '"'
-					+       ' data-params="' + escapeHtml(JSON.stringify(intent.fallbackParams || {})) + '">Search phones</button>'
+					+       ' data-action="' + escapeHtml(intent.secondaryAction) + '"'
+					+       ' data-params="' + escapeHtml(JSON.stringify(intent.secondaryParams || {})) + '">Search phones</button>'
 					+   '</div>'
 					+ '</div>';
 				return;
@@ -450,18 +439,18 @@
 			executeActionDirect(action, params || {}, false, false, 'quick-actions')
 				.then(function(data) {
 					const errorCode = getResponseErrorCode(data);
-					const fallbackAction = options.fallbackAction || '';
-					const fallbackParams = options.fallbackParams || {};
+					const secondaryAction = options.secondaryAction || '';
+					const secondaryParams = options.secondaryParams || {};
 
 					if (
-						fallbackAction &&
+						secondaryAction &&
 						errorCode === 'order_not_found'
 					) {
-						return executeActionDirect(fallbackAction, fallbackParams, false, false, 'quick-actions')
-							.then(function(fallbackData) {
+						return executeActionDirect(secondaryAction, secondaryParams, false, false, 'quick-actions')
+							.then(function(secondaryData) {
 								loading.remove();
-								addAssistantMessage(fallbackData);
-								updateConversationState(fallbackData, fallbackAction);
+								addAssistantMessage(secondaryData);
+								updateConversationState(secondaryData, secondaryAction);
 								return null;
 							})
 							.catch(function(error) {
@@ -503,77 +492,6 @@
 			} catch (error) {
 				return String(fallback || '');
 			}
-		}
-
-		function applyWorkflowHistoryFilter(button) {
-			const panel = button && button.closest ? button.closest('.yoro-workflow-history-panel') : null;
-
-			if (!panel) {
-				return;
-			}
-
-			const filter = button.getAttribute('data-status-filter') || 'all';
-			const items = panel.querySelectorAll('.yoro-workflow-history-item');
-			const emptyState = panel.querySelector('.yoro-workflow-history-empty');
-			let visibleCount = 0;
-
-			panel.querySelectorAll('.yoro-workflow-filter-btn').forEach(function(filterButton) {
-				filterButton.classList.toggle('is-active', filterButton === button);
-			});
-
-			items.forEach(function(item) {
-				const status = item.getAttribute('data-workflow-status') || '';
-				const isActiveStatus = ['collect_missing_params', 'preview_ready', 'ready_to_execute', 'executing'].indexOf(status) !== -1;
-				const isVisible = filter === 'all'
-					? true
-					: (filter === 'active' ? isActiveStatus : status === filter);
-
-				item.hidden = !isVisible;
-				item.classList.toggle('is-hidden', !isVisible);
-
-				if (isVisible) {
-					visibleCount += 1;
-				}
-			});
-
-			if (emptyState) {
-				emptyState.hidden = visibleCount > 0;
-			}
-		}
-
-		function registerDeveloperTools() {
-			if (parserTestButton && parserTestResults && window.YoRoAIAdmin && YoRoAIAdmin.parserTestUrl) {
-				parserTestButton.addEventListener('click', function () {
-					runParserTests();
-				});
-			}
-
-			if (realQueryPackButton && realQueryPackResults && window.YoRoAIAdmin && YoRoAIAdmin.realQueryPackUrl) {
-				realQueryPackButton.addEventListener('click', function () {
-					buildRealQueryPack();
-				});
-			}
-
-			document.addEventListener('click', function (event) {
-				const target = event.target;
-
-				if (
-					!target.classList.contains('yoro-parser-copy-json')
-					&& !target.classList.contains('yoro-parser-copy-hardening')
-					&& !target.classList.contains('yoro-parser-copy-execute')
-					&& !target.classList.contains('yoro-real-pack-copy-json')
-				) {
-					return;
-				}
-
-				const payload = target.getAttribute('data-copy-payload') || '';
-
-				if (!payload) {
-					return;
-				}
-
-				copyParserPayload(payload, target);
-			});
 		}
 
 		function registerAiApiStatus() {
@@ -646,6 +564,8 @@
 				return;
 			}
 
+			aiApiStatusData = data || {};
+
 			const connection = data && data.connection ? data.connection : {};
 			const site = data && data.site ? data.site : {};
 			const usage = data && data.usage ? data.usage : {};
@@ -658,6 +578,8 @@
 			const hasQuota = remaining === null || remaining === undefined || Number(remaining) > 0;
 			const stateClass = connected && hasQuota ? 'is-connected' : (connected ? 'is-warning' : 'is-error');
 			const provider = data && data.resolved_provider ? data.resolved_provider : '';
+			const dashboardUrl = (data && data.dashboard_url) || YoRoAIAdmin.aiApiDashboardUrl || '';
+			const conversationDashboardUrl = getConversationDashboardUrl(conversationState.conversation_id, data);
 
 			aiApiStatusToggle.classList.remove('is-loading', 'is-connected', 'is-warning', 'is-error');
 			aiApiStatusToggle.classList.add(stateClass);
@@ -678,11 +600,17 @@
 			html += renderAiApiStatusRow('Last checked', connection.checked_at || 'not checked');
 			html += '</dl>';
 			html += '<div class="yoro-ai-api-status-features">';
-			html += renderAiApiFeatureBadge('Command router', capabilities.command_router, entitlements.command_router || entitlements.ai_router);
+			html += renderAiApiFeatureBadge('Conversation AI', capabilities.conversation, entitlements.conversation);
 			html += renderAiApiFeatureBadge('Email compose', capabilities.email_compose, entitlements.email_composer);
-			html += renderAiApiFeatureBadge('Workflows', capabilities.workflow_plan, entitlements.workflows);
-			html += renderAiApiFeatureBadge('Suggestions', capabilities.suggestions, entitlements.suggestions);
 			html += '</div>';
+
+			if (dashboardUrl) {
+				html += '<p class="yoro-ai-api-status-note"><a class="button button-small" href="' + escapeHtml(dashboardUrl) + '" target="_blank" rel="noopener noreferrer">Open Laravel dashboard</a></p>';
+			}
+
+			if (conversationDashboardUrl) {
+				html += '<p class="yoro-ai-api-status-note"><a class="button button-small" href="' + escapeHtml(conversationDashboardUrl) + '" target="_blank" rel="noopener noreferrer">Open current conversation</a></p>';
+			}
 
 			if (!configured.enabled) {
 				html += '<p class="yoro-ai-api-status-note">YoRo AI API is configured but disabled in plugin settings.</p>';
@@ -691,10 +619,37 @@
 			aiApiStatusBody.innerHTML = html;
 		}
 
-		function renderAiApiStatusError(error) {
-			const message = (error && error.message)
-				|| (error && error.data && error.data.message)
-				|| 'Could not load YoRo AI API status.';
+		function getConversationDashboardUrl(conversationId, data) {
+			conversationId = String(conversationId || '').trim();
+
+			if (!conversationId) {
+				return '';
+			}
+
+			const baseUrl =
+				(data && data.conversation_dashboard_base_url) ||
+				YoRoAIAdmin.aiApiConversationDashboardBaseUrl ||
+				'';
+
+			if (!baseUrl) {
+				return '';
+			}
+
+			return String(baseUrl).replace(/\/+$/, '') + '/' + encodeURIComponent(conversationId);
+		}
+
+		function refreshAiApiStatusConversationLink() {
+			if (!aiApiStatusData || !aiApiStatusBody) {
+				return;
+			}
+
+			renderAiApiStatus(aiApiStatusData);
+		}
+
+			function renderAiApiStatusError(error) {
+				const message = (error && error.message)
+					|| (error && error.data && error.data.message)
+					|| 'I could not check the YoRo AI API connection right now.';
 
 			if (aiApiStatusToggle) {
 				aiApiStatusToggle.classList.remove('is-loading', 'is-connected', 'is-warning');
@@ -738,361 +693,6 @@
 				+ '</span>';
 		}
 
-		function runParserTests() {
-			parserTestButton.disabled = true;
-			parserTestButton.textContent = 'Running...';
-			parserTestResults.innerHTML = '<div class="yoro-parser-test-loading">Running AI command router tests...</div>';
-
-			requestJson(YoRoAIAdmin.parserTestUrl, {
-				method: 'GET'
-			})
-				.then(function (data) {
-					parserTestResults.innerHTML = renderParserTestResults(data);
-				})
-				.catch(function (error) {
-					parserTestResults.innerHTML = renderParserTestError(error);
-				})
-				.finally(function () {
-					parserTestButton.disabled = false;
-					parserTestButton.textContent = 'Run Router Tests';
-				});
-		}
-
-		function renderParserTestError(error) {
-			const message = (error && error.message)
-				|| (error && error.data && error.data.message)
-				|| 'AI command router test failed.';
-
-			return '<div class="notice notice-error inline"><p>' + escapeHtml(message) + '</p></div>';
-		}
-
-		function renderParserTestResults(data) {
-			const summary = data && data.summary ? data.summary : {};
-			const groupMeta = data && data.group_meta ? data.group_meta : {};
-			const evaluation = groupMeta.evaluation || {};
-			const byDomain = evaluation.by_domain || {};
-			const byOutcome = evaluation.by_outcome || {};
-			const bySource = evaluation.by_source || {};
-			const topDomains = Object.keys(byDomain);
-			const topOutcomes = Object.keys(byOutcome);
-			const topSources = Object.keys(bySource);
-			const optimizedPayload = escapeHtml(JSON.stringify(buildOptimizedParserPayload(data), null, 2));
-			const hardeningPayload = escapeHtml(JSON.stringify(buildHardeningFailurePayload(data), null, 2));
-			const executePayload = escapeHtml(JSON.stringify(buildExecuteFailurePayload(data), null, 2));
-
-			let html = '<div class="yoro-parser-test-panel">';
-			html += '<div class="yoro-parser-test-head">';
-			html += '<h3>AI Command Router Benchmark</h3>';
-			html += '<p>Current regression and evaluation snapshot for command understanding, routing, preview, execution, and undo behavior.</p>';
-			html += '<div class="yoro-parser-test-toolbar">';
-			html += '<button type="button" class="button button-secondary yoro-parser-copy-json" data-copy-payload="' + optimizedPayload + '">Copy debug JSON</button>';
-			html += '<button type="button" class="button button-secondary yoro-parser-copy-hardening" data-copy-payload="' + hardeningPayload + '">Copy hardening failures</button>';
-			html += '<button type="button" class="button button-secondary yoro-parser-copy-execute" data-copy-payload="' + executePayload + '">Copy execute failures</button>';
-			html += '<span class="yoro-parser-test-toolbar-note">Debug JSON: summary, evaluation meta, failed evaluation cases. Hardening copy: safety summary and failed hardening cases only. Execute copy: execute summary and failed execute cases only.</span>';
-			html += '</div>';
-			html += '</div>';
-
-			html += '<div class="yoro-parser-test-metrics">';
-			html += renderMetricCard('Total tests', summary.total || 0, '');
-			html += renderMetricCard('Passed', summary.passed || 0, '');
-			html += renderMetricCard('Failed', summary.failed || 0, '');
-			html += renderMetricCard('Clarify rate', evaluation.clarify_rate || '0.0%', 'Evaluation only');
-			html += renderMetricCard('Wrong action', evaluation.wrong_action_rate || '0.0%', 'Evaluation only');
-			html += renderMetricCard('Wrong intent', evaluation.wrong_intent_rate || '0.0%', 'Evaluation only');
-			html += '</div>';
-
-			if (topDomains.length) {
-				html += '<div class="yoro-parser-test-section">';
-				html += '<h4>By domain</h4>';
-				html += '<table class="widefat striped yoro-parser-test-table"><thead><tr><th>Domain</th><th>Total</th><th>Passed</th><th>Failed</th></tr></thead><tbody>';
-				topDomains.forEach(function (key) {
-					const row = byDomain[key] || {};
-					html += '<tr><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(row.total || 0) + '</td><td>' + escapeHtml(row.passed || 0) + '</td><td>' + escapeHtml(row.failed || 0) + '</td></tr>';
-				});
-				html += '</tbody></table></div>';
-			}
-
-			if (topOutcomes.length || topSources.length) {
-				html += '<div class="yoro-parser-test-grid">';
-
-				if (topOutcomes.length) {
-					html += '<div class="yoro-parser-test-section">';
-					html += '<h4>Outcomes</h4>';
-					html += '<table class="widefat striped yoro-parser-test-table"><thead><tr><th>Outcome</th><th>Total</th><th>Passed</th><th>Failed</th></tr></thead><tbody>';
-					topOutcomes.forEach(function (key) {
-						const row = byOutcome[key] || {};
-						html += '<tr><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(row.total || 0) + '</td><td>' + escapeHtml(row.passed || 0) + '</td><td>' + escapeHtml(row.failed || 0) + '</td></tr>';
-					});
-					html += '</tbody></table></div>';
-				}
-
-				if (topSources.length) {
-					html += '<div class="yoro-parser-test-section">';
-					html += '<h4>Router sources</h4>';
-					html += '<table class="widefat striped yoro-parser-test-table"><thead><tr><th>Router source</th><th>Total</th><th>Passed</th><th>Failed</th></tr></thead><tbody>';
-					topSources.forEach(function (key) {
-						const row = bySource[key] || {};
-						html += '<tr><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(row.total || 0) + '</td><td>' + escapeHtml(row.passed || 0) + '</td><td>' + escapeHtml(row.failed || 0) + '</td></tr>';
-					});
-					html += '</tbody></table></div>';
-				}
-
-				html += '</div>';
-			}
-
-			html += '<details class="yoro-parser-test-raw"><summary>Raw test response</summary>';
-			html += '<pre class="yoro-json-output">' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
-			html += '</details>';
-			html += '</div>';
-
-			return html;
-		}
-
-		function buildRealQueryPack() {
-			realQueryPackButton.disabled = true;
-			realQueryPackButton.textContent = 'Building...';
-			realQueryPackResults.innerHTML = '<div class="yoro-parser-test-loading">Building command evaluation pack...</div>';
-
-			requestJson(YoRoAIAdmin.realQueryPackUrl, {
-				method: 'GET'
-			})
-				.then(function (data) {
-					realQueryPackResults.innerHTML = renderRealQueryPackResults(data);
-				})
-				.catch(function (error) {
-					realQueryPackResults.innerHTML = renderParserTestError(error);
-				})
-				.finally(function () {
-					realQueryPackButton.disabled = false;
-					realQueryPackButton.textContent = 'Build Command Pack';
-				});
-		}
-
-		function renderRealQueryPackResults(data) {
-			const byIntent = data && data.by_intent ? data.by_intent : {};
-			const bySource = data && data.by_source ? data.by_source : {};
-			const byStatus = data && data.by_status ? data.by_status : {};
-			const topQueries = data && Array.isArray(data.queries) ? data.queries : [];
-			const optimizedPayload = escapeHtml(JSON.stringify({
-				sample_size: data && data.sample_size ? data.sample_size : 0,
-				deduped_size: data && data.deduped_size ? data.deduped_size : 0,
-				by_intent: byIntent,
-				by_source: bySource,
-				by_status: byStatus,
-				queries: topQueries,
-				suggested_cases: data && Array.isArray(data.suggested_cases) ? data.suggested_cases : []
-			}, null, 2));
-
-			let html = '<div class="yoro-parser-test-panel">';
-			html += '<div class="yoro-parser-test-head">';
-			html += '<h3>Real Command Evaluation Pack</h3>';
-			html += '<p>Recent deduplicated user commands harvested from YoRo history for router benchmark expansion.</p>';
-			html += '<div class="yoro-parser-test-toolbar">';
-			html += '<button type="button" class="button button-secondary yoro-real-pack-copy-json" data-copy-payload="' + optimizedPayload + '">Copy command JSON</button>';
-			html += '<span class="yoro-parser-test-toolbar-note">Includes deduped commands, router source mix, intent mix, and suggested test cases.</span>';
-			html += '</div>';
-			html += '</div>';
-
-			html += '<div class="yoro-parser-test-metrics">';
-			html += renderMetricCard('Samples scanned', data && data.sample_size ? data.sample_size : 0, '');
-			html += renderMetricCard('Deduped queries', data && data.deduped_size ? data.deduped_size : 0, '');
-			html += renderMetricCard('Top intents', Object.keys(byIntent).length, '');
-			html += renderMetricCard('Top router sources', Object.keys(bySource).length, '');
-			html += '</div>';
-
-			html += '<div class="yoro-parser-test-grid">';
-			html += renderCompactCountTable('Intent mix', byIntent, 'Intent');
-			html += renderCompactCountTable('Router source mix', bySource, 'Router source');
-			html += renderCompactCountTable('Status mix', byStatus, 'Status');
-			html += '</div>';
-
-			if (topQueries.length) {
-				html += '<div class="yoro-parser-test-section">';
-				html += '<h4>Recent deduped commands</h4>';
-				html += '<table class="widefat striped yoro-parser-test-table"><thead><tr><th>Command</th><th>Intent</th><th>Action</th><th>Router source</th><th>Status</th></tr></thead><tbody>';
-				topQueries.slice(0, 15).forEach(function (row) {
-					html += '<tr>';
-					html += '<td><code>' + escapeHtml(row.command || '') + '</code></td>';
-					html += '<td>' + escapeHtml(row.intent || '—') + '</td>';
-					html += '<td>' + escapeHtml(row.action || '—') + '</td>';
-					html += '<td>' + escapeHtml(row.parser_source || '—') + '</td>';
-					html += '<td>' + escapeHtml(row.status || '—') + '</td>';
-					html += '</tr>';
-				});
-				html += '</tbody></table></div>';
-			}
-
-			html += '</div>';
-			return html;
-		}
-
-		function renderCompactCountTable(title, counts, firstColumnLabel) {
-			const keys = Object.keys(counts || {});
-			let html = '<div class="yoro-parser-test-section">';
-			html += '<h4>' + escapeHtml(title) + '</h4>';
-			html += '<table class="widefat striped yoro-parser-test-table"><thead><tr><th>' + escapeHtml(firstColumnLabel) + '</th><th>Total</th></tr></thead><tbody>';
-
-			keys.forEach(function (key) {
-				html += '<tr><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(counts[key] || 0) + '</td></tr>';
-			});
-
-			if (!keys.length) {
-				html += '<tr><td colspan="2">No data</td></tr>';
-			}
-
-			html += '</tbody></table></div>';
-			return html;
-		}
-
-		function buildOptimizedParserPayload(data) {
-			const evaluationResults = data && data.groups && Array.isArray(data.groups.evaluation)
-				? data.groups.evaluation
-				: [];
-
-			return {
-				summary: data && data.summary ? data.summary : {},
-				group_meta: {
-					evaluation: data && data.group_meta && data.group_meta.evaluation
-						? data.group_meta.evaluation
-						: {}
-				},
-				evaluation_failures: evaluationResults
-					.filter(function (item) {
-						return item && item.passed === false;
-					})
-					.map(function (item) {
-						return {
-							name: item.name || '',
-							command: item.command || '',
-							domain: item.domain || '',
-							outcome: item.outcome || '',
-							expected_intent: item.expected_intent || '',
-							expected_action: item.expected_action || '',
-							trace: item.trace || {},
-							assertions: item.assertions || {}
-						};
-					})
-			};
-		}
-
-		function buildHardeningFailurePayload(data) {
-			const hardeningResults = data && data.groups && Array.isArray(data.groups.hardening)
-				? data.groups.hardening
-				: [];
-			const hardeningSummary = data && data.summary && data.summary.groups && data.summary.groups.hardening
-				? data.summary.groups.hardening
-				: {};
-			const hardeningMeta = data && data.group_meta && data.group_meta.hardening
-				? data.group_meta.hardening
-				: {};
-
-			return {
-				summary: {
-					hardening: hardeningSummary
-				},
-				group_meta: {
-					hardening: hardeningMeta
-				},
-				hardening_failures: hardeningResults
-					.filter(function (item) {
-						return item && item.passed === false;
-					})
-					.map(function (item) {
-						return {
-							name: item.name || '',
-							command: item.command || '',
-							domain: item.domain || '',
-							outcome: item.outcome || '',
-							expected_intent: item.expected_intent || '',
-							expected_action: item.expected_action || '',
-							trace: item.trace || {},
-							assertions: item.assertions || {}
-						};
-					})
-			};
-		}
-
-		function buildExecuteFailurePayload(data) {
-			const executeResults = data && data.groups && Array.isArray(data.groups.execute)
-				? data.groups.execute
-				: [];
-			const executeSummary = data && data.summary && data.summary.groups && data.summary.groups.execute
-				? data.summary.groups.execute
-				: {};
-
-			return {
-				summary: {
-					execute: executeSummary
-				},
-				execute_failures: executeResults
-					.filter(function (item) {
-						return item && item.passed === false;
-					})
-					.map(function (item) {
-						return {
-							name: item.name || '',
-							command: item.command || '',
-							assertions: item.assertions || {},
-							actual: {
-								parsed: item.actual && item.actual.parsed ? item.actual.parsed : null,
-								plan: item.actual && item.actual.plan ? item.actual.plan : null,
-								result: item.actual && item.actual.result ? item.actual.result : null
-							}
-						};
-					})
-			};
-		}
-
-		function copyParserPayload(payload, button) {
-			const onSuccess = function () {
-				const previous = button.textContent;
-				button.textContent = 'Copied';
-				button.disabled = true;
-
-				window.setTimeout(function () {
-					button.textContent = previous;
-					button.disabled = false;
-				}, 1400);
-			};
-
-			if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-				navigator.clipboard.writeText(payload).then(onSuccess).catch(function () {
-					fallbackCopyText(payload, onSuccess);
-				});
-				return;
-			}
-
-			fallbackCopyText(payload, onSuccess);
-		}
-
-		function fallbackCopyText(payload, onSuccess) {
-			const textarea = document.createElement('textarea');
-			textarea.value = payload;
-			textarea.setAttribute('readonly', 'readonly');
-			textarea.style.position = 'absolute';
-			textarea.style.left = '-9999px';
-			document.body.appendChild(textarea);
-			textarea.select();
-
-			try {
-				document.execCommand('copy');
-				onSuccess();
-			} finally {
-				document.body.removeChild(textarea);
-			}
-		}
-
-		function renderMetricCard(label, value, note) {
-			let html = '<div class="yoro-parser-test-metric">';
-			html += '<strong>' + escapeHtml(value) + '</strong>';
-			html += '<span>' + escapeHtml(label) + '</span>';
-			if (note) {
-				html += '<em>' + escapeHtml(note) + '</em>';
-			}
-			html += '</div>';
-			return html;
-		}
-
 		let isComposerComposing = false;
 		let submitAfterCompositionEnd = false;
 
@@ -1106,6 +706,13 @@
 		}
 
 			commandField.addEventListener('input', function () {
+				if (
+					conversationState.next_scoped_command &&
+					commandField.value.trim() !== conversationState.next_scoped_command
+				) {
+					clearNextActionCatalogScope();
+				}
+
 				if (commandField.value.trim() === '') {
 					clearCommandGhostHint();
 				}
@@ -1160,15 +767,21 @@
 		document.body.appendChild(modal);
 
 		function openModal(title, bodyHtml, onConfirm, options) {
+			const contentEl = modal.querySelector('.yoro-modal-content');
 			const titleEl = modal.querySelector('.yoro-modal-title');
 			const bodyEl = modal.querySelector('.yoro-modal-body');
 			const actionsEl = modal.querySelector('.yoro-modal-actions');
+			const cancelBtn = modal.querySelector('.yoro-modal-cancel');
 			const confirmBtn = modal.querySelector('.yoro-modal-confirm');
 			const modalOptions = options || {};
 
 			titleEl.textContent = title;
 			bodyEl.innerHTML = bodyHtml;
 			actionsEl.style.display = modalOptions.hideActions ? 'none' : '';
+			confirmBtn.style.display = modalOptions.hideConfirm ? 'none' : '';
+			cancelBtn.textContent = modalOptions.cancelText || 'Cancel';
+			confirmBtn.textContent = modalOptions.confirmText || 'Confirm';
+			contentEl.classList.toggle('yoro-modal-content-wide', !!modalOptions.wide);
 
 			modal.classList.remove('hidden');
 
@@ -1176,9 +789,13 @@
 				modal.classList.add('hidden');
 				confirmBtn.onclick = null;
 				actionsEl.style.display = '';
+				confirmBtn.style.display = '';
+				cancelBtn.textContent = 'Cancel';
+				confirmBtn.textContent = 'Confirm';
+				contentEl.classList.remove('yoro-modal-content-wide');
 			}
 
-			modal.querySelector('.yoro-modal-cancel').onclick = close;
+			cancelBtn.onclick = close;
 			modal.querySelector('.yoro-modal-overlay').onclick = close;
 
 			confirmBtn.onclick = function () {
@@ -1189,27 +806,171 @@
 			};
 		}
 
-		let conversationState = {
-			last_orders: [],
-			last_order_ids: [],
-			last_command: '',
-			last_action: '',
-			last_result_type: '',
-			active_followup_type: '',
-			last_result: {},
-			last_briefing: {},
-			last_business_followup: {},
-			last_attention_followup: {},
-			last_service_followup: {},
-			last_fulfillment_followup: {},
-			last_inventory_followup: {},
-			morning_briefing_state: {},
-			last_referenced_order_id: 0,
-			current_order_id: 0,
-			current_workflow: {},
-			pending_confirm_command: '',
-			pending_plan_token: ''
-		};
+		function activateAdminPanel(root, panel) {
+			const modalRoot = root || null;
+
+			if (!modalRoot) {
+				return;
+			}
+
+			const tabs = modalRoot.querySelectorAll('[data-yoro-admin-tab]');
+			let selectedPanel = panel || 'history';
+			let hasSelectedPanel = false;
+
+			tabs.forEach(function(tab) {
+				if (tab.getAttribute('data-yoro-admin-tab') === selectedPanel) {
+					hasSelectedPanel = true;
+				}
+			});
+
+			if (!hasSelectedPanel) {
+				selectedPanel = 'history';
+			}
+
+			tabs.forEach(function(tab) {
+				const active = tab.getAttribute('data-yoro-admin-tab') === selectedPanel;
+
+				tab.classList.toggle('is-active', active);
+				tab.setAttribute('aria-selected', active ? 'true' : 'false');
+			});
+
+			modalRoot.querySelectorAll('[data-yoro-admin-panel]').forEach(function(section) {
+				section.classList.toggle(
+					'is-active',
+					section.getAttribute('data-yoro-admin-panel') === selectedPanel
+				);
+			});
+		}
+
+		function openAdminPanels(panel) {
+			if (!adminPanelsSource) {
+				return;
+			}
+
+			openModal(
+				'YoRo AI Admin',
+				adminPanelsSource.innerHTML,
+				null,
+				{
+					hideConfirm: true,
+					cancelText: 'Close',
+					wide: true
+				}
+			);
+
+			activateAdminPanel(
+				modal.querySelector('[data-yoro-admin-modal]'),
+				panel || 'history'
+			);
+		}
+
+		function registerAdminPanelModal() {
+			if (adminPanelsButton && adminPanelsSource) {
+				adminPanelsButton.addEventListener('click', function() {
+					openAdminPanels('history');
+				});
+			}
+
+			document.addEventListener('click', function(event) {
+				const tab = event.target.closest('[data-yoro-admin-tab]');
+
+				if (!tab || !modal.contains(tab)) {
+					return;
+				}
+
+				activateAdminPanel(
+					tab.closest('[data-yoro-admin-modal]'),
+					tab.getAttribute('data-yoro-admin-tab') || 'history'
+				);
+			});
+
+			const params = new URLSearchParams(window.location.search);
+			const requestedPanel = params.get('yoro_admin_panel')
+				|| (adminPanelsSource ? adminPanelsSource.getAttribute('data-yoro-admin-initial-panel') : '');
+
+			if (requestedPanel && adminPanelsSource) {
+				window.setTimeout(function() {
+					openAdminPanels(requestedPanel);
+				}, 0);
+			}
+		}
+
+		registerAdminPanelModal();
+
+		function getConversationStorageKey() {
+			const key = window.YoRoAIAdmin && YoRoAIAdmin.conversationStorageKey
+				? String(YoRoAIAdmin.conversationStorageKey)
+				: '';
+
+			return key.length <= 120 ? key : '';
+		}
+
+		function normalizeStoredConversationId(value) {
+			const conversationId = String(value || '').trim();
+
+			if (!conversationId || conversationId.length > 120) {
+				return '';
+			}
+
+			return /^[A-Za-z0-9._:-]+$/.test(conversationId) ? conversationId : '';
+		}
+
+		function loadStoredConversationId() {
+			const storageKey = getConversationStorageKey();
+
+			if (!storageKey) {
+				return '';
+			}
+
+			try {
+				return normalizeStoredConversationId(window.localStorage.getItem(storageKey));
+			} catch (error) {
+				return '';
+			}
+		}
+
+		function saveStoredConversationId(conversationId) {
+			const storageKey = getConversationStorageKey();
+			const storedConversationId = normalizeStoredConversationId(conversationId);
+
+			if (!storageKey || !storedConversationId) {
+				return;
+			}
+
+			try {
+				window.localStorage.setItem(storageKey, storedConversationId);
+			} catch (error) {
+				// Ignore private browsing or blocked storage; Laravel remains the source of truth.
+			}
+		}
+
+		function clearStoredConversationId() {
+			const storageKey = getConversationStorageKey();
+
+			if (!storageKey) {
+				return;
+			}
+
+			try {
+				window.localStorage.removeItem(storageKey);
+			} catch (error) {
+				// Ignore private browsing or blocked storage; the in-memory state is still cleared.
+			}
+		}
+
+			let conversationState = {
+				conversation_id: loadStoredConversationId(),
+				pending_operation_token: '',
+				last_order_ids: [],
+				last_orders: [],
+				last_referenced_order_id: 0,
+				current_order_id: 0,
+				pending_confirm_command: '',
+				next_action_catalog_scope: '',
+				next_report_topic_selection: '',
+				next_report_topic: '',
+				next_scoped_command: ''
+			};
 
 		function registerHistoryHandlers() {
 			document.addEventListener('click', function (event) {
@@ -1263,11 +1024,11 @@
 						target.disabled = false;
 						target.textContent = 'Undo';
 
-						alert(
-							(error && error.message) ||
-							(error && error.data && error.data.message) ||
-							'Undo failed.'
-						);
+							alert(
+								(error && error.message) ||
+								(error && error.data && error.data.message) ||
+								'I could not undo that change.'
+							);
 					});
 			});
 		}
@@ -1308,8 +1069,53 @@
 			});
 		}
 
-		function addMessage(type, html) {
+		function stripAssistantNameTextPrefix(text) {
+			return String(text || '').replace(/^\s*yoro\s*(?:\r?\n)+/i, '').trimStart();
+		}
+
+		function stripAssistantNameHeader(html) {
+			const template = document.createElement('template');
+
+			template.innerHTML = String(html || '').trim();
+
+			let firstElement = template.content.firstElementChild;
+			if (
+				firstElement
+				&& firstElement.tagName === 'STRONG'
+				&& firstElement.textContent.trim().toLowerCase() === 'yoro'
+			) {
+				firstElement.remove();
+				firstElement = template.content.firstElementChild;
+			}
+
+			if (
+				firstElement
+				&& firstElement.parentNode
+				&& firstElement.tagName === 'P'
+				&& firstElement.textContent.trim().toLowerCase() === 'yoro'
+			) {
+				firstElement.remove();
+			}
+
+			if (firstElement && firstElement.parentNode && firstElement.tagName === 'P') {
+				const strippedText = stripAssistantNameTextPrefix(firstElement.textContent);
+
+				if (strippedText !== firstElement.textContent) {
+					firstElement.textContent = strippedText;
+				}
+			}
+
+			return template.innerHTML.trim();
+		}
+
+		function addMessage(type, html, options) {
 			const isUser = type === 'user';
+			const messageOptions = options && typeof options === 'object' ? options : {};
+			const messageHtml = isUser ? String(html || '') : stripAssistantNameHeader(html);
+
+			if (conversationHydrationInFlight && !messageOptions.hydrating) {
+				conversationHydrationDirty = true;
+			}
 
 			const wrapper = document.createElement('div');
 			wrapper.className = 'yoro-chat-message ' + (isUser ? 'yoro-chat-message-user' : 'yoro-chat-message-assistant');
@@ -1317,11 +1123,15 @@
 			wrapper.innerHTML = `
 				<div class="yoro-chat-avatar" aria-hidden="true">${isUser ? 'U' : ''}</div>
 				<div class="yoro-chat-bubble">
-					${html}
+					${messageHtml}
 				</div>
 			`;
 
 			chatThread.appendChild(wrapper);
+
+			if (messageOptions.scroll === false) {
+				return wrapper;
+			}
 
 			if (isUser) {
 				scrollToBottom();
@@ -1334,69 +1144,6 @@
 
 		function addUserMessage(command) {
 			addMessage('user', '<p>' + escapeHtml(command) + '</p>');
-		}
-
-		function replaceInitialGreetingForMorningBriefing() {
-			const messages = chatThread.querySelectorAll('.yoro-chat-message');
-
-			if (messages.length !== 1) {
-				return;
-			}
-
-			const firstMessage = messages[0];
-
-			if (!firstMessage.classList.contains('yoro-chat-message-assistant')) {
-				return;
-			}
-
-			const bubble = firstMessage.querySelector('.yoro-chat-bubble');
-
-			if (!bubble) {
-				return;
-			}
-
-			const intro = (window.YoRoAIAdmin && YoRoAIAdmin.i18n && YoRoAIAdmin.i18n.morningBriefingIntro)
-				? String(YoRoAIAdmin.i18n.morningBriefingIntro)
-				: 'Good morning, here’s your store briefing for today.';
-
-			bubble.innerHTML = '<strong>YoRo</strong><p>' + escapeHtml(intro) + '</p>';
-		}
-
-		function swapInitialGreetingForMorningBriefing() {
-			const greetingMessage = chatThread.querySelector('.yoro-chat-message-assistant[data-yoro-initial-greeting="1"]');
-
-			if (!greetingMessage) {
-				return false;
-			}
-
-			greetingMessage.remove();
-			return replaceInitialGreetingForMorningBriefingMessage();
-		}
-
-		function replaceInitialGreetingForMorningBriefingMessage() {
-			const intro = (window.YoRoAIAdmin && YoRoAIAdmin.i18n && YoRoAIAdmin.i18n.morningBriefingIntro)
-				? String(YoRoAIAdmin.i18n.morningBriefingIntro)
-				: 'Good morning, here’s your store briefing for today.';
-
-			return addMessage('assistant', '<strong>YoRo</strong><p>' + escapeHtml(intro) + '</p>');
-		}
-
-		function shouldUseMorningBriefingGreeting(data) {
-			const result = data && data.result ? data.result : {};
-
-			if (!result || result.display_type !== 'morning_briefing') {
-				return false;
-			}
-
-			if (data && data.skip_morning_greeting) {
-				return false;
-			}
-
-			if (data && data.proactive === true) {
-				return true;
-			}
-
-			return !!(result.meta && result.meta.proactive);
 		}
 
 		let resultUI = null;
@@ -1459,18 +1206,14 @@
 			}
 		}
 
-		function addAssistantMessage(data) {
-			let morningGreetingWrapper = null;
-
-			if (shouldUseMorningBriefingGreeting(data)) {
-				morningGreetingWrapper = swapInitialGreetingForMorningBriefing();
-			}
-
+		function addAssistantMessage(data, options) {
+			const messageOptions = options && typeof options === 'object' ? options : {};
 			const wrapper = addMessage(
 				'assistant',
 				resultUI
 					? resultUI.renderResult(data)
-					: renderJsonFallback(data)
+					: renderJsonFallback(data),
+				messageOptions
 			);
 			const result = data && data.result ? data.result : {};
 			const displayType = String(result.display_type || '');
@@ -1481,10 +1224,99 @@
 
 			hideSupersededAssistantMessages(wrapper, data);
 			syncBeforeUnloadGuard();
+		}
 
-			if (morningGreetingWrapper) {
-				scrollMessageToTop(morningGreetingWrapper);
+		function buildConversationLoadUrl(conversationId) {
+			const endpoint = window.YoRoAIAdmin && YoRoAIAdmin.conversationUrl
+				? String(YoRoAIAdmin.conversationUrl)
+				: '';
+			const normalizedConversationId = normalizeStoredConversationId(conversationId);
+
+			if (!endpoint || !normalizedConversationId) {
+				return '';
 			}
+
+			return endpoint
+				+ (endpoint.indexOf('?') === -1 ? '?' : '&')
+				+ 'conversation_id='
+				+ encodeURIComponent(normalizedConversationId);
+		}
+
+		function renderHydratedConversation(data) {
+			const messages = data && Array.isArray(data.messages) ? data.messages : [];
+
+			if (!messages.length || conversationHydrationDirty) {
+				return;
+			}
+
+			chatThread.innerHTML = '';
+
+			messages.forEach(function(message) {
+				const role = String(message && message.role ? message.role : '');
+				const content = String(message && message.content ? message.content : '');
+
+				if (role === 'user') {
+					addMessage('user', '<p>' + escapeHtml(content) + '</p>', { scroll: false, hydrating: true });
+					return;
+				}
+
+				if (role !== 'assistant') {
+					return;
+				}
+
+				if (message.ui && typeof message.ui === 'object') {
+					addAssistantMessage(message.ui, { scroll: false, hydrating: true });
+					return;
+				}
+
+				addMessage(
+					'assistant',
+					resultUI && typeof resultUI.renderAssistantText === 'function'
+						? resultUI.renderAssistantText(stripAssistantNameTextPrefix(content))
+						: '<p>' + escapeHtml(stripAssistantNameTextPrefix(content)) + '</p>',
+					{ scroll: false, hydrating: true }
+				);
+			});
+
+			updateConversationState(data, '');
+			syncBeforeUnloadGuard();
+			scrollToBottom();
+		}
+
+		function hydrateStoredConversation() {
+			const conversationId = normalizeStoredConversationId(conversationState.conversation_id);
+			const url = buildConversationLoadUrl(conversationId);
+
+			if (!url) {
+				return;
+			}
+
+			conversationHydrationInFlight = true;
+			conversationHydrationDirty = false;
+
+			requestJson(url, {
+				method: 'GET'
+			})
+				.then(function(data) {
+					renderHydratedConversation(data);
+				})
+				.catch(function(error) {
+					const code = getResponseErrorCode(error);
+
+					if (
+						code === 'yoro_ai_api_conversation_show_error' ||
+						code === 'rest_no_route' ||
+						code === 'rest_forbidden'
+					) {
+						conversationState.conversation_id = '';
+						conversationState.pending_operation_token = '';
+						clearStoredConversationId();
+						refreshAiApiStatusConversationLink();
+					}
+				})
+				.finally(function() {
+					conversationHydrationInFlight = false;
+				});
 		}
 
 		function addLoadingMessage() {
@@ -1549,54 +1381,7 @@
 			hiddenAction.element.style.display = hiddenAction.display;
 		}
 
-		function getResultSuggestions(data) {
-			const result = data && data.result ? data.result : {};
-			const parsed = data && data.parsed ? data.parsed : {};
-			const action = result.action || parsed.action || '';
-
-			function filterUnsupportedRequestSuggestions(items) {
-				if (
-					!(
-						result &&
-						result.conversation_topic === 'unsupported_request' &&
-						result.developer_handoff_offer
-					)
-				) {
-					return items;
-				}
-
-				return items.filter(function(item) {
-					const action = String((item && item.action) || '').trim().toLowerCase();
-					const value = String((item && (item.command || item.value || item.label)) || '').trim().toLowerCase();
-					return action === 'assistant.submit_developer_request' || value === 'yes, send this to developers' || value === 'send to developers';
-				}).slice(0, 1);
-			}
-
-			if (result.display_type === 'single_action') {
-				return [];
-			}
-
-			if (
-				data &&
-				data.stage === 'done' &&
-				result &&
-				result.read_only === false
-			) {
-				return [];
-			}
-
-			if (Array.isArray(result.suggestions)) {
-				return filterUnsupportedRequestSuggestions(result.suggestions);
-			}
-
-			if (Array.isArray(data.suggestions)) {
-				return filterUnsupportedRequestSuggestions(data.suggestions);
-			}
-
-			return [];
-		}
-
-		function syncRunButtonState() {
+			function syncRunButtonState() {
 			runButton.disabled = isSending || commandField.value.trim() === '';
 		}
 
@@ -1605,6 +1390,10 @@
 
 			if (contextButton) {
 				contextButton.disabled = isLoading;
+			}
+
+			if (adminPanelsButton) {
+				adminPanelsButton.disabled = isLoading;
 			}
 
 			runButton.textContent = isLoading ? YoRoAIAdmin.i18n.running : (YoRoAIAdmin.i18n.askYoRo || 'Ask YoRo');
@@ -1667,103 +1456,52 @@
 					});
 		}
 
-		function loadServerMemory() {
-			return requestJson(YoRoAIAdmin.memoryUrl, {
-				method: 'GET'
-			}).then(function (data) {
-				const runtimeContext = data && data.success
-					? (data.runtime_context || data.memory || null)
-					: null;
+		function isOrdersListResult(data, result) {
+			const parsed = data && data.parsed ? data.parsed : {};
+			const action = String(result.action || data.action || parsed.action || '');
+			const displayType = String(result.display_type || data.display_type || '');
+			const resultType = String(result.result_type || data.result_type || '');
 
-				if (runtimeContext) {
-					conversationState = Object.assign(conversationState, runtimeContext);
-					return runtimeContext;
-				}
-			});
+			if (displayType === 'order_details') {
+				return false;
+			}
+
+			return displayType === 'orders_list' ||
+				action === 'orders.search' ||
+				action === 'orders.find_by_customer' ||
+				action === 'orders.find_by_identity' ||
+				(resultType === 'orders' && displayType !== 'order_details');
 		}
 
-		function loadMorningBriefing() {
-			if (!window.YoRoAIAdmin || !YoRoAIAdmin.morningBriefingUrl) {
-				return Promise.resolve();
+		function compactOrderListContext(orders) {
+			if (!Array.isArray(orders)) {
+				return [];
 			}
 
-			const params = new URLSearchParams(window.location.search || '');
-			const forceWindow = params.get('yoro_force_morning_window') === '1';
-			const resetState = params.get('yoro_reset_morning_briefing') === '1';
-			const requestParams = new URLSearchParams();
+			return orders.map(function(order, index) {
+				const id = parseInt(order && order.id ? order.id : 0, 10);
 
-			if (forceWindow) {
-				requestParams.set('force_window', '1');
-			}
-
-			if (resetState) {
-				requestParams.set('reset_state', '1');
-			}
-
-			if (window.Intl && Intl.DateTimeFormat) {
-				const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-
-				if (browserTimeZone) {
-					requestParams.set('browser_timezone', browserTimeZone);
-				}
-			}
-
-			const url = requestParams.toString()
-				? (YoRoAIAdmin.morningBriefingUrl + '?' + requestParams.toString())
-				: YoRoAIAdmin.morningBriefingUrl;
-
-			return requestJson(url, {
-				method: 'GET'
-			}).then(function (data) {
-				if (!data || !data.success || !data.should_show) {
-					return data;
+				if (!id) {
+					return null;
 				}
 
-				swapInitialGreetingForMorningBriefing();
+				const item = {
+					position: index + 1,
+					id: id
+				};
 
-				addAssistantMessage(data);
-				updateConversationState(data, 'Morning briefing');
+				if (order.number) {
+					item.number = String(order.number);
+				}
 
-				return data;
-			}).catch(function () {
-				return null;
+				if (order.status) {
+					item.status = String(order.status);
+				}
+
+				return item;
+			}).filter(function(order) {
+				return !!order;
 			});
-		}
-
-
-		function dismissMorningBriefing() {
-			if (!window.YoRoAIAdmin || !YoRoAIAdmin.morningBriefingDismissUrl) {
-				return Promise.resolve();
-			}
-
-			const payload = {};
-
-			if (window.Intl && Intl.DateTimeFormat) {
-				const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-
-				if (browserTimeZone) {
-					payload.browser_timezone = browserTimeZone;
-				}
-			}
-
-			return requestJson(YoRoAIAdmin.morningBriefingDismissUrl, {
-				method: 'POST',
-				body: JSON.stringify(payload)
-			}).then(function (data) {
-				if (data && data.success) {
-					conversationState.morning_briefing_state = Object.assign({}, conversationState.morning_briefing_state || {}, {
-						last_dismissed_date: data.date || ''
-					});
-				}
-
-				return data;
-			});
-		}
-
-		function isFollowupParserRule(parsed, suffix) {
-			const parserRule = parsed && parsed.parser_rule ? String(parsed.parser_rule) : '';
-
-			return parserRule === 'rule.follow_up.' + suffix || parserRule === 'guard.follow_up.' + suffix;
 		}
 
 		function updateConversationState(data, command) {
@@ -1773,443 +1511,68 @@
 
 			const result = data.result || {};
 			const parsed = data.parsed || {};
+			const meta = parsed.meta || result.meta || data.meta || {};
 			const adminCopilot = data.admin_copilot || (result.meta && result.meta.admin_copilot) || null;
+			const conversationId =
+				data.conversation_id ||
+				parsed.conversation_id ||
+				result.conversation_id ||
+				meta.conversation_id ||
+				meta.yoro_ai_api_conversation_id ||
+				'';
+			const pendingOperationToken =
+				data.pending_operation_token ||
+				parsed.pending_operation_token ||
+				result.pending_operation_token ||
+				meta.pending_operation_token ||
+				meta.yoro_ai_api_pending_operation_token ||
+				'';
 
-			conversationState.last_command = command || '';
-			conversationState.last_action = parsed.action || result.action || '';
-
-			if (adminCopilot && typeof adminCopilot === 'object') {
-				conversationState.surface = 'admin_copilot';
-				conversationState.admin_copilot = adminCopilot;
+			if (conversationId) {
+				conversationState.conversation_id = String(conversationId);
+				saveStoredConversationId(conversationState.conversation_id);
+				refreshAiApiStatusConversationLink();
 			}
 
-			if (Array.isArray(result.orders)) {
-				conversationState.last_orders = result.orders.map(function (order) {
-					return {
-						id: parseInt(order.id, 10),
-						number: order.number || String(order.id),
-						status: order.status || ''
-					};
-				});
+				if (pendingOperationToken) {
+					conversationState.pending_operation_token = String(pendingOperationToken);
+				}
 
-				conversationState.last_order_ids = conversationState.last_orders
-					.map(function (order) {
-						return parseInt(order.id || 0, 10);
-					})
+				if (data.pending_operation_active === false || result.blocked === true) {
+					conversationState.pending_operation_token = '';
+				}
+
+					if (adminCopilot && typeof adminCopilot === 'object') {
+				conversationState.surface = 'admin_copilot';
+				conversationState.admin_copilot = adminCopilot;
+				}
+
+				if (Array.isArray(result.orders) && isOrdersListResult(data, result)) {
+					conversationState.last_order_ids = result.orders
+						.map(function (order) {
+							return parseInt(order.id || 0, 10);
+						})
 					.filter(function (id) {
 						return id > 0;
 					});
+					conversationState.last_orders = compactOrderListContext(result.orders);
 
-				if (conversationState.last_orders.length && conversationState.last_orders[0].id) {
-					conversationState.last_referenced_order_id = parseInt(conversationState.last_orders[0].id, 10);
-					conversationState.current_order_id = parseInt(conversationState.last_orders[0].id, 10);
-				}
-
-				conversationState.last_result_type = 'orders';
-			}
-
-			if (result.result_type === 'daily_briefing') {
-				conversationState.last_result_type = 'briefing';
-				conversationState.active_followup_type = 'briefing';
-				conversationState.last_result = {
-					result_type: result.result_type || '',
-					display_type: result.display_type || '',
-					briefing_label: result.briefing_label || '',
-					briefing_context: result.briefing_context || {},
-					priority_drilldowns: Array.isArray(result.priority_drilldowns) ? result.priority_drilldowns : [],
-					recommended_sequence: Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [],
-					briefing_actions: Array.isArray(result.briefing_actions) ? result.briefing_actions : [],
-					priority_items: Array.isArray(result.priority_items) ? result.priority_items : [],
-					recommendation_cursor: -1,
-					last_recommendation_action: '',
-					last_recommendation_command: ''
-				};
-				conversationState.last_briefing = conversationState.last_result;
-			}
-
-			if (result.result_type === 'business_summary') {
-				conversationState.last_result_type = 'business';
-				conversationState.active_followup_type = 'business';
-				conversationState.last_result = {
-					result_type: result.result_type || '',
-					display_type: result.display_type || '',
-					business_context: result.business_context || {},
-					recommended_sequence: Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [],
-					business_actions: Array.isArray(result.business_actions) ? result.business_actions : [],
-					priority_items: Array.isArray(result.priority_items) ? result.priority_items : [],
-					recommendation_cursor: -1,
-					last_recommendation_action: '',
-					last_recommendation_command: ''
-				};
-				conversationState.last_business_followup = conversationState.last_result;
-			}
-
-			if (result.result_type === 'operations_attention_queue') {
-				conversationState.last_result_type = 'operations_attention';
-				conversationState.active_followup_type = 'operations_attention';
-				conversationState.last_result = {
-					result_type: result.result_type || '',
-					display_type: result.display_type || '',
-					attention_context: result.attention_context || {},
-					queues: Array.isArray(result.queues) ? result.queues : [],
-					recommended_sequence: Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [],
-					attention_actions: Array.isArray(result.attention_actions) ? result.attention_actions : [],
-					priority_items: Array.isArray(result.priority_items) ? result.priority_items : [],
-					recommendation_cursor: -1,
-					last_recommendation_action: '',
-					last_recommendation_command: ''
-				};
-				conversationState.last_attention_followup = conversationState.last_result;
-			}
-
-			if (result.result_type === 'customer_service_queue') {
-				conversationState.last_result_type = 'customer_service';
-				conversationState.active_followup_type = 'customer_service';
-				conversationState.last_result = {
-					result_type: result.result_type || '',
-					display_type: result.display_type || '',
-					service_context: result.service_context || {},
-					queues: Array.isArray(result.queues) ? result.queues : [],
-					recommended_sequence: Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [],
-					service_actions: Array.isArray(result.service_actions) ? result.service_actions : [],
-					priority_items: Array.isArray(result.priority_items) ? result.priority_items : [],
-					recommendation_cursor: -1,
-					last_recommendation_action: '',
-					last_recommendation_command: ''
-				};
-				conversationState.last_service_followup = conversationState.last_result;
-			}
-
-			if (result.result_type === 'fulfillment_queue') {
-				conversationState.last_result_type = 'fulfillment';
-				conversationState.active_followup_type = 'fulfillment';
-				conversationState.last_result = {
-					result_type: result.result_type || '',
-					display_type: result.display_type || '',
-					fulfillment_context: result.fulfillment_context || {},
-					queues: Array.isArray(result.queues) ? result.queues : [],
-					recommended_sequence: Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [],
-					fulfillment_actions: Array.isArray(result.fulfillment_actions) ? result.fulfillment_actions : [],
-					priority_items: Array.isArray(result.priority_items) ? result.priority_items : [],
-					recommendation_cursor: -1,
-					last_recommendation_action: '',
-					last_recommendation_command: ''
-				};
-				conversationState.last_fulfillment_followup = conversationState.last_result;
-			}
-
-			if (result.result_type === 'inventory_queue') {
-				conversationState.last_result_type = 'inventory';
-				conversationState.active_followup_type = 'inventory';
-				conversationState.last_result = {
-					result_type: result.result_type || '',
-					display_type: result.display_type || '',
-					inventory_context: result.inventory_context || {},
-					queues: Array.isArray(result.queues) ? result.queues : [],
-					recommended_sequence: Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [],
-					inventory_actions: Array.isArray(result.inventory_actions) ? result.inventory_actions : [],
-					priority_items: Array.isArray(result.priority_items) ? result.priority_items : [],
-					recommendation_cursor: -1,
-					last_recommendation_action: '',
-					last_recommendation_command: ''
-				};
-				conversationState.last_inventory_followup = conversationState.last_result;
-			}
-
-			if (result.result_type === 'morning_briefing') {
-				conversationState.morning_briefing_state = Object.assign({}, conversationState.morning_briefing_state || {}, {
-					last_shown_date: result.briefing_date || '',
-					last_signature: result.signature || ''
-				});
-			}
-
-			if (
-				isFollowupParserRule(parsed, 'briefing.recommendation') &&
-				conversationState.last_briefing &&
-				typeof conversationState.last_briefing === 'object'
-			) {
-				let sequenceIndex = parseInt(parsed.briefing_sequence_index, 10);
-
-				if (Number.isNaN(sequenceIndex)) {
-					const resolvedCommand = String(parsed.resolved_followup_command || '').toLowerCase();
-					const sequence = Array.isArray(conversationState.last_briefing.recommended_sequence)
-						? conversationState.last_briefing.recommended_sequence
-						: [];
-
-					if (resolvedCommand && sequence.length) {
-						const foundIndex = sequence.findIndex(function (item) {
-							return item && String(item.command || '').toLowerCase() === resolvedCommand;
-						});
-
-						if (foundIndex >= 0) {
-							sequenceIndex = foundIndex;
-						}
+					if (conversationState.last_order_ids.length) {
+						conversationState.last_referenced_order_id = parseInt(conversationState.last_order_ids[0], 10);
+						conversationState.current_order_id = parseInt(conversationState.last_order_ids[0], 10);
 					}
 				}
 
-				if (!Number.isNaN(sequenceIndex) && sequenceIndex >= 0) {
-					conversationState.last_briefing.recommendation_cursor = sequenceIndex;
-
-					if (
-						conversationState.last_result &&
-						typeof conversationState.last_result === 'object' &&
-						conversationState.last_result_type === 'briefing'
-					) {
-						conversationState.last_result.recommendation_cursor = sequenceIndex;
-					}
-				}
-
-				conversationState.last_briefing.last_recommendation_action = parsed.action || '';
-				conversationState.last_briefing.last_recommendation_command = parsed.resolved_followup_command || '';
-				conversationState.active_followup_type = 'briefing';
-			}
-
-			if (
-				isFollowupParserRule(parsed, 'business.recommendation') &&
-				conversationState.last_business_followup &&
-				typeof conversationState.last_business_followup === 'object'
-			) {
-				let sequenceIndex = parseInt(parsed.business_sequence_index, 10);
-
-				if (Number.isNaN(sequenceIndex)) {
-					const resolvedCommand = String(parsed.resolved_followup_command || '').toLowerCase();
-					const sequence = Array.isArray(conversationState.last_business_followup.recommended_sequence)
-						? conversationState.last_business_followup.recommended_sequence
-						: [];
-
-					if (resolvedCommand && sequence.length) {
-						const foundIndex = sequence.findIndex(function (item) {
-							return item && String(item.command || '').toLowerCase() === resolvedCommand;
-						});
-
-						if (foundIndex >= 0) {
-							sequenceIndex = foundIndex;
-						}
-					}
-				}
-
-				if (!Number.isNaN(sequenceIndex) && sequenceIndex >= 0) {
-					conversationState.last_business_followup.recommendation_cursor = sequenceIndex;
-
-					if (
-						conversationState.last_result &&
-						typeof conversationState.last_result === 'object' &&
-						conversationState.last_result_type === 'business'
-					) {
-						conversationState.last_result.recommendation_cursor = sequenceIndex;
-					}
-				}
-
-				conversationState.last_business_followup.last_recommendation_action = parsed.action || '';
-				conversationState.last_business_followup.last_recommendation_command = parsed.resolved_followup_command || '';
-				conversationState.active_followup_type = 'business';
-			}
-
-			if (
-				isFollowupParserRule(parsed, 'attention.recommendation') &&
-				conversationState.last_attention_followup &&
-				typeof conversationState.last_attention_followup === 'object'
-			) {
-				let sequenceIndex = parseInt(parsed.attention_sequence_index, 10);
-
-				if (Number.isNaN(sequenceIndex)) {
-					const resolvedCommand = String(parsed.resolved_followup_command || '').toLowerCase();
-					const sequence = Array.isArray(conversationState.last_attention_followup.recommended_sequence)
-						? conversationState.last_attention_followup.recommended_sequence
-						: [];
-
-					if (resolvedCommand && sequence.length) {
-						const foundIndex = sequence.findIndex(function (item) {
-							return item && String(item.command || '').toLowerCase() === resolvedCommand;
-						});
-
-						if (foundIndex >= 0) {
-							sequenceIndex = foundIndex;
-						}
-					}
-				}
-
-				if (!Number.isNaN(sequenceIndex) && sequenceIndex >= 0) {
-					conversationState.last_attention_followup.recommendation_cursor = sequenceIndex;
-
-					if (
-						conversationState.last_result &&
-						typeof conversationState.last_result === 'object' &&
-						conversationState.last_result_type === 'operations_attention'
-					) {
-						conversationState.last_result.recommendation_cursor = sequenceIndex;
-					}
-				}
-
-				conversationState.last_attention_followup.last_recommendation_action = parsed.action || '';
-				conversationState.last_attention_followup.last_recommendation_command = parsed.resolved_followup_command || '';
-				conversationState.active_followup_type = 'operations_attention';
-			}
-
-			if (
-				isFollowupParserRule(parsed, 'service.recommendation') &&
-				conversationState.last_service_followup &&
-				typeof conversationState.last_service_followup === 'object'
-			) {
-				let sequenceIndex = parseInt(parsed.service_sequence_index, 10);
-
-				if (Number.isNaN(sequenceIndex)) {
-					const resolvedCommand = String(parsed.resolved_followup_command || '').toLowerCase();
-					const sequence = Array.isArray(conversationState.last_service_followup.recommended_sequence)
-						? conversationState.last_service_followup.recommended_sequence
-						: [];
-
-					if (resolvedCommand && sequence.length) {
-						const foundIndex = sequence.findIndex(function (item) {
-							return item && String(item.command || '').toLowerCase() === resolvedCommand;
-						});
-
-						if (foundIndex >= 0) {
-							sequenceIndex = foundIndex;
-						}
-					}
-				}
-
-				if (!Number.isNaN(sequenceIndex) && sequenceIndex >= 0) {
-					conversationState.last_service_followup.recommendation_cursor = sequenceIndex;
-
-					if (
-						conversationState.last_result &&
-						typeof conversationState.last_result === 'object' &&
-						conversationState.last_result_type === 'customer_service'
-					) {
-						conversationState.last_result.recommendation_cursor = sequenceIndex;
-					}
-				}
-
-				conversationState.last_service_followup.last_recommendation_action = parsed.action || '';
-				conversationState.last_service_followup.last_recommendation_command = parsed.resolved_followup_command || '';
-				conversationState.active_followup_type = 'customer_service';
-			}
-
-			if (
-				isFollowupParserRule(parsed, 'fulfillment.recommendation') &&
-				conversationState.last_fulfillment_followup &&
-				typeof conversationState.last_fulfillment_followup === 'object'
-			) {
-				let sequenceIndex = parseInt(parsed.fulfillment_sequence_index, 10);
-
-				if (Number.isNaN(sequenceIndex)) {
-					const resolvedCommand = String(parsed.resolved_followup_command || '').toLowerCase();
-					const sequence = Array.isArray(conversationState.last_fulfillment_followup.recommended_sequence)
-						? conversationState.last_fulfillment_followup.recommended_sequence
-						: [];
-
-					if (resolvedCommand && sequence.length) {
-						const foundIndex = sequence.findIndex(function (item) {
-							return item && String(item.command || '').toLowerCase() === resolvedCommand;
-						});
-
-						if (foundIndex >= 0) {
-							sequenceIndex = foundIndex;
-						}
-					}
-				}
-
-				if (!Number.isNaN(sequenceIndex) && sequenceIndex >= 0) {
-					conversationState.last_fulfillment_followup.recommendation_cursor = sequenceIndex;
-
-					if (
-						conversationState.last_result &&
-						typeof conversationState.last_result === 'object' &&
-						conversationState.last_result_type === 'fulfillment'
-					) {
-						conversationState.last_result.recommendation_cursor = sequenceIndex;
-					}
-				}
-
-				conversationState.last_fulfillment_followup.last_recommendation_action = parsed.action || '';
-				conversationState.last_fulfillment_followup.last_recommendation_command = parsed.resolved_followup_command || '';
-				conversationState.active_followup_type = 'fulfillment';
-			}
-
-			if (
-				isFollowupParserRule(parsed, 'inventory.recommendation') &&
-				conversationState.last_inventory_followup &&
-				typeof conversationState.last_inventory_followup === 'object'
-			) {
-				let sequenceIndex = parseInt(parsed.inventory_sequence_index, 10);
-
-				if (Number.isNaN(sequenceIndex)) {
-					const resolvedCommand = String(parsed.resolved_followup_command || '').toLowerCase();
-					const sequence = Array.isArray(conversationState.last_inventory_followup.recommended_sequence)
-						? conversationState.last_inventory_followup.recommended_sequence
-						: [];
-
-					if (resolvedCommand && sequence.length) {
-						const foundIndex = sequence.findIndex(function (item) {
-							return item && String(item.command || '').toLowerCase() === resolvedCommand;
-						});
-
-						if (foundIndex >= 0) {
-							sequenceIndex = foundIndex;
-						}
-					}
-				}
-
-				if (!Number.isNaN(sequenceIndex) && sequenceIndex >= 0) {
-					conversationState.last_inventory_followup.recommendation_cursor = sequenceIndex;
-
-					if (
-						conversationState.last_result &&
-						typeof conversationState.last_result === 'object' &&
-						conversationState.last_result_type === 'inventory'
-					) {
-						conversationState.last_result.recommendation_cursor = sequenceIndex;
-					}
-				}
-
-				conversationState.last_inventory_followup.last_recommendation_action = parsed.action || '';
-				conversationState.last_inventory_followup.last_recommendation_command = parsed.resolved_followup_command || '';
-				conversationState.active_followup_type = 'inventory';
-			}
-
-			if (result.order && result.order.id) {
+				if (result.order && result.order.id) {
 				conversationState.current_order_id = parseInt(result.order.id, 10);
 				conversationState.last_referenced_order_id = parseInt(result.order.id, 10);
 			}
 
-			const hasWorkflowState =
-				(result.workflow && typeof result.workflow === 'object') ||
-				(data.current_workflow && typeof data.current_workflow === 'object') ||
-				(parsed.current_workflow && typeof parsed.current_workflow === 'object');
-
-			if (result.workflow) {
-				conversationState.current_workflow = result.workflow;
-			}
-
-			if (data.current_workflow) {
-				conversationState.current_workflow = data.current_workflow;
-			}
-
-			if (parsed.current_workflow) {
-				conversationState.current_workflow = parsed.current_workflow;
-			}
-
 			if (
-				result.action === 'orders.send_customer_email' &&
-				result.success
+				data.stage === 'done' ||
+				data.stage === 'cancelled'
 			) {
-				conversationState.current_workflow = {};
-			}
-
-			if (
-				result.action === 'workflow.cancel' &&
-				result.success
-			) {
-				conversationState.current_workflow = {};
-			}
-
-			if (
-				data.stage === 'done' &&
-				!hasWorkflowState
-			) {
-				conversationState.current_workflow = {};
+				conversationState.pending_operation_token = '';
 			}
 
 			syncBeforeUnloadGuard();
@@ -2224,6 +1587,99 @@
 			}
 			lastSubmitAt = now;
 			return true;
+			}
+
+			function buildClientContext() {
+				const context = {
+					conversation_id: conversationState.conversation_id || '',
+					pending_operation_token: conversationState.pending_operation_token || '',
+				surface: conversationState.surface || 'admin_copilot',
+				current_order_id: parseInt(conversationState.current_order_id || 0, 10) || 0,
+				last_referenced_order_id: parseInt(conversationState.last_referenced_order_id || 0, 10) || 0,
+				last_order_ids: Array.isArray(conversationState.last_order_ids)
+					? conversationState.last_order_ids.map(function(id) {
+						return parseInt(id || 0, 10);
+					}).filter(function(id) {
+							return id > 0;
+						}).slice(0, 20)
+						: [],
+				last_orders: Array.isArray(conversationState.last_orders)
+					? conversationState.last_orders.slice(0, 20)
+					: []
+				};
+
+					if (conversationState.next_action_catalog_scope) {
+						context.action_catalog_scope = conversationState.next_action_catalog_scope;
+					}
+
+					if (conversationState.next_report_topic_selection) {
+						context.report_topic_selection = conversationState.next_report_topic_selection;
+					}
+
+					if (conversationState.next_report_topic) {
+						context.report_topic = conversationState.next_report_topic;
+					}
+
+					return context;
+			}
+
+			function setNextActionCatalogScope(command, scope, reportTopic) {
+				const normalizedScope = String(scope || '').trim();
+				const normalizedReportTopic = String(reportTopic || '').trim();
+
+				if (normalizedScope !== 'report_provider_catalog') {
+					clearNextActionCatalogScope();
+					return;
+				}
+
+				conversationState.next_action_catalog_scope = 'report_provider_catalog';
+				conversationState.next_report_topic_selection = 'provider_catalog';
+				conversationState.next_report_topic = ['overview', 'sales', 'operations', 'signals'].indexOf(normalizedReportTopic) !== -1
+					? normalizedReportTopic
+					: '';
+				conversationState.next_scoped_command = String(command || '').trim();
+			}
+
+			function clearNextActionCatalogScope() {
+				conversationState.next_action_catalog_scope = '';
+				conversationState.next_report_topic_selection = '';
+				conversationState.next_report_topic = '';
+				conversationState.next_scoped_command = '';
+			}
+
+		function shouldAutoExecuteConversationAction(data, confirm) {
+			return !!(
+				!confirm &&
+				data &&
+				data.stage === 'action_plan' &&
+				data.execution_required &&
+				!data.confirm_required &&
+				!data.requires_confirmation &&
+				(data.pending_operation_token || conversationState.pending_operation_token)
+			);
+		}
+
+		function executeConversationActionPlan(data, command) {
+			const pendingOperationToken =
+				(data && data.pending_operation_token) ||
+				conversationState.pending_operation_token ||
+				'';
+
+			if (!pendingOperationToken) {
+				return Promise.resolve(null);
+			}
+
+			return requestJson(YoRoAIAdmin.executeUrl, {
+				method: 'POST',
+				body: JSON.stringify({
+					action: (data && data.action) || (data && data.parsed && data.parsed.action) || '',
+					params: (data && data.params) || (data && data.parsed && data.parsed.params) || {},
+					confirm: true,
+					pending_operation_token: pendingOperationToken,
+					conversation_id: conversationState.conversation_id || '',
+					client_context: buildClientContext()
+				})
+			});
 		}
 
 		let isSending = false;
@@ -2236,7 +1692,7 @@
 			const command = String(typeof commandOverride === 'string' ? commandOverride : commandField.value).trim();
 			clearCommandGhostHint();
 
-			if (!command) {
+			if (!command && !(confirm && conversationState.pending_operation_token)) {
 				addAssistantMessage({
 					success: false,
 					message: YoRoAIAdmin.i18n.emptyCommand
@@ -2259,25 +1715,51 @@
 				syncBeforeUnloadGuard();
 			}
 
+			const endpointUrl = confirm ? YoRoAIAdmin.executeUrl : YoRoAIAdmin.chatUrl;
+
+			if (!endpointUrl) {
+				isSending = false;
+				finishProtectedWork();
+				addAssistantMessage({
+					success: false,
+					message: 'The conversation endpoint is not configured.'
+				});
+				setLoading(false);
+				return;
+			}
+
 			const loading = addLoadingMessage();
 
 			setLoading(true);
 
-			requestJson(YoRoAIAdmin.runUrl, {
+			const confirmRequestBody = {
+				action: '',
+				params: {},
+				confirm: true,
+				pending_operation_token: conversationState.pending_operation_token || '',
+				conversation_id: conversationState.conversation_id || '',
+				client_context: buildClientContext()
+			};
+
+				const requestBody = confirm
+					? confirmRequestBody
+					: {
+						message: command,
+						command: command,
+						conversation_id: conversationState.conversation_id || '',
+						client_context: buildClientContext()
+					};
+
+				if (!confirm) {
+					clearNextActionCatalogScope();
+				}
+
+				requestJson(endpointUrl, {
 				method: 'POST',
-				body: JSON.stringify({
-					command: command,
-					confirm: confirm || false,
-					workflow_state_token: confirm ? (conversationState.pending_plan_token || '') : '',
-					client_context: conversationState
-				})
+				body: JSON.stringify(requestBody)
 			})
 			.then(function (data) {
 				loading.remove();
-
-				if (data && data.workflow_state_token) {
-					conversationState.pending_plan_token = data.workflow_state_token;
-				}
 
 				if (!data || data.stage !== 'confirm') {
 					conversationState.pending_confirm_command = '';
@@ -2286,8 +1768,35 @@
 				addAssistantMessage(data);
 				updateConversationState(data, command);
 
+				if (shouldAutoExecuteConversationAction(data, confirm)) {
+					const executeLoading = addLoadingMessage();
+
+					return executeConversationActionPlan(data, command)
+						.then(function(executeData) {
+							executeLoading.remove();
+
+							if (!executeData) {
+								return;
+							}
+
+							addAssistantMessage(executeData);
+							updateConversationState(executeData, command);
+
+							if (executeData.stage === 'done') {
+								conversationState.pending_operation_token = '';
+							}
+						})
+						.catch(function(error) {
+							executeLoading.remove();
+							addAssistantMessage({
+								success: false,
+								error: error || YoRoAIAdmin.i18n.error
+							});
+						});
+				}
+
 				if (data && data.stage === 'done') {
-					conversationState.pending_plan_token = '';
+					conversationState.pending_operation_token = '';
 					if (confirm && typeof onConfirmSuccess === 'function') {
 						onConfirmSuccess(data);
 					}
@@ -2390,22 +1899,6 @@
 			);
 		}
 
-		function openStatusNoteModal(callback) {
-			openModal(
-				'Change status and add note',
-				renderStatusSelectHtml() +
-				'<textarea class="yoro-modal-textarea" placeholder="Enter internal note..." rows="4"></textarea>',
-				function () {
-					const status = modal.querySelector('.yoro-modal-select').value;
-					const note = modal.querySelector('.yoro-modal-textarea').value.trim();
-
-					if (status && note && typeof callback === 'function') {
-						callback(status, note);
-					}
-				}
-			);
-		}
-
 		function runCommandFromText(command, confirm) {
 			commandField.value = command;
 			syncRunButtonState();
@@ -2438,31 +1931,19 @@
 			return 0;
 		}
 
-		function executeActionDirect(action, params, confirm, preview, surface, actionStateToken) {
-			if (confirm && !preview && !actionStateToken) {
-				return executeActionDirect(action, params, false, false, surface)
-					.then(function(data) {
-						const token = data && (data.action_state_token || data.pending_action_token);
-
-						if (data && data.stage === 'confirm' && token) {
-							return executeActionDirect(action, params, true, false, surface, token);
-						}
-
-						return data;
-					});
-			}
-
+		function executeActionDirect(action, params, confirm, preview, surface, pendingOperationToken) {
+			const hasExplicitPendingOperationToken = arguments.length >= 6;
 			const payload = {
 				action: action,
 				params: params || {},
 				confirm: confirm || false,
 				preview: preview || false,
-				surface: surface || conversationState.surface || ''
+				surface: surface || conversationState.surface || '',
+				conversation_id: conversationState.conversation_id || '',
+				pending_operation_token: hasExplicitPendingOperationToken
+					? (pendingOperationToken || '')
+					: (conversationState.pending_operation_token || '')
 			};
-
-			if (actionStateToken) {
-				payload.action_state_token = actionStateToken;
-			}
 
 			const finishProtectedWork = beginProtectedWork();
 
@@ -2474,146 +1955,50 @@
 			});
 		}
 
-		function inferCalendarWindowFromCommand(normalized) {
-			if (/\bthis\s+week\b/i.test(normalized)) {
-				return 'this_week';
-			}
+			function getConfirmationActionContext(target) {
+			const actions = target && typeof target.closest === 'function'
+				? target.closest('.yoro-confirm-actions')
+				: null;
+			const approve = actions ? actions.querySelector('.yoro-confirm-run') : null;
+			let params = {};
 
-			if (/\b(last|past)\s+7\s+days\b/i.test(normalized) || /\bpast\s+week\b/i.test(normalized)) {
-				return 'last_7_days';
-			}
-
-			if (/\b(last|past)\s+30\s+days\b/i.test(normalized) || /\bpast\s+month\b/i.test(normalized)) {
-				return 'last_30_days';
-			}
-
-			if (/\bthis\s+month\b/i.test(normalized)) {
-				return 'this_month';
-			}
-
-			if (/\blast\s+month\b/i.test(normalized)) {
-				return 'last_month';
-			}
-
-			if (/\blast\s+week\b/i.test(normalized)) {
-				return 'last_week';
-			}
-
-			if (/\bweekly\b|\bweek\b/i.test(normalized)) {
-				return 'this_week';
-			}
-
-			return 'today';
-		}
-
-		function mapSuggestionCommandToDirectAction(command) {
-			const text = String(command || '').trim();
-			const normalized = text.toLowerCase();
-
-			if (!text) {
-				return null;
-			}
-
-			if (normalized === 'workflow.cancel') {
-				return {
-					action: 'workflow.cancel',
-					params: {}
-				};
-			}
-
-			let match = text.match(/\border\s*#?\s*(\d+)\b/i);
-
-			if (match && /\b(show|view|open|details?)\b/i.test(text)) {
-				const orderId = parseInt(match[1], 10);
-
-				if (orderId > 0) {
-					return {
-						action: 'orders.get_details',
-						params: {
-							order_id: orderId,
-							order_ids: [orderId]
-						}
-					};
+			if (approve && approve.getAttribute('data-direct-params')) {
+				try {
+					params = JSON.parse(approve.getAttribute('data-direct-params') || '{}') || {};
+				} catch (error) {
+					params = {};
 				}
 			}
 
-			if (/details?\s+(?:of\s+)?(?:the\s+)?first\s+one/i.test(normalized)) {
-				const firstOrder = Array.isArray(conversationState.last_order_ids)
-					? parseInt(conversationState.last_order_ids[0] || 0, 10)
-					: 0;
-
-				if (firstOrder > 0) {
-					return {
-						action: 'orders.get_details',
-						params: {
-							order_id: firstOrder,
-							order_ids: [firstOrder]
-						}
-					};
-				}
-			}
-
-			if (/show\s+(pending|processing|on-hold|completed|cancelled|refunded|failed)\s+orders/i.test(normalized)) {
-				const status = normalized.match(/show\s+(pending|processing|on-hold|completed|cancelled|refunded|failed)\s+orders/i)[1];
-
-				return {
-					action: 'orders.search',
-					params: {
-						status: [status],
-						limit: 10
-					}
-				};
-			}
-
-			const directMap = {
-				'show operations attention queue': { action: 'operations.get_attention_queue', params: {} },
-				'open attention queue': { action: 'operations.get_attention_queue', params: {} },
-				'show fulfillment queue': { action: 'operations.get_fulfillment_queue', params: {} },
-				'open fulfillment queue': { action: 'operations.get_fulfillment_queue', params: {} },
-				'show customer service queue': { action: 'customers.get_service_queue', params: {} },
-				'open customer follow-up': { action: 'customers.get_service_queue', params: {} },
-				'show inventory queue': { action: 'products.get_inventory_queue', params: {} },
-				'open inventory queue': { action: 'products.get_inventory_queue', params: {} },
-				'show morning briefing': { action: 'store.get_morning_briefing', params: {} },
-				'show store insights': { action: 'store.get_insights', params: {} }
+			return {
+				action: approve ? (approve.getAttribute('data-direct-action') || '') : '',
+				params: params,
+				pending_operation_token: approve
+					? (approve.getAttribute('data-pending-operation-token') || conversationState.pending_operation_token || '')
+					: (conversationState.pending_operation_token || '')
 			};
-
-			if (directMap[normalized]) {
-				return directMap[normalized];
-			}
-
-			if (/show operations summary/i.test(normalized)) {
-				return {
-					action: 'operations.get_summary',
-					params: {
-						window: inferCalendarWindowFromCommand(normalized)
-					}
-				};
-			}
-
-			return null;
 		}
 
-		function executeSuggestionAction(action, params, confirm, preview) {
-			const loading = addLoadingMessage();
-			setLoading(true);
+		function recordCancelledAction(target) {
+			const actionContext = getConfirmationActionContext(target);
+			const conversationId = conversationState.conversation_id || '';
+			const pendingOperationToken = actionContext.pending_operation_token || '';
 
-			executeActionDirect(action, params || {}, confirm || false, preview || false, 'suggestion')
-				.then(function(data) {
-					loading.remove();
-					addAssistantMessage(data);
-					updateConversationState(data, action);
+			if (!window.YoRoAIAdmin || !YoRoAIAdmin.cancelActionUrl || !conversationId || !pendingOperationToken) {
+				return Promise.resolve(null);
+			}
+
+			return requestJson(YoRoAIAdmin.cancelActionUrl, {
+				method: 'POST',
+				body: JSON.stringify({
+					conversation_id: conversationId,
+					pending_operation_token: pendingOperationToken,
+					action: actionContext.action || '',
+					params: actionContext.params || {}
 				})
-				.catch(function(error) {
-					loading.remove();
-					addAssistantMessage({
-						success: false,
-						error: error || YoRoAIAdmin.i18n.error
-					});
-				})
-				.finally(function() {
-					setLoading(false);
-				});
+			}).catch(function () {
+				return null;
+			});
 		}
 
 		function setCurrentOrderId(orderId) {
@@ -2637,11 +2022,7 @@
 			return resultUI ? resultUI.renderDebugJson(data) : '';
 		}
 
-		function renderSuggestionsProxy(suggestions) {
-			return resultUI ? resultUI.renderSuggestions(suggestions) : '';
-		}
-
-		function renderJsonProxy(data) {
+			function renderJsonProxy(data) {
 			return resultUI
 				? resultUI.renderJson(data)
 				: renderJsonFallback(data);
@@ -2665,8 +2046,8 @@
 					if (intent && intent.action) {
 						event.preventDefault();
 						runQuickAction(intent.action, intent.params || {}, {
-							fallbackAction: intent.fallbackAction || '',
-							fallbackParams: intent.fallbackParams || {}
+							secondaryAction: intent.secondaryAction || '',
+							secondaryParams: intent.secondaryParams || {}
 						});
 					}
 				}
@@ -2700,51 +2081,46 @@
 			});
 		}
 
+		if (clearButton) {
 			clearButton.addEventListener('click', function () {
 				chatThread.innerHTML = '';
 				addMessage(
 					'assistant',
-					'<strong>YoRo</strong><p>Chat cleared. How can I help manage your store?</p>'
+					'<p>Chat cleared. How can I help manage your store?</p>'
 				);
 				commandField.value = '';
 				syncRunButtonState();
 				syncBeforeUnloadGuard();
-				conversationState = {
-					surface: '',
-					admin_copilot: null,
-					last_orders: [],
-					last_order_ids: [],
-					last_command: '',
-					last_action: '',
-					last_result_type: '',
-					active_followup_type: '',
-					last_result: {},
-					last_briefing: {},
-					last_business_followup: {},
-					last_attention_followup: {},
-					last_service_followup: {},
-					last_fulfillment_followup: {},
-					last_inventory_followup: {},
-					morning_briefing_state: {},
-					last_referenced_order_id: 0,
-					current_order_id: 0,
-					current_workflow: {},
-					pending_confirm_command: '',
-					pending_plan_token: ''
-				};
+					conversationState = {
+						conversation_id: '',
+						pending_operation_token: '',
+						surface: '',
+						admin_copilot: null,
+						last_order_ids: [],
+						last_orders: [],
+						last_referenced_order_id: 0,
+						current_order_id: 0,
+						pending_confirm_command: '',
+						next_action_catalog_scope: '',
+						next_report_topic_selection: '',
+						next_report_topic: '',
+						next_scoped_command: ''
+					};
+				clearStoredConversationId();
+				refreshAiApiStatusConversationLink();
 
 				clearCommandGhostHint();
 				syncBeforeUnloadGuard();
 				commandField.focus();
 			});
+		}
 
 		const emailUI = window.YoRoEmailUI
 			? window.YoRoEmailUI.init({
-				escapeHtml: escapeHtml,
-				formatDateTime: formatDateTimeForChat,
-				renderDebugJson: renderDebugJsonProxy,
-				getResultSuggestions: getResultSuggestions,
-				resolveOrderId: resolveOrderId,
+					escapeHtml: escapeHtml,
+					formatDateTime: formatDateTimeForChat,
+					renderDebugJson: renderDebugJsonProxy,
+					resolveOrderId: resolveOrderId,
 				setCurrentOrderId: setCurrentOrderId,
 				executeActionDirect: executeActionDirect,
 				addAssistantMessage: addAssistantMessage,
@@ -2757,13 +2133,11 @@
 
 			const orderUI = window.YoRoOrderUI
 				? window.YoRoOrderUI.init({
-					escapeHtml: escapeHtml,
-					formatDateTime: formatDateTimeForChat,
-					renderDebugJson: renderDebugJsonProxy,
-					shouldShowDebugJson: shouldShowDebugJson,
-					renderSuggestions: renderSuggestionsProxy,
-					getResultSuggestions: getResultSuggestions,
-					getConversationState: function() {
+						escapeHtml: escapeHtml,
+						formatDateTime: formatDateTimeForChat,
+						renderDebugJson: renderDebugJsonProxy,
+						shouldShowDebugJson: shouldShowDebugJson,
+						getConversationState: function() {
 						return conversationState;
 				},
 				addAssistantMessage: addAssistantMessage,
@@ -2774,20 +2148,18 @@
 				openTextModal: openTextModal,
 				openNoteModal: openNoteModal,
 				openStatusModal: openStatusModal,
-				openStatusNoteModal: openStatusNoteModal,
 				executeActionDirect: executeActionDirect,
 				setCurrentOrderId: setCurrentOrderId,
 				getSelectedOrderIds: getSelectedOrderIds
 			})
 			: null;
 
-		resultUI = window.YoRoResultRenderers
-			? window.YoRoResultRenderers.init({
-				escapeHtml: escapeHtml,
-				formatDateTime: formatDateTimeForChat,
-				shouldShowDebugJson: shouldShowDebugJson,
-				getResultSuggestions: getResultSuggestions,
-				renderWorkflowPreview: window.YoRoWorkflowRenderers
+			resultUI = window.YoRoResultRenderers
+				? window.YoRoResultRenderers.init({
+					escapeHtml: escapeHtml,
+					formatDateTime: formatDateTimeForChat,
+					shouldShowDebugJson: shouldShowDebugJson,
+					renderWorkflowPreview: window.YoRoWorkflowRenderers
 					? function(data) {
 						return window.YoRoWorkflowRenderers.renderWorkflowPreview(data, {
 							escapeHtml: escapeHtml,
@@ -2820,17 +2192,8 @@
 				renderCustomerSummaryResult: orderUI
 					? orderUI.renderCustomerSummaryResult
 					: null,
-				renderOperationsSummaryResult: orderUI
-					? orderUI.renderOperationsSummaryResult
-					: null,
-				renderBusinessSummaryResult: orderUI
-					? orderUI.renderBusinessSummaryResult
-					: null,
-				renderMorningBriefingResult: orderUI
-					? orderUI.renderMorningBriefingResult
-					: null,
-				renderDailyBriefingResult: orderUI
-					? orderUI.renderDailyBriefingResult
+				renderReportResult: orderUI
+					? orderUI.renderReportResult
 					: null,
 				renderOperationsAttentionQueueResult: orderUI
 					? orderUI.renderOperationsAttentionQueueResult
@@ -2840,9 +2203,6 @@
 					: null,
 				renderInventoryQueueResult: orderUI
 					? orderUI.renderInventoryQueueResult
-					: null,
-				renderStoreInsightsResult: orderUI
-					? orderUI.renderStoreInsightsResult
 					: null,
 				renderCustomerServiceQueueResult: orderUI
 					? orderUI.renderCustomerServiceQueueResult
@@ -2859,165 +2219,157 @@
 				renderCustomerEmailDraftsResult: emailUI
 					? emailUI.renderCustomerEmailDraftsResult
 					: null
-			})
-			: null;
-			
-		chatThread.addEventListener('click', function (event) {
-			const target = event.target;
+				})
+				: null;
 
-			const suggestionBtn = target.closest('.yoro-suggestion-btn');
-			const clarifyOption = target.closest('.yoro-clarify-option');
-			const confirmRun = target.closest('.yoro-confirm-run');
-			const confirmCancel = target.closest('.yoro-confirm-cancel');
-			const undoLast = target.closest('.yoro-undo-last');
-			const insertCommand = target.closest('.yoro-insert-command');
-			const dismissMorningBriefingBtn = target.closest('.yoro-dismiss-morning-briefing');
-			const workflowFilterBtn = target.closest('.yoro-workflow-filter-btn');
+			hydrateStoredConversation();
 
-			/*
-			* Handle core chat buttons first.
-			* This prevents nested elements inside buttons from being missed
-			* and avoids email/order UI handlers swallowing suggestion clicks.
-			*/
-			if (workflowFilterBtn) {
-				event.preventDefault();
-				event.stopPropagation();
-				applyWorkflowHistoryFilter(workflowFilterBtn);
-				return;
-			}
+			chatThread.addEventListener('click', function (event) {
+				const target = event.target;
+				const clarifyOption = target.closest('.yoro-clarify-option');
+				const approveButton = target.closest('.yoro-confirm-run');
+				const confirmCancel = target.closest('.yoro-confirm-cancel');
+				const undoLast = target.closest('.yoro-undo-last');
+				const insertCommand = target.closest('.yoro-insert-command');
 
-			if (suggestionBtn) {
-				event.preventDefault();
-				event.stopPropagation();
+				if (clarifyOption) {
+					event.preventDefault();
 
-				const directAction = suggestionBtn.getAttribute('data-action') || '';
-				const directParamsRaw = suggestionBtn.getAttribute('data-params') || '';
-				const directConfirm = suggestionBtn.getAttribute('data-confirm') === '1';
-				const directPreview = suggestionBtn.getAttribute('data-preview') === '1';
-				const command = suggestionBtn.getAttribute('data-command') || '';
-				const requiresInput = suggestionBtn.getAttribute('data-requires-input') === '1';
+					const command = clarifyOption.getAttribute('data-command') || '';
 
-				if (directAction) {
-					let directParams = {};
-
-					if (directParamsRaw) {
-						try {
-							directParams = JSON.parse(directParamsRaw);
-						} catch (error) {
-							directParams = {};
-						}
-					}
-
-					executeSuggestionAction(directAction, directParams, directConfirm, directPreview);
-					return;
-				}
-
-				if (!command) {
-					return;
-				}
-
-				const directFromCommand = mapSuggestionCommandToDirectAction(command);
-
-				if (directFromCommand && directFromCommand.action) {
-					executeSuggestionAction(directFromCommand.action, directFromCommand.params || {}, false, false);
-					return;
-				}
-
-					if (requiresInput) {
-						commandField.value = command;
-						syncBeforeUnloadGuard();
-						commandField.focus();
-
-						if (commandField.setSelectionRange) {
-							commandField.setSelectionRange(command.length, command.length);
-						}
-
-						showCommandGhostHint('Type the note after the colon, then ask YoRo.');
-						return;
-					}
-
-				runCommandFromText(command, false);
-				return;
-			}
-
-			if (clarifyOption) {
-				event.preventDefault();
-
-				const command = clarifyOption.getAttribute('data-command') || '';
-
-				if (command) {
-					const directFromCommand = mapSuggestionCommandToDirectAction(command);
-
-					if (directFromCommand && directFromCommand.action) {
-						const loading = addLoadingMessage();
-						setLoading(true);
-
-						executeActionDirect(directFromCommand.action, directFromCommand.params || {}, false, false, 'clarify-option')
-							.then(function(data) {
-								loading.remove();
-								addAssistantMessage(data);
-								updateConversationState(data, directFromCommand.action);
-
-								if (
-									directFromCommand.action === 'workflow.cancel' &&
-									data &&
-									data.success &&
-									data.result &&
-									data.result.action === 'workflow.cancel'
-								) {
-									hideClarifyOptions(clarifyOption);
-								}
-							})
-							.catch(function(error) {
-								loading.remove();
-								addAssistantMessage({
-									success: false,
-									error: error || YoRoAIAdmin.i18n.error
-								});
-							})
-							.finally(function() {
-								setLoading(false);
-							});
-						return;
-					}
-
+					if (command) {
 						commandField.value = command;
 						syncBeforeUnloadGuard();
 						runCommand(false);
 					}
 
-				return;
-			}
+					return;
+				}
 
-			if (confirmRun) {
-				event.preventDefault();
+				if (approveButton) {
+					event.preventDefault();
 
-				const directAction = confirmRun.getAttribute('data-direct-action') || '';
-				const directParamsRaw = confirmRun.getAttribute('data-direct-params') || '';
-				const directActionStateToken = confirmRun.getAttribute('data-action-state-token') || '';
+					const directAction = approveButton.getAttribute('data-direct-action') || '';
+					const directParamsRaw = approveButton.getAttribute('data-direct-params') || '';
+					const pendingOperationTokenAttr = approveButton.getAttribute('data-pending-operation-token') || '';
+					const directPendingOperationToken = pendingOperationTokenAttr || (directAction ? '' : (conversationState.pending_operation_token || ''));
 
-				if (directAction) {
-					let directParams = {};
-
-					if (directParamsRaw) {
-						try {
-							directParams = JSON.parse(directParamsRaw);
-						} catch (error) {
-							addAssistantMessage({
-								success: false,
-								message: 'Could not confirm this action because the saved action payload is invalid.'
-							});
-							return;
-						}
+					if (!directAction && !directPendingOperationToken) {
+						hideConfirmationActions(approveButton);
+						addAssistantMessage({
+							success: true,
+							stage: 'done',
+							message: 'That approval is no longer active. Please start a new request if you want me to apply it.',
+							result: {
+								success: true,
+								summary: 'That approval is no longer active. Please start a new request if you want me to apply it.',
+								read_only: true,
+								result_type: 'assistant_message',
+								display_type: 'assistant_message'
+							}
+						});
+						syncBeforeUnloadGuard();
+						return;
 					}
 
-					executeActionDirect(directAction, directParams, true, false, '', directActionStateToken)
-						.then(function(data) {
-							hideConfirmationActions(confirmRun);
-							addAssistantMessage(data);
-							updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || directAction));
+					if (directAction) {
+						let directParams = {};
+
+						if (directParamsRaw) {
+							try {
+								directParams = JSON.parse(directParamsRaw);
+							} catch (error) {
+								addAssistantMessage({
+									success: false,
+									message: 'I could not approve that saved action. Please review it again.'
+								});
+								return;
+							}
+						}
+
+						executeActionDirect(directAction, directParams, true, false, '', directPendingOperationToken)
+							.then(function(data) {
+								hideConfirmationActions(approveButton);
+								addAssistantMessage(data);
+								updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || directAction));
+							})
+							.catch(function(error) {
+								addAssistantMessage({
+									success: false,
+									error: error
+								});
+							});
+
+						return;
+					}
+
+					if (directPendingOperationToken) {
+						conversationState.pending_operation_token = directPendingOperationToken;
+					}
+
+					runCommand(true, function() {
+						hideConfirmationActions(approveButton);
+					}, conversationState.pending_confirm_command || commandField.value.trim());
+					conversationState.pending_confirm_command = '';
+
+					return;
+				}
+
+				if (confirmCancel) {
+					event.preventDefault();
+					hideConfirmationActions(confirmCancel);
+
+					recordCancelledAction(confirmCancel).then(function(data) {
+						if (data) {
+							updateConversationState(data, 'cancelled');
+						}
+					});
+
+					conversationState.pending_confirm_command = '';
+					conversationState.pending_operation_token = '';
+					addAssistantMessage({
+						success: true,
+						stage: 'cancelled',
+						message: 'Action cancelled.',
+						result: {
+							success: true,
+							message: 'Action cancelled.',
+							summary: 'Action cancelled.',
+							read_only: true,
+							result_type: 'assistant_message',
+							display_type: 'assistant_message'
+						}
+					});
+					syncBeforeUnloadGuard();
+
+					return;
+				}
+
+				if (undoLast) {
+					event.preventDefault();
+					const hiddenUndoAction = hideUndoAction(undoLast);
+					const logId = undoLast.getAttribute('data-log-id') || '';
+
+					if (!logId) {
+						restoreHiddenAction(hiddenUndoAction);
+						addAssistantMessage({
+							success: false,
+							message: 'I could not find the saved change to undo.'
+						});
+						return;
+					}
+
+					undoLog(logId)
+						.then(function (data) {
+							addAssistantMessage({
+								success: true,
+								message: data.message || 'I undid that change.',
+								stage: 'undo',
+								result: data
+							});
 						})
-						.catch(function(error) {
+						.catch(function (error) {
+							restoreHiddenAction(hiddenUndoAction);
 							addAssistantMessage({
 								success: false,
 								error: error
@@ -3027,104 +2379,28 @@
 					return;
 				}
 
-				const command = conversationState.pending_confirm_command || commandField.value.trim();
-
-				if (command) {
-					runCommand(true, function() {
-						hideConfirmationActions(confirmRun);
-					}, command);
-					conversationState.pending_confirm_command = '';
-				}
-
-				return;
-			}
-
-			if (confirmCancel) {
-				event.preventDefault();
-				hideConfirmationActions(confirmCancel);
-
-					conversationState.pending_confirm_command = '';
-					conversationState.pending_plan_token = '';
-					addMessage('assistant', '<p>Action cancelled.</p>');
-					syncBeforeUnloadGuard();
-
-				return;
-			}
-
-			if (undoLast) {
-				event.preventDefault();
-				const hiddenUndoAction = hideUndoAction(undoLast);
-
-				const logId = undoLast.getAttribute('data-log-id') || '';
-
-				if (!logId) {
-					restoreHiddenAction(hiddenUndoAction);
-					addAssistantMessage({
-						success: false,
-						message: 'Undo log ID is missing.'
-					});
-					return;
-				}
-
-				undoLog(logId)
-					.then(function (data) {
-						addAssistantMessage({
-							success: true,
-							message: data.message || 'Undo completed',
-							stage: 'undo',
-							result: data
-						});
-					})
-					.catch(function (error) {
-						restoreHiddenAction(hiddenUndoAction);
-						addAssistantMessage({
-							success: false,
-							error: error
-						});
-					});
-
-				return;
-			}
-
-			if (insertCommand) {
-				event.preventDefault();
+				if (insertCommand) {
+					event.preventDefault();
 
 					commandField.value = insertCommand.getAttribute('data-command') || '';
 					syncRunButtonState();
 					syncBeforeUnloadGuard();
 					commandField.focus();
 
-				return;
-			}
+					return;
+				}
 
-			if (dismissMorningBriefingBtn) {
-				event.preventDefault();
+				/*
+				 * Let specialized UI modules handle their own buttons after core chat buttons.
+				 */
+				if (emailUI && emailUI.handleClick(event)) {
+					return;
+				}
 
-				dismissMorningBriefing()
-					.then(function () {
-						addMessage('assistant', '<p>Morning briefing dismissed for today.</p>');
-					})
-					.catch(function () {
-						addAssistantMessage({
-							success: false,
-							message: 'Could not dismiss the morning briefing.'
-						});
-					});
-
-				return;
-			}
-
-			/*
-			* Let specialized UI modules handle their own buttons after core chat buttons.
-			*/
-			if (emailUI && emailUI.handleClick(event)) {
-				return;
-			}
-
-			if (orderUI && orderUI.handleClick(event)) {
-				return;
-			}
-		});
+				if (orderUI && orderUI.handleClick(event)) {
+					return;
+				}
+			});
 
 		document.addEventListener('click', function(event) {
 			const quickPreset = event.target.closest('.yoro-chat-quick-preset');
@@ -3141,8 +2417,8 @@
 				const action = quickSearchRun.getAttribute('data-action') || '';
 				const params = parseQuickActionParams(quickSearchRun.getAttribute('data-params') || '');
 				runQuickAction(action, params, {
-					fallbackAction: quickSearchRun.getAttribute('data-fallback-action') || '',
-					fallbackParams: parseQuickActionParams(quickSearchRun.getAttribute('data-fallback-params') || '')
+					secondaryAction: quickSearchRun.getAttribute('data-secondary-action') || '',
+					secondaryParams: parseQuickActionParams(quickSearchRun.getAttribute('data-secondary-params') || '')
 				});
 				return;
 			}
@@ -3163,23 +2439,21 @@
 			}
 		});
 
-		exampleButtons.forEach(function (button) {
-			button.addEventListener('click', function () {
-				commandField.value = button.getAttribute('data-command') || '';
-				syncRunButtonState();
-				syncBeforeUnloadGuard();
-				commandField.focus();
+			exampleButtons.forEach(function (button) {
+				button.addEventListener('click', function () {
+					const command = button.getAttribute('data-command') || '';
+					commandField.value = command;
+					setNextActionCatalogScope(
+						command,
+						button.getAttribute('data-action-catalog-scope') || '',
+						button.getAttribute('data-report-topic') || ''
+					);
+					syncRunButtonState();
+					syncBeforeUnloadGuard();
+					commandField.focus();
 			});
 		});
 
 		syncRunButtonState();
-
-		loadServerMemory()
-			.then(function () {
-				return loadMorningBriefing();
-			})
-			.catch(function () {
-				// Silent fail.
-			});
 	});
 })();

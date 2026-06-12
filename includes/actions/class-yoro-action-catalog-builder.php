@@ -8,6 +8,7 @@ class YoRo_Action_Catalog_Builder {
 
 	public static function build( $context = [] ) {
 		$catalog = [];
+		$context = is_array( $context ) ? $context : [];
 
 		foreach ( YoRo_Action_Registry::all() as $name => $action ) {
 			if ( empty( $action['ai_exposed'] ) ) {
@@ -19,1172 +20,131 @@ class YoRo_Action_Catalog_Builder {
 
 		return apply_filters(
 			'yoro_ai_action_catalog',
-			array_values( array_filter( $catalog ) ),
-			is_array( $context ) ? $context : []
-		);
-	}
-
-	public static function build_for_command( $command = '', $context = [] ) {
-		$catalog = [];
-		$scope   = self::detect_router_scope( $command, $context );
-		$profile = self::derive_router_profile( $command, $context, $scope );
-		$profile_allowed = self::allowed_actions_for_router_profile( $profile, $scope, $command );
-
-		foreach ( YoRo_Action_Registry::all() as $name => $action ) {
-			if ( empty( $action['ai_exposed'] ) ) {
-				continue;
-			}
-
-			if ( ! self::action_is_allowed_for_scope( $name, $scope ) ) {
-				continue;
-			}
-
-			if ( ! empty( $profile_allowed ) && ! in_array( $name, $profile_allowed, true ) ) {
-				continue;
-			}
-
-			$catalog[] = self::build_action_item( $name, $action, $context );
-		}
-
-		return apply_filters(
-			'yoro_ai_action_catalog',
-			array_values( array_filter( $catalog ) ),
+			self::apply_catalog_scope( array_values( array_filter( $catalog ) ), $context ),
 			$context
 		);
 	}
 
-	public static function detect_router_scope( $command = '', $context = [] ) {
+	public static function build_router_hints( $command = '', $context = [], $catalog = null ) {
 		$context = is_array( $context ) ? $context : [];
-		$command = is_string( $command ) ? trim( $command ) : '';
-		$command_shape = self::extract_command_shape( $command, $context );
-		$resolved_order_ids = self::resolve_context_order_ids(
-			$context,
-			self::command_uses_contextual_order_reference( $command )
-		);
-		$explicit_order_ids = self::extract_explicit_order_ids( $command );
-		$memory_reference = isset( $context['memory_context']['reference'] ) && is_array( $context['memory_context']['reference'] )
-			? $context['memory_context']['reference']
-			: [];
-		$plural_context_order_ids = self::resolve_plural_context_order_ids( $command, $context );
-		$references_single_order = (
-			1 === count( $resolved_order_ids ) ||
-			1 === count( $explicit_order_ids ) ||
-			(
-				! empty( $memory_reference['resolved'] ) &&
-				'order' === sanitize_key( $memory_reference['target_type'] ?? '' ) &&
-				1 === count( is_array( $memory_reference['target_ids'] ?? null ) ? $memory_reference['target_ids'] : [] )
-			)
-		);
+		$catalog = is_array( $catalog ) ? array_values( $catalog ) : self::build( $context );
+		$scope = self::catalog_scope_from_context( $context );
+		$report_provider_catalog = 'report_provider_catalog' === $scope && self::is_report_provider_catalog( $catalog );
 
-		if ( class_exists( 'YoRo_Command_Shape_Extractor' ) ) {
-			if ( YoRo_Command_Shape_Extractor::is_order_query_action_shape( $command_shape ) ) {
-				return 'order_query_action_targeted';
-			}
+		$hints = [
+			'catalog_scope'              => 'full_catalog',
+			'catalog_total_action_count' => count( $catalog ),
+			'resolved_order_ids'         => self::resolve_context_order_ids( $context ),
+			'router_profile'             => 'full_catalog',
+			'candidate_actions'          => [],
+			'candidate_intent_families'  => [],
+		];
 
-			if ( YoRo_Command_Shape_Extractor::is_order_write_missing_target_shape( $command_shape ) ) {
-				return 'order_write_missing_targeted';
-			}
+		if ( $report_provider_catalog ) {
+			$hints['catalog_scope'] = 'report_provider_catalog';
+			$hints['report_topic_selection'] = 'provider_catalog';
+			$hints['report_provider_catalog'] = true;
+			$hints['candidate_actions'] = self::catalog_action_names( $catalog );
+			$hints['candidate_intent_families'] = self::catalog_intent_families( $catalog );
+			$report_topic = self::report_topic_from_context( $context );
 
-			if ( YoRo_Command_Shape_Extractor::is_order_list_search_shape( $command_shape ) ) {
-				return 'orders_search_targeted';
+			if ( '' !== $report_topic ) {
+				$hints['report_topic'] = $report_topic;
 			}
 		}
 
-		if ( self::command_looks_like_customer_targeted_request( $command ) ) {
-			return 'customer_targeted';
-		}
-
-		if ( self::command_looks_like_email_template_targeted_request( $command ) ) {
-			return 'email_template_targeted';
-		}
-
-		if ( ! $references_single_order ) {
-			if ( count( $plural_context_order_ids ) > 1 ) {
-				return 'multi_order_targeted';
-			}
-
-			if (
-				self::command_looks_like_queue_targeted_request( $command ) &&
-				! self::command_shape_has_specific_order_filter( $command_shape )
-			) {
-				return 'queue_targeted';
-			}
-
-			if ( self::command_looks_like_store_summary_targeted_request( $command ) ) {
-				return 'store_summary_targeted';
-			}
-
-			if ( self::looks_like_orders_search_request( $command ) ) {
-				return 'orders_search_targeted';
-			}
-
-			if ( self::command_looks_like_queue_targeted_request( $command ) ) {
-				return 'queue_targeted';
-			}
-
-			return 'default';
-		}
-
-		if ( self::command_looks_like_multi_order_request( $command ) ) {
-			return 'default';
-		}
-
-		if ( self::looks_like_orders_search_request( $command ) ) {
-			return 'orders_search_targeted';
-		}
-
-		if ( class_exists( 'YoRo_Command_Shape_Extractor' ) && YoRo_Command_Shape_Extractor::is_order_list_search_shape( $command_shape ) ) {
-			return 'orders_search_targeted';
-		}
-
-		if ( self::command_looks_like_single_order_targeted_request( $command, $context ) ) {
-			return 'single_order_targeted';
-		}
-
-		return 'single_order_reference';
+		return $hints;
 	}
 
-	public static function build_names( $context = [] ) {
+	private static function apply_catalog_scope( $catalog, $context ) {
+		$catalog = is_array( $catalog ) ? array_values( $catalog ) : [];
+		$scope = self::catalog_scope_from_context( $context );
+
+		if ( 'report_provider_catalog' !== $scope ) {
+			return $catalog;
+		}
+
 		return array_values(
-			array_map(
+			array_filter(
+				$catalog,
 				function ( $item ) {
-					return $item['name'];
-				},
-				self::build( $context )
+					return is_array( $item ) && self::is_store_report_provider( $item );
+				}
 			)
 		);
 	}
 
-	public static function build_router_hints( $command = '', $context = [] ) {
-		$context = is_array( $context ) ? $context : [];
-		$scope   = self::detect_router_scope( $command, $context );
-		$full_catalog = self::build( $context );
-		$command_shape = self::extract_command_shape( $command, $context );
+	private static function catalog_scope_from_context( $context ) {
+		$scope = sanitize_key( $context['action_catalog_scope'] ?? '' );
 
-		return [
-			'catalog_scope'              => $scope,
-			'catalog_total_action_count' => count( $full_catalog ),
-			'command_shape'              => class_exists( 'YoRo_Command_Shape_Extractor' )
-				? YoRo_Command_Shape_Extractor::compact_for_prompt( $command_shape )
-				: [],
-			'resolved_order_ids'         => self::resolve_context_order_ids(
-				$context,
-				self::command_uses_contextual_order_reference( $command )
-			),
-			'router_profile'             => self::derive_router_profile( $command, $context, $scope ),
-			'candidate_actions'          => self::derive_candidate_actions( $command, $context, $scope ),
-			'candidate_intent_families'  => self::derive_candidate_intent_families( $command, $context, $scope ),
-		];
+		return in_array( $scope, [ 'report_provider_catalog' ], true ) ? $scope : 'full_catalog';
 	}
 
-	public static function build_ai_metadata_audit( $context = [] ) {
-		$audit = class_exists( 'YoRo_Action_Registry' ) && method_exists( 'YoRo_Action_Registry', 'get_ai_metadata_audit' )
-			? YoRo_Action_Registry::get_ai_metadata_audit()
+	private static function report_topic_from_context( $context ) {
+		$topic = sanitize_key( $context['report_topic'] ?? '' );
+
+		return in_array( $topic, [ 'overview', 'sales', 'operations', 'signals' ], true ) ? $topic : '';
+	}
+
+	private static function is_report_provider_catalog( $catalog ) {
+		$catalog = is_array( $catalog ) ? array_values( $catalog ) : [];
+
+		if ( count( $catalog ) < 2 ) {
+			return false;
+		}
+
+		foreach ( $catalog as $item ) {
+			if ( ! is_array( $item ) || ! self::is_store_report_provider( $item ) ) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private static function is_store_report_provider( $item ) {
+		$contract = isset( $item['reporting_contract'] ) && is_array( $item['reporting_contract'] )
+			? $item['reporting_contract']
 			: [];
-		$catalog_names = self::build_names( $context );
 
-		foreach ( $audit as $action_name => &$row ) {
-			$row['in_catalog'] = in_array( $action_name, $catalog_names, true );
-		}
-		unset( $row );
-
-		return $audit;
+		return 'store_report' === sanitize_key( $contract['user_surface'] ?? '' )
+			&& '' !== sanitize_key( $contract['topic'] ?? '' );
 	}
 
-	private static function extract_command_shape( $command, $context = [] ) {
-		$context = is_array( $context ) ? $context : [];
-
-		if ( isset( $context['_command_shape'] ) && is_array( $context['_command_shape'] ) ) {
-			return $context['_command_shape'];
-		}
-
-		if ( ! class_exists( 'YoRo_Command_Shape_Extractor' ) ) {
-			return [];
-		}
-
-		return YoRo_Command_Shape_Extractor::extract( $command, $context );
-	}
-
-	private static function action_is_allowed_for_scope( $action_name, $scope ) {
-		$scope = sanitize_key( $scope );
-		$action_name = sanitize_text_field( $action_name );
-
-		if ( 'orders_search_targeted' === $scope ) {
-			return 'orders.search' === $action_name;
-		}
-
-		if ( in_array( $scope, [ 'order_query_action_targeted', 'order_write_missing_targeted' ], true ) ) {
-			return in_array( $action_name, [ 'orders.hold', 'orders.update_status', 'orders.bulk_update_status_with_note' ], true );
-		}
-
-		if ( 'customer_targeted' === $scope ) {
-			return in_array( $action_name, [ 'customers.get_summary', 'orders.find_by_customer' ], true );
-		}
-
-		if ( 'email_template_targeted' === $scope ) {
-			return 'email_templates.list' === $action_name;
-		}
-
-		if ( ! in_array( $scope, [ 'single_order_reference', 'single_order_targeted' ], true ) ) {
-			return true;
-		}
-
-		$allowed = [
-			'orders.get_details',
-			'orders.search',
-			'orders.find_by_identity',
-			'orders.find_by_customer',
-			'orders.refund_preview',
-			'orders.email_customer_preview',
-			'orders.email_customer_template',
-			'orders.use_email_template',
-			'orders.compose_customer_email',
-			'orders.save_customer_email_draft',
-			'orders.get_customer_email_drafts',
-			'orders.update_customer_email_draft',
-			'orders.delete_customer_email_draft',
-			'orders.render_customer_email_preview',
-			'orders.send_customer_email',
-			'orders.hold',
-			'orders.add_note',
-			'orders.update_status',
-			'orders.bulk_update_status_with_note',
-			'workflow.write_email_for_order',
-			'workflow.write_and_save_email_draft_for_order',
-			'workflow.write_and_send_email_for_order',
-			'workflow.write_email_for_orders',
-			'workflow.write_and_save_email_drafts_for_orders',
-			'workflow.write_and_send_emails_for_orders',
-			'workflow.verify_customer_before_fulfillment',
-			'workflow.refund_review',
-			'workflow.cancel',
-		];
-
-		if ( 'single_order_targeted' === $scope ) {
-			$allowed = [
-				'orders.get_details',
-				'orders.find_by_identity',
-				'orders.refund_preview',
-				'orders.email_customer_preview',
-				'orders.email_customer_template',
-				'orders.use_email_template',
-				'orders.compose_customer_email',
-				'orders.save_customer_email_draft',
-				'orders.get_customer_email_drafts',
-				'orders.update_customer_email_draft',
-				'orders.delete_customer_email_draft',
-				'orders.render_customer_email_preview',
-				'orders.send_customer_email',
-				'workflow.write_email_for_order',
-				'workflow.write_and_save_email_draft_for_order',
-				'workflow.write_and_send_email_for_order',
-				'workflow.write_email_for_orders',
-				'workflow.write_and_save_email_drafts_for_orders',
-				'workflow.write_and_send_emails_for_orders',
-				'orders.hold',
-				'orders.add_note',
-				'orders.update_status',
-				'orders.bulk_update_status_with_note',
-				'workflow.verify_customer_before_fulfillment',
-				'workflow.refund_review',
-				'workflow.cancel',
-			];
-		}
-
-		return in_array( $action_name, $allowed, true );
-	}
-
-	private static function command_looks_like_multi_order_request( $command ) {
-		$command = is_string( $command ) ? trim( $command ) : '';
-
-		if ( '' === $command ) {
-			return false;
-		}
-
-		$normalized = function_exists( 'mb_strtolower' )
-			? mb_strtolower( $command, 'UTF-8' )
-			: strtolower( $command );
-
-		if ( preg_match( '/\b(all|latest|recent|multiple|many|several)\b/u', $normalized ) ) {
-			return true;
-		}
-
-		if ( preg_match( '/\b(?:list|show|search|find|open|review)\s+(?:the\s+)?(?:latest\s+|recent\s+|all\s+)?orders\b/u', $normalized ) ) {
-			return true;
-		}
-
-		return preg_match( '/\b\d+\b/u', $normalized ) > 1;
-	}
-
-	private static function command_looks_like_single_order_targeted_request( $command, $context = [] ) {
-		$command = is_string( $command ) ? trim( $command ) : '';
-
-		if ( '' === $command ) {
-			return false;
-		}
-
-		$normalized = function_exists( 'mb_strtolower' )
-			? mb_strtolower( $command, 'UTF-8' )
-			: strtolower( $command );
-		$surface = preg_split( '/[:\n]/u', $normalized, 2 );
-		$surface = is_array( $surface ) && isset( $surface[0] ) ? trim( (string) $surface[0] ) : $normalized;
-
-		if ( false !== strpos( $normalized, '@' ) ) {
-			return false;
-		}
-
-		if ( preg_match( '/\b(?:phone|identity|related|match|same customer|same person)\b/u', $surface ) ) {
-			return false;
-		}
-
-		$resolved_order_ids = self::resolve_context_order_ids(
-			$context,
-			self::command_uses_contextual_order_reference( $command )
-		);
-		$explicit_order_ids = self::extract_explicit_order_ids( $command );
-
-		if ( 1 !== count( $resolved_order_ids ) && 1 !== count( $explicit_order_ids ) ) {
-			return false;
-		}
-
-		return true;
-	}
-
-	private static function command_looks_like_store_summary_targeted_request( $command ) {
-		$normalized = self::normalize_router_command( $command );
-
-		if ( '' === $normalized ) {
-			return false;
-		}
-
-		if ( false !== strpos( $normalized, '@' ) ) {
-			return false;
-		}
-
-		if ( preg_match( '/\b(?:insight|insights|trend|trends|pattern|patterns)\b/u', $normalized ) ) {
-			return false;
-		}
-
-		if ( preg_match( '/\b(?:customer|customers|email|phone)\b/u', $normalized ) ) {
-			return false;
-		}
-
-		if ( preg_match( '/\b(?:urgent|attention|follow-up|follow up|reply|replies|restock|inventory|queue)\b/u', $normalized ) ) {
-			return false;
-		}
-
-		if (
-			preg_match( '/\b(?:order|orders|customer|customers|product|products|refund|email|draft|hold|status|queue)\b/u', $normalized ) &&
-			! preg_match( '/\b(?:business|store|operations?|brief(?:ing)?|insights?|summary|overview|performance|sales|revenue)\b/u', $normalized )
-		) {
-			return false;
-		}
-
-		return self::looks_like_business_summary_request( $normalized ) || self::looks_like_operations_overview_request( $normalized );
-	}
-
-	private static function command_looks_like_customer_targeted_request( $command ) {
-		$normalized = self::normalize_router_command( $command );
-
-		if ( '' === $normalized ) {
-			return false;
-		}
-
-		if ( false === strpos( $normalized, '@' ) && false === strpos( $normalized, 'customer' ) && false === strpos( $normalized, 'phone' ) ) {
-			return false;
-		}
-
-		return self::looks_like_customer_summary_request( $normalized ) || self::looks_like_customer_orders_request( $normalized );
-	}
-
-	private static function command_looks_like_email_template_targeted_request( $command ) {
-		$normalized = self::normalize_router_command( $command );
-
-		if ( '' === $normalized ) {
-			return false;
-		}
-
-		$mentions_templates =
-			false !== strpos( $normalized, 'template' ) ||
-			false !== strpos( $normalized, 'templates' );
-
-		if ( ! $mentions_templates ) {
-			return false;
-		}
-
-		$has_list_intent = (bool) preg_match(
-			'/\b(show|list|view|open|load|get|see|browse|what)\b/u',
-			$normalized
-		);
-
-		if ( ! $has_list_intent ) {
-			return false;
-		}
-
-		if ( preg_match( '/\b(?:save|delete|remove|use|apply|send|write|compose|draft)\b/u', $normalized ) ) {
-			return false;
-		}
-
-		return true;
-	}
-
-	private static function looks_like_customer_summary_request( $normalized ) {
-		return (bool) preg_match(
-			'/\b(?:customer\s+summary|customer\s+profile|customer\s+overview|summary\s+for\s+[^\s]+@[^\s]+|customer\s+record)\b/u',
-			$normalized
-		);
-	}
-
-	private static function looks_like_customer_orders_request( $normalized ) {
-		return (bool) preg_match(
-			'/\b(?:orders?\s+for\s+(?:this|that|same)?\s*customer|this customer(?:\'s| s)?\s+orders|customer\s+orders?|(?:show|find|list|open|review)\s+orders?\s+(?:for|with\s+email)\s+[^\s]+@[^\s]+|orders?\s+with\s+email\s+[^\s]+@[^\s]+)\b/u',
-			$normalized
-		);
-	}
-
-	private static function looks_like_orders_search_request( $command ) {
-		$normalized = self::normalize_router_command( $command );
-
-		if ( '' === $normalized ) {
-			return false;
-		}
-
-		if ( preg_match( '/\b(?:orders?\s+for\s+(?:this|that|same)?\s*customer|this customer(?:\'s| s)?\s+orders|customer\s+orders?)\b/u', $normalized ) ) {
-			return false;
-		}
-
-		if ( preg_match( '/\b(?:customer\s+summary|summary\s+for\s+[^\s]+@[^\s]+)\b/u', $normalized ) ) {
-			return false;
-		}
-
-		if ( preg_match( '/\border\s*#?\s*\d+\b/u', $normalized ) ) {
-			return false;
-		}
-
-		$is_refunded_order_search = (bool) preg_match(
-			'/\b(?:show|get|view|find|list|search|open|review)\b.*\b(?:a|an|one|\d{1,2}|some)?\s*(?:refund|refunded)\s+orders?\b/u',
-			$normalized
-		);
-
-		if ( preg_match( '/\b(?:update|change|status|hold|refund|note|email|shipment|shipping label|draft|send|save draft|delete)\b/u', $normalized ) && ! $is_refunded_order_search ) {
-			return false;
-		}
-
-		return (bool) preg_match(
-			'/\b(?:latest|recent|last|newest|lestet|pending|processing|completed|cancelled|canceled|refund|refunded|failed|on[- ]hold|orders?\s+list|show\s+orders|find\s+orders|search\s+orders|list\s+orders|review\s+orders)\b|\b(?:show|get|view|find|list|search|open|review)\s+(?:me\s+)?\d{1,2}\s+(?:refund|refunded)\s+orders?\b|\b\d{1,2}\s+(?:pending|processing|completed|cancelled|canceled|refund|refunded|failed|on[- ]hold)\s+orders?\b/u',
-			$normalized
-		);
-	}
-
-	private static function command_looks_like_queue_targeted_request( $command ) {
-		$normalized = self::normalize_router_command( $command );
-
-		if ( '' === $normalized ) {
-			return false;
-		}
-
-		if ( false !== strpos( $normalized, '@' ) ) {
-			return false;
-		}
-
-		if ( self::looks_like_business_summary_request( $normalized ) || self::looks_like_operations_overview_request( $normalized ) ) {
-			return false;
-		}
-
-		if ( preg_match( '/\b(?:insight|insights|trend|trends|pattern|patterns)\b/u', $normalized ) ) {
-			return false;
-		}
-
-		return self::looks_like_operations_attention_request( $normalized )
-			|| self::looks_like_fulfillment_review_request( $normalized )
-			|| self::looks_like_customer_service_review_request( $normalized )
-			|| self::looks_like_inventory_review_request( $normalized );
-	}
-
-	private static function derive_router_profile( $command, $context, $scope ) {
-		$scope = sanitize_key( $scope );
-		$normalized = self::normalize_router_command( $command );
-
-		if ( 'store_summary_targeted' === $scope ) {
-			if ( self::looks_like_business_summary_request( $normalized ) ) {
-				return 'business_summary';
-			}
-
-			return 'operations_overview';
-		}
-
-		if ( 'customer_targeted' === $scope ) {
-			if ( self::looks_like_customer_orders_request( $normalized ) ) {
-				return 'customer_orders';
-			}
-
-			return 'customer_summary';
-		}
-
-		if ( 'email_template_targeted' === $scope ) {
-			return 'email_template_list';
-		}
-
-		if ( 'orders_search_targeted' === $scope ) {
-			return 'orders_search';
-		}
-
-		if ( 'order_query_action_targeted' === $scope ) {
-			return 'order_query_action';
-		}
-
-		if ( 'order_write_missing_targeted' === $scope ) {
-			$shape = self::extract_command_shape( $command, $context );
-			$write_intent = isset( $shape['write_intent'] ) && is_array( $shape['write_intent'] )
-				? $shape['write_intent']
-				: [];
-			$action = sanitize_text_field( $write_intent['action'] ?? '' );
-
-			return 'orders.hold' === $action ? 'order_write_missing_hold' : 'order_write_missing_status';
-		}
-
-		if ( 'multi_order_targeted' === $scope ) {
-			if ( preg_match( '/\b(?:email|draft|reply|respond|message|write|mail)\b/u', $normalized ) || preg_match( '/\b(?:viết|soạn|gửi)\b/u', $normalized ) ) {
-				if ( preg_match( '/\b(?:save|store|keep)\b/u', $normalized ) && preg_match( '/\bdraft\b/u', $normalized ) ) {
-					return 'multi_order_email_save_draft';
-				}
-
-				if ( preg_match( '/\bsend\b/u', $normalized ) || preg_match( '/\bgửi\b/u', $normalized ) ) {
-					return 'multi_order_email_send';
-				}
-
-				return 'multi_order_email_preview';
-			}
-
-			if ( preg_match( '/\b(?:status|mark|set|move|change|update|on[- ]hold|completed|processing|cancelled|canceled)\b/u', $normalized ) ) {
-				return 'multi_order_status';
-			}
-
-			if ( preg_match( '/\b(?:hold|pause)\b/u', $normalized ) ) {
-				return 'multi_order_hold';
-			}
-
-			if ( preg_match( '/\b(?:note|comment)\b/u', $normalized ) ) {
-				return 'multi_order_note';
-			}
-
-			return 'multi_order_read';
-		}
-
-		if ( 'queue_targeted' === $scope ) {
-			if ( self::looks_like_operations_attention_request( $normalized ) ) {
-				return 'operations_attention';
-			}
-
-			if ( self::looks_like_fulfillment_review_request( $normalized ) ) {
-				return 'fulfillment_review';
-			}
-
-			if ( self::looks_like_customer_service_review_request( $normalized ) ) {
-				return 'customer_service_review';
-			}
-
-			return 'inventory_review';
-		}
-
-		if ( 'single_order_targeted' !== $scope ) {
-			return 'default';
-		}
-
-		$single_order_shape = self::extract_command_shape( $command, $context );
-
-		if (
-			(
-				false !== strpos( $normalized, 'email drafts' ) ||
-				false !== strpos( $normalized, 'email draft' ) ||
-				false !== strpos( $normalized, 'draft emails' ) ||
-				false !== strpos( $normalized, 'saved drafts' )
-			) &&
-			(
-				false !== strpos( $normalized, 'open' ) ||
-				false !== strpos( $normalized, 'show' ) ||
-				false !== strpos( $normalized, 'view' ) ||
-				false !== strpos( $normalized, 'load' )
+	private static function catalog_action_names( $catalog ) {
+		return array_values(
+			array_filter(
+				array_map(
+					function ( $item ) {
+						return is_array( $item ) ? sanitize_text_field( $item['name'] ?? '' ) : '';
+					},
+					is_array( $catalog ) ? $catalog : []
+				)
 			)
-		) {
-			return 'order_email_drafts';
-		}
-
-		if ( preg_match( '/\b(?:email|draft|reply|respond|message|write|mail)\b/u', $normalized ) || preg_match( '/\b(?:viết|soạn|gửi)\b/u', $normalized ) ) {
-			if ( preg_match( '/\b(?:save|store|keep)\b/u', $normalized ) && preg_match( '/\bdraft\b/u', $normalized ) ) {
-				return 'order_email_save_draft';
-			}
-
-			if ( preg_match( '/\bsend\b/u', $normalized ) || preg_match( '/\bgửi\b/u', $normalized ) ) {
-				return 'order_email_send';
-			}
-
-			return 'order_email_preview';
-		}
-
-		if ( self::command_looks_like_status_note_request( $normalized, $single_order_shape ) ) {
-			return 'order_status';
-		}
-
-		if ( preg_match( '/\b(?:note|comment)\b/u', $normalized ) || preg_match( '/\b(?:ghi chú|ghichu|nhắn nội bộ)\b/u', $normalized ) ) {
-			return 'order_note';
-		}
-
-		if ( preg_match( '/\b(?:status|mark|set|move)\b/u', $normalized ) || preg_match( '/\b(?:trạng thái|chuyển|đánh dấu|cap nhat|cập nhật)\b/u', $normalized ) ) {
-			return 'order_status';
-		}
-
-		if ( preg_match( '/\b(?:hold|pause)\b/u', $normalized ) || preg_match( '/\b(?:tạm giữ|giữ lại|tam giu)\b/u', $normalized ) ) {
-			return 'order_hold';
-		}
-
-		if ( preg_match( '/\b(?:refund)\b/u', $normalized ) ) {
-			return 'order_refund';
-		}
-
-		if (
-			'unknown' === sanitize_key( $single_order_shape['surface'] ?? '' ) &&
-			! empty( $single_order_shape['explicit_order_ids'] ) &&
-			is_array( $single_order_shape['explicit_order_ids'] )
-		) {
-			return 'order_ambiguous';
-		}
-
-		return 'order_read';
+		);
 	}
 
-	private static function derive_candidate_actions( $command, $context, $scope ) {
-		$scope = sanitize_key( $scope );
-
-		if ( 'customer_targeted' === $scope ) {
-			switch ( self::derive_router_profile( $command, $context, $scope ) ) {
-				case 'customer_orders':
-					return [
-						'orders.find_by_customer',
-						'customers.get_summary',
-					];
-				case 'customer_summary':
-				default:
-					return [
-						'customers.get_summary',
-						'orders.find_by_customer',
-					];
-			}
-		}
-
-		if ( 'email_template_targeted' === $scope ) {
-			return [
-				'email_templates.list',
-			];
-		}
-
-		if ( 'orders_search_targeted' === $scope ) {
-			return [
-				'orders.search',
-			];
-		}
-
-		if ( in_array( $scope, [ 'order_query_action_targeted', 'order_write_missing_targeted' ], true ) ) {
-			return self::derive_order_write_candidate_actions_from_shape(
-				self::extract_command_shape( $command, $context )
-			);
-		}
-
-		if ( 'store_summary_targeted' === $scope ) {
-			switch ( self::derive_router_profile( $command, $context, $scope ) ) {
-				case 'business_summary':
-					return [
-						'store.get_business_summary',
-						'workflow.business_summary_preview',
-						'store.get_insights',
-						'operations.get_summary',
-					];
-				case 'operations_overview':
-				default:
-					return [
-						'operations.get_summary',
-						'store.get_daily_briefing',
-						'store.get_morning_briefing',
-					];
-			}
-		}
-
-		if ( 'queue_targeted' === $scope ) {
-			switch ( self::derive_router_profile( $command, $context, $scope ) ) {
-				case 'operations_attention':
-					return [
-						'operations.get_attention_queue',
-						'operations.get_summary',
-						'customers.get_service_queue',
-					];
-				case 'fulfillment_review':
-					return [
-						'operations.get_fulfillment_queue',
-						'operations.get_attention_queue',
-						'operations.get_summary',
-					];
-				case 'customer_service_review':
-					return [
-						'customers.get_service_queue',
-						'operations.get_attention_queue',
-						'operations.get_summary',
-					];
-				case 'inventory_review':
-				default:
-					return [
-						'products.get_inventory_queue',
-						'operations.get_fulfillment_queue',
-						'store.get_business_summary',
-					];
-			}
-		}
-
-		if ( 'multi_order_targeted' === $scope ) {
-			switch ( self::derive_router_profile( $command, $context, $scope ) ) {
-				case 'multi_order_email_save_draft':
-					return [
-						'workflow.write_and_save_email_drafts_for_orders',
-						'workflow.write_email_for_orders',
-						'orders.compose_customer_email',
-						'orders.get_details',
-					];
-				case 'multi_order_email_send':
-					return [
-						'workflow.write_and_send_emails_for_orders',
-						'workflow.write_email_for_orders',
-						'orders.compose_customer_email',
-						'orders.get_details',
-					];
-				case 'multi_order_email_preview':
-					return [
-						'workflow.write_email_for_orders',
-						'orders.compose_customer_email',
-						'orders.get_details',
-					];
-				case 'multi_order_status':
-					return [
-						'orders.update_status',
-						'orders.bulk_update_status_with_note',
-						'orders.hold',
-						'orders.add_note',
-					];
-				case 'multi_order_hold':
-					return [
-						'orders.hold',
-						'orders.update_status',
-						'orders.add_note',
-					];
-				case 'multi_order_note':
-					return [
-						'orders.add_note',
-						'orders.bulk_update_status_with_note',
-						'orders.update_status',
-					];
-				case 'multi_order_read':
-				default:
-					return [
-						'orders.search',
-						'orders.get_details',
-					];
-			}
-		}
-
-		if ( 'single_order_targeted' !== $scope ) {
-			return [];
-		}
-
-		switch ( self::derive_router_profile( $command, $context, $scope ) ) {
-			case 'order_email_save_draft':
-				return [
-					'workflow.write_and_save_email_draft_for_order',
-					'workflow.write_email_for_order',
-					'workflow.write_and_save_email_drafts_for_orders',
-					'workflow.write_email_for_orders',
-					'orders.compose_customer_email',
-					'orders.get_customer_email_drafts',
-				];
-			case 'order_email_drafts':
-				return [
-					'orders.get_customer_email_drafts',
-					'orders.compose_customer_email',
-				];
-			case 'order_email_send':
-				$actions = [
-					'workflow.write_and_send_email_for_order',
-					'workflow.write_email_for_order',
-					'workflow.write_and_send_emails_for_orders',
-					'workflow.write_email_for_orders',
-					'orders.compose_customer_email',
-				];
-
-				if ( self::command_has_explicit_email_template_cue( $command ) ) {
-					$actions[] = 'orders.email_customer_template';
-					$actions[] = 'orders.use_email_template';
-				}
-
-				return $actions;
-			case 'order_email_preview':
-				$actions = [
-					'orders.compose_customer_email',
-				];
-
-				if ( self::command_has_explicit_email_template_cue( $command ) ) {
-					$actions[] = 'orders.email_customer_preview';
-					$actions[] = 'orders.use_email_template';
-				}
-
-				return $actions;
-			case 'order_note':
-				return [
-					'orders.add_note',
-					'orders.get_details',
-				];
-			case 'order_status':
-				return [
-					'orders.update_status',
-					'orders.bulk_update_status_with_note',
-					'orders.get_details',
-				];
-			case 'order_hold':
-				return [
-					'orders.hold',
-					'orders.get_details',
-				];
-			case 'order_refund':
-				return [
-					'orders.refund_preview',
-					'workflow.refund_review',
-				];
-			case 'order_ambiguous':
-				return [
-					'orders.get_details',
-					'orders.update_status',
-					'orders.bulk_update_status_with_note',
-					'orders.hold',
-					'orders.add_note',
-				];
-			case 'order_read':
-			default:
-				return [
-					'orders.get_details',
-					'orders.find_by_identity',
-				];
-		}
-	}
-
-	private static function allowed_actions_for_router_profile( $profile, $scope, $command = '' ) {
-		$scope = sanitize_key( $scope );
-		$profile = sanitize_key( $profile );
-
-		if ( 'customer_targeted' === $scope ) {
-			if ( 'customer_orders' === $profile ) {
-				return [
-					'orders.find_by_customer',
-					'customers.get_summary',
-				];
-			}
-
-			return [
-				'customers.get_summary',
-				'orders.find_by_customer',
-			];
-		}
-
-		if ( 'email_template_targeted' === $scope ) {
-			return [
-				'email_templates.list',
-			];
-		}
-
-		if ( 'orders_search_targeted' === $scope ) {
-			return [
-				'orders.search',
-			];
-		}
-
-		if ( in_array( $scope, [ 'order_query_action_targeted', 'order_write_missing_targeted' ], true ) ) {
-			return self::derive_order_write_candidate_actions_from_shape(
-				self::extract_command_shape( $command )
-			);
-		}
-
-		if ( 'multi_order_targeted' === $scope ) {
-			switch ( $profile ) {
-				case 'multi_order_email_save_draft':
-					return [
-						'workflow.write_and_save_email_drafts_for_orders',
-						'workflow.write_email_for_orders',
-						'orders.compose_customer_email',
-						'orders.get_details',
-					];
-				case 'multi_order_email_send':
-					return [
-						'workflow.write_and_send_emails_for_orders',
-						'workflow.write_email_for_orders',
-						'orders.compose_customer_email',
-						'orders.get_details',
-					];
-				case 'multi_order_email_preview':
-					return [
-						'workflow.write_email_for_orders',
-						'orders.compose_customer_email',
-						'orders.get_details',
-					];
-				case 'multi_order_status':
-					return [
-						'orders.update_status',
-						'orders.bulk_update_status_with_note',
-						'orders.hold',
-						'orders.add_note',
-					];
-				case 'multi_order_hold':
-					return [
-						'orders.hold',
-						'orders.update_status',
-						'orders.add_note',
-					];
-				case 'multi_order_note':
-					return [
-						'orders.add_note',
-						'orders.bulk_update_status_with_note',
-						'orders.update_status',
-					];
-				case 'multi_order_read':
-				default:
-					return [
-						'orders.search',
-						'orders.get_details',
-					];
-			}
-		}
-
-		if ( 'store_summary_targeted' === $scope ) {
-			if ( 'business_summary' === $profile ) {
-				return [
-					'store.get_business_summary',
-					'workflow.business_summary_preview',
-					'store.get_insights',
-					'operations.get_summary',
-				];
-			}
-
-			if ( 'operations_overview' === $profile ) {
-				return [
-					'operations.get_summary',
-					'store.get_daily_briefing',
-					'store.get_morning_briefing',
-				];
-			}
-
-			return [];
-		}
-
-		if ( 'queue_targeted' === $scope ) {
-			switch ( $profile ) {
-				case 'operations_attention':
-					return [
-						'operations.get_attention_queue',
-						'operations.get_summary',
-						'customers.get_service_queue',
-					];
-				case 'fulfillment_review':
-					return [
-						'operations.get_fulfillment_queue',
-						'operations.get_attention_queue',
-						'operations.get_summary',
-					];
-				case 'customer_service_review':
-					return [
-						'customers.get_service_queue',
-						'operations.get_attention_queue',
-						'operations.get_summary',
-					];
-				case 'inventory_review':
-					return [
-						'products.get_inventory_queue',
-						'operations.get_fulfillment_queue',
-						'store.get_business_summary',
-					];
-				default:
-					return [];
-			}
-		}
-
-		if ( 'single_order_targeted' !== $scope ) {
-			return [];
-		}
-
-		$base = [
-			'workflow.cancel',
-			'orders.get_details',
-			'orders.find_by_identity',
-		];
-
-		switch ( $profile ) {
-			case 'order_note':
-				return array_values(
-					array_unique(
-						array_merge(
-							$base,
-							[
-								'orders.add_note',
-								'orders.hold',
-								'orders.update_status',
-							]
-						)
+	private static function catalog_intent_families( $catalog ) {
+		return array_values(
+			array_unique(
+				array_filter(
+					array_map(
+						function ( $item ) {
+							return is_array( $item ) ? sanitize_key( $item['intent_family'] ?? '' ) : '';
+						},
+						is_array( $catalog ) ? $catalog : []
 					)
-				);
-			case 'order_status':
-				return array_values(
-					array_unique(
-						array_merge(
-							$base,
-							[
-								'orders.update_status',
-								'orders.bulk_update_status_with_note',
-								'orders.hold',
-								'orders.add_note',
-							]
-						)
-					)
-				);
-			case 'order_hold':
-				return array_values(
-					array_unique(
-						array_merge(
-							$base,
-							[
-								'orders.hold',
-								'orders.update_status',
-								'orders.add_note',
-							]
-						)
-					)
-				);
-			case 'order_refund':
-				return [
-					'orders.refund_preview',
-					'workflow.refund_review',
-				];
-			case 'order_ambiguous':
-				return array_values(
-					array_unique(
-						array_merge(
-							$base,
-							[
-								'orders.update_status',
-								'orders.bulk_update_status_with_note',
-								'orders.hold',
-								'orders.add_note',
-							]
-						)
-					)
-				);
-			case 'order_email_save_draft':
-				return [
-					'workflow.write_and_save_email_draft_for_order',
-					'workflow.write_email_for_order',
-					'workflow.write_and_save_email_drafts_for_orders',
-					'workflow.write_email_for_orders',
-					'orders.compose_customer_email',
-					'orders.get_customer_email_drafts',
-				];
-			case 'order_email_drafts':
-				return [
-					'orders.get_customer_email_drafts',
-				];
-			case 'order_email_send':
-				$actions = [
-					'workflow.write_and_send_email_for_order',
-					'workflow.write_email_for_order',
-					'workflow.write_and_send_emails_for_orders',
-					'workflow.write_email_for_orders',
-					'orders.compose_customer_email',
-				];
-
-				if ( self::command_has_explicit_email_template_cue( $command ) ) {
-					$actions[] = 'orders.email_customer_template';
-					$actions[] = 'orders.use_email_template';
-				}
-
-				return $actions;
-			case 'order_email_preview':
-				$actions = [
-					'orders.compose_customer_email',
-				];
-
-				if ( self::command_has_explicit_email_template_cue( $command ) ) {
-					$actions[] = 'orders.email_customer_preview';
-					$actions[] = 'orders.use_email_template';
-				}
-
-				return $actions;
-			case 'order_read':
-			default:
-				return array_values(
-					array_unique( $base )
-				);
-		}
+				)
+			)
+		);
 	}
 
-	private static function derive_order_write_candidate_actions_from_shape( $shape ) {
-		$shape = is_array( $shape ) ? $shape : [];
-		$intent = [];
-
-		if ( isset( $shape['query_action'] ) && is_array( $shape['query_action'] ) && ! empty( $shape['query_action'] ) ) {
-			$intent = $shape['query_action'];
-		} elseif ( isset( $shape['write_intent'] ) && is_array( $shape['write_intent'] ) && ! empty( $shape['write_intent'] ) ) {
-			$intent = $shape['write_intent'];
-		}
-
-		$action = sanitize_text_field( $intent['action'] ?? '' );
-
-		if ( ! in_array( $action, [ 'orders.hold', 'orders.update_status', 'orders.bulk_update_status_with_note' ], true ) ) {
-			return [
-				'orders.update_status',
-				'orders.hold',
-			];
-		}
-
-		return [ $action ];
-	}
-
-	private static function derive_candidate_intent_families( $command, $context, $scope ) {
-		$families = [];
-
-		foreach ( self::derive_candidate_actions( $command, $context, $scope ) as $action_name ) {
-			$family = self::infer_intent_family( $action_name );
-
-			if ( '' !== $family ) {
-				$families[] = $family;
-			}
-		}
-
-		return array_values( array_unique( $families ) );
-	}
-
-	private static function normalize_router_command( $command ) {
-		$command = is_string( $command ) ? trim( $command ) : '';
-
-		return function_exists( 'mb_strtolower' )
-			? mb_strtolower( $command, 'UTF-8' )
-			: strtolower( $command );
-	}
-
-	private static function resolve_context_order_ids( $context, $include_contextual_fallback = false ) {
+	private static function resolve_context_order_ids( $context ) {
 		$context = is_array( $context ) ? $context : [];
 		$order_ids = [];
 
 		if ( ! empty( $context['resolved_order_ids'] ) && is_array( $context['resolved_order_ids'] ) ) {
 			$order_ids = array_values( array_filter( array_map( 'absint', $context['resolved_order_ids'] ) ) );
-		}
-
-		if ( $include_contextual_fallback && empty( $order_ids ) && ! empty( $context['current_order_id'] ) ) {
-			$order_ids[] = absint( $context['current_order_id'] );
-		}
-
-		if ( $include_contextual_fallback && empty( $order_ids ) && ! empty( $context['last_referenced_order_id'] ) ) {
-			$order_ids[] = absint( $context['last_referenced_order_id'] );
 		}
 
 		if (
@@ -1205,189 +165,6 @@ class YoRo_Action_Catalog_Builder {
 		return array_values( array_unique( array_filter( $order_ids ) ) );
 	}
 
-	private static function extract_explicit_order_ids( $command ) {
-		if ( ! class_exists( 'YoRo_Order_Helper' ) ) {
-			return [];
-		}
-
-		$order_ids = YoRo_Order_Helper::extract_order_ids_from_text( (string) $command );
-
-		return array_values(
-			array_unique(
-				array_filter(
-					array_map( 'absint', is_array( $order_ids ) ? $order_ids : [] )
-				)
-			)
-		);
-	}
-
-	private static function resolve_plural_context_order_ids( $command, $context ) {
-		if ( ! self::command_looks_like_contextual_plural_order_reference( $command ) ) {
-			return [];
-		}
-
-		$context = is_array( $context ) ? $context : [];
-
-		if ( ! empty( $context['last_orders'] ) && is_array( $context['last_orders'] ) ) {
-			return array_values(
-				array_unique(
-					array_filter(
-						array_map( 'absint', wp_list_pluck( $context['last_orders'], 'id' ) )
-					)
-				)
-			);
-		}
-
-		if ( ! empty( $context['last_order_ids'] ) && is_array( $context['last_order_ids'] ) ) {
-			return array_values(
-				array_unique(
-					array_filter(
-						array_map( 'absint', $context['last_order_ids'] )
-					)
-				)
-			);
-		}
-
-		return [];
-	}
-
-	private static function command_looks_like_contextual_plural_order_reference( $command ) {
-		$normalized = self::normalize_router_command( $command );
-
-		if ( '' === $normalized ) {
-			return false;
-		}
-
-		return (
-			false !== strpos( $normalized, 'these orders' ) ||
-			false !== strpos( $normalized, 'those orders' ) ||
-			false !== strpos( $normalized, 'selected orders' ) ||
-			false !== strpos( $normalized, 'all these' ) ||
-			false !== strpos( $normalized, 'all of them' ) ||
-			preg_match( '/\bthem\b/u', $normalized )
-		);
-	}
-
-	private static function command_uses_contextual_order_reference( $command ) {
-		$normalized = self::normalize_router_command( $command );
-
-		if ( '' === $normalized ) {
-			return false;
-		}
-
-		return (bool) preg_match(
-			'/\b(?:this order|that order|the order|order\b|đơn này|đơn hàng này|don nay|don hang nay)\b|\b(?:the\s+)?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last)\s+(?:one|order|item|result)\b|\b\d+(?:st|nd|rd|th)\s+(?:one|order|item|result)\b|\b(?:(?:đơn hàng|don hang|kết quả|ket qua|cái|cai|đơn|don|mục|muc)\s+)?(?:đầu tiên|dau tien|thứ nhất|thu nhat|thứ hai|thu hai|thứ ba|thu ba|thứ tư|thu tu|thứ năm|thu nam|thứ sáu|thu sau|thứ bảy|thu bay|thứ tám|thu tam|thứ chín|thu chin|thứ mười|thu muoi|thứ\s+\d+|thu\s+\d+|số\s+\d+|so\s+\d+|cuối cùng|cuoi cung)\b/u',
-			$normalized
-		);
-	}
-
-	private static function command_has_explicit_email_template_cue( $command ) {
-		$normalized = self::normalize_router_command( $command );
-
-		if ( '' === $normalized ) {
-			return false;
-		}
-
-		return (bool) preg_match(
-			'/\b(?:template|verification|verify|needs?\s+verification|payment\s+mismatch|payment\s+verification|shipping\s+delay)\b/u',
-			$normalized
-		);
-	}
-
-	private static function command_looks_like_status_note_request( $normalized, $shape = [] ) {
-		$normalized = is_string( $normalized ) ? trim( $normalized ) : '';
-		$shape      = is_array( $shape ) ? $shape : [];
-
-		if ( '' === $normalized ) {
-			return false;
-		}
-
-		$status = sanitize_key( $shape['status'] ?? '' );
-
-		if ( '' === $status ) {
-			return false;
-		}
-
-		$has_note_cue = (bool) preg_match(
-			'/\b(?:with\s+note|add\s+note|note\s*:|note|comment)\b/u',
-			$normalized
-		);
-
-		if ( ! $has_note_cue ) {
-			return false;
-		}
-
-		return (bool) (
-			preg_match( '/^\s*(?:complete|completed|cancel|cancelled|canceled|refund|refunded|hold)\b/u', $normalized ) ||
-			preg_match( '/\b(?:status|mark|set|move|change|update)\b/u', $normalized ) ||
-			preg_match( '/\b(?:trạng thái|chuyển|đánh dấu|cap nhat|cập nhật)\b/u', $normalized )
-		);
-	}
-
-	private static function looks_like_business_summary_request( $normalized ) {
-		return (bool) preg_match(
-			'/\b(?:business|revenue|sales|profit|commercial|performance)\b/u',
-			$normalized
-		);
-	}
-
-	private static function looks_like_operations_overview_request( $normalized ) {
-		if ( preg_match( '/\b(?:business|revenue|sales|profit|commercial)\b/u', $normalized ) ) {
-			return false;
-		}
-
-		return (bool) preg_match(
-			'/\b(?:store|operations?|operational|brief(?:ing)?|overview|summary|update|what\'?s new|what is new|how is the store)\b/u',
-			$normalized
-		);
-	}
-
-	private static function command_shape_has_specific_order_filter( $shape ) {
-		$shape = is_array( $shape ) ? $shape : [];
-
-		if (
-			! class_exists( 'YoRo_Command_Shape_Extractor' ) ||
-			! YoRo_Command_Shape_Extractor::is_order_list_search_shape( $shape )
-		) {
-			return false;
-		}
-
-		$status = sanitize_key( $shape['status'] ?? '' );
-		$age_filter = isset( $shape['age_filter'] ) && is_array( $shape['age_filter'] )
-			? $shape['age_filter']
-			: [];
-
-		return '' !== $status && ! empty( $age_filter['hours'] );
-	}
-
-	private static function looks_like_operations_attention_request( $normalized ) {
-		return (bool) preg_match(
-			'/\b(?:urgent|attention|needs?\s+attention|what needs attention|right now|priority|priorities|manual review)\b/u',
-			$normalized
-		);
-	}
-
-	private static function looks_like_fulfillment_review_request( $normalized ) {
-		return (bool) preg_match(
-			'/\b(?:waiting to ship|ready to ship|ship(?:ping)? queue|fulfillment|shipping blockers?|shipping delay|waiting to go out)\b/u',
-			$normalized
-		);
-	}
-
-	private static function looks_like_customer_service_review_request( $normalized ) {
-		return (bool) preg_match(
-			'/\b(?:follow-up|follow up|reply|replies|customer service|customer follow-up|needs reply|who needs follow-up)\b/u',
-			$normalized
-		);
-	}
-
-	private static function looks_like_inventory_review_request( $normalized ) {
-		return (bool) preg_match(
-			'/\b(?:restock|low stock|inventory|out of stock|backorder|stock pressure|what products need restock)\b/u',
-			$normalized
-		);
-	}
-
 	private static function build_action_item( $name, $action, $context = [] ) {
 		$name = sanitize_text_field( $name );
 
@@ -1403,6 +180,9 @@ class YoRo_Action_Catalog_Builder {
 			? array_values( array_map( 'sanitize_key', $action['required_params'] ) )
 			: self::infer_required_params( $name, $input_schema );
 		$intent_family = self::infer_intent_family( $name );
+		$slot_contract = isset( $action['slot_contract'] ) && is_array( $action['slot_contract'] )
+			? self::normalize_slot_contract( $action['slot_contract'] )
+			: self::infer_slot_contract( $name, $input_schema, $required_params );
 
 		return [
 			'name'                  => $name,
@@ -1413,8 +193,12 @@ class YoRo_Action_Catalog_Builder {
 			'family_policy'         => self::family_policy_for_action( $name, $intent_family ),
 			'input_schema'          => self::normalize_input_schema( $input_schema ),
 			'required_params'       => $required_params,
+			'slot_contract'         => $slot_contract,
+			'product_identifier_types' => self::normalize_product_identifier_types( $action['product_identifier_types'] ?? [] ),
 			'param_hints'           => isset( $action['param_hints'] ) && is_array( $action['param_hints'] ) ? $action['param_hints'] : [],
+			'value_catalogs'        => self::value_catalogs_for_action( $name ),
 			'clarification_hints'   => isset( $action['clarification_hints'] ) && is_array( $action['clarification_hints'] ) ? $action['clarification_hints'] : [],
+			'reporting_contract'    => self::reporting_contract_for_action( $name ),
 			'examples'              => self::examples_for_action( $name, $action ),
 			'write_action'          => ! empty( $action['write_action'] ),
 			'requires_confirmation' => ! empty( $action['requires_confirmation'] ) || ! empty( $action['write_action'] ),
@@ -1442,6 +226,234 @@ class YoRo_Action_Catalog_Builder {
 		return $normalized;
 	}
 
+	private static function value_catalogs_for_action( $action ) {
+		$action = sanitize_text_field( $action );
+
+		if ( 'products.update_stock_status' !== $action || ! class_exists( 'YoRo_Product_Helper' ) ) {
+			return [];
+		}
+
+		$statuses = [];
+
+		foreach ( YoRo_Product_Helper::get_stock_status_options() as $slug => $option ) {
+			$slug = YoRo_Product_Helper::normalize_stock_status_slug( $slug );
+
+			if ( '' === $slug ) {
+				continue;
+			}
+
+			$statuses[] = [
+				'key'            => $slug,
+				'slug'           => $slug,
+				'label'          => sanitize_text_field( $option['label'] ?? $slug ),
+				'core'           => in_array( $slug, [ 'instock', 'outofstock', 'onbackorder' ], true ),
+				'manual_allowed' => true,
+			];
+		}
+
+		return [
+			'stock_statuses' => array_values( $statuses ),
+		];
+	}
+
+	private static function normalize_slot_contract( $contract ) {
+		if ( ! is_array( $contract ) ) {
+			return [];
+		}
+
+		$target_slots = [];
+		foreach ( (array) ( $contract['target_slots'] ?? [] ) as $slot ) {
+			if ( ! is_array( $slot ) ) {
+				continue;
+			}
+
+			$field = sanitize_key( $slot['field'] ?? '' );
+			if ( '' === $field ) {
+				continue;
+			}
+
+			$target_slots[] = [
+				'field'   => $field,
+				'aliases' => array_values( array_filter( array_map( 'sanitize_key', (array) ( $slot['aliases'] ?? [] ) ) ) ),
+				'kind'    => sanitize_key( $slot['kind'] ?? 'target' ),
+			];
+		}
+
+		$user_content_slots = [];
+		foreach ( (array) ( $contract['user_content_slots'] ?? [] ) as $slot ) {
+			if ( ! is_array( $slot ) ) {
+				continue;
+			}
+
+			$field = sanitize_key( $slot['field'] ?? '' );
+			if ( '' === $field ) {
+				continue;
+			}
+
+			$user_content_slots[] = [
+				'field'                     => $field,
+				'kind'                      => sanitize_key( $slot['kind'] ?? 'user_content' ),
+				'source'                    => sanitize_key( $slot['source'] ?? 'user_literal' ),
+				'prompt_priority'           => sanitize_key( $slot['prompt_priority'] ?? 'content_first' ),
+				'placeholder_policy'        => sanitize_key( $slot['placeholder_policy'] ?? 'reject_placeholders' ),
+				'max_length'                => absint( $slot['max_length'] ?? 2000 ),
+				'question'                  => self::sanitize_language_map( (array) ( $slot['question'] ?? [] ) ),
+				'question_with_target'      => self::sanitize_language_map( (array) ( $slot['question_with_target'] ?? [] ) ),
+				'target_question'           => self::sanitize_language_map( (array) ( $slot['target_question'] ?? [] ) ),
+				'combined_question'         => self::sanitize_language_map( (array) ( $slot['combined_question'] ?? [] ) ),
+			];
+		}
+
+		return array_filter(
+			[
+				'target_slots'       => $target_slots,
+				'user_content_slots' => $user_content_slots,
+			],
+			static fn( $value ) => ! empty( $value )
+		);
+	}
+
+	private static function normalize_product_identifier_types( $types ) {
+		$normalized = [];
+
+		foreach ( (array) $types as $type ) {
+			if ( ! is_array( $type ) ) {
+				continue;
+			}
+
+			$key   = sanitize_key( $type['key'] ?? '' );
+			$field = sanitize_key( $type['field'] ?? $key );
+
+			if ( '' === $key || ! in_array( $field, [ 'product_id', 'product_sku', 'global_unique_id' ], true ) ) {
+				continue;
+			}
+
+			$aliases = [];
+
+			foreach ( (array) ( $type['aliases'] ?? [] ) as $alias ) {
+				$alias = sanitize_text_field( (string) $alias );
+
+				if ( '' !== $alias ) {
+					$aliases[] = $alias;
+				}
+			}
+
+			$normalized[] = [
+				'key'        => $key,
+				'field'      => $field,
+				'value_type' => sanitize_key( $type['value_type'] ?? 'string' ),
+				'aliases'    => array_values( array_unique( $aliases ) ),
+			];
+		}
+
+		return $normalized;
+	}
+
+	private static function sanitize_language_map( $map ) {
+		$normalized = [];
+
+		foreach ( $map as $language => $text ) {
+			$language = sanitize_key( $language );
+			$text     = sanitize_text_field( $text );
+
+			if ( '' !== $language && '' !== $text ) {
+				$normalized[ $language ] = $text;
+			}
+		}
+
+		return $normalized;
+	}
+
+	private static function infer_slot_contract( $action, $input_schema, $required_params ) {
+		$input_schema    = is_array( $input_schema ) ? $input_schema : [];
+		$required_params = array_values( array_map( 'sanitize_key', (array) $required_params ) );
+		$target_slots    = [];
+
+		if ( in_array( 'order_ids', $required_params, true ) || array_key_exists( 'order_ids', $input_schema ) ) {
+			$target_slots[] = [
+				'field'   => 'order_ids',
+				'aliases' => [ 'order_id' ],
+				'kind'    => 'order_target',
+			];
+		} elseif ( in_array( 'order_id', $required_params, true ) || array_key_exists( 'order_id', $input_schema ) ) {
+			$target_slots[] = [
+				'field'   => 'order_id',
+				'aliases' => [ 'order_ids' ],
+				'kind'    => 'order_target',
+			];
+		} elseif ( in_array( 'product_target', $required_params, true )
+			|| in_array( 'product_id', $required_params, true )
+			|| array_key_exists( 'product_id', $input_schema )
+			|| array_key_exists( 'product_sku', $input_schema )
+			|| array_key_exists( 'global_unique_id', $input_schema )
+		) {
+			$target_slots[] = [
+				'field'   => 'product_id',
+				'aliases' => [ 'product_sku', 'global_unique_id' ],
+				'kind'    => 'product_target',
+			];
+		}
+
+		$user_content_slots = [];
+
+		if ( in_array( 'note', $required_params, true ) ) {
+			$user_content_slots[] = [
+				'field'                => 'note',
+				'kind'                 => 'internal_note',
+				'source'               => 'user_literal',
+				'prompt_priority'      => 'content_first',
+				'placeholder_policy'   => 'reject_request_placeholders',
+				'max_length'           => 2000,
+				'question'             => [
+					'en' => 'What should I write in the note?',
+					'vi' => 'Bạn muốn thêm nội dung ghi chú nào?',
+				],
+				'question_with_target' => [
+					'en' => 'What should I write in the note for order #{order_id}?',
+					'vi' => 'Bạn muốn thêm nội dung ghi chú nào cho đơn #{order_id}?',
+				],
+				'target_question'      => [
+					'en' => 'Which order should I add this note to?',
+					'vi' => 'Bạn muốn thêm ghi chú này vào đơn nào?',
+				],
+			];
+		}
+
+		if ( in_array( 'instruction', $required_params, true ) ) {
+			$user_content_slots[] = [
+				'field'                => 'instruction',
+				'kind'                 => 'customer_email_instruction',
+				'source'               => 'user_goal',
+				'prompt_priority'      => 'target_first',
+				'placeholder_policy'   => 'reject_request_placeholders',
+				'max_length'           => 2000,
+				'question'             => [
+					'en' => 'What should the customer email say?',
+					'vi' => 'Email gửi khách nên nói nội dung gì?',
+				],
+				'question_with_target' => [
+					'en' => 'What should the email to the customer say for order #{order_id}?',
+					'vi' => 'Email gửi khách cho đơn #{order_id} nên nói nội dung gì?',
+				],
+				'target_question'      => [
+					'en' => 'Which order is this email for?',
+					'vi' => 'Email này dành cho đơn nào?',
+				],
+				'combined_question'    => [
+					'en' => 'Which order is this for, and what should the customer email say?',
+					'vi' => 'Email này dành cho đơn nào, và bạn muốn email nói nội dung gì?',
+				],
+			];
+		}
+
+		return self::normalize_slot_contract(
+			[
+				'target_slots'       => $target_slots,
+				'user_content_slots' => $user_content_slots,
+			]
+		);
+	}
+
 	private static function infer_required_params( $action, $input_schema ) {
 		$map = [
 			'orders.get_details'                   => [ 'order_ids' ],
@@ -1457,12 +469,14 @@ class YoRo_Action_Catalog_Builder {
 			'orders.render_customer_email_preview' => [ 'order_id', 'subject', 'body' ],
 			'orders.send_customer_email'           => [ 'order_id', 'subject', 'body' ],
 			'orders.add_private_note_template'     => [ 'order_ids', 'template' ],
-			'orders.hold'                          => [ 'order_ids' ],
 			'orders.add_note'                      => [ 'order_ids', 'note' ],
 			'orders.remove_note'                   => [ 'note_ids' ],
 			'orders.update_status'                 => [ 'order_ids', 'status' ],
 			'orders.restore_statuses'              => [ 'statuses' ],
-			'orders.bulk_update_status_with_note'  => [ 'order_ids', 'status', 'note' ],
+			'products.update_stock'                => [ 'product_id', 'stock_quantity' ],
+			'products.update_stock_status'         => [ 'product_id', 'stock_status' ],
+			'coupons.lookup'                       => [ 'coupon_code' ],
+			'coupons.create'                       => [ 'coupon_code', 'discount_type', 'discount_amount' ],
 			'email_templates.save'                 => [ 'name', 'subject', 'body' ],
 			'email_templates.delete'               => [ 'template_id' ],
 		];
@@ -1478,43 +492,29 @@ class YoRo_Action_Catalog_Builder {
 		$action = sanitize_text_field( $action );
 
 		$map = [
-			'store.get_business_summary'                    => 'business_summary',
-			'store.get_morning_briefing'                    => 'store_briefing',
-			'store.get_daily_briefing'                      => 'store_briefing',
-			'operations.get_summary'                        => 'operations_overview',
+			'store.get_business_summary'                    => 'sales_report',
+			'store.get_daily_briefing'                      => 'store_report',
+			'operations.get_summary'                        => 'operations_report',
+			'store.get_insights'                            => 'store_signals',
 			'operations.get_attention_queue'                => 'operations_attention',
 			'operations.get_fulfillment_queue'              => 'fulfillment_review',
 			'products.get_inventory_queue'                  => 'inventory_review',
+			'products.update_stock'                         => 'update_product_stock',
+			'products.update_stock_status'                  => 'update_product_stock_status',
+			'coupons.lookup'                                => 'coupon_lookup',
+			'coupons.create'                                => 'coupon_create',
 			'customers.get_service_queue'                   => 'customer_service_review',
 			'orders.search'                                 => 'search_orders',
 			'orders.get_details'                            => 'get_order_details',
 			'orders.find_by_customer'                       => 'find_customer_orders',
-			'customers.get_summary'                         => 'customer_summary',
+			'customers.lookup'                              => 'customer_lookup',
 			'orders.update_status'                          => 'update_order_status',
-			'orders.bulk_update_status_with_note'           => 'update_order_status',
-			'orders.hold'                                   => 'hold_order',
 			'orders.refund_preview'                         => 'refund_review',
 			'orders.add_note'                               => 'add_note',
 			'orders.compose_customer_email'                 => 'customer_email',
 			'orders.get_customer_email_drafts'              => 'customer_email',
 			'orders.save_customer_email_draft'              => 'customer_email',
 			'orders.send_customer_email'                    => 'customer_email',
-			'workflow.write_email_for_order'                => 'customer_email',
-			'workflow.write_and_save_email_draft_for_order' => 'customer_email',
-			'workflow.write_and_send_email_for_order'       => 'customer_email',
-			'workflow.write_email_for_orders'               => 'customer_email',
-			'workflow.write_and_save_email_drafts_for_orders' => 'customer_email',
-			'workflow.write_and_send_emails_for_orders'     => 'customer_email',
-			'workflow.review_suspicious_order'              => 'review_suspicious_order',
-			'workflow.verify_customer_before_fulfillment'   => 'verify_customer_before_fulfillment',
-			'workflow.refund_review'                        => 'refund_review',
-			'workflow.fulfillment_followup_preview'         => 'fulfillment_review',
-			'workflow.customer_followup_preview'            => 'customer_service_review',
-			'workflow.operations_attention_preview'         => 'operations_attention',
-			'workflow.inventory_pressure_preview'           => 'inventory_review',
-			'workflow.business_summary_preview'             => 'business_summary',
-			'workflow.composed_actions'                     => 'composed_actions',
-			'workflow.cancel'                               => 'workflow_control',
 		];
 
 		return sanitize_key( $map[ $action ] ?? '' );
@@ -1524,12 +524,17 @@ class YoRo_Action_Catalog_Builder {
 		$intent_family = sanitize_key( $intent_family );
 
 		$policies = [
-			'store_briefing' => 'Use for briefing-style readouts. Prefer this family when the person wants a concise store check-in rather than a named summary or insight surface.',
-			'business_summary' => 'Use for business health, business performance, or commercial-overview requests. Prefer overview focus unless the person clearly narrows to a business dimension.',
-			'operations_overview' => 'Use for operations-picture or store-activity overview requests. Prefer overview focus unless the person explicitly narrows the operational dimension.',
+			'store_report' => 'Use for the overview part of the store report. Prefer this family when the person wants a concise broad store check-in instead of a specific sales, operations, or signal slice.',
+			'sales_report' => 'Use for the sales part of the store report: revenue, order value, customer activity, product demand, or commercial performance.',
+			'operations_report' => 'Use for the operations part of the store report: order flow, backlog, aged queues, workload, or execution pressure.',
+			'store_signals' => 'Use for the signals part of the store report: patterns, trends, grouped signals, or cross-domain reads across orders, customers, products, and inventory.',
 			'operations_attention' => 'Use for urgent, manual review, or needs-attention queue requests.',
 			'fulfillment_review' => 'Use for shipping blockers, fulfillment backlog, or waiting-to-ship queue requests.',
 			'inventory_review' => 'Use for stock pressure, low-stock, restock, backorder, or inventory queue requests.',
+			'update_product_stock' => 'Use for changing one specific product stock quantity. This is a write action and requires confirmation.',
+			'update_product_stock_status' => 'Use for changing one specific product manual stock status to one of the store configured stock statuses. This is a write action and requires confirmation.',
+			'coupon_lookup' => 'Use for looking up one specific coupon by coupon code or coupon ID. This is read-only.',
+			'coupon_create' => 'Use for creating one new WooCommerce coupon with a code, discount type, and discount amount. This is a write action and requires confirmation.',
 			'customer_service_review' => 'Use for reply load, follow-up load, or customer-service queue requests.',
 			'customer_email' => 'Use for composing, previewing, saving, or sending customer email work. Treat a natural-language goal as instruction when it is already present.',
 			'update_order_status' => 'Use for status changes on one or more orders. Clarify only when status or target order is still unresolved.',
@@ -1547,6 +552,43 @@ class YoRo_Action_Catalog_Builder {
 		}
 
 		return '';
+	}
+
+	private static function reporting_contract_for_action( $name ) {
+		$name = sanitize_text_field( $name );
+
+		$contracts = [
+			'store.get_daily_briefing'   => [
+				'user_surface'   => 'store_report',
+				'report_type'    => 'store_overview',
+				'topic'          => 'overview',
+				'role'           => 'Best for quick check-ins and broad store-health snapshots.',
+				'metric_domains' => [ 'orders', 'revenue', 'customers', 'operations', 'inventory' ],
+			],
+			'store.get_business_summary' => [
+				'user_surface'   => 'store_report',
+				'report_type'    => 'business',
+				'topic'          => 'sales',
+				'role'           => 'Best for revenue, sales, customer activity, product demand, and commercial performance.',
+				'metric_domains' => [ 'revenue', 'orders', 'customers', 'products' ],
+			],
+			'operations.get_summary'     => [
+				'user_surface'   => 'store_report',
+				'report_type'    => 'operations',
+				'topic'          => 'operations',
+				'role'           => 'Best for order flow, backlog, aged queues, workload, and execution pressure.',
+				'metric_domains' => [ 'orders', 'backlog', 'attention', 'fulfillment' ],
+			],
+			'store.get_insights'         => [
+				'user_surface'   => 'store_report',
+				'report_type'    => 'store_insights',
+				'topic'          => 'signals',
+				'role'           => 'Best for patterns, signals, trends, and grouped reads across orders, customers, and products.',
+				'metric_domains' => [ 'orders', 'customers', 'products', 'inventory' ],
+			],
+		];
+
+		return $contracts[ $name ] ?? [];
 	}
 
 	private static function examples_for_action( $name, $action ) {
@@ -1588,10 +630,6 @@ class YoRo_Action_Catalog_Builder {
 				'Mark order #123 as completed',
 				'Chuyển đơn #123 sang hoàn tất',
 			],
-			'orders.hold' => [
-				'Put order #123 on hold',
-				'Giữ đơn #123',
-			],
 			'orders.add_note' => [
 				'Add note to order #123: customer asked for a callback',
 				'Thêm ghi chú vào đơn #123: khách muốn gọi lại',
@@ -1605,26 +643,58 @@ class YoRo_Action_Catalog_Builder {
 				'Gửi email này cho khách',
 			],
 			'store.get_daily_briefing' => [
-				'Show today\'s briefing',
-				'Cho tôi xem briefing hôm nay',
+				'Show today\'s store report',
+				'Give me a store report for the last 3 days',
+				'Cho tôi xem báo cáo cửa hàng hôm nay',
+				'Báo cáo cửa hàng 3 ngày qua',
 			],
 			'store.get_business_summary' => [
-				'Show business summary this week',
-				'Tóm tắt tình hình kinh doanh tuần này',
+				'Show sales report this week',
+				'Show the sales part of the store report for the last 4 days',
+				'Cho tôi xem báo cáo doanh thu tuần này',
+				'Cho tôi xem phần doanh thu tuần này',
+			],
+			'operations.get_summary' => [
+				'Show operations report for this week',
+				'Show the operations part of the store report for the last 5 days',
+				'Cho tôi xem báo cáo vận hành hôm nay',
+			],
+			'store.get_insights' => [
+				'Show store signals for this week',
+				'What patterns do you see in the store report?',
+				'Cho tôi xem tín hiệu cửa hàng tuần này',
 			],
 			'operations.get_attention_queue' => [
+				'Show operations attention queue',
 				'What needs attention right now?',
 				'Có việc gì cần xử lý gấp không?',
 			],
 			'operations.get_fulfillment_queue' => [
+				'Show fulfillment queue',
 				'What orders are waiting to ship?',
 				'Đơn nào đang chờ giao hàng?',
 			],
 			'products.get_inventory_queue' => [
+				'Show inventory queue',
 				'Show low stock products',
 				'Sản phẩm nào sắp hết hàng?',
 			],
+			'products.update_stock' => [
+				'Set product #123 stock to 8',
+				'Set SKU HOODIE-BLUE stock to 12',
+				'Set GTIN 00012345678905 stock to 0',
+				'Update stock for product 123 to 0',
+				'Cập nhật tồn kho sản phẩm #123 thành 8',
+			],
+			'products.update_stock_status' => [
+				'Set product #123 stock status to out of stock',
+				'Set SKU HOODIE-BLUE stock status to out of stock',
+				'Set GTIN 00012345678905 stock status to on backorder',
+				'Mark product 123 as on backorder',
+				'Cập nhật trạng thái tồn kho sản phẩm #123 thành hết hàng',
+			],
 			'customers.get_service_queue' => [
+				'Open customer service queue',
 				'Who needs customer follow-up?',
 				'Khách nào cần chăm sóc tiếp?',
 			],

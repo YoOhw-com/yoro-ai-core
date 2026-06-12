@@ -5,23 +5,18 @@
 		helpers = helpers || {};
 
 		return {
-			escapeHtml: helpers.escapeHtml,
-			formatDateTime: helpers.formatDateTime,
-			shouldShowDebugJson: helpers.shouldShowDebugJson,
-			getResultSuggestions: helpers.getResultSuggestions,
-			renderWorkflowPreview: helpers.renderWorkflowPreview,
+				escapeHtml: helpers.escapeHtml,
+				formatDateTime: helpers.formatDateTime,
+				shouldShowDebugJson: helpers.shouldShowDebugJson,
+				renderWorkflowPreview: helpers.renderWorkflowPreview,
 			renderMultiActionResult: helpers.renderMultiActionResult,
 			renderOrderDetailsResult: helpers.renderOrderDetailsResult,
 			renderOrdersResult: helpers.renderOrdersResult,
 			renderCustomerSummaryResult: helpers.renderCustomerSummaryResult,
-			renderOperationsSummaryResult: helpers.renderOperationsSummaryResult,
-			renderBusinessSummaryResult: helpers.renderBusinessSummaryResult,
-			renderMorningBriefingResult: helpers.renderMorningBriefingResult,
-			renderDailyBriefingResult: helpers.renderDailyBriefingResult,
+			renderReportResult: helpers.renderReportResult,
 			renderOperationsAttentionQueueResult: helpers.renderOperationsAttentionQueueResult,
 			renderFulfillmentQueueResult: helpers.renderFulfillmentQueueResult,
 			renderInventoryQueueResult: helpers.renderInventoryQueueResult,
-			renderStoreInsightsResult: helpers.renderStoreInsightsResult,
 			renderCustomerServiceQueueResult: helpers.renderCustomerServiceQueueResult,
 			renderRefundPreviewResult: helpers.renderRefundPreviewResult,
 			renderCustomerEmailPreviewResult: helpers.renderCustomerEmailPreviewResult,
@@ -37,16 +32,16 @@
 			renderResult: function(data) {
 				return renderResult(data, h);
 			},
+			renderAssistantText: function(text) {
+				return renderAssistantText(text, h);
+			},
 			renderJson: function(data) {
 				return renderJson(data, h);
 			},
-			renderDebugJson: function(data) {
-				return renderDebugJson(data, h);
-			},
-			renderSuggestions: function(suggestions) {
-				return renderSuggestions(suggestions, h);
-			}
-		};
+				renderDebugJson: function(data) {
+					return renderDebugJson(data, h);
+				}
+			};
 	}
 
 	function formatAgeHours(value) {
@@ -84,17 +79,262 @@
 		return days + 'd';
 	}
 
+	function humanActionLabel(action) {
+		const labels = {
+			'orders.search': 'Find orders',
+			'orders.get_details': 'Open order details',
+			'orders.refund_preview': 'Preview refund',
+			'orders.email_customer_preview': 'Preview customer email',
+			'orders.email_customer_template': 'Send customer email',
+			'orders.update_status': 'Update order status',
+			'orders.add_note': 'Add internal note',
+			'orders.compose_customer_email': 'Draft customer email',
+			'orders.render_customer_email_preview': 'Preview customer email',
+			'orders.send_customer_email': 'Send customer email',
+			'orders.save_customer_email_draft': 'Save email draft',
+			'orders.get_customer_email_drafts': 'Load email drafts',
+			'orders.update_customer_email_draft': 'Update email draft',
+			'orders.delete_customer_email_draft': 'Delete email draft',
+			'orders.remove_note': 'Remove note',
+			'orders.restore_statuses': 'Restore order status',
+			'email_templates.save': 'Save email template',
+			'email_templates.delete': 'Delete email template',
+			'coupons.lookup': 'Look up coupon',
+			'coupons.create': 'Create coupon',
+			'store_preferences.save': 'Save store preference',
+		};
+
+		if (labels[action]) {
+			return labels[action];
+		}
+
+		return String(action || 'Action')
+			.replace(/^orders\./, '')
+			.replace(/^pending_action\./, '')
+			.replace(/^workflow\./, '')
+			.replace(/_/g, ' ')
+			.replace(/\b\w/g, function(chr) {
+				return chr.toUpperCase();
+			});
+	}
+
+	function orderIdsFromParams(params) {
+		params = params || {};
+		const ids = Array.isArray(params.order_ids)
+			? params.order_ids.slice()
+			: [];
+
+		if (Array.isArray(params.processed)) {
+			params.processed.forEach(function(id) {
+				if (ids.indexOf(id) === -1) {
+					ids.push(id);
+				}
+			});
+		}
+
+		if (params.order_id && ids.indexOf(params.order_id) === -1) {
+			ids.push(params.order_id);
+		}
+
+		return ids.filter(Boolean);
+	}
+
+	function orderScopeText(ids) {
+		ids = Array.isArray(ids) ? ids.filter(Boolean) : [];
+
+		if (!ids.length) {
+			return 'the selected order';
+		}
+
+		if (ids.length === 1) {
+			return 'order #' + ids[0];
+		}
+
+		return ids.length + ' selected orders';
+	}
+
+	function firstObjectWithKeys() {
+		for (let i = 0; i < arguments.length; i++) {
+			const value = arguments[i];
+
+			if (value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length) {
+				return value;
+			}
+		}
+
+		return {};
+	}
+
+	function orderStatusLabel(value) {
+		const raw = String(value || '').trim();
+		const key = raw
+			.toLowerCase()
+			.replace(/^wc-/, '')
+			.replace(/_/g, '-')
+			.replace(/\s+/g, '-');
+		const labels = {
+			pending: 'Pending payment',
+			processing: 'Processing',
+			completed: 'Completed',
+			'on-hold': 'On hold',
+			cancelled: 'Cancelled',
+			canceled: 'Cancelled',
+			refunded: 'Refunded',
+			failed: 'Failed'
+		};
+
+		if (labels[key]) {
+			return labels[key];
+		}
+
+		return raw.replace(/^wc-/, '').replace(/[_-]/g, ' ').replace(/\b\w/g, function(char) {
+			return char.toUpperCase();
+		});
+	}
+
+	function previewIntro(action, params, preview) {
+		params = params || {};
+		preview = preview || {};
+		const ids = orderIdsFromParams(params);
+		const scope = orderScopeText(ids);
+		const status = params.status_label || params.status || '';
+
+		if (isProductStockAction(action)) {
+			return productApprovalIntro(action, params, preview);
+		}
+
+		if (action === 'orders.add_note') {
+			return 'I’m ready to add the note to ' + scope + '. Nothing has changed yet.';
+		}
+
+		if (action === 'orders.update_status') {
+			return 'I’m ready to update ' + scope + ' to ' + (status ? orderStatusLabel(status) : 'the new status') + '. Nothing has changed yet.';
+		}
+
+		return preview.description || preview.summary || 'I prepared this for review. Nothing has changed yet.';
+	}
+
+	function confirmationMessage(data, result) {
+		data = data || {};
+		result = result || {};
+
+		const message = String(data.message || result.message || '').trim();
+		const lower = message.toLowerCase();
+
+		if (!message || lower.indexOf('requires confirmation') !== -1) {
+			return 'Please approve this change when you are ready. Nothing has changed yet.';
+		}
+
+		if (lower.indexOf('confirmation has expired') !== -1 || lower.indexOf('preview has expired') !== -1) {
+			return 'This approval request expired. Please review the action again before approving.';
+		}
+
+		return message;
+	}
+
+	function isReportDisplayType(displayType) {
+		return [
+			'operations_summary',
+			'business_summary',
+			'morning_briefing',
+			'daily_briefing',
+			'store_insights'
+		].indexOf(String(displayType || '')) !== -1;
+	}
+
+	function formatRiskLabel(value) {
+		value = formatAssistantValueLabel(value).trim();
+
+		if (!value) {
+			return 'Normal';
+		}
+
+		return value.charAt(0).toUpperCase() + value.slice(1);
+	}
+
+	function collectReviewReasons(data, context) {
+		data = data || {};
+		context = context || {};
+
+		const rawReasons = []
+			.concat(data.risk && Array.isArray(data.risk.reasons) ? data.risk.reasons : [])
+			.concat(data.policy && Array.isArray(data.policy.reasons) ? data.policy.reasons : [])
+			.concat(data.risk && Array.isArray(data.risk.semantic_warnings) ? data.risk.semantic_warnings : []);
+
+		const parsedWarnings = data.plan &&
+			data.plan.validation &&
+			data.plan.validation.semantic &&
+			Array.isArray(data.plan.validation.semantic.warnings)
+			? data.plan.validation.semantic.warnings
+			: [];
+
+		parsedWarnings.forEach(function(warning) {
+			if (warning && warning.message) {
+				rawReasons.push(warning.message);
+			}
+		});
+
+		const friendly = [];
+		const add = function(reason) {
+			reason = String(reason || '').trim();
+
+			if (reason && friendly.indexOf(reason) === -1) {
+				friendly.push(reason);
+			}
+		};
+
+		if (context.writeAction || context.requiresConfirmation) {
+			add('This will update your store, so I need your approval first.');
+		}
+
+		rawReasons.forEach(function(reason) {
+			const text = String(reason || '').trim();
+			const lower = text.toLowerCase();
+
+			if (!text) {
+				return;
+			}
+
+			if (lower.indexOf('tracking signal') !== -1 || lower.indexOf('tracking') !== -1 && lower.indexOf('overstate') !== -1) {
+				add('There is no tracking signal yet, so I’ll avoid wording that implies the shipment has already been dispatched.');
+				return;
+			}
+
+			if (lower.indexOf('multiple write') !== -1) {
+				add('This includes more than one store change.');
+				return;
+			}
+
+			if (lower.indexOf('bulk') !== -1 || lower.indexOf('multiple order') !== -1) {
+				add('This touches more than one order.');
+				return;
+			}
+
+			if (lower.indexOf('requires confirmation') !== -1 || lower.indexOf('policy requires') !== -1 || lower.indexOf('changes store data') !== -1) {
+				return;
+			}
+
+			add(text.replace(/Action\s+"[^"]+"\s+/i, 'This action '));
+		});
+
+		return friendly.slice(0, 4);
+	}
+
 		function renderResult(data, h) {
 		function finish(html) {
 			const markup = typeof html === 'string' ? html : '';
 			const trimmed = markup.trim();
+			const hasAssistantMarkup = trimmed.indexOf('yoro-assistant-message-result') !== -1;
+			const assistant = data && data.stage !== 'clarify' && !hasAssistantMarkup && !isConfirmationResult(data)
+				? renderAssistantResponse(data, h)
+				: '';
 
 			if (!trimmed) {
 				return markup;
 			}
 
 			if (trimmed.indexOf('class="yoro-result-debug"') !== -1) {
-				return markup;
+				return assistant + markup;
 			}
 
 			if (trimmed.indexOf('<pre class="yoro-json-output"') === 0) {
@@ -102,10 +342,10 @@
 					return '<details class="yoro-result-debug"><summary>Raw JSON</summary>' + markup + '</details>';
 				}
 
-				return markup;
+				return renderUnknownResult(data, h);
 			}
 
-			return markup + renderDebugJson(data, h);
+			return assistant + markup + renderDebugJson(data, h);
 		}
 
 		if (!data) {
@@ -116,11 +356,11 @@
 			return finish(renderConfirmation(data, h));
 		}
 
-		if (!data.success) {
-			if (data.stage === 'clarify') {
-				return finish(renderClarification(data, h));
-			}
+		if (data.stage === 'clarify') {
+			return finish(renderClarification(data, h));
+		}
 
+		if (!data.success) {
 			return finish(renderError(data, h));
 		}
 
@@ -129,7 +369,12 @@
 		}
 
 		const result = data.result || {};
-		const displayType = result.display_type || '';
+		const displayType = result.display_type || data.display_type || '';
+		const resultType = result.result_type || data.result_type || '';
+
+		if (result.report && typeof h.renderReportResult === 'function') {
+			return finish(h.renderReportResult(data));
+		}
 
 		if (displayType === 'orders_list') {
 			return finish(typeof h.renderOrdersResult === 'function'
@@ -149,27 +394,9 @@
 				: renderJson(data, h));
 		}
 
-		if (displayType === 'operations_summary') {
-			return finish(typeof h.renderOperationsSummaryResult === 'function'
-				? h.renderOperationsSummaryResult(data)
-				: renderJson(data, h));
-		}
-
-		if (displayType === 'business_summary') {
-			return finish(typeof h.renderBusinessSummaryResult === 'function'
-				? h.renderBusinessSummaryResult(data)
-				: renderJson(data, h));
-		}
-
-		if (displayType === 'morning_briefing') {
-			return finish(typeof h.renderMorningBriefingResult === 'function'
-				? h.renderMorningBriefingResult(data)
-				: renderJson(data, h));
-		}
-
-		if (displayType === 'daily_briefing') {
-			return finish(typeof h.renderDailyBriefingResult === 'function'
-				? h.renderDailyBriefingResult(data)
+		if (isReportDisplayType(displayType)) {
+			return finish(typeof h.renderReportResult === 'function'
+				? h.renderReportResult(data)
 				: renderJson(data, h));
 		}
 
@@ -191,12 +418,6 @@
 				: renderJson(data, h));
 		}
 
-		if (displayType === 'store_insights') {
-			return finish(typeof h.renderStoreInsightsResult === 'function'
-				? h.renderStoreInsightsResult(data)
-				: renderJson(data, h));
-		}
-
 		if (displayType === 'customer_service_queue') {
 			return finish(typeof h.renderCustomerServiceQueueResult === 'function'
 				? h.renderCustomerServiceQueueResult(data)
@@ -207,26 +428,6 @@
 			return finish(typeof h.renderCustomerEmailPreviewResult === 'function'
 				? h.renderCustomerEmailPreviewResult(data)
 				: renderJson(data, h));
-		}
-
-		if (displayType === 'fulfillment_followup_workflow_preview') {
-			return finish(renderFulfillmentFollowupWorkflowPreview(data, h));
-		}
-
-		if (displayType === 'customer_followup_workflow_preview') {
-			return finish(renderCustomerFollowupWorkflowPreview(data, h));
-		}
-
-		if (displayType === 'operations_attention_workflow_preview') {
-			return finish(renderOperationsAttentionWorkflowPreview(data, h));
-		}
-
-		if (displayType === 'inventory_pressure_workflow_preview') {
-			return finish(renderInventoryPressureWorkflowPreview(data, h));
-		}
-
-		if (displayType === 'business_summary_workflow_preview') {
-			return finish(renderBusinessSummaryWorkflowPreview(data, h));
 		}
 
 		if (displayType === 'refund_preview') {
@@ -247,6 +448,10 @@
 				: renderJson(data, h));
 		}
 
+		if (displayType === 'coupon' || resultType === 'coupon') {
+			return finish(renderCouponResult(data, h));
+		}
+
 		if (displayType === 'assistant_message') {
 			return finish(renderAssistantMessageResult(data, h));
 		}
@@ -255,6 +460,10 @@
 			return finish(typeof h.renderMultiActionResult === 'function'
 				? h.renderMultiActionResult(data)
 				: renderJson(data, h));
+		}
+
+		if (displayType === 'undo') {
+			return finish(renderUndoResult(data, h));
 		}
 
 		if (displayType === 'confirmation') {
@@ -281,15 +490,391 @@
 			return finish(renderUndoResult(data, h));
 		}
 
-		if (data.stage === 'done' && data.parsed && data.parsed.action) {
-			let html = renderSingleActionResult(data, h);
+			if (data.stage === 'done' && data.parsed && data.parsed.action) {
+				let html = renderSingleActionResult(data, h);
 
-			html += renderSuggestions(h.getResultSuggestions(data), h);
+				return finish(html);
+			}
 
-			return finish(html);
+		return finish(renderUnknownResult(data, h));
+	}
+
+	function renderUnknownResult(data, h) {
+		const result = data && data.result ? data.result : {};
+		const message =
+			(result.summary || result.message || (data && data.message)) ||
+			'I completed that request.';
+
+		let html = '<div class="yoro-single-action-result">';
+			html += '<div class="yoro-assistant-message-result">';
+			html += '<p>' + h.escapeHtml(message) + '</p>';
+			html += '</div>';
+			html += renderDebugJson(data, h);
+		html += '</div>';
+
+		return html;
+	}
+
+	function getAssistantResponse(data) {
+		data = data && typeof data === 'object' ? data : {};
+		const parsed = data.parsed && typeof data.parsed === 'object' ? data.parsed : {};
+		const result = data.result && typeof data.result === 'object' ? data.result : {};
+		const assistant = data.assistant || parsed.assistant || result.assistant || {};
+
+		return assistant && typeof assistant === 'object' ? assistant : {};
+	}
+
+	function renderInlineAssistantText(text, h) {
+		let html = h.escapeHtml(decodeAssistantDisplayEntities(formatAssistantDisplayText(String(text || ''))));
+
+		html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+		html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+		return html;
+	}
+
+	function decodeAssistantDisplayEntities(text) {
+		return String(text || '')
+			.replace(/&lt;/g, '<')
+			.replace(/&gt;/g, '>')
+			.replace(/&quot;/g, '"')
+			.replace(/&#039;/g, "'")
+			.replace(/&amp;/g, '&');
+	}
+
+	function formatAssistantDisplayText(text) {
+		const labels = typeof window !== 'undefined' ? window.YoRoAIDisplayLabels : null;
+
+		if (labels && typeof labels.formatText === 'function') {
+			return labels.formatText(text);
 		}
 
-		return renderJson(data, h);
+		return String(text || '');
+	}
+
+	function formatAssistantValueLabel(text) {
+		const labels = typeof window !== 'undefined' ? window.YoRoAIDisplayLabels : null;
+
+		if (labels && typeof labels.labelFor === 'function') {
+			return labels.labelFor(text);
+		}
+
+		return String(text || '');
+	}
+
+	function formatAssistantFactPart(text) {
+		const labels = typeof window !== 'undefined' ? window.YoRoAIDisplayLabels : null;
+
+		if (labels && typeof labels.formatFactPart === 'function') {
+			return labels.formatFactPart(text);
+		}
+
+		return formatAssistantDisplayText(text);
+	}
+
+	function formatAssistantFactLabel(text) {
+		const labels = typeof window !== 'undefined' ? window.YoRoAIDisplayLabels : null;
+
+		if (labels && typeof labels.keyLabel === 'function') {
+			return labels.keyLabel(text);
+		}
+
+		return humanizeAssistantFactLabel(text);
+	}
+
+	function renderAssistantRichText(text, h) {
+		const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+		let html = '';
+		let paragraph = [];
+		let listItems = [];
+		let listType = '';
+		let factRows = [];
+
+		function flushParagraph() {
+			if (!paragraph.length) {
+				return;
+			}
+
+			html += '<p>' + paragraph.map(function(line) {
+				return renderInlineAssistantText(line, h);
+			}).join('<br>') + '</p>';
+			paragraph = [];
+		}
+
+		function flushFacts() {
+			if (!factRows.length) {
+				return;
+			}
+
+			html += '<div class="yoro-assistant-fact-grid">';
+			factRows.forEach(function(row) {
+				html += '<div class="yoro-assistant-fact-card">';
+				html += '<span class="yoro-assistant-fact-label">' + h.escapeHtml(row.label) + '</span>';
+				html += '<span class="yoro-assistant-fact-value">' + renderAssistantFactValue(row.value, h) + '</span>';
+				html += '</div>';
+			});
+			html += '</div>';
+			factRows = [];
+		}
+
+		function flushList() {
+			if (!listItems.length) {
+				return;
+			}
+
+			const tag = listType === 'ol' ? 'ol' : 'ul';
+			html += '<' + tag + ' class="yoro-assistant-rich-list yoro-assistant-rich-list-' + tag + '">';
+			listItems.forEach(function(item) {
+				const isObject = item && typeof item === 'object';
+				const itemText = isObject ? String(item.text || '') : String(item || '');
+				const checkbox = isObject ? String(item.checkbox || '') : '';
+				const classes = checkbox ? ' class="yoro-assistant-rich-checkbox yoro-assistant-rich-checkbox-' + h.escapeHtml(checkbox) + '"' : '';
+				const checkboxMarkup = checkbox
+					? '<span class="yoro-assistant-rich-checkbox-box" aria-hidden="true"></span>'
+					: '';
+
+				html += '<li' + classes + '>' + checkboxMarkup + '<span>' + renderInlineAssistantText(itemText, h) + '</span></li>';
+			});
+			html += '</' + tag + '>';
+			listItems = [];
+			listType = '';
+		}
+
+		lines.forEach(function(rawLine) {
+			const line = String(rawLine || '').trim();
+			const lineLooksLikeListItem = /^[-*]\s+/.test(line) || /^\d+[\.)]\s+/.test(line);
+			const fact = lineLooksLikeListItem ? null : parseAssistantFactLine(line);
+			let match;
+
+			if (!line) {
+				flushParagraph();
+				flushList();
+				flushFacts();
+				return;
+			}
+
+			match = line.match(/^#{1,3}\s+(.+)$/);
+			if (!match) {
+				match = line.match(/^\*\*([^*]+)\*\*:?\s*$/);
+			}
+			if (!match && !/^here\b/i.test(line)) {
+				match = line.match(/^(.{2,80}):$/);
+			}
+
+			if (match) {
+				flushParagraph();
+				flushList();
+				flushFacts();
+				html += '<p class="yoro-assistant-rich-heading">' + renderInlineAssistantText(match[1], h) + '</p>';
+				return;
+			}
+
+			if (fact) {
+				flushParagraph();
+				flushList();
+				factRows.push(fact);
+				return;
+			}
+
+			match = line.match(/^(\d+)\)\s+(.+)$/);
+			if (match) {
+				flushParagraph();
+				flushList();
+				flushFacts();
+				html += '<p class="yoro-assistant-rich-heading yoro-assistant-numbered-heading">';
+				html += '<span class="yoro-assistant-heading-number">' + h.escapeHtml(match[1]) + '</span>';
+				html += '<span>' + renderInlineAssistantText(match[2], h) + '</span>';
+				html += '</p>';
+				return;
+			}
+
+			match = line.match(/^[-*]\s+(.+)$/);
+			if (match) {
+				const checkboxItem = parseAssistantCheckboxItem(match[1]);
+				const listFact = checkboxItem ? null : parseAssistantFactLine(match[1]);
+
+				flushParagraph();
+				if (listType && listType !== 'ul') {
+					flushList();
+				}
+
+				if (checkboxItem) {
+					flushFacts();
+					listType = 'ul';
+					listItems.push(checkboxItem);
+					return;
+				}
+
+				if (listFact) {
+					flushList();
+					factRows.push(listFact);
+					return;
+				}
+
+				flushFacts();
+				listType = 'ul';
+				listItems.push(match[1]);
+				return;
+			}
+
+			match = line.match(/^\d+[\.)]\s+(.+)$/);
+			if (match) {
+				flushParagraph();
+				if (listType && listType !== 'ol') {
+					flushList();
+				}
+				flushFacts();
+				listType = 'ol';
+				listItems.push(match[1]);
+				return;
+			}
+
+			flushList();
+			flushFacts();
+			paragraph.push(line);
+		});
+
+		flushParagraph();
+		flushList();
+		flushFacts();
+
+		return html || '<p>' + h.escapeHtml(String(text || '')) + '</p>';
+	}
+
+	function parseAssistantCheckboxItem(text) {
+		const match = String(text || '').match(/^\[([ xX])\]\s+(.+)$/);
+
+		if (!match) {
+			return null;
+		}
+
+		return {
+			checkbox: String(match[1] || '').toLowerCase() === 'x' ? 'checked' : 'empty',
+			text: String(match[2] || '').trim()
+		};
+	}
+
+	function parseAssistantFactLine(line) {
+		const match = String(line || '').match(/^(.{2,86}?):\s+(.+)$/);
+
+		if (!match) {
+			return null;
+		}
+
+		const rawLabel = String(match[1] || '').trim();
+		const value = String(match[2] || '').trim();
+
+		if (!rawLabel || !value || rawLabel.indexOf('http') === 0) {
+			return null;
+		}
+
+		if (/^[\s.,!?;:-]+$/.test(rawLabel) || rawLabel.split(/\s+/).length > 14) {
+			return null;
+		}
+
+		return {
+			label: formatAssistantFactLabel(rawLabel),
+			value: value
+		};
+	}
+
+	function humanizeAssistantFactLabel(label) {
+		let text = String(label || '')
+			.replace(/[_-]+/g, ' ')
+			.replace(/([a-z])([A-Z])/g, '$1 $2')
+			.replace(/\s+/g, ' ')
+			.trim();
+
+		if (!text) {
+			return '';
+		}
+
+		text = text.replace(/\b\w/g, function(chr) {
+			return chr.toUpperCase();
+		});
+
+		return text;
+	}
+
+	function isBlockedResult(data) {
+		const result = data && data.result ? data.result : {};
+
+		return result.blocked === true || !!result.block_reason;
+	}
+
+	function isConfirmationResult(data) {
+		const result = data && data.result ? data.result : {};
+		const displayType = result.display_type || (data ? data.display_type : '') || '';
+
+		return (data && data.stage === 'confirm') || displayType === 'confirmation' || isBlockedResult(data);
+	}
+
+	function renderAssistantFactValue(value, h) {
+		const text = String(value || '').trim();
+		const parts = splitAssistantFactValue(text);
+
+		if (parts.length >= 2 && parts.length <= 8) {
+			return '<span class="yoro-assistant-fact-chip-list">' + parts.map(function(part) {
+				return '<span class="yoro-assistant-fact-chip">' + renderInlineAssistantText(formatAssistantFactPart(part), h) + '</span>';
+			}).join('') + '</span>';
+		}
+
+		return renderInlineAssistantText(formatAssistantFactPart(text), h);
+	}
+
+	function splitAssistantFactValue(value) {
+		const text = String(value || '').trim();
+
+		if (!text || text.length > 180 || text.indexOf('://') !== -1 || /[.;]$/.test(text)) {
+			return [];
+		}
+
+		if (text.indexOf(',') === -1) {
+			return [];
+		}
+
+		const parts = text.split(',')
+			.map(function(part) {
+				return part.trim();
+			})
+			.filter(function(part) {
+				return part.length > 0 && part.length <= 42;
+			});
+
+		return parts.length >= 2 && parts.length === text.split(',').length ? parts : [];
+	}
+
+	function renderAssistantText(text, h) {
+		const message = String(text || '').trim();
+
+		if (!message) {
+			return '';
+		}
+
+		return '<div class="yoro-assistant-message-result yoro-assistant-natural-response">'
+			+ renderAssistantRichText(message, h)
+			+ '</div>';
+	}
+
+	function renderAssistantResponse(data, h) {
+		const assistant = getAssistantResponse(data);
+		const message = String(assistant.message || '').trim();
+		const question = String(assistant.question || '').trim();
+		const text = message || question;
+
+		if (!text) {
+			return '';
+		}
+
+		let html = renderAssistantText(text, h).replace(/<\/div>\s*$/, '');
+
+		if (question && question !== message && message.indexOf(question) === -1) {
+			html += '<div class="yoro-result-subtle">' + renderAssistantRichText(question, h) + '</div>';
+		}
+
+		html += '</div>';
+
+		return html;
 	}
 
 	function renderError(data, h) {
@@ -298,21 +883,17 @@
 		const message =
 			(data.parsed && data.parsed.message) ||
 			data.message ||
-			error.message ||
-			(error.data && error.data.message) ||
-			error.code ||
-			(typeof error === 'string' ? error : '') ||
-			'Request failed.';
+				error.message ||
+				(error.data && error.data.message) ||
+				error.code ||
+				(typeof error === 'string' ? error : '') ||
+				'I could not finish that request.';
 
 		let html = '<div class="yoro-result-notice yoro-result-error">';
-		html += '<strong>I could not complete this request</strong>';
+		html += '<strong>I couldn’t complete that</strong>';
 		html += '<p>' + h.escapeHtml(message) + '</p>';
 
-		if (data.parsed && data.parsed.suggestion) {
-			html += '<p><strong>Suggestion:</strong> ' + h.escapeHtml(data.parsed.suggestion) + '</p>';
-		}
-
-		if (data.parsed && shouldRenderClarifyOptions(data.parsed) && Array.isArray(data.parsed.options) && data.parsed.options.length) {
+			if (data.parsed && shouldRenderClarifyOptions(data.parsed) && Array.isArray(data.parsed.options) && data.parsed.options.length) {
 			html += '<div class="yoro-clarify-options">';
 
 			data.parsed.options.forEach(function (option) {
@@ -324,9 +905,9 @@
 			html += '</div>';
 		}
 
-		if (data.parsed && data.parsed.supported_examples) {
-			html += '<div class="yoro-result-suggestions">';
-			html += '<strong>Try:</strong>';
+			if (data.parsed && data.parsed.supported_examples) {
+				html += '<div class="yoro-result-examples">';
+				html += '<strong>Try:</strong>';
 			html += '<ul>';
 
 			data.parsed.supported_examples.forEach(function (example) {
@@ -343,710 +924,6 @@
 		return html;
 	}
 
-	function toWorkflowStatusLabel(status) {
-		status = String(status || '').replace(/_/g, ' ').trim();
-
-		if (!status) {
-			return 'Unknown';
-		}
-
-		return status.charAt(0).toUpperCase() + status.slice(1);
-	}
-
-	function getWorkflowBranchMeta(workflow) {
-		workflow = workflow && typeof workflow === 'object' ? workflow : {};
-
-		const definitionId = workflow.definition_id || workflow.type || '';
-		const branch = workflow.branch && typeof workflow.branch === 'object' ? workflow.branch : {};
-		const deliveryMode = branch.delivery_mode || '';
-		const emailDeliveryMode = branch.email_delivery_mode || '';
-
-		if (definitionId === 'write_email_for_order' || definitionId === 'write_email_for_orders' || definitionId === 'write_and_save_email_drafts_for_orders' || definitionId === 'write_and_send_emails_for_orders') {
-			const plural = definitionId === 'write_email_for_orders' || definitionId === 'write_and_save_email_drafts_for_orders' || definitionId === 'write_and_send_emails_for_orders';
-			if (deliveryMode === 'save_draft') {
-				return { label: 'Save as draft', outcome: plural ? 'Drafts will be saved on each order' : 'Draft will be saved on the order' };
-			}
-			if (deliveryMode === 'send') {
-				return { label: 'Send email', outcome: plural ? 'Each email will be sent to its customer' : 'Email will be sent to the customer' };
-			}
-			return { label: 'Preview email', outcome: plural ? 'Email drafts will stay in review state' : 'Email draft will stay in review state' };
-		}
-
-		if (definitionId === 'verify_customer_before_fulfillment') {
-			if (emailDeliveryMode === 'save_draft') {
-				return { label: 'Save verification draft', outcome: 'Verification email draft will be saved after the hold and note' };
-			}
-			if (emailDeliveryMode === 'send') {
-				return { label: 'Send verification email', outcome: 'Verification email will be sent after the hold and note' };
-			}
-			return { label: 'Preview verification email', outcome: 'Verification email will stay in review state after the hold and note' };
-		}
-
-		if (definitionId === 'refund_review') {
-			if (deliveryMode === 'save_draft') {
-				return { label: 'Save refund follow-up draft', outcome: 'Refund follow-up draft will be saved after review' };
-			}
-			if (deliveryMode === 'send') {
-				return { label: 'Send refund follow-up email', outcome: 'Refund follow-up email will be sent after review' };
-			}
-			return { label: 'Review only', outcome: 'No follow-up email will be sent yet' };
-		}
-
-		return { label: '', outcome: '' };
-	}
-
-	function getWorkflowFromData(data) {
-		const result = data && data.result ? data.result : {};
-		const plan = data && data.plan ? data.plan : {};
-
-		if (result.workflow && typeof result.workflow === 'object') {
-			return result.workflow;
-		}
-
-		if (plan.workflow && typeof plan.workflow === 'object') {
-			return plan.workflow;
-		}
-
-		return {};
-	}
-
-	function renderWorkflowStatePanel(workflow, h) {
-		workflow = workflow && typeof workflow === 'object' ? workflow : {};
-
-		const steps = Array.isArray(workflow.steps) ? workflow.steps : [];
-		const status = workflow.status || workflow.step || '';
-		const currentStepId = workflow.current_step_id || '';
-		const definitionId = workflow.definition_id || workflow.type || '';
-
-		if (!status && !currentStepId && !definitionId && !steps.length) {
-			return '';
-		}
-
-		let html = '<div class="yoro-workflow-state-panel">';
-		html += '<div class="yoro-workflow-state-panel-header">';
-		html += '<strong>Workflow state</strong>';
-		html += '<span class="yoro-workflow-state-badge">' + h.escapeHtml(toWorkflowStatusLabel(status || 'unknown')) + '</span>';
-		html += '</div>';
-
-		html += '<div class="yoro-workflow-state-meta">';
-
-		if (definitionId) {
-			html += '<span><strong>Workflow:</strong> ' + h.escapeHtml(definitionId) + '</span>';
-		}
-
-		if (currentStepId) {
-			html += '<span><strong>Current step:</strong> ' + h.escapeHtml(currentStepId) + '</span>';
-		}
-
-		if (typeof workflow.current_step_index === 'number' && workflow.current_step_index >= 0) {
-			html += '<span><strong>Step index:</strong> ' + h.escapeHtml(workflow.current_step_index + 1) + '</span>';
-		}
-
-		const branchMeta = getWorkflowBranchMeta(workflow);
-
-		if (branchMeta.label) {
-			html += '<span><strong>Branch:</strong> ' + h.escapeHtml(branchMeta.label) + '</span>';
-		}
-
-		html += '</div>';
-
-		if (branchMeta.outcome) {
-			html += '<p class="yoro-workflow-state-branch-outcome">' + h.escapeHtml(branchMeta.outcome) + '</p>';
-		}
-
-		if (steps.length) {
-			html += '<div class="yoro-workflow-timeline">';
-
-			steps.forEach(function(step, index) {
-				step = step || {};
-				const stepStatus = step.status || 'pending';
-				const isCurrent = currentStepId && step.id === currentStepId;
-
-				html += '<div class="yoro-workflow-timeline-step yoro-workflow-timeline-step-' + h.escapeHtml(stepStatus) + (isCurrent ? ' is-current' : '') + '">';
-				html += '<div class="yoro-workflow-timeline-step-main">';
-				html += '<span class="yoro-workflow-timeline-step-index">' + h.escapeHtml(index + 1) + '</span>';
-				html += '<span class="yoro-workflow-timeline-step-label">' + h.escapeHtml(step.label || step.id || step.action || ('Step ' + (index + 1))) + '</span>';
-				html += '<span class="yoro-workflow-timeline-step-status">' + h.escapeHtml(toWorkflowStatusLabel(stepStatus)) + '</span>';
-				html += '</div>';
-				html += '<div class="yoro-workflow-timeline-step-meta">';
-
-				if (step.id) {
-					html += '<span>ID: ' + h.escapeHtml(step.id) + '</span>';
-				}
-
-				if (step.action) {
-					html += '<span>Action: ' + h.escapeHtml(step.action) + '</span>';
-				}
-
-				html += '</div>';
-				html += '</div>';
-			});
-
-			html += '</div>';
-		}
-
-		html += '</div>';
-		return html;
-	}
-
-	function formatWorkflowTimestamp(value, timestamp, h) {
-		if (typeof h.formatDateTime === 'function') {
-			return h.formatDateTime(timestamp, value);
-		}
-
-		return String(value || '');
-	}
-
-	function isWorkflowStatusActive(status) {
-		return ['collect_missing_params', 'preview_ready', 'ready_to_execute', 'executing'].indexOf(String(status || '')) !== -1;
-	}
-
-	function buildWorkflowHistoryItems(workflowContext) {
-		const context = workflowContext && typeof workflowContext === 'object' ? workflowContext : {};
-		const items = [];
-		const seen = {};
-		const current = context.current_workflow && typeof context.current_workflow === 'object' ? context.current_workflow : {};
-		const history = Array.isArray(context.workflow_history) ? context.workflow_history : [];
-
-		if (current.id) {
-			items.push({
-				id: current.id,
-				source: 'current',
-				label: current.label || current.definition_id || current.type || 'Workflow',
-				definition_id: current.definition_id || current.type || '',
-				status: current.status || current.step || '',
-				current_step_id: current.current_step_id || '',
-				current_step_index: typeof current.current_step_index === 'number' ? current.current_step_index : -1,
-				updated_at: current.updated_at || '',
-				updated_at_ts: current.updated_at_ts || 0
-			});
-			seen[current.id] = true;
-		}
-
-		history.forEach(function(entry) {
-			entry = entry && typeof entry === 'object' ? entry : {};
-
-			if (!entry.id || seen[entry.id]) {
-				return;
-			}
-
-			items.push({
-				id: entry.id,
-				source: 'history',
-				label: entry.label || entry.definition_id || entry.type || 'Workflow',
-				definition_id: entry.definition_id || entry.type || '',
-				status: entry.status || '',
-				current_step_id: entry.current_step_id || '',
-				current_step_index: typeof entry.current_step_index === 'number' ? entry.current_step_index : -1,
-				updated_at: entry.updated_at || '',
-				updated_at_ts: entry.updated_at_ts || 0
-			});
-			seen[entry.id] = true;
-		});
-
-		return items;
-	}
-
-	function renderWorkflowHistoryPanel(workflowContext, h) {
-		const context = workflowContext && typeof workflowContext === 'object' ? workflowContext : {};
-		const current = context.current_workflow && typeof context.current_workflow === 'object' ? context.current_workflow : {};
-		const lastResult = context.last_workflow_result && typeof context.last_workflow_result === 'object'
-			? context.last_workflow_result
-			: {};
-		const items = buildWorkflowHistoryItems(context);
-		const hasCurrent = !!current.id;
-		const hasLastResult = !!lastResult.id;
-		const counts = {
-			all: items.length,
-			active: 0,
-			failed: 0,
-			executed: 0,
-			cancelled: 0
-		};
-
-		items.forEach(function(item) {
-			const status = String(item.status || '');
-
-			if (isWorkflowStatusActive(status)) {
-				counts.active += 1;
-			}
-
-			if (status === 'failed') {
-				counts.failed += 1;
-			}
-
-			if (status === 'executed') {
-				counts.executed += 1;
-			}
-
-			if (status === 'cancelled') {
-				counts.cancelled += 1;
-			}
-		});
-
-		let html = '<div class="yoro-context-card yoro-context-card-full yoro-workflow-history-panel">';
-		html += '<div class="yoro-workflow-history-header">';
-		html += '<div>';
-		html += '<h3>Workflows</h3>';
-		html += '<p class="yoro-result-subtle">Current workflow, recent outcomes, and quick recovery actions.</p>';
-		html += '</div>';
-		html += '<div class="yoro-workflow-history-actions">';
-
-		if (context.can_continue) {
-			html += '<button type="button" class="button button-small yoro-insert-command" data-command="Continue previous workflow">Continue</button>';
-		}
-
-		if (context.can_retry_failed_step) {
-			html += '<button type="button" class="button button-small yoro-insert-command" data-command="Retry failed step">Retry failed step</button>';
-		}
-
-		html += '</div>';
-		html += '</div>';
-
-		html += '<div class="yoro-workflow-history-filters">';
-		html += '<button type="button" class="button button-small yoro-workflow-filter-btn is-active" data-status-filter="all">All (' + h.escapeHtml(counts.all) + ')</button>';
-		html += '<button type="button" class="button button-small yoro-workflow-filter-btn" data-status-filter="active">Active (' + h.escapeHtml(counts.active) + ')</button>';
-		html += '<button type="button" class="button button-small yoro-workflow-filter-btn" data-status-filter="failed">Failed (' + h.escapeHtml(counts.failed) + ')</button>';
-		html += '<button type="button" class="button button-small yoro-workflow-filter-btn" data-status-filter="executed">Executed (' + h.escapeHtml(counts.executed) + ')</button>';
-		html += '<button type="button" class="button button-small yoro-workflow-filter-btn" data-status-filter="cancelled">Cancelled (' + h.escapeHtml(counts.cancelled) + ')</button>';
-		html += '</div>';
-
-		if (items.length) {
-			html += '<div class="yoro-workflow-history-list">';
-
-			items.forEach(function(item) {
-				const status = String(item.status || '');
-				const isCurrent = item.source === 'current';
-				const showRetry = status === 'failed' && context.can_retry_failed_step;
-				const showContinue = isCurrent && context.can_continue;
-
-				html += '<div class="yoro-workflow-history-item' + (isCurrent ? ' is-current' : '') + '" data-workflow-status="' + h.escapeHtml(status) + '">';
-				html += '<div class="yoro-workflow-history-item-main">';
-				html += '<div class="yoro-workflow-history-item-title">';
-				html += '<strong>' + h.escapeHtml(item.label || 'Workflow') + '</strong>';
-				html += '<span class="yoro-workflow-state-badge">' + h.escapeHtml(toWorkflowStatusLabel(status || 'unknown')) + '</span>';
-				html += '</div>';
-				html += '<div class="yoro-workflow-history-item-meta">';
-
-				if (item.definition_id) {
-					html += '<span><strong>ID:</strong> ' + h.escapeHtml(item.definition_id) + '</span>';
-				}
-
-				if (item.current_step_id) {
-					html += '<span><strong>Step:</strong> ' + h.escapeHtml(item.current_step_id) + '</span>';
-				}
-
-				if (typeof item.current_step_index === 'number' && item.current_step_index >= 0) {
-					html += '<span><strong>Index:</strong> ' + h.escapeHtml(item.current_step_index + 1) + '</span>';
-				}
-
-				if (item.updated_at || item.updated_at_ts) {
-					html += '<span><strong>Updated:</strong> ' + h.escapeHtml(formatWorkflowTimestamp(item.updated_at, item.updated_at_ts, h)) + '</span>';
-				}
-
-				html += '</div>';
-				html += '</div>';
-				html += '<div class="yoro-workflow-history-item-actions">';
-
-				if (showContinue) {
-					html += '<button type="button" class="button button-small yoro-insert-command" data-command="Continue previous workflow">Continue</button>';
-				}
-
-				if (showRetry) {
-					html += '<button type="button" class="button button-small yoro-insert-command" data-command="Retry failed step">Retry</button>';
-				}
-
-				html += '</div>';
-				html += '</div>';
-			});
-
-			html += '</div>';
-			html += '<p class="yoro-workflow-history-empty" hidden>No workflows match this filter.</p>';
-		} else {
-			html += '<p class="yoro-result-subtle">No workflow history yet.</p>';
-		}
-
-		if (hasCurrent) {
-			html += '<div class="yoro-workflow-history-detail">';
-			html += '<strong>Current workflow</strong>';
-			html += renderWorkflowStatePanel(current, h);
-			html += '</div>';
-		}
-
-		if (hasLastResult && (!hasCurrent || lastResult.id !== current.id)) {
-			html += '<div class="yoro-workflow-history-detail">';
-			html += '<strong>Last completed workflow</strong>';
-			html += renderWorkflowStatePanel(lastResult, h);
-			html += '</div>';
-		}
-
-		html += '</div>';
-
-		return html;
-	}
-
-	function renderFulfillmentFollowupWorkflowPreview(data, h) {
-		const result = data.result || {};
-		const selectedItem = result.selected_item || {};
-		const queueSource = result.queue_source || {};
-		const proposedAction = result.proposed_action || {};
-		const draftSummary = result.draft_summary || {};
-		const riskReasons = Array.isArray(result.risk_reasons) ? result.risk_reasons : [];
-
-		let html = '<div class="yoro-workflow-preview yoro-workflow-guided-preview">';
-
-		html += '<div class="yoro-result-notice yoro-result-preview">';
-		html += '<strong>Fulfillment follow-up preview</strong>';
-		html += '<p>' + h.escapeHtml(result.message || 'I prepared the next fulfillment follow-up preview below.') + '</p>';
-		html += '</div>';
-
-		html += '<div class="yoro-workflow-preview-body">';
-		html += renderAdminCopilotBoundary(data, h);
-		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
-		html += '<div class="yoro-result-section">';
-		html += '<strong>What I am focusing on</strong>';
-		html += '<div class="yoro-result-meta">';
-		html += '<span><strong>Order:</strong> #' + h.escapeHtml(selectedItem.order_number || selectedItem.order_id || '') + '</span>';
-		html += '<span><strong>Status:</strong> ' + h.escapeHtml(selectedItem.status || '—') + '</span>';
-		html += '<span><strong>Queue:</strong> ' + h.escapeHtml(queueSource.label || queueSource.key || '—') + '</span>';
-		html += '<span><strong>Age:</strong> ' + h.escapeHtml(formatAgeHours(selectedItem.age_hours)) + '</span>';
-		html += '</div>';
-
-		if (result.selection_reason) {
-			html += '<p>' + h.escapeHtml(result.selection_reason) + '</p>';
-		}
-
-		if (selectedItem.reason) {
-			html += '<p><strong>Current queue signal:</strong> ' + h.escapeHtml(selectedItem.reason) + '</p>';
-		}
-
-		html += '</div>';
-
-		html += '<div class="yoro-result-section">';
-		html += '<strong>What I prepared</strong>';
-		html += '<div class="yoro-result-meta">';
-		html += '<span><strong>Template:</strong> ' + h.escapeHtml(draftSummary.template || 'shipping_delay') + '</span>';
-		html += '<span><strong>Next step:</strong> ' + h.escapeHtml(proposedAction.label || proposedAction.action || '') + '</span>';
-		html += '</div>';
-
-		if (draftSummary.subject) {
-			html += '<p><strong>Subject:</strong> ' + h.escapeHtml(draftSummary.subject) + '</p>';
-		}
-
-		if (draftSummary.body_preview) {
-			html += '<p><strong>Body preview:</strong> ' + h.escapeHtml(draftSummary.body_preview) + '</p>';
-		}
-
-		html += '</div>';
-
-		html += '<div class="yoro-result-section">';
-		html += '<strong>Before you continue</strong>';
-		html += '<ul>';
-		html += '<li>No store data has been changed yet.</li>';
-		html += '<li>I will still need confirmation before saving any draft.</li>';
-
-		riskReasons.forEach(function(reason) {
-			html += '<li>' + h.escapeHtml(reason) + '</li>';
-		});
-
-		html += '</ul>';
-		html += '</div>';
-		html += '</div>';
-		html += '</div>';
-
-		return html;
-	}
-
-	function renderCustomerFollowupWorkflowPreview(data, h) {
-		const result = data.result || {};
-		const selectedItem = result.selected_item || {};
-		const queueSource = result.queue_source || {};
-		const proposedAction = result.proposed_action || {};
-		const draftSummary = result.draft_summary || {};
-		const riskReasons = Array.isArray(result.risk_reasons) ? result.risk_reasons : [];
-
-		let html = '<div class="yoro-workflow-preview-card">';
-		html += '<div class="yoro-workflow-preview-header">';
-		html += '<h4>Customer follow-up preview</h4>';
-		html += '<span class="yoro-workflow-preview-badge">preview</span>';
-		html += '</div>';
-		html += '<p class="yoro-workflow-preview-summary">' + h.escapeHtml(result.message || '') + '</p>';
-		html += renderAdminCopilotBoundary(data, h);
-		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
-
-		html += '<div class="yoro-workflow-preview-grid">';
-		html += '<div><strong>Order</strong><div>#' + h.escapeHtml(selectedItem.order_number || selectedItem.order_id || '') + '</div></div>';
-		html += '<div><strong>Queue</strong><div>' + h.escapeHtml(queueSource.label || queueSource.key || '') + '</div></div>';
-		html += '<div><strong>Next step</strong><div>' + h.escapeHtml(proposedAction.label || proposedAction.action || '') + '</div></div>';
-		html += '</div>';
-
-		if (result.selection_reason) {
-			html += '<div class="yoro-workflow-preview-section"><strong>Why this is recommended</strong><p>' + h.escapeHtml(result.selection_reason) + '</p></div>';
-		}
-
-		if (draftSummary.subject || draftSummary.body_preview) {
-			html += '<div class="yoro-workflow-preview-section"><strong>What I prepared</strong>';
-			if (draftSummary.subject) {
-				html += '<p><strong>Subject:</strong> ' + h.escapeHtml(draftSummary.subject) + '</p>';
-			}
-			if (draftSummary.body_preview) {
-				html += '<p><strong>Body preview:</strong> ' + h.escapeHtml(draftSummary.body_preview) + '</p>';
-			}
-			html += '</div>';
-		}
-
-		if (riskReasons.length) {
-			html += '<div class="yoro-workflow-preview-section"><strong>Before you continue</strong><ul>';
-			riskReasons.forEach(function (reason) {
-				html += '<li>' + h.escapeHtml(reason) + '</li>';
-			});
-			html += '</ul></div>';
-		}
-
-		html += '</div>';
-		html += renderDebugJson(data, h);
-
-		return html;
-	}
-
-	function renderOperationsAttentionWorkflowPreview(data, h) {
-		const result = data.result || {};
-		const selectedItem = result.selected_item || {};
-		const queueSource = result.queue_source || {};
-		const proposedAction = result.proposed_action || {};
-		const nextStep = result.next_without_confirm || {};
-
-		let html = '<div class="yoro-result-card yoro-workflow-preview">';
-		html += '<div class="yoro-card-header">';
-		html += '<div><strong>Operations attention preview</strong></div>';
-		html += '<span class="yoro-badge yoro-badge-preview">Preview</span>';
-		html += '</div>';
-
-		if (result.summary) {
-			html += '<p class="yoro-card-summary">' + h.escapeHtml(result.summary) + '</p>';
-		}
-		html += renderAdminCopilotBoundary(data, h);
-		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
-
-		html += '<div class="yoro-result-meta">';
-		html += '<span><strong>Order:</strong> #' + h.escapeHtml(selectedItem.order_number || selectedItem.order_id || '') + '</span>';
-		html += '<span><strong>Queue:</strong> ' + h.escapeHtml(queueSource.label || queueSource.key || '—') + '</span>';
-		html += '<span><strong>Next step:</strong> ' + h.escapeHtml(proposedAction.label || proposedAction.action || '') + '</span>';
-		html += '</div>';
-
-		if (result.selection_reason) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>Why this is recommended</strong>';
-			html += '<p>' + h.escapeHtml(result.selection_reason) + '</p>';
-			html += '</div>';
-		}
-
-		if (result.preview_summary) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>What to do next</strong>';
-			html += '<p>' + h.escapeHtml(result.preview_summary) + '</p>';
-			html += '</div>';
-		}
-
-		if (nextStep.command || nextStep.action) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>Next command</strong>';
-			html += '<p>' + h.escapeHtml(nextStep.command || nextStep.action || '') + '</p>';
-			html += '</div>';
-		}
-
-		html += renderDebugJson(data, h);
-		html += '</div>';
-
-		return html;
-	}
-
-	function renderInventoryPressureWorkflowPreview(data, h) {
-		const result = data.result || {};
-		const selectedItem = result.selected_item || {};
-		const queueSource = result.queue_source || {};
-		const proposedAction = result.proposed_action || {};
-		const nextStep = result.next_without_confirm || {};
-
-		let html = '<div class="yoro-result-card yoro-workflow-preview">';
-		html += '<div class="yoro-card-header">';
-		html += '<div><strong>Inventory pressure preview</strong></div>';
-		html += '<span class="yoro-badge yoro-badge-preview">Preview</span>';
-		html += '</div>';
-
-		if (result.summary) {
-			html += '<p class="yoro-card-summary">' + h.escapeHtml(result.summary) + '</p>';
-		}
-		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
-
-		html += '<div class="yoro-result-meta">';
-		html += '<span><strong>Product:</strong> ' + h.escapeHtml(selectedItem.name || '—') + '</span>';
-		html += '<span><strong>Queue:</strong> ' + h.escapeHtml(queueSource.label || queueSource.key || '—') + '</span>';
-		html += '<span><strong>Next step:</strong> ' + h.escapeHtml(proposedAction.label || proposedAction.action || '') + '</span>';
-		html += '</div>';
-
-		html += '<div class="yoro-result-meta">';
-		html += '<span><strong>SKU:</strong> ' + h.escapeHtml(selectedItem.sku || '—') + '</span>';
-		html += '<span><strong>Stock:</strong> ' + h.escapeHtml(selectedItem.stock_quantity || 0) + '</span>';
-		html += '<span><strong>Status:</strong> ' + h.escapeHtml(selectedItem.stock_status || '—') + '</span>';
-		html += '</div>';
-
-		if (result.selection_reason) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>Why this is recommended</strong>';
-			html += '<p>' + h.escapeHtml(result.selection_reason) + '</p>';
-			html += '</div>';
-		}
-
-		if (result.preview_summary) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>What to do next</strong>';
-			html += '<p>' + h.escapeHtml(result.preview_summary) + '</p>';
-			html += '</div>';
-		}
-
-		if (nextStep.command || nextStep.action) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>Next command</strong>';
-			html += '<p>' + h.escapeHtml(nextStep.command || nextStep.action || '') + '</p>';
-			html += '</div>';
-		}
-
-		html += renderDebugJson(data, h);
-		html += '</div>';
-
-		return html;
-	}
-
-	function renderBusinessSummaryWorkflowPreview(data, h) {
-		const result = data.result || {};
-		const selectedItem = result.selected_item || {};
-		const proposedAction = result.proposed_action || {};
-		const nextStep = result.next_without_confirm || {};
-
-		let html = '<div class="yoro-result-card yoro-workflow-preview">';
-		html += '<div class="yoro-card-header">';
-		html += '<div><strong>Business summary preview</strong></div>';
-		html += '<span class="yoro-badge yoro-badge-preview">Preview</span>';
-		html += '</div>';
-
-		if (result.summary) {
-			html += '<p class="yoro-card-summary">' + h.escapeHtml(result.summary) + '</p>';
-		}
-		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
-
-		html += '<div class="yoro-result-meta">';
-		html += '<span><strong>Signal:</strong> ' + h.escapeHtml(selectedItem.title || '—') + '</span>';
-		html += '<span><strong>Window:</strong> ' + h.escapeHtml(selectedItem.window_key || '—') + '</span>';
-		html += '<span><strong>Next step:</strong> ' + h.escapeHtml(proposedAction.label || proposedAction.action || '') + '</span>';
-		html += '</div>';
-
-		if (selectedItem.message) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>What this means</strong>';
-			html += '<p>' + h.escapeHtml(selectedItem.message) + '</p>';
-			html += '</div>';
-		}
-
-		if (result.selection_reason) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>Why this is recommended</strong>';
-			html += '<p>' + h.escapeHtml(result.selection_reason) + '</p>';
-			html += '</div>';
-		}
-
-		if (result.preview_summary) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>What to do next</strong>';
-			html += '<p>' + h.escapeHtml(result.preview_summary) + '</p>';
-			html += '</div>';
-		}
-
-		if (nextStep.command || nextStep.action) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>Next command</strong>';
-			html += '<p>' + h.escapeHtml(nextStep.command || nextStep.action || '') + '</p>';
-			html += '</div>';
-		}
-
-		html += renderDebugJson(data, h);
-		html += '</div>';
-
-		return html;
-	}
-
-	function buildNextStepSuggestions(action, result, params) {
-		const suggestions = [];
-		const orderScopedActions = [
-			'orders.get_details',
-			'orders.hold',
-			'orders.update_status',
-			'orders.add_note',
-			'orders.bulk_update_status_with_note',
-			'orders.email_customer_template',
-			'orders.send_customer_email',
-			'orders.render_customer_email_preview',
-			'orders.save_customer_email_draft'
-		];
-		const isOrderScopedAction = orderScopedActions.indexOf(String(action || '')) !== -1;
-		const firstOrderId = isOrderScopedAction
-			? (
-				Array.isArray(params.order_ids) && params.order_ids.length
-					? params.order_ids[0]
-					: (params.order_id || result.order_id || '')
-			)
-			: '';
-
-		const firstOrderIdNum = parseInt(firstOrderId, 10);
-
-		if (firstOrderIdNum > 0) {
-			suggestions.push({
-				label: 'Open order details',
-				action: 'orders.get_details',
-				params: {
-					order_id: firstOrderIdNum,
-					order_ids: [firstOrderIdNum]
-				}
-			});
-		}
-
-		if (action === 'store.get_daily_briefing' || action === 'store.get_morning_briefing') {
-			suggestions.push({
-				label: 'Open attention queue',
-				action: 'operations.get_attention_queue',
-				params: {}
-			});
-			suggestions.push({
-				label: 'Open fulfillment queue',
-				action: 'operations.get_fulfillment_queue',
-				params: {}
-			});
-			suggestions.push({
-				label: 'Open inventory queue',
-				action: 'products.get_inventory_queue',
-				params: {}
-			});
-		}
-
-		if (action === 'orders.hold' || action === 'orders.update_status' || action === 'orders.add_note' || action === 'orders.bulk_update_status_with_note') {
-			suggestions.push({
-				label: 'Open operations queue',
-				action: 'operations.get_attention_queue',
-				params: {}
-			});
-		}
-
-		if (action === 'orders.email_customer_template') {
-			suggestions.push({
-				label: 'Open customer service queue',
-				action: 'customers.get_service_queue',
-				params: {}
-			});
-		}
-
-		return suggestions;
-	}
-
 	function renderWhatChangesSection(title, lines, h) {
 		const items = Array.isArray(lines) ? lines.filter(Boolean) : [];
 
@@ -1055,7 +932,7 @@
 		}
 
 		let html = '<div class="yoro-result-section yoro-guided-result-section">';
-		html += '<strong>' + h.escapeHtml(title || 'What will change') + '</strong>';
+		html += '<strong>' + h.escapeHtml(title || 'Change details') + '</strong>';
 		html += '<ul>';
 		items.forEach(function(line) {
 			html += '<li>' + h.escapeHtml(line) + '</li>';
@@ -1083,28 +960,562 @@
 		return html;
 	}
 
-	function renderNextStepsSection(items, h, title) {
-		const steps = Array.isArray(items) ? items.filter(function(item) {
-			return item && item.action;
-		}) : [];
+	function getPendingOperationToken(data) {
+		const parsed = data && data.parsed ? data.parsed : {};
+		const result = data && data.result ? data.result : {};
+		const preview = data && data.preview ? data.preview : {};
+		const meta = parsed.meta || result.meta || preview.meta || (data && data.meta) || {};
 
-		if (!steps.length) {
+		return (data && data.pending_operation_token) ||
+			parsed.pending_operation_token ||
+			result.pending_operation_token ||
+			preview.pending_operation_token ||
+			meta.pending_operation_token ||
+			meta.yoro_ai_api_pending_operation_token ||
+			'';
+	}
+
+	function isPendingOperationActive(data) {
+		if (!data || data.pending_operation_active === undefined) {
+			return true;
+		}
+
+		return data.pending_operation_active !== false;
+	}
+
+	function renderInactivePendingOperationNotice(data, h) {
+		const status = data && data.pending_operation_status
+			? formatAssistantValueLabel(data.pending_operation_status)
+			: 'no longer pending';
+
+		return ''
+			+ '<p class="yoro-friendly-action-note yoro-friendly-action-warning">'
+			+ 'This approval is ' + h.escapeHtml(status) + '. Send the request again when you want me to apply it.'
+			+ '</p>';
+	}
+
+	function canApproveDirectConfirmation(data, action) {
+		return !!(
+			action &&
+			data &&
+			data.direct_confirmation_allowed === true
+		);
+	}
+
+	function buildActionChangeLines(action, params, result, options) {
+		params = params || {};
+		result = result || {};
+		options = options || {};
+		const completed = options.completed === true;
+		const lines = [];
+
+		if (isCouponAction(action) && (result.blocked === true || result.block_reason)) {
+			return couponConfirmationLines(action, params, result).filter(Boolean);
+		}
+
+		if (isProductStockAction(action)) {
+			return productConfirmationLines(action, params, result);
+		}
+
+		if (isCouponAction(action)) {
+			return couponConfirmationLines(action, params, result, { completed: completed });
+		}
+
+		if (result.blocked === true || result.block_reason) {
+			const blockReason = String(result.block_reason || '');
+			const blockedOrderIds = [];
+
+			if (result.order_exists === false && (result.order_id || params.order_id)) {
+				blockedOrderIds.push(result.order_id || params.order_id);
+			} else if (blockReason.indexOf('order_not_found') !== -1) {
+				orderIdsFromParams(Object.assign({}, params, result)).forEach(function(id) {
+					blockedOrderIds.push(id);
+				});
+			}
+
+			blockedOrderIds.forEach(function(id) {
+				lines.push('Order #' + id + ': not found.');
+			});
+
+			if (result.draft_exists === false && (result.draft_id || params.draft_id)) {
+				lines.push('Email draft ' + (result.draft_id || params.draft_id) + ': not found.');
+			}
+
+			if (result.template_exists === false && (result.template_id || params.template_id)) {
+				lines.push('Template ' + (result.template_id || params.template_id) + ': not found.');
+			} else if (blockReason.indexOf('template_not_found') !== -1 && (result.template || params.template)) {
+				lines.push('Template ' + (result.template || params.template) + ': not found.');
+			}
+
+			if (!lines.length && (result.message || result.summary)) {
+				lines.push(result.message || result.summary);
+			}
+
+			if (lines.length) {
+				return lines.filter(Boolean);
+			}
+		}
+
+		if (action === 'orders.update_status') {
+			if (Array.isArray(result.orders) && result.orders.length) {
+				const targetStatus = result.target_status_label || result.target_status || params.status_label || params.status || '';
+
+				result.orders.forEach(function(order) {
+					order = order || {};
+
+					if (order.exists === false) {
+						lines.push('Order #' + (order.id || '') + ': not found.');
+						return;
+					}
+
+					const currentStatus = order.current_status_label || order.current_status || '';
+					lines.push('Order #' + (order.id || '') + ': ' + (currentStatus ? formatAssistantValueLabel(currentStatus) : 'current status') + ' -> ' + (targetStatus ? formatAssistantValueLabel(targetStatus) : 'target status') + '.');
+				});
+
+				return lines.filter(Boolean);
+			}
+
+			const ids = orderIdsFromParams(Object.assign({}, params, result));
+			const status = result.status_label || result.status || params.status_label || params.status || '';
+			const statusLabel = status ? orderStatusLabel(status) : '';
+
+			ids.forEach(function(id) {
+				lines.push('Order #' + id + (completed ? ' moved to ' : ' will move to ') + (statusLabel || 'the new status') + '.');
+			});
+		}
+
+		if (action === 'orders.add_note') {
+			if (Array.isArray(result.orders) && result.orders.length) {
+				result.orders.forEach(function(order) {
+					order = order || {};
+
+					if (order.exists === false) {
+						lines.push('Order #' + (order.id || '') + ': not found.');
+						return;
+					}
+
+					lines.push('Order #' + (order.id || '') + ' will get this note' + (result.note_preview ? ': "' + result.note_preview + '"' : '.'));
+				});
+
+				return lines.filter(Boolean);
+			}
+
+			const ids = orderIdsFromParams(Object.assign({}, params, result));
+			const note = result.note || params.note || '';
+
+			ids.forEach(function(id) {
+				lines.push('Order #' + id + (completed ? ' got this note' : ' will get this note') + (note ? ': "' + note + '"' : '.'));
+			});
+		}
+
+		if (action === 'orders.remove_note') {
+			if (Array.isArray(result.notes) && result.notes.length) {
+				result.notes.forEach(function(note) {
+					note = note || {};
+
+					if (note.exists === false) {
+						lines.push('Note #' + (note.id || '') + ': not found.');
+						return;
+					}
+
+					if (note.yoro_created === false) {
+						lines.push('Note #' + (note.id || '') + ': not removable by YoRo.');
+						return;
+					}
+
+					lines.push('Note #' + (note.id || '') + (note.order_id ? ' on order #' + note.order_id : '') + ' will be removed.');
+				});
+
+				return lines.filter(Boolean);
+			}
+
+			const noteIds = Array.isArray(result.note_ids) ? result.note_ids : (Array.isArray(params.note_ids) ? params.note_ids : []);
+
+			noteIds.forEach(function(id) {
+				lines.push('Note #' + id + (completed ? ' removed.' : ' will be removed.'));
+			});
+		}
+
+		if (action === 'orders.restore_statuses') {
+			if (Array.isArray(result.orders) && result.orders.length) {
+				result.orders.forEach(function(order) {
+					order = order || {};
+
+					if (order.exists === false) {
+						lines.push('Order #' + (order.id || '') + ': not found.');
+						return;
+					}
+
+					lines.push('Order #' + (order.id || '') + ' will be restored to ' + (order.target_status_label || orderStatusLabel(order.target_status) || 'the previous status') + '.');
+				});
+
+				return lines.filter(Boolean);
+			}
+		}
+
+		if (action === 'orders.email_customer_template' || action === 'orders.send_customer_email') {
+			const email = result.email || {};
+			const orderId = result.order_id || (params && params.order_id) || '';
+
+			if (orderId) {
+				lines.push((completed ? 'I sent' : 'I will send') + ' the customer email for order #' + orderId + '.');
+			}
+			if (email.to) {
+				lines.push('Recipient: ' + email.to);
+			}
+			if (email.subject) {
+				lines.push('Subject: ' + email.subject);
+			}
+		}
+
+		if (action === 'email_templates.save') {
+			const name = result.name || params.name || '';
+			const subject = result.subject || params.subject || '';
+
+			if (name) {
+				lines.push('Template: ' + name);
+			}
+
+			if (subject) {
+				lines.push('Subject: ' + subject);
+			}
+		}
+
+		if (action === 'email_templates.delete') {
+			const template = result.template || {};
+			const templateId = result.template_id || params.template_id || '';
+			const name = template.name || result.name || params.name || '';
+
+			if (result.template_exists === false) {
+				lines.push('Template ' + (templateId ? templateId : 'target') + ': not found.');
+			} else if (name) {
+				lines.push('Template: ' + name + (templateId ? ' (' + templateId + ')' : ''));
+			} else if (templateId) {
+				lines.push('Template ID: ' + templateId);
+			}
+		}
+
+		return lines.filter(Boolean);
+	}
+
+	function approvalIntro(action, params, result) {
+		params = params || {};
+		result = result || {};
+
+		if (isProductStockAction(action)) {
+			return productApprovalIntro(action, params, result);
+		}
+
+		if (isCouponAction(action)) {
+			return result.message || result.summary || 'Please confirm this coupon before I update the store.';
+		}
+
+		if (action === 'orders.update_status') {
+			return 'Please confirm this order status change before I update the store.';
+		}
+
+		if (action === 'orders.add_note') {
+			return 'Please confirm this internal note before I update the store.';
+		}
+
+		return confirmationMessage({ message: '' }, result);
+	}
+
+	function isCouponAction(action) {
+		return [
+			'coupons.lookup',
+			'coupons.create'
+		].indexOf(String(action || '')) !== -1;
+	}
+
+	function firstCouponFromResult(result) {
+		result = result || {};
+
+		if (result.coupon && typeof result.coupon === 'object' && !Array.isArray(result.coupon)) {
+			return result.coupon;
+		}
+
+		if (result.data && result.data.coupon && typeof result.data.coupon === 'object' && !Array.isArray(result.data.coupon)) {
+			return result.data.coupon;
+		}
+
+		if (Array.isArray(result.coupons) && result.coupons.length && result.coupons[0] && typeof result.coupons[0] === 'object') {
+			return result.coupons[0];
+		}
+
+		return {};
+	}
+
+	function couponParamValue(coupon, result, params, key) {
+		coupon = coupon || {};
+		result = result || {};
+		params = params || {};
+
+		if (typeof coupon[key] !== 'undefined' && coupon[key] !== null && coupon[key] !== '') {
+			return coupon[key];
+		}
+
+		if (typeof result[key] !== 'undefined' && result[key] !== null && result[key] !== '') {
+			return result[key];
+		}
+
+		if (typeof params[key] !== 'undefined' && params[key] !== null && params[key] !== '') {
+			return params[key];
+		}
+
+		return '';
+	}
+
+	function couponDiscountSummary(coupon, result, params) {
+		const summary = couponParamValue(coupon, result, params, 'discount_summary');
+
+		if (summary) {
+			return summary;
+		}
+
+		const discountType = String(couponParamValue(coupon, result, params, 'discount_type') || '');
+		const amount = couponParamValue(coupon, result, params, 'discount_amount');
+
+		if (!discountType || amount === '') {
 			return '';
 		}
 
-		let html = '<div class="yoro-result-section yoro-guided-result-section">';
-		html += '<strong>' + h.escapeHtml(title || 'What to do next') + '</strong>';
-		html += '<div class="yoro-suggestion-list">';
-		steps.slice(0, 3).forEach(function(item) {
-			html += '<button class="button button-small yoro-suggestion-btn"';
-			html += ' data-action="' + h.escapeHtml(item.action) + '"';
-			html += ' data-params="' + h.escapeHtml(JSON.stringify(item.params || {})) + '"';
-			html += ' data-confirm="0" data-preview="0"';
-			html += '>';
-			html += h.escapeHtml(item.label || item.action);
-			html += '</button>';
-		});
+		if (discountType === 'percent') {
+			return amount + '% off';
+		}
+
+		return amount + ' ' + displayLabel(discountType);
+	}
+
+	function couponConfirmationLines(action, params, result, options) {
+		params = params || {};
+		result = result || {};
+		options = options || {};
+
+		const coupon = firstCouponFromResult(result);
+		const lines = [];
+		const code = couponParamValue(coupon, result, params, 'coupon_code') || couponParamValue(coupon, result, params, 'code');
+		const couponId = couponParamValue(coupon, result, params, 'coupon_id');
+		const discountSummary = couponDiscountSummary(coupon, result, params);
+		const discountTypeLabel = couponParamValue(coupon, result, params, 'discount_type_label');
+		const discountType = couponParamValue(coupon, result, params, 'discount_type');
+		const expiry = couponParamValue(coupon, result, params, 'date_expires') || couponParamValue(coupon, result, params, 'expiry_date');
+		const usageCount = couponParamValue(coupon, result, params, 'usage_count');
+		const usageLimit = couponParamValue(coupon, result, params, 'usage_limit');
+		const usageLimitPerUser = couponParamValue(coupon, result, params, 'usage_limit_per_user');
+		const description = couponParamValue(coupon, result, params, 'description');
+		const flags = [];
+
+		if (code) {
+			lines.push('Coupon code: ' + code);
+		}
+
+		if (couponId) {
+			lines.push('Coupon ID: ' + couponId);
+		}
+
+		if (discountSummary) {
+			lines.push('Discount: ' + discountSummary);
+		}
+
+		if (discountTypeLabel || discountType) {
+			lines.push('Type: ' + (discountTypeLabel || displayLabel(discountType)));
+		}
+
+		if (expiry) {
+			lines.push('Expires: ' + expiry);
+		}
+
+		if (usageCount !== '' || usageLimit !== '') {
+			lines.push('Usage: ' + (usageCount !== '' ? usageCount : '0') + (usageLimit !== '' ? ' / ' + usageLimit : ''));
+		}
+
+		if (usageLimitPerUser !== '') {
+			lines.push('Per customer limit: ' + usageLimitPerUser);
+		}
+
+		if (description) {
+			lines.push('Description: ' + description);
+		}
+
+		if (couponParamValue(coupon, result, params, 'individual_use') === true) {
+			flags.push('Individual use');
+		}
+
+		if (couponParamValue(coupon, result, params, 'free_shipping') === true) {
+			flags.push('Free shipping');
+		}
+
+		if (flags.length) {
+			lines.push('Flags: ' + flags.join(', '));
+		}
+
+		if (!lines.length && (result.message || result.summary)) {
+			lines.push(result.message || result.summary);
+		}
+
+		return lines.filter(Boolean);
+	}
+
+	function isProductStockAction(action) {
+		return [
+			'products.update_stock',
+			'products.update_stock_status'
+		].indexOf(String(action || '')) !== -1;
+	}
+
+	function firstProductFromResult(result) {
+		result = result || {};
+
+		if (Array.isArray(result.products) && result.products.length && result.products[0] && typeof result.products[0] === 'object') {
+			return result.products[0];
+		}
+
+		return {};
+	}
+
+	function productConfirmationLines(action, params, result) {
+		params = params || {};
+		result = result || {};
+
+		const product = firstProductFromResult(result);
+		const productId = product.id || product.product_id || result.product_id || params.product_id || '';
+		const productName = product.name || result.product_name || params.product_name || '';
+		const sku = product.sku || product.product_sku || result.product_sku || params.product_sku || '';
+		const globalUniqueId = product.global_unique_id || result.global_unique_id || params.global_unique_id || '';
+		const productType = product.product_type_label || product.type_label || product.product_type || product.type || result.product_type_label || result.product_type || '';
+		const parentId = product.parent_id || result.parent_id || '';
+		const variationLabel = product.variation_label || result.variation_label || '';
+		const variationTargets = Array.isArray(product.variation_targets) ? product.variation_targets : (Array.isArray(result.variation_targets) ? result.variation_targets : []);
+		const stockScope = product.stock_scope_label || result.stock_scope_label || stockScopeLabel(product.stock_target_kind || result.stock_target_kind || '');
+		const lines = [];
+
+		if (productName) {
+			lines.push('Name: ' + productName);
+		}
+
+		if (productId) {
+			lines.push((String(product.product_type || result.product_type || '').toLowerCase().indexOf('variation') !== -1 ? 'Variation ID: ' : 'Product ID: ') + productId);
+		}
+
+		if (productType) {
+			lines.push('Type: ' + formatAssistantValueLabel(productType));
+		}
+
+		if (parentId) {
+			lines.push('Parent ID: ' + parentId);
+		}
+
+		if (variationLabel) {
+			lines.push('Variation: ' + variationLabel);
+		}
+
+		if (variationTargets.length) {
+			lines.push('Variations: ' + variationTargets.slice(0, 4).map(function(target) {
+				target = target || {};
+				const id = target.variation_id || target.id || '';
+				const label = target.variation_label || target.name || '';
+				return '#' + id + (label ? ' ' + label : '');
+			}).join('; ') + (product.variation_targets_truncated || result.variation_targets_truncated ? '; ...' : ''));
+		}
+
+		if (sku) {
+			lines.push('SKU: ' + sku);
+		}
+
+		if (globalUniqueId) {
+			lines.push('Global ID: ' + globalUniqueId);
+		}
+
+		if (stockScope) {
+			lines.push('Stock scope: ' + stockScope);
+		}
+
+		if (action === 'products.update_stock_status') {
+			const currentStatus = product.current_stock_status_label || product.current_stock_status || result.current_stock_status_label || result.current_stock_status || '';
+			const targetStatus = product.target_stock_status_label || product.target_stock_status || result.target_stock_status_label || result.stock_status || params.stock_status || '';
+
+			if (currentStatus || targetStatus) {
+				lines.push('Stock status: ' + (currentStatus ? formatAssistantValueLabel(currentStatus) : 'current status') + ' -> ' + (targetStatus ? formatAssistantValueLabel(targetStatus) : 'target status'));
+			}
+		}
+
+		if (action === 'products.update_stock') {
+			const currentQuantity = typeof product.current_stock_quantity !== 'undefined' && product.current_stock_quantity !== null
+				? product.current_stock_quantity
+				: (typeof result.previous_stock_quantity !== 'undefined' && result.previous_stock_quantity !== null ? result.previous_stock_quantity : '');
+			const targetQuantity = typeof product.target_stock_quantity !== 'undefined' && product.target_stock_quantity !== null
+				? product.target_stock_quantity
+				: (typeof result.stock_quantity !== 'undefined' && result.stock_quantity !== null ? result.stock_quantity : params.stock_quantity);
+
+			if (currentQuantity !== '' || typeof targetQuantity !== 'undefined') {
+				lines.push('Stock quantity: ' + (currentQuantity !== '' ? currentQuantity : 'current quantity') + ' -> ' + (typeof targetQuantity !== 'undefined' && targetQuantity !== null ? targetQuantity : 'target quantity'));
+			}
+		}
+
+		return lines.filter(Boolean);
+	}
+
+	function stockScopeLabel(stockTargetKind) {
+		switch (String(stockTargetKind || '')) {
+			case 'parent_shared_stock':
+				return 'Parent shared stock';
+			case 'variation_stock':
+				return 'Variation stock';
+			case 'product_stock':
+				return 'Product stock';
+			case 'manual_status':
+				return 'Manual stock status';
+			default:
+				return '';
+		}
+	}
+
+	function productApprovalIntro(action, params, result) {
+		if (result && (result.blocked === true || result.block_reason)) {
+			return result.message || result.summary || 'This product needs a more specific target before it can be approved.';
+		}
+
+		if (action === 'products.update_stock_status') {
+			return 'Please confirm this product and target stock status before I update the store.';
+		}
+
+		return 'Please confirm this product and target stock quantity before I update the store.';
+	}
+
+	function renderFriendlyActionCard(config, h) {
+		config = config || {};
+		const lines = Array.isArray(config.lines) ? config.lines.filter(Boolean) : [];
+		const note = String(config.note || '').trim();
+		const state = config.state || 'approval';
+		let html = '<div class="yoro-friendly-action-card yoro-friendly-action-card-' + h.escapeHtml(state) + '">';
+
+		html += '<div class="yoro-friendly-action-copy">';
+		if (config.kicker) {
+			html += '<span class="yoro-friendly-action-kicker">' + h.escapeHtml(config.kicker) + '</span>';
+		}
+		html += '<strong>' + h.escapeHtml(config.title || 'Review this change') + '</strong>';
+		if (config.message) {
+			html += '<p>' + h.escapeHtml(config.message) + '</p>';
+		}
 		html += '</div>';
+
+		if (lines.length) {
+			html += '<ul class="yoro-friendly-action-list">';
+			lines.slice(0, 10).forEach(function(line) {
+				html += '<li>' + h.escapeHtml(line) + '</li>';
+			});
+			html += '</ul>';
+		}
+
+		if (note) {
+			html += '<p class="yoro-friendly-action-note">' + h.escapeHtml(note) + '</p>';
+		}
+
+		if (config.actionsHtml) {
+			html += config.actionsHtml;
+		}
+
 		html += '</div>';
 		return html;
 	}
@@ -1136,114 +1547,47 @@
 
 		const effectiveParams = Object.assign({}, params, planParams);
 		const encodedParams = h.escapeHtml(JSON.stringify(effectiveParams || {}));
-		const actionStateToken = data.action_state_token || data.pending_action_token || '';
+		const pendingOperationToken = getPendingOperationToken(data);
+		const needsApproval = !!(preview.write_action || preview.requires_confirmation);
 
 		let html = '<div class="yoro-preview-result">';
 
+		if (needsApproval) {
+			const changeLines = buildActionChangeLines(action, effectiveParams, preview);
+			let actionsHtml = '';
+
+			if ((!pendingOperationToken && !canApproveDirectConfirmation(data, action)) || !isPendingOperationActive(data)) {
+				actionsHtml = renderInactivePendingOperationNotice(data, h);
+			} else {
+				actionsHtml = ''
+					+ '<div class="yoro-confirm-actions">'
+					+ '<button class="button button-primary yoro-confirm-run" data-direct-action="' + h.escapeHtml(action) + '" data-direct-params="' + encodedParams + '" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '">Approve change</button>'
+					+ '<button class="button yoro-confirm-cancel">Cancel</button>'
+					+ '</div>';
+			}
+
+			html += renderFriendlyActionCard({
+				state: 'approval',
+				kicker: 'Needs your approval',
+				title: 'Ready when you are',
+				message: previewIntro(action, effectiveParams, preview),
+				lines: changeLines,
+				note: changeLines.length ? 'Nothing has changed yet.' : '',
+				actionsHtml: actionsHtml
+			}, h);
+
+			html += '</div>';
+			html += renderDebugJson(data, h);
+
+			return html;
+		}
+
 		html += '<div class="yoro-result-notice yoro-result-preview">';
-		html += '<strong>AI action preview</strong>';
-
-		if (action === 'orders.add_note') {
-			const ids = Array.isArray(effectiveParams.order_ids) ? effectiveParams.order_ids : [];
-			html += '<p>' + h.escapeHtml('Add internal note to ' + ids.length + ' order' + (ids.length === 1 ? '.' : 's.')) + '</p>';
-		} else if (action === 'orders.update_status') {
-			const ids = Array.isArray(effectiveParams.order_ids) ? effectiveParams.order_ids : [];
-			html += '<p>' + h.escapeHtml('Update status for ' + ids.length + ' order' + (ids.length === 1 ? '.' : 's.')) + '</p>';
-		} else {
-			html += '<p>' + h.escapeHtml(preview.description || preview.summary || 'I mapped your command to the action below. No store data has changed yet.') + '</p>';
-		}
-
-		html += '</div>';
-		html += '<div class="yoro-preview-body">';
-		html += renderAdminCopilotBoundary(data, h);
-
-		html += '<div class="yoro-result-meta">';
-		html += '<span><strong>Mapped action:</strong> ' + h.escapeHtml(action) + '</span>';
-		html += '<span><strong>Risk:</strong> ' + h.escapeHtml(preview.risk_level || '') + '</span>';
-		html += '<span><strong>Needs approval:</strong> ' + h.escapeHtml(preview.requires_confirmation ? 'Yes' : 'No') + '</span>';
+		html += '<strong>Ready for review</strong>';
+		html += '<p>' + h.escapeHtml(previewIntro(action, effectiveParams, preview)) + '</p>';
 		html += '</div>';
 
-		const riskReasons = data.risk && Array.isArray(data.risk.reasons)
-			? data.risk.reasons
-			: [];
-
-		const policyReasons = data.policy && Array.isArray(data.policy.reasons)
-			? data.policy.reasons
-			: [];
-
-		const reasons = riskReasons.concat(policyReasons);
-		const changeLines = [];
-
-		if (action === 'orders.add_note') {
-			const ids = Array.isArray(effectiveParams.order_ids) ? effectiveParams.order_ids : [];
-			const note = effectiveParams.note || '';
-
-			if (ids.length) {
-				ids.forEach(function(id) {
-					changeLines.push('#' + id + ' -> note: ' + (note || '—'));
-				});
-			}
-		}
-
-		if (action === 'orders.update_status' || action === 'orders.hold') {
-			const ids = Array.isArray(effectiveParams.order_ids) ? effectiveParams.order_ids : [];
-			const status = action === 'orders.hold'
-				? 'on-hold'
-				: (effectiveParams.status || '');
-
-			if (ids.length) {
-				ids.forEach(function(id) {
-					changeLines.push('#' + id + ' -> ' + (status || '—'));
-				});
-			}
-		}
-
-		if (action === 'orders.bulk_update_status_with_note') {
-			const ids = Array.isArray(effectiveParams.order_ids) ? effectiveParams.order_ids : [];
-			const status = effectiveParams.status || '';
-			const note = effectiveParams.note || '';
-
-			if (ids.length) {
-				ids.forEach(function(id) {
-					changeLines.push('#' + id + ' -> ' + (status || '—') + ' — note: ' + (note || '—'));
-				});
-			}
-		}
-
-		html += renderWhatChangesSection('What will change', changeLines, h);
-		html += renderWhySection('Why this is recommended', reasons, h);
-
-		if (plan.orders && Array.isArray(plan.orders)) {
-			html += '<table class="yoro-orders-table">';
-			html += '<thead><tr><th>Order</th><th>Exists</th><th>Current status</th><th>Target status</th></tr></thead>';
-			html += '<tbody>';
-
-			plan.orders.forEach(function (order) {
-				html += '<tr>';
-				html += '<td>#' + h.escapeHtml(order.id) + '</td>';
-				html += '<td>' + h.escapeHtml(order.exists ? 'Yes' : 'No') + '</td>';
-				html += '<td>' + h.escapeHtml(order.current_status || '') + '</td>';
-				html += '<td>' + h.escapeHtml(order.target_status || '') + '</td>';
-				html += '</tr>';
-			});
-
-			html += '</tbody></table>';
-		}
-
-		html += renderNextStepsSection(buildNextStepSuggestions(action, preview, effectiveParams), h);
-
-		if (preview.write_action || preview.requires_confirmation) {
-			html += `
-			<div class="yoro-confirm-actions">
-				<button class="button button-primary yoro-confirm-run" data-direct-action="` + h.escapeHtml(action) + `" data-direct-params="` + encodedParams + `" data-action-state-token="` + h.escapeHtml(actionStateToken) + `">Confirm</button>
-				<button class="button yoro-confirm-cancel">Cancel</button>
-			</div>
-			`;
-		}
-
 		html += '</div>';
-		html += '</div>';
-
 		html += renderDebugJson(data, h);
 
 		return html;
@@ -1252,7 +1596,7 @@
 	function renderContext(data, h) {
 		const context = data.context || {};
 		let html = '<div class="yoro-result-summary">';
-		html += '<strong>Store context loaded</strong>';
+		html += '<strong>I can see your store context.</strong>';
 		html += '</div>';
 
 		html += '<div class="yoro-context-grid">';
@@ -1268,24 +1612,34 @@
 
 		if (context.woocommerce) {
 			html += '<div class="yoro-context-card">';
-			html += '<h3>WooCommerce</h3>';
+			html += '<h3>Commerce</h3>';
 			html += '<p><strong>Active:</strong> ' + h.escapeHtml(context.woocommerce.active ? 'Yes' : 'No') + '</p>';
-			html += '<p><strong>Version:</strong> ' + h.escapeHtml(context.woocommerce.version || '') + '</p>';
 			html += '<p><strong>Currency:</strong> ' + h.escapeHtml(context.woocommerce.currency || '') + '</p>';
+			if (h.shouldShowDebugJson && h.shouldShowDebugJson()) {
+				html += '<p><strong>Version:</strong> ' + h.escapeHtml(context.woocommerce.version || '') + '</p>';
+			}
 			html += '</div>';
 		}
 
-		if (context.actions) {
+		if (context.store_knowledge) {
+			const knowledge = context.store_knowledge || {};
+			const snapshot = knowledge.live_snapshot || {};
+			const capabilities = (knowledge.capabilities && knowledge.capabilities.summary) || {};
+			html += '<div class="yoro-context-card">';
+			html += '<h3>AI Knowledge</h3>';
+			html += '<p><strong>Schema:</strong> v' + h.escapeHtml(knowledge.schema_version || 1) + '</p>';
+			html += '<p><strong>Open orders:</strong> ' + h.escapeHtml(snapshot.open_order_count || 0) + '</p>';
+			html += '<p><strong>Actions:</strong> ' + h.escapeHtml(capabilities.total || 0) + '</p>';
+			html += '</div>';
+		}
+
+		if (context.actions && h.shouldShowDebugJson && h.shouldShowDebugJson()) {
 			html += '<div class="yoro-context-card">';
 			html += '<h3>Actions</h3>';
 			html += '<p><strong>Total:</strong> ' + h.escapeHtml(context.actions.total || 0) + '</p>';
 			html += '<p><strong>Read:</strong> ' + h.escapeHtml(context.actions.read || 0) + '</p>';
 			html += '<p><strong>Write:</strong> ' + h.escapeHtml(context.actions.write || 0) + '</p>';
 			html += '</div>';
-		}
-
-		if (context.workflow) {
-			html += renderWorkflowHistoryPanel(context.workflow, h);
 		}
 
 		html += '</div>';
@@ -1297,19 +1651,16 @@
 
 	function renderAssistantMessageResult(data, h) {
 		const result = data.result || {};
+		const assistant = getAssistantResponse(data);
+		const summary = String(assistant.message || result.summary || '').trim();
 		let html = '<div class="yoro-single-action-result">';
 
 		html += '<div class="yoro-assistant-message-result">';
-		if (result.summary) {
-			html += '<p>' + h.escapeHtml(result.summary) + '</p>';
-		}
-
-		if (result.assistant_followup) {
-			html += '<p class="yoro-result-subtle">' + h.escapeHtml(result.assistant_followup) + '</p>';
+		if (summary) {
+			html += renderAssistantRichText(summary, h);
 		}
 
 		html += '</div>';
-		html += renderSuggestions(h.getResultSuggestions(data), h);
 		html += renderDebugJson(data, h);
 		html += '</div>';
 
@@ -1317,40 +1668,130 @@
 	}
 
 	function renderUndoResult(data, h) {
-		const result = data.result || {};
-		const steps = Array.isArray(result.result) ? result.result : [];
+		const result = data && data.result && !Array.isArray(data.result)
+			? data.result
+			: (data || {});
+		const steps = undoStepsFromResult(result);
+		const lines = buildUndoChangeLines(result, steps);
 
 		let html = '<div class="yoro-undo-result">';
 
-		html += '<div class="yoro-result-notice yoro-result-success">';
-		html += '<strong>Undo completed</strong>';
-		html += '</div>';
+		html += renderFriendlyActionCard({
+			state: 'success',
+			kicker: 'Undone',
+			title: 'I undid that change',
+			message: result.summary || result.message || 'The saved rollback has been applied.',
+			lines: lines
+		}, h);
 
-		html += '<div class="yoro-undo-body">';
-
-		if (steps.length) {
-			html += '<div class="yoro-result-block">';
-
-			steps.forEach(function (step) {
-				html += renderUndoStep(step, h);
-			});
-
-			html += '</div>';
-		} else {
-			html += '<div class="yoro-result-block">';
-			html += renderUndoStep({
-				action: result.action || result.type || 'undo',
-				result: result
-			}, h);
-			html += '</div>';
-		}
-
-		html += '</div>';
 		html += '</div>';
 
 		html += renderDebugJson(data, h);
 
 		return html;
+	}
+
+	function undoStepsFromResult(result) {
+		result = result || {};
+
+		if (Array.isArray(result.steps)) {
+			return result.steps;
+		}
+
+		if (Array.isArray(result.result)) {
+			return result.result;
+		}
+
+		if (result.result && typeof result.result === 'object') {
+			return [
+				{
+					action: result.action || result.type || result.result.action || 'undo',
+					result: result.result
+				}
+			];
+		}
+
+		return [
+			{
+				action: result.action || result.type || 'undo',
+				result: result
+			}
+		];
+	}
+
+	function buildUndoChangeLines(result, steps) {
+		result = result || {};
+		steps = Array.isArray(steps) ? steps : [];
+		const lines = [];
+
+		function add(line) {
+			line = String(line || '').trim();
+
+			if (line && lines.indexOf(line) === -1) {
+				lines.push(line);
+			}
+		}
+
+		steps.forEach(function(step) {
+			step = step || {};
+			const action = step.action || result.action || result.type || '';
+			const stepResult = step.result || {};
+			const processed = Array.isArray(stepResult.processed)
+				? stepResult.processed
+				: (Array.isArray(result.processed) ? result.processed : []);
+			const statuses = stepResult.statuses && typeof stepResult.statuses === 'object'
+				? stepResult.statuses
+				: {};
+			const statusLabels = stepResult.status_labels && typeof stepResult.status_labels === 'object'
+				? stepResult.status_labels
+				: {};
+
+			if (action === 'orders.remove_note') {
+				processed.forEach(function(id) {
+					add('Removed note #' + id + '.');
+				});
+				return;
+			}
+
+			if (action === 'orders.restore_statuses' || action === 'orders.update_status') {
+				processed.forEach(function(id) {
+					const status = statuses[id] || statuses[String(id)] || '';
+					const statusLabel = statusLabels[id] || statusLabels[String(id)] || (status ? orderStatusLabel(status) : '');
+					add('Order #' + id + ' was restored' + (statusLabel ? ' to ' + statusLabel : '') + '.');
+				});
+				return;
+			}
+
+			if (action === 'delete_email_draft') {
+				add('Removed the saved email draft.');
+				return;
+			}
+
+			if (action === 'restore_email_draft') {
+				add('Restored the previous email draft.');
+				return;
+			}
+
+			if (action === 'delete_template') {
+				add('Removed the saved email template.');
+				return;
+			}
+
+			if (action === 'restore_template') {
+				add('Restored the previous email template.');
+				return;
+			}
+
+			add(stepResult.summary || stepResult.message || result.summary || result.message);
+		});
+
+		if (!lines.length && Array.isArray(result.processed)) {
+			result.processed.forEach(function(id) {
+				add('Restored item #' + id + '.');
+			});
+		}
+
+		return lines;
 	}
 
 	function renderUndoStep(step, h) {
@@ -1361,13 +1802,13 @@
 		let html = '<div class="yoro-result-section">';
 
 		if (action === 'orders.remove_note') {
-			html += '<strong>Notes removed</strong>';
+			html += '<strong>Removed notes</strong>';
 		} else if (action === 'orders.restore_statuses' || action === 'orders.update_status') {
-			html += '<strong>Order statuses restored</strong>';
+			html += '<strong>Restored order statuses</strong>';
 		} else if (action === 'orders.add_note') {
-			html += '<strong>Order note undone</strong>';
+			html += '<strong>Removed the saved note</strong>';
 		} else {
-			html += '<strong>' + h.escapeHtml(stepResult.summary || action || 'Undo completed') + '</strong>';
+			html += '<strong>' + h.escapeHtml(stepResult.summary || action || 'Change undone') + '</strong>';
 		}
 
 		if (processed.length) {
@@ -1397,140 +1838,44 @@
 		const parsed = data.parsed || {};
 		const result = data.result || {};
 		const plan = data.plan || {};
-		const params = parsed.params || result.params || plan.params || {};
+		const params = firstObjectWithKeys(parsed.params, result.params, plan.params);
 		const action = parsed.action || result.action || plan.action || '';
 		const encodedParams = h.escapeHtml(JSON.stringify(params || {}));
-		const actionStateToken = data.action_state_token || data.pending_action_token || '';
+		const pendingOperationToken = getPendingOperationToken(data);
 		const useDirectConfirm = (plan.type || '') !== 'sequence' && action !== 'multi.query_and_apply';
-		const confirmationMeta = buildConfirmationMeta(action, params, plan);
-		const workflow = getWorkflowFromData(data);
-		const branchMeta = getWorkflowBranchMeta(workflow);
-
-		if ((result.display_type || '') === 'fulfillment_followup_workflow_preview') {
-			return renderFulfillmentFollowupWorkflowConfirmation(data, h);
-		}
-
-		if ((result.display_type || '') === 'customer_followup_workflow_preview') {
-			return renderCustomerFollowupWorkflowConfirmation(data, h);
-		}
+		const blocked = result.blocked === true || !!result.block_reason;
+		const changeLines = buildActionChangeLines(action, params, result);
+		const intro = blocked ? '' : approvalIntro(action, params, result);
+		const title = blocked ? blockedConfirmationTitle(action, result) : (isCouponAction(action) ? 'Review coupon details' : 'Please approve this change');
+		let actionsHtml = '';
 
 		let html = '<div class="yoro-confirmation-result">';
 
-		html += '<div class="yoro-result-notice yoro-result-confirm">';
-		html += '<strong>Confirm store change</strong>';
-		html += '<p>' + h.escapeHtml(data.message || result.message || 'YoRo will only change store data after you approve this action.') + '</p>';
-		if (branchMeta.outcome) {
-			html += '<p>' + h.escapeHtml(branchMeta.outcome) + '</p>';
-		}
-		html += '</div>';
-
-		html += '<div class="yoro-confirmation-body">';
-		html += renderAdminCopilotBoundary(data, h);
-		html += renderWorkflowCompositionNotice(workflow, h);
-		html += renderWorkflowStatePanel(workflow, h);
-
-		html += '<div class="yoro-result-meta">';
-		html += '<span><strong>Action:</strong> ' + h.escapeHtml(action) + '</span>';
-
-		if (action !== 'assistant.submit_developer_request' && confirmationMeta.scopeLabel) {
-			html += '<span><strong>Orders:</strong> ' + h.escapeHtml(confirmationMeta.scopeLabel) + '</span>';
-		} else if (action !== 'assistant.submit_developer_request' && Array.isArray(params.order_ids) && params.order_ids.length) {
-			html += '<span><strong>Orders:</strong> #' + params.order_ids.map(function(id) {
-				return h.escapeHtml(id);
-			}).join(', #') + '</span>';
-		} else if (action !== 'assistant.submit_developer_request' && params.order_id) {
-			html += '<span><strong>Order:</strong> #' + h.escapeHtml(params.order_id) + '</span>';
-		}
-
-		if (confirmationMeta.targetStatus) {
-			html += '<span><strong>Target status:</strong> ' + h.escapeHtml(confirmationMeta.targetStatus) + '</span>';
-		} else if (params.status) {
-			html += '<span><strong>Target status:</strong> ' + h.escapeHtml(params.status) + '</span>';
-		}
-
-		if (branchMeta.label) {
-			html += '<span><strong>Branch:</strong> ' + h.escapeHtml(branchMeta.label) + '</span>';
-		}
-
-		html += '</div>';
-
-		const riskReasons = data.risk && Array.isArray(data.risk.reasons)
-			? data.risk.reasons
-			: [];
-
-		const policyReasons = data.policy && Array.isArray(data.policy.reasons)
-			? data.policy.reasons
-			: [];
-
-		const reasons = riskReasons.concat(policyReasons);
-		const changeLines = [];
-
-		if (action === 'orders.update_status' || action === 'orders.hold') {
-			const ids = Array.isArray(params.order_ids) ? params.order_ids : (params.order_id ? [params.order_id] : []);
-			const status = action === 'orders.hold' ? 'on-hold' : (params.status || '');
-
-			if (ids.length) {
-				ids.forEach(function(id) {
-					changeLines.push('#' + id + ' -> ' + (status || '—'));
-				});
-			}
-		}
-
-		if (action === 'orders.add_note') {
-			const ids = Array.isArray(params.order_ids) ? params.order_ids : (params.order_id ? [params.order_id] : []);
-			const note = params.note || '';
-
-			if (ids.length) {
-				ids.forEach(function(id) {
-					changeLines.push('#' + id + ' -> note: ' + (note || '—'));
-				});
-			}
-		}
-
-		if (action === 'orders.bulk_update_status_with_note') {
-			const ids = Array.isArray(params.order_ids) ? params.order_ids : [];
-			const status = params.status || '';
-			const note = params.note || '';
-
-			if (ids.length) {
-				ids.forEach(function(id) {
-					changeLines.push('#' + id + ' -> ' + (status || '—') + ' — note: ' + (note || '—'));
-				});
-			}
-		}
-
-		if (
-			(
-				workflow.definition_id === 'write_email_for_order' ||
-				workflow.definition_id === 'write_email_for_orders' ||
-				workflow.definition_id === 'write_and_save_email_drafts_for_orders' ||
-				workflow.definition_id === 'write_and_send_emails_for_orders'
-			) &&
-			branchMeta.outcome
-		) {
-			changeLines.push(branchMeta.outcome);
-		}
-
-		if (workflow.definition_id === 'verify_customer_before_fulfillment' && branchMeta.outcome) {
-			changeLines.push(branchMeta.outcome);
-		}
-
-		if (workflow.definition_id === 'refund_review' && branchMeta.outcome) {
-			changeLines.push(branchMeta.outcome);
-		}
-
-		html += renderWhatChangesSection('What will change after confirmation', changeLines, h);
-
-		html += '<div class="yoro-confirm-actions">';
-		if (useDirectConfirm) {
-			html += '<button class="button button-primary yoro-confirm-run" data-direct-action="' + h.escapeHtml(action) + '" data-direct-params="' + encodedParams + '" data-action-state-token="' + h.escapeHtml(actionStateToken) + '">Confirm</button>';
+		if (blocked) {
+			actionsHtml = '';
+		} else if ((!pendingOperationToken && !canApproveDirectConfirmation(data, action)) || !isPendingOperationActive(data)) {
+			actionsHtml = renderInactivePendingOperationNotice(data, h);
 		} else {
-			html += '<button class="button button-primary yoro-confirm-run">Confirm</button>';
+			actionsHtml += '<div class="yoro-confirm-actions">';
+			if (useDirectConfirm) {
+				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-direct-action="' + h.escapeHtml(action) + '" data-direct-params="' + encodedParams + '" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '">Approve change</button>';
+			} else {
+				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '">Approve change</button>';
+			}
+			actionsHtml += '<button class="button yoro-confirm-cancel">Cancel</button>';
+			actionsHtml += '</div>';
 		}
-		html += '<button class="button yoro-confirm-cancel">Cancel</button>';
-		html += '</div>';
 
-		html += '</div>';
+		html += renderFriendlyActionCard({
+			state: blocked ? 'blocked' : 'approval',
+			kicker: blocked ? 'Needs a valid target' : 'Needs your approval',
+			title: title,
+			message: intro,
+			lines: changeLines,
+			note: blocked ? '' : (changeLines.length ? 'Nothing has changed yet.' : ''),
+			actionsHtml: actionsHtml
+		}, h);
+
 		html += '</div>';
 
 		html += renderDebugJson(data, h);
@@ -1538,39 +1883,38 @@
 		return html;
 	}
 
-	function renderWorkflowCompositionNotice(workflow, h) {
-		workflow = workflow || {};
+	function blockedConfirmationTitle(action, result) {
+		result = result || {};
 
-		const artifacts = workflow.artifacts && typeof workflow.artifacts === 'object' ? workflow.artifacts : {};
-		const composition = artifacts.composition && typeof artifacts.composition === 'object' ? artifacts.composition : {};
-		const unavailable = Array.isArray(composition.unavailable_requests) ? composition.unavailable_requests : [];
-
-		if (!unavailable.length) {
-			return '';
+		if (isProductStockAction(action) && String(result.block_reason || '').indexOf('variable_parent') !== -1) {
+			return 'Choose a variation first';
 		}
 
-		let html = '<div class="yoro-result-notice yoro-result-preview">';
-		html += '<strong>Some requested actions are not available yet</strong>';
-		html += '<ul>';
-
-		unavailable.forEach(function(item) {
-			if (!item) {
-				return;
+		if (isCouponAction(action)) {
+			if (String(result.block_reason || '').indexOf('coupon_already_exists') !== -1) {
+				return 'Use a different coupon code';
 			}
 
-			html += '<li>' + h.escapeHtml(item.label || item.key || 'Unavailable action');
+			return 'Fix coupon details first';
+		}
 
-			if (item.message) {
-				html += ' — ' + h.escapeHtml(item.message);
-			}
+		if (String(result.block_reason || '').indexOf('order') !== -1 || Array.isArray(result.orders)) {
+			return 'Choose an existing order first';
+		}
 
-			html += '</li>';
-		});
+		if (String(result.block_reason || '').indexOf('note') !== -1 || Array.isArray(result.notes)) {
+			return 'Choose an existing YoRo note first';
+		}
 
-		html += '</ul>';
-		html += '</div>';
+		if (String(result.block_reason || '').indexOf('draft') !== -1 || result.draft_exists === false) {
+			return 'Choose an existing email draft first';
+		}
 
-		return html;
+		if (String(result.block_reason || '').indexOf('template') !== -1 || result.template_exists === false) {
+			return 'Choose an existing template first';
+		}
+
+		return 'Fix this approval first';
 	}
 
 	function buildConfirmationMeta(action, params, plan) {
@@ -1587,11 +1931,8 @@
 		const searchStep = steps.find(function(step) {
 			return step && step.action === 'orders.search';
 		}) || {};
-		const holdStep = steps.find(function(step) {
-			return step && step.action === 'orders.hold';
-		}) || {};
-		const bulkUpdateStep = steps.find(function(step) {
-			return step && step.action === 'orders.bulk_update_status_with_note';
+		const updateStatusStep = steps.find(function(step) {
+			return step && step.action === 'orders.update_status';
 		}) || {};
 
 		const limit = params.limit || (searchStep.params && searchStep.params.limit) || 0;
@@ -1600,133 +1941,36 @@
 			meta.scopeLabel = 'latest ' + limit + ' orders';
 		}
 
-		if (bulkUpdateStep.params && bulkUpdateStep.params.status) {
-			meta.targetStatus = bulkUpdateStep.params.status;
-		} else if (holdStep.action === 'orders.hold') {
-			meta.targetStatus = 'on-hold';
+		if (updateStatusStep.params && updateStatusStep.params.status) {
+			meta.targetStatus = updateStatusStep.params.status;
 		}
 
 		return meta;
 	}
 
-	function renderFulfillmentFollowupWorkflowConfirmation(data, h) {
-		const result = data.result || {};
-		const selectedItem = result.selected_item || {};
-		const queueSource = result.queue_source || {};
-		const proposedAction = result.proposed_action || {};
-		const draftSummary = result.draft_summary || {};
-		let html = '<div class="yoro-confirmation-result">';
-
-		html += '<div class="yoro-result-notice yoro-result-confirm">';
-		html += '<strong>Confirm store change</strong>';
-		html += '<p>' + h.escapeHtml(data.message || result.confirmation_scope || 'Review this fulfillment follow-up before saving the draft.') + '</p>';
-		html += '</div>';
-
-		html += '<div class="yoro-confirmation-body">';
-		html += renderAdminCopilotBoundary(data, h);
-		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
-		html += '<div class="yoro-result-meta">';
-		html += '<span><strong>Flow:</strong> Fulfillment follow-up</span>';
-		html += '<span><strong>Order:</strong> #' + h.escapeHtml(selectedItem.order_number || selectedItem.order_id || '') + '</span>';
-		html += '<span><strong>Queue:</strong> ' + h.escapeHtml(queueSource.label || queueSource.key || '—') + '</span>';
-		html += '<span><strong>Next step:</strong> ' + h.escapeHtml(proposedAction.label || proposedAction.action || '') + '</span>';
-		html += '</div>';
-
-		if (result.selection_reason) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>Why I picked this order</strong>';
-			html += '<p>' + h.escapeHtml(result.selection_reason) + '</p>';
-			html += '</div>';
-		}
-
-		html += '<div class="yoro-result-section">';
-		html += '<strong>Draft I prepared</strong>';
-		html += '<p><strong>Subject:</strong> ' + h.escapeHtml(draftSummary.subject || '') + '</p>';
-		html += '<p><strong>Body preview:</strong> ' + h.escapeHtml(draftSummary.body_preview || '') + '</p>';
-		html += '</div>';
-
-		html += `
-		<div class="yoro-confirm-actions">
-			<button class="button button-primary yoro-confirm-run">Confirm</button>
-			<button class="button yoro-confirm-cancel">Cancel</button>
-		</div>
-		`;
-		html += '</div>';
-		html += '</div>';
-
-		return html;
-	}
-
-	function renderCustomerFollowupWorkflowConfirmation(data, h) {
-		const result = data.result || {};
-		const selectedItem = result.selected_item || {};
-		const queueSource = result.queue_source || {};
-		const proposedAction = result.proposed_action || {};
-		const draftSummary = result.draft_summary || {};
-		let html = '<div class="yoro-confirmation-result">';
-
-		html += '<div class="yoro-result-notice yoro-result-confirm">';
-		html += '<strong>Confirm store change</strong>';
-		html += '<p>' + h.escapeHtml(data.message || result.confirmation_scope || 'Review this customer follow-up before saving the draft.') + '</p>';
-		html += '</div>';
-
-		html += '<div class="yoro-confirmation-body">';
-		html += renderAdminCopilotBoundary(data, h);
-		html += renderWorkflowStatePanel(getWorkflowFromData(data), h);
-		html += '<div class="yoro-result-meta">';
-		html += '<span><strong>Flow:</strong> Customer follow-up</span>';
-		html += '<span><strong>Order:</strong> #' + h.escapeHtml(selectedItem.order_number || selectedItem.order_id || '') + '</span>';
-		html += '<span><strong>Queue:</strong> ' + h.escapeHtml(queueSource.label || queueSource.key || '—') + '</span>';
-		html += '<span><strong>Next step:</strong> ' + h.escapeHtml(proposedAction.label || proposedAction.action || '') + '</span>';
-		html += '</div>';
-
-		if (result.selection_reason) {
-			html += '<div class="yoro-result-section">';
-			html += '<strong>Why I picked this order</strong>';
-			html += '<p>' + h.escapeHtml(result.selection_reason) + '</p>';
-			html += '</div>';
-		}
-
-		html += '<div class="yoro-result-section">';
-		html += '<strong>Draft I prepared</strong>';
-		html += '<p><strong>Subject:</strong> ' + h.escapeHtml(draftSummary.subject || '') + '</p>';
-		html += '<p><strong>Body preview:</strong> ' + h.escapeHtml(draftSummary.body_preview || '') + '</p>';
-		html += '</div>';
-
-		html += `
-		<div class="yoro-confirm-actions">
-			<button class="button button-primary yoro-confirm-run">Confirm</button>
-			<button class="button yoro-confirm-cancel">Cancel</button>
-		</div>
-		`;
-		html += '</div>';
-		html += '</div>';
-
-		return html;
-	}
-
 	function renderClarification(data, h) {
 		const parsed = data.parsed || {};
-		const message = parsed.message || data.message || 'I need a little more detail.';
-		const suggestion = parsed.suggestion || data.suggestion || '';
-		const options = shouldRenderClarifyOptions(parsed) && Array.isArray(parsed.options) ? parsed.options : [];
+		const assistant = getAssistantResponse(data);
+		const message = assistant.message || assistant.question || parsed.message || data.message || 'I need a little more detail.';
+		const question = assistant.question && assistant.question !== message && String(message).indexOf(assistant.question) === -1
+			? assistant.question
+			: '';
+			const options = shouldRenderClarifyOptions(parsed) && Array.isArray(parsed.options) ? parsed.options : [];
 
 		let html = '<div class="yoro-assistant-message-result yoro-clarification-message-result">';
 		html += '<p>' + h.escapeHtml(message) + '</p>';
 
-		if (suggestion) {
-			html += '<p class="yoro-result-subtle">Best guess: ' + h.escapeHtml(suggestion) + '</p>';
+		if (question) {
+			html += '<p class="yoro-result-subtle">' + h.escapeHtml(question) + '</p>';
 		}
 
-		if (options.length) {
+			if (options.length) {
 			html += '<div class="yoro-clarify-options">';
 
 			options.forEach(function (option) {
 				const command = option && option.command ? String(option.command) : '';
 				const label = option && option.label ? String(option.label) : command || 'Use this';
-				const cancelClass = command === 'workflow.cancel' ? ' yoro-clarify-option-cancel' : '';
-
-				html += '<button type="button" class="button yoro-clarify-option' + cancelClass + '" data-command="' + h.escapeHtml(command) + '">';
+				html += '<button type="button" class="button yoro-clarify-option" data-command="' + h.escapeHtml(command) + '">';
 				html += h.escapeHtml(label);
 				html += '</button>';
 			});
@@ -1742,30 +1986,24 @@
 	function shouldRenderClarifyOptions(parsed) {
 		parsed = parsed && typeof parsed === 'object' ? parsed : {};
 
-		if (parsed.current_workflow) {
-			return true;
-		}
+			const reason = String(parsed.clarify_reason || '');
+			const action = String(parsed.action || '');
+			const missing = Array.isArray(parsed.missing) ? parsed.missing : [];
 
-		const reason = String(parsed.clarify_reason || '');
-		const action = String(parsed.action || '');
-		const missing = Array.isArray(parsed.missing) ? parsed.missing : [];
-		const shape = parsed.command_shape && typeof parsed.command_shape === 'object' ? parsed.command_shape : {};
-		const operationHint = String(shape.operation_hint || '');
-
-		if (
-			reason === 'missing_target' &&
-			action &&
-			missing.length &&
-			(operationHint === 'write_missing_target' || action.indexOf('orders.') === 0 || action.indexOf('workflow.') === 0)
-		) {
-			return false;
-		}
+				if (
+					reason === 'missing_target' &&
+					action &&
+					missing.length &&
+					action.indexOf('orders.') === 0
+				) {
+				return false;
+			}
 
 		return true;
 	}
 
 	function renderAssistantNarrative(result, h) {
-		if (!result || (!result.assistant_summary && !result.assistant_followup && !(result.meta && result.meta.assumption))) {
+		if (!result || (!result.assistant_summary && !(result.meta && result.meta.assumption))) {
 			return '';
 		}
 
@@ -1783,11 +2021,7 @@
 			html += '<p class="yoro-result-subtle">' + h.escapeHtml(assumption.message) + '</p>';
 		}
 
-		if (result.assistant_followup) {
-			html += '<p class="yoro-result-subtle">' + h.escapeHtml(result.assistant_followup) + '</p>';
-		}
-
-		if (!showSummary && !(assumption && assumption.message) && !result.assistant_followup) {
+		if (!showSummary && !(assumption && assumption.message)) {
 			return '';
 		}
 
@@ -1817,11 +2051,40 @@
 	}
 
 	function labelizeActionValue(value) {
-		return String(value || '')
-			.replace(/_/g, ' ')
-			.replace(/\b\w/g, function(char) {
-				return char.toUpperCase();
-			});
+		return formatAssistantValueLabel(value);
+	}
+
+	function renderCouponResult(data, h) {
+		const result = data && data.result && typeof data.result === 'object'
+			? data.result
+			: (data || {});
+		const action = result.action || (data && data.parsed && data.parsed.action) || '';
+		const coupon = firstCouponFromResult(result);
+		const code = couponParamValue(coupon, result, {}, 'coupon_code') || couponParamValue(coupon, result, {}, 'code');
+		const editUrl = couponParamValue(coupon, result, {}, 'edit_url');
+		const title = action === 'coupons.create'
+			? 'Coupon created'
+			: (code ? 'Coupon ' + code : 'Coupon details');
+		const message = result.summary || result.message || '';
+		let actionsHtml = '';
+
+		if (editUrl) {
+			actionsHtml = '<div class="yoro-confirm-actions yoro-coupon-actions">'
+				+ '<a class="button" href="' + h.escapeHtml(editUrl) + '">Edit coupon</a>'
+				+ '</div>';
+		}
+
+		let html = '<div class="yoro-single-action-result yoro-coupon-result">';
+		html += renderFriendlyActionCard({
+			state: result.read_only === true ? 'read' : 'success',
+			kicker: result.read_only === true ? 'Coupon lookup' : 'Done',
+			title: title,
+			message: message,
+			lines: couponConfirmationLines(action || 'coupons.lookup', {}, result, { completed: true }),
+			actionsHtml: actionsHtml
+		}, h);
+		html += '</div>';
+		return html;
 	}
 
 	function buildSingleActionSuccessCopy(action, result, params) {
@@ -1829,17 +2092,10 @@
 		const orderNo = result.order && result.order.number
 			? result.order.number
 			: (result.order_id || params.order_id || '');
-		const statusLabel = result.status_label || labelizeActionValue(result.status || params.status || '');
+		const statusLabel = result.status_label || orderStatusLabel(result.status || params.status || '');
 		const templateLabel = result.template ? labelizeActionValue(result.template) : '';
 
 		switch (action) {
-			case 'orders.hold':
-				return {
-					title: count === 1 ? 'Order put on hold' : 'Orders put on hold',
-					message: count === 1
-						? 'I moved that order to on-hold.'
-						: 'I moved ' + count + ' orders to on-hold.'
-				};
 			case 'orders.add_note':
 				return {
 					title: count === 1 ? 'Note added' : 'Notes added',
@@ -1875,13 +2131,6 @@
 						? 'I restored the previous order status.'
 						: 'I restored the previous statuses for ' + count + ' orders.'
 				};
-			case 'orders.bulk_update_status_with_note':
-				return {
-					title: 'Status and note updated',
-					message: count === 1
-						? 'I updated the order to ' + (statusLabel || 'the new status') + ' and added the note.'
-						: 'I updated ' + count + ' orders to ' + (statusLabel || 'the new status') + ' and added the note.'
-				};
 			case 'orders.email_customer_template':
 			case 'orders.send_customer_email':
 				return {
@@ -1890,15 +2139,20 @@
 						? 'I sent the customer email for order #' + orderNo + '.'
 						: 'I sent the customer email.'
 				};
+			case 'coupons.lookup':
+				return {
+					title: 'Coupon found',
+					message: result.summary || 'I found that coupon.'
+				};
+			case 'coupons.create':
+				return {
+					title: 'Coupon created',
+					message: result.summary || 'I created that coupon.'
+				};
 			case 'assistant.submit_developer_request':
 				return {
 					title: 'Request sent',
-					message: 'I sent that request to the developers.'
-				};
-			case 'workflow.cancel':
-				return {
-					title: 'Workflow cancelled',
-					message: 'I stopped that workflow.'
+					message: 'I sent that request for review.'
 				};
 			default:
 				return {
@@ -1914,69 +2168,13 @@
 		const params = parsed.params || {};
 		const action = parsed.action || result.action || '';
 		const successCopy = buildSingleActionSuccessCopy(action, result, params);
+		const changeLines = buildActionChangeLines(action, params, result, { completed: true });
 
 		let html = '<div class="yoro-single-action-result">';
 		html += renderAssistantNarrative(result, h);
 
-		html += '<div class="yoro-result-notice yoro-result-success">';
-		html += '<strong>' + h.escapeHtml(successCopy.title || 'Completed') + '</strong>';
-
-		if (h.shouldShowDebugJson && h.shouldShowDebugJson() && parsed.parser_rule) {
-			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
-		}
-
-		html += '<p>' + h.escapeHtml(successCopy.message || result.summary || 'I completed that action.') + '</p>';
-
-		html += '</div>';
 		html += '<div class="yoro-single-action-body">';
 		html += renderAdminCopilotBoundary(data, h);
-		const changeLines = [];
-
-		if (action === 'orders.hold') {
-			const ids = result.order_ids || result.processed || params.order_ids || [];
-
-			ids.forEach(function (id) {
-				changeLines.push('#' + id + ' -> moved to on-hold');
-			});
-		}
-
-		if (action === 'orders.add_note') {
-			const ids = result.order_ids || (result.order_id ? [result.order_id] : []);
-			const note = result.note || params.note || '';
-
-			ids.forEach(function (id) {
-				changeLines.push('#' + id + ' -> note: ' + note);
-			});
-		}
-
-		if (action === 'orders.update_status' || action === 'orders.bulk_update_status_with_note') {
-			const ids = result.processed || params.order_ids || [];
-			const status = result.status || params.status || '';
-			const note = result.note || params.note || '';
-
-			ids.forEach(function (id) {
-				let line = '#' + id + ' -> ' + status;
-				if (note) {
-					line += ' — note: ' + note;
-				}
-				changeLines.push(line);
-			});
-		}
-
-		if (action === 'orders.email_customer_template') {
-			const email = result.email || {};
-			changeLines.push('Order #' + (result.order_id || ''));
-			changeLines.push('Template: ' + (result.template || ''));
-			changeLines.push('Recipient: ' + (email.to || ''));
-			changeLines.push('Subject: ' + (email.subject || ''));
-		}
-
-		if (action === 'orders.send_customer_email') {
-			const email = result.email || {};
-			changeLines.push('Order #' + (result.order && result.order.number ? result.order.number : (result.order_id || '')));
-			changeLines.push('Recipient: ' + (email.to || ''));
-			changeLines.push('Subject: ' + (email.subject || ''));
-		}
 
 		if (action === 'assistant.submit_developer_request') {
 			const request = result.data && result.data.developer_request
@@ -1990,10 +2188,19 @@
 			}
 		}
 
-		html += renderWhatChangesSection('What changed', changeLines, h);
-		html += renderNextStepsSection(buildNextStepSuggestions(action, result, params), h);
+		html += renderFriendlyActionCard({
+			state: 'success',
+			kicker: 'Done',
+			title: successCopy.title || 'Completed',
+			message: successCopy.message || result.summary || 'I completed that action.',
+			lines: changeLines
+		}, h);
 
-		if (Array.isArray(result.skipped) && result.skipped.length) {
+		if (h.shouldShowDebugJson && h.shouldShowDebugJson() && parsed.parser_rule) {
+			html += '<p class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</p>';
+		}
+
+			if (Array.isArray(result.skipped) && result.skipped.length) {
 			html += '<div class="yoro-result-section">';
 			html += '<strong>Skipped</strong>';
 			html += '<ul>';
@@ -2044,51 +2251,7 @@
 		return '';
 	}
 
-	function renderSuggestions(suggestions, h) {
-		suggestions = Array.isArray(suggestions)
-			? suggestions.filter(function(item) {
-				return item && (item.action || item.command || item.value);
-			})
-			: [];
-
-		if (!suggestions.length) {
-			return '';
-		}
-
-		let html = '<div class="yoro-suggestions">';
-		html += '<strong>Suggestions:</strong>';
-
-		html += '<div class="yoro-suggestion-list">';
-
-		suggestions.forEach(function (item) {
-			html += '<button class="button button-small yoro-suggestion-btn"';
-			if (item.action) {
-				html += ' data-action="' + h.escapeHtml(item.action) + '"';
-				html += ' data-params="' + h.escapeHtml(JSON.stringify(item.params || {})) + '"';
-				html += ' data-confirm="' + (item.confirm ? '1' : '0') + '"';
-				html += ' data-preview="' + (item.preview ? '1' : '0') + '"';
-			}
-
-			if (item.command || item.value) {
-				html += ' data-command="' + h.escapeHtml(item.command || item.value) + '"';
-			}
-
-			if (item.requires_input) {
-				html += ' data-requires-input="1"';
-			}
-
-			html += '>';
-
-			html += h.escapeHtml(item.label);
-			html += '</button>';
-		});
-
-		html += '</div></div>';
-
-		return html;
-	}
-
-	function renderJson(data, h) {
+		function renderJson(data, h) {
 		return '<pre class="yoro-json-output">' + h.escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
 	}
 
@@ -2291,17 +2454,14 @@
 
 	function buildTraceReview(data) {
 		data = data && typeof data === 'object' ? data : {};
-		const parsed = data.parsed && typeof data.parsed === 'object' ? data.parsed : {};
-		const plan = data.plan && typeof data.plan === 'object' ? data.plan : {};
-		const result = data.result && typeof data.result === 'object' ? data.result : {};
-		const telemetry = data.telemetry && typeof data.telemetry === 'object' ? data.telemetry : {};
-		const runtime = telemetry.runtime_snapshot && typeof telemetry.runtime_snapshot === 'object' ? telemetry.runtime_snapshot : {};
-		const shape = parsed.command_shape && typeof parsed.command_shape === 'object'
-			? parsed.command_shape
-			: (telemetry.command_shape && typeof telemetry.command_shape === 'object' ? telemetry.command_shape : {});
-		const decision = parsed.command_decision && typeof parsed.command_decision === 'object' ? parsed.command_decision : {};
-		const command = parsed.original_command ||
-			(parsed.params && parsed.params.original_command) ||
+			const parsed = data.parsed && typeof data.parsed === 'object' ? data.parsed : {};
+			const plan = data.plan && typeof data.plan === 'object' ? data.plan : {};
+			const result = data.result && typeof data.result === 'object' ? data.result : {};
+			const telemetry = data.telemetry && typeof data.telemetry === 'object' ? data.telemetry : {};
+			const runtime = telemetry.runtime_snapshot && typeof telemetry.runtime_snapshot === 'object' ? telemetry.runtime_snapshot : {};
+			const decision = parsed.command_decision && typeof parsed.command_decision === 'object' ? parsed.command_decision : {};
+			const command = parsed.original_command ||
+				(parsed.params && parsed.params.original_command) ||
 			(plan.params && plan.params.original_command) ||
 			'';
 
@@ -2309,18 +2469,13 @@
 			{
 				label: 'Command',
 				summary: command,
-				detail: parsed.normalized_command && parsed.normalized_command !== command
-					? 'normalized: ' + parsed.normalized_command
-					: ''
-			},
-			{
-				label: 'Command shape',
-				summary: formatShapeSummary(shape),
-				detail: formatShapeDetail(shape)
-			},
-			{
-				label: 'AI decision',
-				summary: formatDecisionSummary(parsed, decision),
+					detail: parsed.normalized_command && parsed.normalized_command !== command
+						? 'normalized: ' + parsed.normalized_command
+						: ''
+				},
+				{
+					label: 'AI decision',
+					summary: formatDecisionSummary(parsed, decision),
 				detail: formatDecisionDetail(parsed, decision)
 			},
 			{
@@ -2345,80 +2500,10 @@
 			}
 		];
 
-		return steps.filter(function (step) {
-			return !!(step.summary || step.detail);
-		});
-	}
-
-	function formatShapeSummary(shape) {
-		if (!shape || typeof shape !== 'object') {
-			return '';
+			return steps.filter(function (step) {
+				return !!(step.summary || step.detail);
+			});
 		}
-
-		const parts = [];
-
-		['surface', 'target_type', 'operation_hint'].forEach(function (key) {
-			if (shape[key]) {
-				parts.push(key + '=' + shape[key]);
-			}
-		});
-
-		if (shape.status) {
-			parts.push('status=' + shape.status);
-		}
-
-		if (shape.quantity) {
-			parts.push('quantity=' + shape.quantity);
-		}
-
-		if (shape.age_filter && typeof shape.age_filter === 'object' && shape.age_filter.operator) {
-			parts.push('age=' + shape.age_filter.operator + ' ' + (shape.age_filter.value || '') + ' ' + (shape.age_filter.unit || ''));
-		}
-
-		if (shape.money_filter && typeof shape.money_filter === 'object' && shape.money_filter.operator) {
-			parts.push('money=' + shape.money_filter.operator + ' ' + (shape.money_filter.value || ''));
-		}
-
-		return parts.join(' | ');
-	}
-
-	function formatShapeDetail(shape) {
-		if (!shape || typeof shape !== 'object') {
-			return '';
-		}
-
-		const parts = [];
-
-		if (Array.isArray(shape.explicit_order_ids) && shape.explicit_order_ids.length) {
-			parts.push('order_ids: ' + shape.explicit_order_ids.join(', '));
-		}
-
-		if (shape.quantity_scope && typeof shape.quantity_scope === 'object' && shape.quantity_scope.scope) {
-			parts.push('quantity_scope: ' + shape.quantity_scope.scope);
-		}
-
-		if (shape.customer_identity && typeof shape.customer_identity === 'object' && Object.keys(shape.customer_identity).length) {
-			parts.push('customer_identity: ' + compactObject(shape.customer_identity));
-		}
-
-		if (shape.payment_method && typeof shape.payment_method === 'object' && Object.keys(shape.payment_method).length) {
-			parts.push('payment_method: ' + compactObject(shape.payment_method));
-		}
-
-		if (shape.shipping_state && typeof shape.shipping_state === 'object' && Object.keys(shape.shipping_state).length) {
-			parts.push('shipping_state: ' + compactObject(shape.shipping_state));
-		}
-
-		if (shape.write_missing_target && typeof shape.write_missing_target === 'object' && Object.keys(shape.write_missing_target).length) {
-			parts.push('write_missing_target: ' + compactObject(shape.write_missing_target));
-		}
-
-		if (Array.isArray(shape.signals) && shape.signals.length) {
-			parts.push('signals: ' + shape.signals.slice(0, 8).join(', '));
-		}
-
-		return parts.join(' | ');
-	}
 
 	function formatDecisionSummary(parsed, decision) {
 		const parts = [];

@@ -6,11 +6,10 @@
 
 		return {
 			escapeHtml: helpers.escapeHtml,
-			formatDateTime: helpers.formatDateTime,
-			runCommandFromText: helpers.runCommandFromText,
-			renderDebugJson: helpers.renderDebugJson,
-			getResultSuggestions: helpers.getResultSuggestions,
-			resolveOrderId: helpers.resolveOrderId,
+				formatDateTime: helpers.formatDateTime,
+				runCommandFromText: helpers.runCommandFromText,
+				renderDebugJson: helpers.renderDebugJson,
+				resolveOrderId: helpers.resolveOrderId,
 			setCurrentOrderId: helpers.setCurrentOrderId,
 			executeActionDirect: helpers.executeActionDirect,
 			addAssistantMessage: helpers.addAssistantMessage,
@@ -47,6 +46,39 @@
 		return String(value || '');
 	}
 
+	function orderStatusLabel(value) {
+		const raw = String(value || '').trim();
+		const key = raw
+			.toLowerCase()
+			.replace(/^wc-/, '')
+			.replace(/_/g, '-')
+			.replace(/\s+/g, '-');
+		const labels = {
+			pending: 'Pending payment',
+			processing: 'Processing',
+			completed: 'Completed',
+			'on-hold': 'On hold',
+			cancelled: 'Cancelled',
+			canceled: 'Cancelled',
+			refunded: 'Refunded',
+			failed: 'Failed'
+		};
+
+		if (labels[key]) {
+			return labels[key];
+		}
+
+		return raw.replace(/^wc-/, '').replace(/[_-]/g, ' ').replace(/\b\w/g, function(char) {
+			return char.toUpperCase();
+		});
+	}
+
+	function orderDisplayStatus(order) {
+		order = order || {};
+
+		return order.status_label || orderStatusLabel(order.status || '');
+	}
+
 	function formatEditableEmailBody(body, h) {
 		const escaped = h.escapeHtml(body || '');
 		return escaped.replace(/\n/g, '<br>');
@@ -78,6 +110,41 @@
 		}
 
 		return String(node.innerText || node.textContent || '').trim();
+	}
+
+	function missingTemplateMessage() {
+		return 'I could not identify that saved template. Please choose the template again.';
+	}
+
+	function missingOrderMessage() {
+		return 'Please open an order or mention the order number first.';
+	}
+
+	function missingEmailContentMessage() {
+		return 'Please make sure the email has both a subject and body.';
+	}
+
+	function missingDraftMessage() {
+		return 'I could not identify that saved draft. Please reopen the draft from the order.';
+	}
+
+	function formatEmailTemplateLabel(template) {
+		const raw = String(template || '').trim();
+		const key = raw.toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+
+		if (!raw || key === 'custom') {
+			return 'Custom email';
+		}
+
+		if (key === 'ai_custom' || key === 'yoro_ai' || key === 'yoro_ai_custom') {
+			return 'YoRo AI draft';
+		}
+
+		return raw
+			.replace(/[_-]/g, ' ')
+			.replace(/\b\w/g, function(char) {
+				return char.toUpperCase();
+			});
 	}
 
 	function buildEditableWooEmailPreview(email, h) {
@@ -189,6 +256,7 @@
 		const result = data.result || {};
 		const email = result.email || {};
 		const order = result.order || {};
+		const emailFormatLabel = formatEmailTemplateLabel(email.template);
 
 		let html = '<div class="yoro-result-summary">';
 		html += '<strong>' + h.escapeHtml(result.summary || 'Customer email preview') + '</strong>';
@@ -198,16 +266,13 @@
 		html += '<div class="yoro-order-detail-card">';
 
 		html += '<div class="yoro-order-detail-header">';
-		html += '<div>';
-		html += '<strong class="yoro-order-detail-title">Email preview for order #' + h.escapeHtml(order.number || order.id || '') + '</strong>';
-		if (result.workflow && result.workflow.step) {
-			html += '<span class="yoro-current-order-badge">Workflow: ' + h.escapeHtml(result.workflow.step) + '</span>';
-		}
-		html += '<span class="yoro-current-order-badge">Current</span>';
-		html += '<div class="yoro-result-subtle">Template: ' + h.escapeHtml(email.template || '') + '</div>';
-		html += '</div>';
-		html += '<span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span>';
-		html += '</div>';
+			html += '<div>';
+			html += '<strong class="yoro-order-detail-title">Email preview for order #' + h.escapeHtml(order.number || order.id || '') + '</strong>';
+			html += '<span class="yoro-current-order-badge">Current</span>';
+			html += '<div class="yoro-result-subtle">Email format: ' + h.escapeHtml(emailFormatLabel) + '</div>';
+			html += '</div>';
+				html += '<span class="yoro-status-badge">' + h.escapeHtml(orderDisplayStatus(order)) + '</span>';
+			html += '</div>';
 
 		html += '<div class="yoro-order-detail-section">';
 		html += '<h4>Recipient</h4>';
@@ -216,57 +281,19 @@
 		html += '</div>';
 
 		html += '<div class="yoro-order-detail-section">';
-		html += '<h4>WooCommerce email preview</h4>';
-		html += '<div class="yoro-email-live-preview">';
-		html += '<div class="yoro-email-live-preview-meta">';
-		html += '<span>To: ' + h.escapeHtml(email.to || order.billing_email || '—') + '</span>';
-		html += '<span>Template: ' + h.escapeHtml(email.template || 'custom') + '</span>';
-		html += '</div>';
+			html += '<h4>Store email preview</h4>';
+			html += '<div class="yoro-email-live-preview">';
+			html += '<div class="yoro-email-live-preview-meta">';
+			html += '<span>To: ' + h.escapeHtml(email.to || order.billing_email || '—') + '</span>';
+			html += '<span>Format: ' + h.escapeHtml(emailFormatLabel) + '</span>';
+			html += '</div>';
 		html += buildEditableWooEmailPreview(email, h);
-		html += '<p class="yoro-result-subtle">Edit the subject and body directly inside this WooCommerce email preview, then update or send.</p>';
+		html += '<p class="yoro-result-subtle">Edit the subject and body directly inside this store email preview, then update or send.</p>';
 		html += '</div>';
 
 		html += renderSupportFlowPanel(result, h);
 
-		const emailSuggestions = h.getResultSuggestions(data);
-
-		if (emailSuggestions.length) {
-			html += '<div class="yoro-suggestions">';
-			html += '<strong>Suggestions</strong>';
-			html += '<div class="yoro-suggestions-list">';
-
-			emailSuggestions.forEach(function(s) {
-				const type = s.type || '';
-				const action = s.action || '';
-
-				if (action && type !== 'use_template') {
-					html += '<button type="button" class="button yoro-suggestion-btn"';
-					html += ' data-action="' + h.escapeHtml(action) + '"';
-					html += ' data-params="' + h.escapeHtml(JSON.stringify(s.params || {})) + '"';
-					html += ' data-confirm="' + (s.confirm ? '1' : '0') + '"';
-					html += ' data-preview="' + (s.preview ? '1' : '0') + '"';
-					html += '>';
-					html += h.escapeHtml(s.label || action);
-					html += '</button>';
-					return;
-				}
-
-				if (type === 'use_template' && s.template_id) {
-					html += '<button type="button" class="button yoro-suggestion-action"';
-					html += ' data-type="use_template"';
-					html += ' data-order-id="' + h.escapeHtml(order.id || '') + '"';
-					html += ' data-template-id="' + h.escapeHtml(s.template_id) + '"';
-					html += ' title="' + h.escapeHtml(s.reason || '') + '">';
-					html += h.escapeHtml(s.label || '');
-					html += '</button>';
-				}
-			});
-
-			html += '</div>';
-			html += '</div>';
-		}
-
-		html += '<div class="yoro-email-action-bar">';
+			html += '<div class="yoro-email-action-bar">';
 
 		html += '<div class="yoro-email-draft-actions">';
 
@@ -319,13 +346,7 @@
 			html += '<a class="button" href="' + h.escapeHtml(order.edit_url) + '" target="_blank" rel="noopener noreferrer">Open order</a>';
 		}
 
-		if (result.workflow && result.workflow.type === 'customer_email') {
-			html += '<button type="button" class="button yoro-cancel-workflow">';
-			html += 'Cancel';
-			html += '</button>';
-		}
-
-		html += '<button type="button" class="button yoro-save-email-draft"';
+			html += '<button type="button" class="button yoro-save-email-draft"';
 		html += ' data-order-id="' + h.escapeHtml(order.id || '') + '">';
 		html += 'Save new draft';
 		html += '</button>';
@@ -441,7 +462,7 @@
 		html += '<strong class="yoro-order-detail-title">Email drafts for order #' + h.escapeHtml(order.number || result.order_id || '') + '</strong>';
 		html += '<div class="yoro-result-subtle">' + h.escapeHtml(order.billing_email || '') + '</div>';
 		html += '</div>';
-		html += '<span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span>';
+			html += '<span class="yoro-status-badge">' + h.escapeHtml(orderDisplayStatus(order)) + '</span>';
 		html += '</div>';
 
 		if (!drafts.length) {
@@ -495,9 +516,8 @@
 		const rawTarget = event.target;
 
 		const target =
-			rawTarget.closest(
-				'.yoro-suggestion-action,' +
-				'.yoro-delete-email-template,' +
+				rawTarget.closest(
+					'.yoro-delete-email-template,' +
 				'.yoro-use-email-template,' +
 				'.yoro-save-email-template,' +
 				'.yoro-template-toggle,' +
@@ -505,93 +525,32 @@
 				'.yoro-save-email-draft,' +
 				'.yoro-load-email-drafts,' +
 				'.yoro-use-email-draft,' +
-				'.yoro-update-email-draft,' +
-				'.yoro-delete-email-draft,' +
-				'.yoro-send-composed-email,' +
-				'.yoro-cancel-workflow'
-			);
+					'.yoro-update-email-draft,' +
+					'.yoro-delete-email-draft,' +
+					'.yoro-send-composed-email'
+				);
 
 		if (!target) {
 			return false;
 		}
 
-		if (target.classList.contains('yoro-suggestion-action')) {
-			const type = target.getAttribute('data-type') || '';
-
-			if (type !== 'use_template') {
-				event.preventDefault();
-				return true;
-			}
-
-			if (type === 'use_template') {
-				const templateId = target.getAttribute('data-template-id') || '';
-				let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
+			if (target.classList.contains('yoro-delete-email-template')) {
+			const templateId = target.getAttribute('data-template-id') || '';
+			const templateName = target.getAttribute('data-template-name') || '';
 
 				if (!templateId) {
 					h.addAssistantMessage({
 						success: false,
-						message: 'Template ID is required.'
+						message: missingTemplateMessage()
 					});
 					return;
 				}
 
-				if (!orderId) {
-					h.addAssistantMessage({
-						success: false,
-						message: 'No active order. Please open or reference an order first.'
-					});
-					return;
-				}
-
-				h.setCurrentOrderId(orderId);
-
-				const loading = h.addLoadingMessage();
-
-				h.executeActionDirect(
-					'orders.use_email_template',
-					{
-						order_id: parseInt(orderId, 10),
-						template_id: templateId
-					},
-					false,
-					false
-				)
-					.then(function(data) {
-						loading.remove();
-
-						h.addAssistantMessage(data);
-						h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
-					})
-					.catch(function(error) {
-						loading.remove();
-
-						h.addAssistantMessage({
-							success: false,
-							error: error
-						});
-					});
-
-				return;
-			}
-		}
-
-		if (target.classList.contains('yoro-delete-email-template')) {
-			const templateId = target.getAttribute('data-template-id') || '';
-			const templateName = target.getAttribute('data-template-name') || '';
-
-			if (!templateId) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'Template ID is required.'
-				});
-				return;
-			}
-
-			h.openModal(
-				'Delete this template?',
-				'<p>This will delete the reusable email template.</p>' +
-				'<p><strong>Template:</strong> ' + h.escapeHtml(templateName) + '</p>',
-				function () {
+				h.openModal(
+					'Delete this template?',
+					'<p>This will delete the reusable email template.</p>' +
+					'<p><strong>Template name:</strong> ' + h.escapeHtml(templateName) + '</p>',
+					function () {
 					const loading = h.addLoadingMessage();
 
 					h.executeActionDirect(
@@ -626,21 +585,21 @@
 			const templateId = target.getAttribute('data-template-id') || '';
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
-			if (!templateId) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'Template ID is required.'
-				});
-				return;
-			}
+				if (!templateId) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingTemplateMessage()
+					});
+					return;
+				}
 
-			if (!orderId) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'No active order. Please open or reference an order first.'
-				});
-				return;
-			}
+				if (!orderId) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingOrderMessage()
+					});
+					return;
+				}
 
 			h.setCurrentOrderId(orderId);
 
@@ -683,26 +642,26 @@
 			const card = target.closest('.yoro-order-detail-card');
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
-			if (!orderId) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'No active order. Please open or reference an order first.'
-				});
-				return;
-			}
+				if (!orderId) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingOrderMessage()
+					});
+					return;
+				}
 
 			const subjectInput = card ? card.querySelector('.yoro-email-subject-input') : null;
 			const bodyInput = card ? card.querySelector('.yoro-email-body-input') : null;
 			const subject = readEmailEditableValue(subjectInput);
 			const body = readEmailEditableValue(bodyInput);
 
-			if (!subject || !body) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'Subject and body are required before saving a template.'
-				});
-				return;
-			}
+				if (!subject || !body) {
+					h.addAssistantMessage({
+						success: false,
+						message: 'Please add both a subject and body before saving this template.'
+					});
+					return;
+				}
 
 			const suggestedName = subject
 				.replace(/\s+/g, ' ')
@@ -806,13 +765,13 @@
 			const card = target.closest('.yoro-order-detail-card');
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
-			if (!orderId) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'No active order. Please open or reference an order first.'
-				});
-				return;
-			}
+				if (!orderId) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingOrderMessage()
+					});
+					return;
+				}
 
 			h.setCurrentOrderId(orderId);
 
@@ -822,13 +781,13 @@
 			const subject = readEmailEditableValue(subjectInput);
 			const body = readEmailEditableValue(bodyInput);
 
-			if (!orderId || !subject || !body) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'Order ID, subject, and body are required.'
-				});
-				return;
-			}
+				if (!orderId || !subject || !body) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingEmailContentMessage()
+					});
+					return;
+				}
 
 			const loading = h.addLoadingMessage();
 
@@ -863,23 +822,23 @@
 		if (target.classList.contains('yoro-load-email-drafts')) {
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
-			if (!orderId) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'No active order. Please open or reference an order first.'
-				});
-				return;
-			}
+				if (!orderId) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingOrderMessage()
+					});
+					return;
+				}
 
 			h.setCurrentOrderId(orderId);
 
-			if (!orderId) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'Order ID is required.'
-				});
-				return;
-			}
+				if (!orderId) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingOrderMessage()
+					});
+					return;
+				}
 
 			const loading = h.addLoadingMessage();
 
@@ -912,13 +871,13 @@
 		if (target.classList.contains('yoro-use-email-draft')) {
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
-			if (!orderId) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'No active order. Please open or reference an order first.'
-				});
-				return;
-			}
+				if (!orderId) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingOrderMessage()
+					});
+					return;
+				}
 
 			h.setCurrentOrderId(orderId);
 
@@ -969,13 +928,13 @@
 
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
-			if (!orderId) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'No active order. Please open or reference an order first.'
-				});
-				return;
-			}
+				if (!orderId) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingOrderMessage()
+					});
+					return;
+				}
 
 			h.setCurrentOrderId(orderId);
 
@@ -986,13 +945,13 @@
 			const body = readEmailEditableValue(bodyInput);
 			const draftId = target.getAttribute('data-draft-id') || '';
 
-			if (!draftId || !subject || !body) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'Draft ID, subject, and body are required.'
-				});
-				return;
-			}
+				if (!draftId || !subject || !body) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingDraftMessage() + ' Also make sure it has both a subject and body.'
+					});
+					return;
+				}
 
 			const loading = h.addLoadingMessage();
 
@@ -1028,26 +987,26 @@
 		if (target.classList.contains('yoro-delete-email-draft')) {
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
-			if (!orderId) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'No active order. Please open or reference an order first.'
-				});
-				return;
-			}
+				if (!orderId) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingOrderMessage()
+					});
+					return;
+				}
 
 			h.setCurrentOrderId(orderId);
 
 			const draftId = target.getAttribute('data-draft-id') || '';
 			const subject = target.getAttribute('data-subject') || '';
 
-			if (!orderId || !draftId) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'Order ID and draft ID are required.'
-				});
-				return;
-			}
+				if (!orderId || !draftId) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingDraftMessage()
+					});
+					return;
+				}
 
 			h.openModal(
 				'Delete this draft?',
@@ -1089,13 +1048,13 @@
 			const card = target.closest('.yoro-order-detail-card');
 			let orderId = h.resolveOrderId(target.getAttribute('data-order-id'));
 
-			if (!orderId) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'No active order. Please open or reference an order first.'
-				});
-				return;
-			}
+				if (!orderId) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingOrderMessage()
+					});
+					return;
+				}
 
 			h.setCurrentOrderId(orderId);
 
@@ -1105,13 +1064,13 @@
 			const subject = readEmailEditableValue(subjectInput);
 			const body = readEmailEditableValue(bodyInput);
 
-			if (!orderId || !subject || !body) {
-				h.addAssistantMessage({
-					success: false,
-					message: 'Order ID, subject, and body are required.'
-				});
-				return;
-			}
+				if (!orderId || !subject || !body) {
+					h.addAssistantMessage({
+						success: false,
+						message: missingEmailContentMessage()
+					});
+					return;
+				}
 
 			h.openModal(
 				'Send this email?',
@@ -1150,13 +1109,8 @@
 			return;
 		}
 
-		if (target.classList.contains('yoro-cancel-workflow')) {
-			h.runCommandFromText('Cancel workflow', false);
-			return true;
+			return false;
 		}
-
-		return false;
-	}
 
 	window.YoRoEmailUI = {
 		init: init

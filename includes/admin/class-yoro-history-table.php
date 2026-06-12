@@ -25,11 +25,10 @@ class YoRo_History_Table extends WP_List_Table {
 
 	public function get_columns() {
 		return [
-			'expand'    => '',
 			'created_at' => __( 'Time', 'yoro-ai-core' ),
-			'command'    => __( 'Command', 'yoro-ai-core' ),
-			'decision'   => __( 'Decision', 'yoro-ai-core' ),
-			'status'     => __( 'Status', 'yoro-ai-core' ),
+			'command'    => __( 'Action', 'yoro-ai-core' ),
+			'result'     => __( 'What happened', 'yoro-ai-core' ),
+			'status'     => __( 'State', 'yoro-ai-core' ),
 			'undo'       => __( 'Undo', 'yoro-ai-core' ),
 		];
 	}
@@ -39,44 +38,23 @@ class YoRo_History_Table extends WP_List_Table {
 			case 'created_at':
 				return esc_html( $item['created_at'] );
 
-				case 'command':
+			case 'command':
+				$action = isset( $item['action'] ) ? (string) $item['action'] : '';
+
+				if ( '' === $action ) {
 					$command = isset( $item['command'] ) ? (string) $item['command'] : '';
-					$command = str_replace( 'direct:', '', $command );
+					$action = preg_replace( '/^(direct|action|proactive):/', '', $command );
+				}
 
-					return '<code>' . $this->highlight( wp_trim_words( $command, 12 ) ) . '</code>';
+				return esc_html( $this->action_label( $action ) );
 
-				case 'decision':
-					$action = isset( $item['action'] ) ? (string) $item['action'] : '';
-					$action = str_replace( 'direct:', '', $action );
-					$meta = [];
-
-					if ( ! empty( $item['intent'] ) ) {
-						$meta[] = sanitize_key( $item['intent'] );
-					}
-
-					if ( ! empty( $item['source'] ) ) {
-						$meta[] = sanitize_key( $item['source'] );
-					}
-
-					if ( isset( $item['confidence'] ) && null !== $item['confidence'] && '' !== $item['confidence'] ) {
-						$meta[] = number_format_i18n( (float) $item['confidence'] * 100, 0 ) . '%';
-					}
-
-					$output = '<strong class="yoro-history-decision-action">' . $this->highlight( '' !== $action ? $action : '—' ) . '</strong>';
-
-					if ( ! empty( $meta ) ) {
-						$output .= '<span class="yoro-history-row-meta">' . esc_html( implode( ' · ', $meta ) ) . '</span>';
-					}
-
-					return $output;
+			case 'result':
+				return esc_html( $this->build_result_summary( $item ) );
 
 			case 'status':
 				return '<span class="yoro-history-status yoro-history-status-' . esc_attr( $item['status'] ) . '">' .
-					$this->highlight( $item['status'] ) .
+					$this->highlight( $this->status_label( $item['status'] ) ) .
 				'</span>';
-
-			case 'expand':
-				return '<button type="button" class="button button-small yoro-expand-row">+</button>';
 
 			case 'undo':
 				return $this->render_undo_column( $item );
@@ -133,21 +111,6 @@ class YoRo_History_Table extends WP_List_Table {
 		return array_values( array_unique( $keywords ) );
 	}
 
-	private function fuzzy_keywords( $keywords ) {
-		$expanded = [];
-
-		foreach ( $keywords as $kw ) {
-			$expanded[] = $kw;
-
-			// đơn giản: bỏ 1 ký tự cuối (hodl → hod)
-			if ( strlen( $kw ) > 3 ) {
-				$expanded[] = substr( $kw, 0, -1 );
-			}
-		}
-
-		return array_unique( $expanded );
-	}
-
 	private function render_undo_column( $item ) {
 		$can_undo = (
 			'executed' === $item['status'] &&
@@ -170,6 +133,80 @@ class YoRo_History_Table extends WP_List_Table {
 		);
 	}
 
+	private function build_result_summary( $item ) {
+		$result = [];
+
+		if ( ! empty( $item['result'] ) && is_string( $item['result'] ) ) {
+			$decoded = maybe_unserialize( $item['result'] );
+
+			if ( ! is_array( $decoded ) ) {
+				$decoded = json_decode( $item['result'], true );
+			}
+
+			if ( is_array( $decoded ) ) {
+				$result = $decoded;
+			}
+		}
+
+		foreach ( [ 'message', 'summary', 'assistant_summary' ] as $key ) {
+			if ( ! empty( $result[ $key ] ) && is_string( $result[ $key ] ) ) {
+				return wp_trim_words( sanitize_text_field( $result[ $key ] ), 20 );
+			}
+		}
+
+		$action = isset( $item['action'] ) ? str_replace( 'direct:', '', (string) $item['action'] ) : '';
+		$status = sanitize_key( (string) ( $item['status'] ?? '' ) );
+
+		$count = isset( $result['count'] ) ? absint( $result['count'] ) : 0;
+
+		if ( $count > 0 && ! empty( $result['result_type'] ) ) {
+			$result_type = sanitize_key( $result['result_type'] );
+
+			if ( 'orders' === $result_type ) {
+				return sprintf(
+					/* translators: %d: order count */
+					_n( 'Found %d order.', 'Found %d orders.', $count, 'yoro-ai-core' ),
+					$count
+				);
+			}
+
+			if ( 'customer_email' === $result_type ) {
+				return __( 'Prepared a customer email draft.', 'yoro-ai-core' );
+			}
+		}
+
+		return '' !== $action ? $this->action_label( $action ) : __( 'No summary available', 'yoro-ai-core' );
+	}
+
+	private function status_label( $status ) {
+		$status = sanitize_key( (string) $status );
+
+		$labels = [
+			'executed'         => __( 'Done', 'yoro-ai-core' ),
+			'success'          => __( 'Done', 'yoro-ai-core' ),
+			'error'            => __( 'Needs attention', 'yoro-ai-core' ),
+			'failed'           => __( 'Needs attention', 'yoro-ai-core' ),
+		];
+
+		return $labels[ $status ] ?? ucwords( str_replace( '_', ' ', $status ) );
+	}
+
+	private function action_label( $action ) {
+		$action = sanitize_text_field( (string) $action );
+
+		$labels = [
+			'orders.search'                 => __( 'Find orders', 'yoro-ai-core' ),
+			'orders.get_details'            => __( 'Open order details', 'yoro-ai-core' ),
+			'orders.update_status'          => __( 'Update order status', 'yoro-ai-core' ),
+			'orders.add_note'               => __( 'Add internal note', 'yoro-ai-core' ),
+			'orders.compose_customer_email' => __( 'Draft customer email', 'yoro-ai-core' ),
+			'orders.send_customer_email'    => __( 'Send customer email', 'yoro-ai-core' ),
+			'workflow.composed_actions'     => __( 'Multi-step request', 'yoro-ai-core' ),
+		];
+
+		return $labels[ $action ] ?? ucwords( str_replace( [ 'orders.', 'workflow.', '_' ], [ '', '', ' ' ], $action ) );
+	}
+
 	protected function extra_tablenav( $which ) {
 
 		if ( 'top' !== $which ) {
@@ -178,73 +215,25 @@ class YoRo_History_Table extends WP_List_Table {
 
 		$status = isset( $_REQUEST['filter_status'] ) ? sanitize_key( wp_unslash( $_REQUEST['filter_status'] ) ) : '';
 		$action = isset( $_REQUEST['filter_action'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['filter_action'] ) ) : '';
-		$parser_source = isset( $_REQUEST['filter_parser_source'] ) ? sanitize_key( wp_unslash( $_REQUEST['filter_parser_source'] ) ) : '';
-		$risk_level = isset( $_REQUEST['filter_risk_level'] ) ? sanitize_key( wp_unslash( $_REQUEST['filter_risk_level'] ) ) : '';
-		$ai_feature = isset( $_REQUEST['filter_ai_feature'] ) ? sanitize_key( wp_unslash( $_REQUEST['filter_ai_feature'] ) ) : '';
-		$ai_model = isset( $_REQUEST['filter_ai_model'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['filter_ai_model'] ) ) : '';
-		$prompt_version = isset( $_REQUEST['filter_prompt_version'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['filter_prompt_version'] ) ) : '';
 
 		?>
 			<div class="alignleft actions yoro-history-filter-bar">
 
 				<select name="filter_status">
 					<option value=""><?php esc_html_e( 'All statuses', 'yoro-ai-core' ); ?></option>
-				<option value="executed" <?php selected( $status, 'executed' ); ?>>Executed</option>
-				<option value="preview" <?php selected( $status, 'preview' ); ?>>Preview</option>
-				<option value="error" <?php selected( $status, 'error' ); ?>>Error</option>
+					<option value="executed" <?php selected( $status, 'executed' ); ?>><?php esc_html_e( 'Done', 'yoro-ai-core' ); ?></option>
+					<option value="error" <?php selected( $status, 'error' ); ?>><?php esc_html_e( 'Needs attention', 'yoro-ai-core' ); ?></option>
 			</select>
 
 				<select name="filter_action">
-					<option value=""><?php esc_html_e( 'All actions', 'yoro-ai-core' ); ?></option>
-					<option value="orders.hold" <?php selected( $action, 'orders.hold' ); ?>>Hold</option>
-					<option value="orders.add_note" <?php selected( $action, 'orders.add_note' ); ?>>Add note</option>
-				</select>
-
-				<select name="filter_parser_source">
-					<option value=""><?php esc_html_e( 'All sources', 'yoro-ai-core' ); ?></option>
-					<option value="rule" <?php selected( $parser_source, 'rule' ); ?>>Rule</option>
-					<option value="ai_router" <?php selected( $parser_source, 'ai_router' ); ?>>AI router</option>
-					<option value="guard" <?php selected( $parser_source, 'guard' ); ?>>Guard</option>
-					<option value="memory" <?php selected( $parser_source, 'memory' ); ?>>Memory</option>
-					<option value="direct" <?php selected( $parser_source, 'direct' ); ?>>Direct</option>
+					<option value=""><?php esc_html_e( 'All task types', 'yoro-ai-core' ); ?></option>
+					<option value="orders.search" <?php selected( $action, 'orders.search' ); ?>><?php esc_html_e( 'Find orders', 'yoro-ai-core' ); ?></option>
+					<option value="orders.update_status" <?php selected( $action, 'orders.update_status' ); ?>><?php esc_html_e( 'Update status', 'yoro-ai-core' ); ?></option>
+					<option value="orders.add_note" <?php selected( $action, 'orders.add_note' ); ?>><?php esc_html_e( 'Add note', 'yoro-ai-core' ); ?></option>
+					<option value="orders.compose_customer_email" <?php selected( $action, 'orders.compose_customer_email' ); ?>><?php esc_html_e( 'Draft email', 'yoro-ai-core' ); ?></option>
 				</select>
 
 				<input type="submit" class="button" value="<?php esc_attr_e( 'Filter', 'yoro-ai-core' ); ?>">
-
-				<details class="yoro-history-filter-advanced">
-					<summary><?php esc_html_e( 'Advanced filters', 'yoro-ai-core' ); ?></summary>
-					<div>
-						<select name="filter_risk_level">
-							<option value=""><?php esc_html_e( 'All risk levels', 'yoro-ai-core' ); ?></option>
-							<option value="low" <?php selected( $risk_level, 'low' ); ?>>Low</option>
-							<option value="medium" <?php selected( $risk_level, 'medium' ); ?>>Medium</option>
-							<option value="high" <?php selected( $risk_level, 'high' ); ?>>High</option>
-						</select>
-
-						<select name="filter_ai_feature">
-							<option value=""><?php esc_html_e( 'All AI features', 'yoro-ai-core' ); ?></option>
-							<option value="parse" <?php selected( $ai_feature, 'parse' ); ?>>Parse</option>
-							<option value="intent" <?php selected( $ai_feature, 'intent' ); ?>>Intent</option>
-							<option value="workflow_plan" <?php selected( $ai_feature, 'workflow_plan' ); ?>>Workflow</option>
-							<option value="email_compose" <?php selected( $ai_feature, 'email_compose' ); ?>>Email compose</option>
-							<option value="suggestions" <?php selected( $ai_feature, 'suggestions' ); ?>>Suggestions</option>
-						</select>
-
-						<input
-							type="text"
-							name="filter_ai_model"
-							value="<?php echo esc_attr( $ai_model ); ?>"
-							placeholder="<?php esc_attr_e( 'AI model', 'yoro-ai-core' ); ?>"
-						/>
-
-						<input
-							type="text"
-							name="filter_prompt_version"
-							value="<?php echo esc_attr( $prompt_version ); ?>"
-							placeholder="<?php esc_attr_e( 'Prompt version', 'yoro-ai-core' ); ?>"
-						/>
-					</div>
-				</details>
 
 			</div>
 			<?php
@@ -263,49 +252,26 @@ class YoRo_History_Table extends WP_List_Table {
 		$current_page = $this->get_pagenum();
 		$offset       = ( $current_page - 1 ) * $per_page;
 
-		$where = 'WHERE 1=1';
+		$allowed_statuses = [ 'executed', 'success', 'error', 'failed' ];
+		$where = "WHERE action <> '' AND status IN ('" . implode( "','", array_map( 'esc_sql', $allowed_statuses ) ) . "')";
 		$params = [];
 
 		// Filter status
 		if ( ! empty( $_REQUEST['filter_status'] ) ) {
-			$where   .= ' AND status = %s';
-			$params[] = sanitize_key( wp_unslash( $_REQUEST['filter_status'] ) );
+			$filter_status = sanitize_key( wp_unslash( $_REQUEST['filter_status'] ) );
+
+			if ( 'error' === $filter_status ) {
+				$where .= " AND status IN ('error', 'failed')";
+			} else {
+				$where   .= ' AND status = %s';
+				$params[] = $filter_status;
+			}
 		}
 
 		// Filter action
 		if ( ! empty( $_REQUEST['filter_action'] ) ) {
 			$where   .= ' AND action = %s';
 			$params[] = sanitize_text_field( wp_unslash( $_REQUEST['filter_action'] ) );
-		}
-
-		if ( ! empty( $_REQUEST['filter_parser_source'] ) ) {
-			$parser_source = sanitize_key( wp_unslash( $_REQUEST['filter_parser_source'] ) );
-			$where .= ' AND telemetry LIKE %s';
-			$params[] = '%"parser_source":"' . $wpdb->esc_like( $parser_source ) . '"%';
-		}
-
-		if ( ! empty( $_REQUEST['filter_risk_level'] ) ) {
-			$risk_level = sanitize_key( wp_unslash( $_REQUEST['filter_risk_level'] ) );
-			$where .= ' AND telemetry LIKE %s';
-			$params[] = '%"risk_level":"' . $wpdb->esc_like( $risk_level ) . '"%';
-		}
-
-		if ( ! empty( $_REQUEST['filter_ai_feature'] ) ) {
-			$ai_feature = sanitize_key( wp_unslash( $_REQUEST['filter_ai_feature'] ) );
-			$where .= ' AND telemetry LIKE %s';
-			$params[] = '%"ai_feature":"' . $wpdb->esc_like( $ai_feature ) . '"%';
-		}
-
-		if ( ! empty( $_REQUEST['filter_ai_model'] ) ) {
-			$ai_model = sanitize_text_field( wp_unslash( $_REQUEST['filter_ai_model'] ) );
-			$where .= ' AND telemetry LIKE %s';
-			$params[] = '%"ai_model":"' . $wpdb->esc_like( $ai_model ) . '"%';
-		}
-
-		if ( ! empty( $_REQUEST['filter_prompt_version'] ) ) {
-			$prompt_version = sanitize_text_field( wp_unslash( $_REQUEST['filter_prompt_version'] ) );
-			$where .= ' AND telemetry LIKE %s';
-			$params[] = '%"prompt_version":"' . $wpdb->esc_like( $prompt_version ) . '"%';
 		}
 
 		$search = isset( $_REQUEST['s'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['s'] ) ) : '';
@@ -316,14 +282,10 @@ class YoRo_History_Table extends WP_List_Table {
 			$search_parts = [];
 
 			foreach ( $keywords as $kw ) {
-				$search_parts[] = '(command LIKE %s OR action LIKE %s OR result LIKE %s OR params LIKE %s OR telemetry LIKE %s OR trace_id LIKE %s)';
+				$search_parts[] = '(action LIKE %s OR result LIKE %s)';
 
 				$like = '%' . $wpdb->esc_like( $kw ) . '%';
 
-				$params[] = $like;
-				$params[] = $like;
-				$params[] = $like;
-				$params[] = $like;
 				$params[] = $like;
 				$params[] = $like;
 			}
@@ -369,85 +331,13 @@ class YoRo_History_Table extends WP_List_Table {
 		$columns_count = count( $this->get_columns() );
 
 		foreach ( $this->items as $item ) {
-			$telemetry = [];
-
-			if ( ! empty( $item['telemetry'] ) && is_string( $item['telemetry'] ) ) {
-				$decoded = json_decode( $item['telemetry'], true );
-
-				if ( is_array( $decoded ) ) {
-					$telemetry = $decoded;
-				}
-			}
-
-			$item['intent'] = sanitize_key( $telemetry['intent_name'] ?? '' );
-			$item['source'] = sanitize_key( $telemetry['parser_source'] ?? '' );
-			$item['confidence'] = isset( $telemetry['confidence'] ) ? (float) $telemetry['confidence'] : null;
-			$item['ai_feature'] = sanitize_key( $telemetry['ai_feature'] ?? '' );
-			$item['ai_model'] = sanitize_text_field( $telemetry['ai_model'] ?? '' );
-			$item['prompt_version'] = sanitize_text_field( $telemetry['prompt_version'] ?? '' );
-			$item['ai_provider'] = sanitize_key( $telemetry['ai_provider'] ?? '' );
-			$item['ai_trace_id'] = sanitize_text_field( $telemetry['ai_trace_id'] ?? '' );
-
 			echo '<tr>';
 			$this->single_row_columns( $item );
 			echo '</tr>';
-
-			$undo = [];
-
-			if ( ! empty( $item['undo_data'] ) && is_string( $item['undo_data'] ) ) {
-				$decoded = json_decode( $item['undo_data'], true );
-
-				if ( is_array( $decoded ) ) {
-					$undo = $decoded;
-				}
-			}
-
-				echo '<tr class="yoro-row-expanded" style="display:none;">';
-				echo '<td colspan="' . esc_attr( $columns_count ) . '">';
-				echo '<div class="yoro-history-expanded-summary">';
-				echo '<div><strong>' . esc_html__( 'Intent', 'yoro-ai-core' ) . '</strong><span>' . esc_html( $item['intent'] ?: '—' ) . '</span></div>';
-				echo '<div><strong>' . esc_html__( 'Source', 'yoro-ai-core' ) . '</strong><span>' . esc_html( $item['source'] ?: '—' ) . '</span></div>';
-				echo '<div><strong>' . esc_html__( 'AI', 'yoro-ai-core' ) . '</strong><span>' . esc_html( $item['ai_model'] ?: $item['ai_feature'] ?: '—' ) . '</span></div>';
-				echo '<div><strong>' . esc_html__( 'Confidence', 'yoro-ai-core' ) . '</strong><span>' . esc_html( null !== $item['confidence'] ? number_format_i18n( (float) $item['confidence'] * 100, 0 ) . '%' : '—' ) . '</span></div>';
-				echo '</div>';
-				if ( ! empty( $item['ai_trace_id'] ) ) {
-					$trace_query = add_query_arg(
-					[
-						'page' => YoRo_Admin_Page::HISTORY_SLUG,
-						's'    => $item['ai_trace_id'],
-					],
-					admin_url( 'admin.php' )
-				);
-
-				echo '<p class="yoro-history-trace-links">';
-				echo '<strong>' . esc_html__( 'AI Trace ID:', 'yoro-ai-core' ) . '</strong> ';
-				echo '<code>' . esc_html( $item['ai_trace_id'] ) . '</code> ';
-				echo '<a class="button button-small" href="' . esc_url( $trace_query ) . '">' . esc_html__( 'Search this trace', 'yoro-ai-core' ) . '</a>';
-					echo '</p>';
-				}
-				echo '<details class="yoro-history-raw-json">';
-				echo '<summary>' . esc_html__( 'Raw log data', 'yoro-ai-core' ) . '</summary>';
-				echo '<pre class="yoro-json">';
-				echo esc_html(
-					wp_json_encode(
-					[
-						'trace_id'  => $item['trace_id'] ?? '',
-						'telemetry' => $telemetry,
-						'params'    => maybe_unserialize( $item['params'] ),
-						'result'    => maybe_unserialize( $item['result'] ),
-						'undo'      => $undo,
-					],
-					JSON_PRETTY_PRINT
-				)
-				);
-				echo '</pre>';
-				echo '</details>';
-				echo '</td>';
-				echo '</tr>';
 		}
 	}
 
 	public function no_items() {
-		esc_html_e( 'No YoRo history found.', 'yoro-ai-core' );
+		esc_html_e( 'No YoRo action history found.', 'yoro-ai-core' );
 	}
 }

@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Rate_Limiter {
 
-	public static function check( $scope = 'run' ) {
+	public static function check( $scope = 'chat' ) {
 		$user_id = get_current_user_id();
 
 		if ( ! $user_id ) {
@@ -29,7 +29,7 @@ class YoRo_Rate_Limiter {
 			return new WP_Error(
 				'yoro_rate_limit_exceeded',
 				sprintf(
-					__( 'Too many YoRo commands. Please wait %d seconds and try again.', 'yoro-ai-core' ),
+					__( 'Too many YoRo requests. Please wait %d seconds and try again.', 'yoro-ai-core' ),
 					$window
 				),
 				[ 'status' => 429 ]

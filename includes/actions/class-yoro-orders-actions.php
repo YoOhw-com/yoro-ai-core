@@ -11,7 +11,7 @@ class YoRo_Orders_Actions {
 			'orders.search',
 			[
 				'label'       => __( 'Search orders', 'yoro-ai-core' ),
-				'description' => __( 'Search WooCommerce orders by status, limit, and date.', 'yoro-ai-core' ),
+				'description' => __( 'Search store orders by status, limit, and date.', 'yoro-ai-core' ),
 				'category'    => 'orders',
 				'permission'  => 'manage_woocommerce',
 				'callback'    => [ __CLASS__, 'search_orders' ],
@@ -24,6 +24,7 @@ class YoRo_Orders_Actions {
 					'phone'           => 'string',
 					'payment_method'  => 'string',
 					'date_window'     => 'string',
+					'time_window'     => 'object',
 					'date_from'       => 'string',
 					'date_to'         => 'string',
 					'min_age_hours'   => 'integer',
@@ -37,7 +38,7 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_search_orders' ],
 				'max_items'        => 50,
-				'ai_description'   => __( 'Search WooCommerce orders by status, customer, order number, payment method, country, total range, or date range.', 'yoro-ai-core' ),
+				'ai_description'   => __( 'Search store orders by status, customer, order number, payment method, country, total range, or date range.', 'yoro-ai-core' ),
 				'ai_examples'      => [
 					'Show the latest 10 orders',
 					'Show pending orders',
@@ -49,10 +50,11 @@ class YoRo_Orders_Actions {
 				],
 				'required_params'     => [],
 				'param_hints'         => [
-					'status' => __( 'Use WooCommerce status slugs like pending, processing, completed, on-hold, cancelled, refunded, or failed.', 'yoro-ai-core' ),
+					'status' => __( 'Use store order status slugs like pending, processing, completed, on-hold, cancelled, refunded, or failed.', 'yoro-ai-core' ),
 					'limit'  => __( 'Use a small numeric limit for list requests such as 5, 10, or 20.', 'yoro-ai-core' ),
-					'order_id' => __( 'Use the numeric WooCommerce order ID when the person references a specific order.', 'yoro-ai-core' ),
-					'date_window' => __( 'For relative dates such as today, yesterday, this week, last week, this month, or last 7 days, use a canonical key such as today, yesterday, this_week, last_week, this_month, or last_7_days instead of guessing date_from/date_to.', 'yoro-ai-core' ),
+					'order_id' => __( 'Use the numeric store order ID when the person references a specific order.', 'yoro-ai-core' ),
+					'date_window' => __( 'Use canonical reporting windows such as today, yesterday, this_week, last_week, this_month, last_month, this_year, last_year, last_N_days/weeks/months/years, month_YYYY_MM, quarter_YYYY_qN, year_YYYY, or range_YYYY_MM_DD_to_YYYY_MM_DD instead of guessing date_from/date_to.', 'yoro-ai-core' ),
+					'time_window' => __( 'Structured AI date contract with canonical_key, source_text, timezone, granularity, and date_field. Mirror canonical_key into date_window.', 'yoro-ai-core' ),
 					'min_age_hours' => __( 'Use when the person asks for orders older than a specific duration, such as more than 3 days.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [
@@ -70,7 +72,7 @@ class YoRo_Orders_Actions {
 			'orders.get_details',
 			[
 				'label'       => __( 'Get order details', 'yoro-ai-core' ),
-				'description' => __( 'Get basic details for selected WooCommerce orders.', 'yoro-ai-core' ),
+				'description' => __( 'Get basic details for selected store orders.', 'yoro-ai-core' ),
 				'category'    => 'orders',
 				'permission'  => 'manage_woocommerce',
 				'callback'    => [ __CLASS__, 'get_order_details' ],
@@ -81,7 +83,7 @@ class YoRo_Orders_Actions {
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_order_details' ],
 				'max_items'        => 20,
-				'ai_description'   => __( 'Open the details for one or more specific WooCommerce orders.', 'yoro-ai-core' ),
+				'ai_description'   => __( 'Open the details for one or more specific store orders.', 'yoro-ai-core' ),
 				'ai_examples'      => [
 					'Show order #1234',
 					'Open the details for order 1234',
@@ -89,7 +91,7 @@ class YoRo_Orders_Actions {
 				],
 				'required_params'     => [ 'order_ids' ],
 				'param_hints'         => [
-					'order_ids' => __( 'Use one or more numeric WooCommerce order IDs.', 'yoro-ai-core' ),
+					'order_ids' => __( 'Use one or more numeric store order IDs.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [
 					'order_ids' => __( 'Ask which order they want when no specific order reference is available.', 'yoro-ai-core' ),
@@ -105,8 +107,8 @@ class YoRo_Orders_Actions {
 		YoRo_Action_Registry::register(
 			'operations.get_summary',
 			[
-				'label'       => __( 'Get operations summary', 'yoro-ai-core' ),
-				'description' => __( 'Summarize order flow, backlog, and aged queues for store operations.', 'yoro-ai-core' ),
+				'label'       => __( 'Get operations report', 'yoro-ai-core' ),
+				'description' => __( 'Summarize the operations part of the store report: order flow, backlog, and aged queues.', 'yoro-ai-core' ),
 				'category'    => 'operations',
 				'permission'  => 'manage_woocommerce',
 				'callback'    => [ __CLASS__, 'get_operations_summary' ],
@@ -114,20 +116,22 @@ class YoRo_Orders_Actions {
 				'write_action'=> false,
 				'input_schema'=> [
 					'window' => 'string',
+					'time_window' => 'object',
 					'focus'  => 'string',
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_operations_summary' ],
 				'max_items'        => 1,
-				'ai_description'   => __( 'Show a read-only operations overview for a time window, including order flow, backlog, and current store pressure.', 'yoro-ai-core' ),
+				'ai_description'   => __( 'Use as the operations provider for the store report when the person asks about order flow, backlog, aged queues, workload, or current store pressure.', 'yoro-ai-core' ),
 				'ai_examples'      => [
 					'How is the store doing today?',
-					'Show operations summary for this week',
+					'Show operations report for this week',
 					'Tình hình vận hành hôm nay thế nào?',
 				],
 				'required_params'     => [],
 				'param_hints'         => [
-					'window' => __( 'Use canonical reporting windows such as today, yesterday, this_week, last_week, last_7_days, this_month, last_month, or last_30_days.', 'yoro-ai-core' ),
-					'focus'  => __( 'Use overview when the person wants a general operations summary.', 'yoro-ai-core' ),
+					'window' => __( 'Use canonical reporting windows such as today, yesterday, this_week, last_week, this_month, last_month, this_year, last_year, last_N_days/weeks/months/years, month_YYYY_MM, quarter_YYYY_qN, year_YYYY, or range_YYYY_MM_DD_to_YYYY_MM_DD.', 'yoro-ai-core' ),
+					'time_window' => __( 'Structured AI date contract with canonical_key, source_text, timezone, granularity, and date_field. Mirror canonical_key into window.', 'yoro-ai-core' ),
+					'focus'  => __( 'Use overview when the person wants a general operations report.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [],
 				'capabilities' => [
@@ -219,7 +223,7 @@ class YoRo_Orders_Actions {
 			'products.get_inventory_queue',
 			[
 				'label'       => __( 'Get inventory queue', 'yoro-ai-core' ),
-				'description' => __( 'List WooCommerce products that may need inventory attention.', 'yoro-ai-core' ),
+				'description' => __( 'List store products that may need inventory attention.', 'yoro-ai-core' ),
 				'category'    => 'products',
 				'permission'  => 'manage_woocommerce',
 				'callback'    => [ __CLASS__, 'get_inventory_queue' ],
@@ -253,43 +257,190 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
-			'store.get_morning_briefing',
+			'products.update_stock',
 			[
-				'label'       => __( 'Get morning briefing', 'yoro-ai-core' ),
-				'description' => __( 'Prepare a proactive morning briefing that combines yesterday performance with today\'s live store pressure.', 'yoro-ai-core' ),
-				'category'    => 'store',
-				'permission'  => 'manage_woocommerce',
-				'callback'    => [ __CLASS__, 'get_morning_briefing' ],
-				'risk_level'  => 'low',
-				'write_action'=> false,
-				'input_schema'=> [
-					'window'           => 'string',
-					'yesterday_window' => 'string',
-					'limit'            => 'integer',
+				'label'                 => __( 'Update product stock', 'yoro-ai-core' ),
+				'description'           => __( 'Update the managed stock quantity for a specific product or variation.', 'yoro-ai-core' ),
+				'category'              => 'products',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'update_product_stock' ],
+				'risk_level'            => 'medium',
+				'write_action'          => true,
+				'requires_confirmation' => true,
+				'input_schema'          => [
+					'product_id'     => 'integer',
+					'product_sku'    => 'string',
+					'global_unique_id' => 'string',
+					'stock_quantity' => 'integer',
 				],
-				'preview_callback' => [ __CLASS__, 'preview_get_morning_briefing' ],
-				'max_items'        => 1,
-				'ai_description'   => __( 'Prepare the morning store briefing that combines recent performance with the main operational queues for today.', 'yoro-ai-core' ),
-				'ai_examples'      => [
-					'Show morning briefing',
-					'Brief me this morning',
-					'Cho tôi briefing buổi sáng',
+				'product_identifier_types' => self::product_identifier_types(),
+				'preview_callback'      => [ __CLASS__, 'preview_update_product_stock' ],
+				'max_items'             => 1,
+				'ai_description'        => __( 'Set the stock quantity for one specific WooCommerce product or variation. Variable parent products with parent stock management enabled use shared parent stock; specific variations can use their own stock quantity. This changes product inventory and must be confirmed before execution.', 'yoro-ai-core' ),
+				'ai_examples'           => [
+					'Set product #123 stock to 8',
+					'Set variation #456 stock to 8',
+					'Set SKU HOODIE-BLUE stock to 12',
+					'Set GTIN 00012345678905 stock to 0',
+					'Update stock for product 123 to 0',
+					'Cập nhật tồn kho sản phẩm #123 thành 8',
 				],
-				'required_params'     => [],
-				'param_hints'         => [
-					'window' => __( 'Use a short current window such as today unless the person explicitly asks for a different period. Calendar windows are resolved from WordPress timezone and week-start settings.', 'yoro-ai-core' ),
-					'yesterday_window' => __( 'Use a prior-day comparison window for morning briefings.', 'yoro-ai-core' ),
+				'required_params'       => [ 'product_id', 'stock_quantity' ],
+				'param_hints'           => [
+					'product_id'     => __( 'Use the specific WooCommerce product or variation ID when available.', 'yoro-ai-core' ),
+					'product_sku'    => __( 'Use the specific product or variation SKU when the user identifies the target by SKU.', 'yoro-ai-core' ),
+					'global_unique_id' => __( 'Use the specific product global unique ID, such as GTIN, UPC, EAN, or ISBN.', 'yoro-ai-core' ),
+					'stock_quantity' => __( 'Use the target stock quantity as a non-negative integer.', 'yoro-ai-core' ),
 				],
-				'clarification_hints' => [],
-				'capabilities' => [
-					'store',
-					'operations',
-					'customers',
+				'clarification_hints'   => [
+					'product_id'     => __( 'Ask which product or variation should be updated when no target is clear. For variable products, ask for the variation unless the person explicitly wants shared parent stock.', 'yoro-ai-core' ),
+					'stock_quantity' => __( 'Ask what stock quantity should be set when the target quantity is missing.', 'yoro-ai-core' ),
+				],
+				'capabilities'          => [
 					'products',
+					'inventory',
+					'stock',
+					'write',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'products.update_stock_status',
+			[
+				'label'                 => __( 'Update product stock status', 'yoro-ai-core' ),
+				'description'           => __( 'Update the manual stock status for a specific product or variation that does not manage stock quantity.', 'yoro-ai-core' ),
+				'category'              => 'products',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'update_product_stock_status' ],
+				'risk_level'            => 'medium',
+				'write_action'          => true,
+				'requires_confirmation' => true,
+				'input_schema'          => [
+					'product_id'       => 'integer',
+					'product_sku'      => 'string',
+					'global_unique_id' => 'string',
+					'stock_status'     => 'string',
+				],
+				'product_identifier_types' => self::product_identifier_types(),
+				'preview_callback'      => [ __CLASS__, 'preview_update_product_stock_status' ],
+				'max_items'             => 1,
+				'ai_description'        => __( 'Set the manual stock status for one specific WooCommerce product or variation to one of the store configured stock statuses. Use this only when the user asks for stock status/availability, not a numeric stock quantity. Products or variations that manage stock quantity derive stock status from quantity instead.', 'yoro-ai-core' ),
+				'ai_examples'           => [
+					'Set product #123 stock status to out of stock',
+					'Set variation #456 stock status to out of stock',
+					'Set SKU HOODIE-BLUE stock status to out of stock',
+					'Set GTIN 00012345678905 stock status to on backorder',
+					'Mark product 123 as on backorder',
+					'Cập nhật trạng thái tồn kho sản phẩm #123 thành hết hàng',
+				],
+				'required_params'       => [ 'product_id', 'stock_status' ],
+				'param_hints'           => [
+					'product_id'       => __( 'Use the specific WooCommerce product or variation ID when available.', 'yoro-ai-core' ),
+					'product_sku'      => __( 'Use the specific product or variation SKU when the user identifies the target by SKU.', 'yoro-ai-core' ),
+					'global_unique_id' => __( 'Use the specific product global unique ID, such as GTIN, UPC, EAN, or ISBN.', 'yoro-ai-core' ),
+					'stock_status'     => __( 'Use one of the store configured product stock status keys.', 'yoro-ai-core' ),
+				],
+				'clarification_hints'   => [
+					'product_id'   => __( 'Ask which product or variation should be updated when no target is clear. For variable products, ask for the variation because parent stock status is derived from variation or shared stock behavior.', 'yoro-ai-core' ),
+					'stock_status' => __( 'Ask which configured stock status should be applied when the status is missing.', 'yoro-ai-core' ),
+				],
+				'capabilities'          => [
+					'products',
+					'inventory',
+					'stock_status',
+					'write',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'coupons.lookup',
+			[
+				'label'            => __( 'Look up coupon', 'yoro-ai-core' ),
+				'description'      => __( 'Look up a WooCommerce coupon by code or coupon ID.', 'yoro-ai-core' ),
+				'category'         => 'coupons',
+				'permission'       => 'manage_woocommerce',
+				'callback'         => [ __CLASS__, 'lookup_coupon' ],
+				'risk_level'       => 'low',
+				'write_action'     => false,
+				'input_schema'     => [
+					'coupon_id'   => 'integer',
+					'coupon_code' => 'string',
+					'limit'       => 'integer',
+				],
+				'preview_callback' => [ __CLASS__, 'preview_lookup_coupon' ],
+				'max_items'        => 1,
+				'ai_description'   => __( 'Look up one specific WooCommerce coupon, discount code, promo code, or promotion by coupon code or coupon ID.', 'yoro-ai-core' ),
+				'ai_examples'      => [
+					'Look up coupon SUMMER10',
+					'Check discount code SUMMER10',
+					'Tra cứu mã giảm giá SUMMER10',
+				],
+				'required_params'     => [ 'coupon_code' ],
+				'param_hints'         => [
+					'coupon_code' => __( 'Use the exact coupon, discount, or promo code when provided.', 'yoro-ai-core' ),
+					'coupon_id'   => __( 'Use the numeric WooCommerce coupon ID when provided.', 'yoro-ai-core' ),
+					'limit'       => __( 'Keep coupon lookup to one coupon unless the catalog adds a list/search action.', 'yoro-ai-core' ),
+				],
+				'clarification_hints' => [
+					'coupon_code' => __( 'Ask which coupon code should be looked up when no coupon code or coupon ID is provided.', 'yoro-ai-core' ),
+				],
+				'capabilities'        => [
+					'coupons',
+					'discounts',
 					'read',
-					'reporting',
-					'briefing',
-					'proactive',
+					'search',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'coupons.create',
+			[
+				'label'                 => __( 'Create coupon', 'yoro-ai-core' ),
+				'description'           => __( 'Create a WooCommerce coupon with a code, discount type, and amount.', 'yoro-ai-core' ),
+				'category'              => 'coupons',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'create_coupon' ],
+				'risk_level'            => 'medium',
+				'write_action'          => true,
+				'requires_confirmation' => true,
+				'input_schema'          => [
+					'coupon_code'          => 'string',
+					'discount_type'        => 'string',
+					'discount_amount'      => 'number',
+					'description'          => 'string',
+					'expiry_date'          => 'string',
+					'usage_limit'          => 'integer',
+					'usage_limit_per_user' => 'integer',
+					'individual_use'       => 'boolean',
+					'free_shipping'        => 'boolean',
+				],
+				'preview_callback'      => [ __CLASS__, 'preview_create_coupon' ],
+				'max_items'             => 1,
+				'ai_description'        => __( 'Create one new WooCommerce coupon, discount code, promo code, or promotion. Requires coupon_code, discount_type, and discount_amount, and must be approved before execution.', 'yoro-ai-core' ),
+				'ai_examples'           => [
+					'Create coupon SUMMER10 for 10 percent off',
+					'Create discount code VIP20 for 20% off',
+					'Tạo mã giảm giá SUMMER10 giảm 10 phần trăm',
+				],
+				'required_params'       => [ 'coupon_code', 'discount_type', 'discount_amount' ],
+				'param_hints'           => [
+					'coupon_code'     => __( 'Use the exact coupon, discount, or promo code to create.', 'yoro-ai-core' ),
+					'discount_type'   => __( 'Use percent, fixed_cart, or fixed_product.', 'yoro-ai-core' ),
+					'discount_amount' => __( 'Use a positive numeric discount amount. Percent coupons cannot exceed 100.', 'yoro-ai-core' ),
+				],
+				'clarification_hints'   => [
+					'coupon_code'     => __( 'Ask which coupon code should be created when the code is missing.', 'yoro-ai-core' ),
+					'discount_type'   => __( 'Ask whether the discount is percent, fixed cart, or fixed product when the discount type is missing.', 'yoro-ai-core' ),
+					'discount_amount' => __( 'Ask what discount amount should be used when the amount is missing.', 'yoro-ai-core' ),
+				],
+				'capabilities'          => [
+					'coupons',
+					'discounts',
+					'promotions',
+					'write',
 				],
 			]
 		);
@@ -297,8 +448,8 @@ class YoRo_Orders_Actions {
 		YoRo_Action_Registry::register(
 			'store.get_daily_briefing',
 			[
-				'label'       => __( 'Get daily briefing', 'yoro-ai-core' ),
-				'description' => __( 'Summarize the current store picture across operations, attention, fulfillment, customer follow-up, and inventory.', 'yoro-ai-core' ),
+				'label'       => __( 'Get store report overview', 'yoro-ai-core' ),
+				'description' => __( 'Summarize the broad store report overview across operations, attention, fulfillment, customer follow-up, and inventory for the requested reporting window.', 'yoro-ai-core' ),
 				'category'    => 'store',
 				'permission'  => 'manage_woocommerce',
 				'callback'    => [ __CLASS__, 'get_daily_briefing' ],
@@ -306,20 +457,22 @@ class YoRo_Orders_Actions {
 				'write_action'=> false,
 				'input_schema'=> [
 					'window' => 'string',
+					'time_window' => 'object',
 					'limit'  => 'integer',
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_daily_briefing' ],
 				'max_items'        => 1,
-				'ai_description'   => __( 'Prepare a store briefing or store snapshot for the requested time window across operations, customers, fulfillment, and inventory.', 'yoro-ai-core' ),
+				'ai_description'   => __( 'Use as the overview provider for the store report when the person asks for a quick check-in, today store report, broad store snapshot, or what to look at now.', 'yoro-ai-core' ),
 				'ai_examples'      => [
-					'Show today\'s briefing',
-					'Give me a weekly brief',
-					'Cho tôi xem briefing hôm nay',
+					'Show today\'s store report',
+					'Give me a weekly store report',
+					'Cho tôi xem báo cáo cửa hàng hôm nay',
 				],
 				'required_params'     => [],
 				'param_hints'         => [
-					'window' => __( 'Use canonical reporting windows such as today, yesterday, this_week, last_week, last_7_days, this_month, last_month, or last_30_days.', 'yoro-ai-core' ),
-					'limit'  => __( 'Keep the result compact for briefing requests.', 'yoro-ai-core' ),
+					'window' => __( 'Use canonical reporting windows such as today, yesterday, this_week, last_week, this_month, last_month, this_year, last_year, last_N_days/weeks/months/years, month_YYYY_MM, quarter_YYYY_qN, year_YYYY, or range_YYYY_MM_DD_to_YYYY_MM_DD.', 'yoro-ai-core' ),
+					'time_window' => __( 'Structured AI date contract with canonical_key, source_text, timezone, granularity, and date_field. Mirror canonical_key into window.', 'yoro-ai-core' ),
+					'limit'  => __( 'Keep the result compact for overview report requests.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [],
 				'capabilities' => [
@@ -337,8 +490,8 @@ class YoRo_Orders_Actions {
 		YoRo_Action_Registry::register(
 			'store.get_business_summary',
 			[
-				'label'       => __( 'Get business summary', 'yoro-ai-core' ),
-				'description' => __( 'Summarize store business performance, operating pressure, customer activity, and product signals.', 'yoro-ai-core' ),
+				'label'       => __( 'Get sales report', 'yoro-ai-core' ),
+				'description' => __( 'Summarize the sales part of the store report: revenue, orders, customer activity, product demand, and operating pressure.', 'yoro-ai-core' ),
 				'category'    => 'store',
 				'permission'  => 'manage_woocommerce',
 				'callback'    => [ __CLASS__, 'get_business_summary' ],
@@ -346,25 +499,24 @@ class YoRo_Orders_Actions {
 				'write_action'=> false,
 				'input_schema'=> [
 					'window' => 'string',
+					'time_window' => 'object',
 					'focus'  => 'string',
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_business_summary' ],
 				'max_items'        => 1,
-				'ai_description'   => __( 'Show a business-health or business-performance summary for the requested time window, including revenue, customer activity, product signals, and overall commercial direction.', 'yoro-ai-core' ),
+				'ai_description'   => __( 'Use as the sales provider for the store report when the person asks about revenue, sales, business health, customer activity, product demand, or commercial direction.', 'yoro-ai-core' ),
 				'ai_examples'      => [
-					'How is our business doing this month?',
-					'Show business summary for this week',
-					'Tóm tắt tình hình kinh doanh tuần này',
-					'Tình hình kinh doanh dạo này như thế nào?',
-					'Tình hình kinh doanh tuần này thế nào?',
-					'Cho tôi xem tình hình kinh doanh tuần này',
-					'¿Cómo va el negocio esta semana?',
-					'Muéstrame el resumen del negocio de esta semana',
-					'¿Cómo está yendo el negocio últimamente?',
+					'Show sales report this month',
+					'Show sales report for this week',
+					'Cho tôi xem báo cáo doanh thu tuần này',
+					'Doanh thu 4 ngày qua thế nào?',
+					'¿Cómo van las ventas esta semana?',
+					'Muéstrame el reporte de ventas de esta semana',
 				],
 				'required_params'     => [],
 				'param_hints'         => [
-					'window' => __( 'Use calendar windows like this_week or this_month when the person says this week or this month; use rolling windows like last_7_days only when they ask for the last/past N days.', 'yoro-ai-core' ),
+					'window' => __( 'Use calendar windows like this_week, this_month, last_year, month_YYYY_MM, quarter_YYYY_qN, year_YYYY, or range_YYYY_MM_DD_to_YYYY_MM_DD when the person names a calendar/from-to period; use rolling windows like last_N_days/weeks/months/years for custom recent ranges.', 'yoro-ai-core' ),
+					'time_window' => __( 'Structured AI date contract with canonical_key, source_text, timezone, granularity, and date_field. Mirror canonical_key into window.', 'yoro-ai-core' ),
 					'focus'  => __( 'Use overview unless the person explicitly narrows to one business dimension.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [],
@@ -383,8 +535,8 @@ class YoRo_Orders_Actions {
 		YoRo_Action_Registry::register(
 			'store.get_insights',
 			[
-				'label'       => __( 'Get store insights', 'yoro-ai-core' ),
-				'description' => __( 'Summarize read-only order, customer, and product insights for the store.', 'yoro-ai-core' ),
+				'label'       => __( 'Get store signal report', 'yoro-ai-core' ),
+				'description' => __( 'Summarize the signals part of the store report across orders, customers, products, and inventory.', 'yoro-ai-core' ),
 				'category'    => 'store',
 				'permission'  => 'manage_woocommerce',
 				'callback'    => [ __CLASS__, 'get_store_insights' ],
@@ -392,19 +544,21 @@ class YoRo_Orders_Actions {
 				'write_action'=> false,
 				'input_schema'=> [
 					'window' => 'string',
+					'time_window' => 'object',
 					'limit'  => 'integer',
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_store_insights' ],
 				'max_items'        => 50,
-				'ai_description'   => __( 'Show read-only store insights, trends, and signals for the requested reporting window.', 'yoro-ai-core' ),
+				'ai_description'   => __( 'Use as the signal provider for the store report when the person asks for insights, trends, patterns, signals, or a grouped read across orders, customers, and products.', 'yoro-ai-core' ),
 				'ai_examples'      => [
-					'Show store insights for this week',
+					'Show store signals for this week',
 					'What patterns do you see this month?',
-					'Cho tôi xem insight cửa hàng tuần này',
+					'Cho tôi xem tín hiệu cửa hàng tuần này',
 				],
 				'required_params'     => [],
 				'param_hints'         => [
-					'window' => __( 'Use calendar windows like this_week or this_month when the person says this week or this month; use rolling windows like last_7_days only when they ask for the last/past N days.', 'yoro-ai-core' ),
+					'window' => __( 'Use calendar windows like this_week, this_month, last_year, month_YYYY_MM, quarter_YYYY_qN, year_YYYY, or range_YYYY_MM_DD_to_YYYY_MM_DD when the person names a calendar/from-to period; use rolling windows like last_N_days/weeks/months/years for custom recent ranges.', 'yoro-ai-core' ),
+					'time_window' => __( 'Structured AI date contract with canonical_key, source_text, timezone, granularity, and date_field. Mirror canonical_key into window.', 'yoro-ai-core' ),
 					'limit'  => __( 'Keep insight lists compact unless the person asks for more.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [],
@@ -420,37 +574,41 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
-			'customers.get_summary',
+			'customers.lookup',
 			[
-				'label'       => __( 'Get customer summary', 'yoro-ai-core' ),
-				'description' => __( 'Summarize customer order history by email or phone.', 'yoro-ai-core' ),
+				'label'       => __( 'Look up customer', 'yoro-ai-core' ),
+				'description' => __( 'Look up a customer profile by email, phone, customer ID, or name.', 'yoro-ai-core' ),
 				'category'    => 'customers',
 				'permission'  => 'manage_woocommerce',
 				'callback'    => [ __CLASS__, 'get_customer_summary' ],
 				'risk_level'  => 'low',
 				'write_action'=> false,
 				'input_schema'=> [
-					'email' => 'string',
-					'phone' => 'string',
-					'limit' => 'integer',
+					'email'         => 'string',
+					'phone'         => 'string',
+					'customer_id'   => 'integer',
+					'customer_name' => 'string',
+					'limit'         => 'integer',
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_customer_summary' ],
 				'max_items'        => 50,
-				'ai_description'   => __( 'Show a customer summary based on email or phone, including order history and recent activity.', 'yoro-ai-core' ),
+				'ai_description'   => __( 'Look up one customer profile by email, phone, customer ID, or name, including compact order history and recent activity.', 'yoro-ai-core' ),
 				'ai_examples'      => [
-					'Show customer summary for john@example.com',
+					'Look up customer john@example.com',
 					'Find the customer with phone 555-1234',
-					'Tóm tắt khách hàng john@example.com',
+					'Tra cứu khách hàng john@example.com',
 				],
 				'required_params'     => [],
 				'param_hints'         => [
-					'email' => __( 'Use the customer email when it is explicitly mentioned.', 'yoro-ai-core' ),
-					'phone' => __( 'Use the customer phone number when that is the clearest identifier.', 'yoro-ai-core' ),
-					'limit' => __( 'Keep the result compact unless the person asks for a larger history.', 'yoro-ai-core' ),
+					'email'         => __( 'Use the customer email when it is explicitly mentioned.', 'yoro-ai-core' ),
+					'phone'         => __( 'Use the customer phone number when that is the clearest identifier.', 'yoro-ai-core' ),
+					'customer_id'   => __( 'Use the customer ID when it is explicitly mentioned.', 'yoro-ai-core' ),
+					'customer_name' => __( 'Use the customer name when no stronger identifier is provided.', 'yoro-ai-core' ),
+					'limit'         => __( 'Keep the result compact unless the person asks for a larger history.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [
-					'email' => __( 'Ask for the customer email or phone when the person wants a customer summary but provides no customer identifier.', 'yoro-ai-core' ),
-					'phone' => __( 'Ask for the customer phone when there is no usable email or customer reference.', 'yoro-ai-core' ),
+					'email' => __( 'Ask for a customer email, phone, ID, or name when the person wants a customer lookup but provides no customer identifier.', 'yoro-ai-core' ),
+					'phone' => __( 'Ask for the customer phone when there is no usable email, ID, name, or customer reference.', 'yoro-ai-core' ),
 				],
 				'capabilities' => [
 					'customers',
@@ -464,7 +622,7 @@ class YoRo_Orders_Actions {
 			'customers.get_service_queue',
 			[
 				'label'       => __( 'Get customer service queue', 'yoro-ai-core' ),
-				'description' => __( 'List WooCommerce orders that may need customer follow-up, without sending messages.', 'yoro-ai-core' ),
+				'description' => __( 'List store orders that may need customer follow-up, without sending messages.', 'yoro-ai-core' ),
 				'category'    => 'customers',
 				'permission'  => 'manage_woocommerce',
 				'callback'    => [ __CLASS__, 'get_customer_service_queue' ],
@@ -502,36 +660,39 @@ class YoRo_Orders_Actions {
 			'orders.find_by_customer',
 			[
 				'label'       => __( 'Find orders by customer', 'yoro-ai-core' ),
-				'description' => __( 'Find WooCommerce orders by customer email, phone, or customer ID.', 'yoro-ai-core' ),
+				'description' => __( 'Find store orders by customer email, phone, customer ID, or customer name.', 'yoro-ai-core' ),
 				'category'    => 'orders',
 				'permission'  => 'manage_woocommerce',
-				'callback'    => [ __CLASS__, 'find_orders_by_customer' ],
-				'risk_level'  => 'low',
-				'write_action'=> false,
-				'input_schema'=> [
-					'email'       => 'string',
-					'phone'       => 'string',
-					'customer_id' => 'integer',
-					'limit'       => 'integer',
-				],
-				'preview_callback' => [ __CLASS__, 'preview_find_orders_by_customer' ],
-				'max_items'        => 50,
-				'ai_description'   => __( 'Find WooCommerce orders for a customer using email, phone number, or customer ID.', 'yoro-ai-core' ),
-				'ai_examples'      => [
-					'Show orders for john@example.com',
-					'Find orders for customer 123',
-					'Tìm đơn của khách john@example.com',
-				],
-				'required_params'     => [],
-				'param_hints'         => [
-					'email'       => __( 'Use the customer email when it is explicitly mentioned.', 'yoro-ai-core' ),
-					'phone'       => __( 'Use the phone number when it is the clearest customer identifier.', 'yoro-ai-core' ),
-					'customer_id' => __( 'Use the numeric customer ID when the person provides it directly.', 'yoro-ai-core' ),
-					'limit'       => __( 'Use a small numeric limit for list requests.', 'yoro-ai-core' ),
-				],
-				'clarification_hints' => [
-					'email' => __( 'Ask which customer they mean when there is no clear email, phone, or customer ID.', 'yoro-ai-core' ),
-				],
+					'callback'    => [ __CLASS__, 'find_orders_by_customer' ],
+					'risk_level'  => 'low',
+					'write_action'=> false,
+					'input_schema'=> [
+						'email'         => 'string',
+						'phone'         => 'string',
+						'customer_id'   => 'integer',
+						'customer_name' => 'string',
+						'limit'         => 'integer',
+					],
+					'preview_callback' => [ __CLASS__, 'preview_find_orders_by_customer' ],
+					'max_items'        => 50,
+					'ai_description'   => __( 'Find store orders for a customer using email, phone number, customer ID, or customer name.', 'yoro-ai-core' ),
+					'ai_examples'      => [
+						'Show orders for john@example.com',
+						'Find orders for customer 123',
+						'Show orders for customer John Doe',
+						'Tìm đơn của khách john@example.com',
+					],
+					'required_params'     => [],
+					'param_hints'         => [
+						'email'         => __( 'Use the customer email when it is explicitly mentioned.', 'yoro-ai-core' ),
+						'phone'         => __( 'Use the phone number when it is the clearest customer identifier.', 'yoro-ai-core' ),
+						'customer_id'   => __( 'Use the numeric customer ID when the person provides it directly.', 'yoro-ai-core' ),
+						'customer_name' => __( 'Use the customer name when the person provides a name instead of an email, phone, or customer ID.', 'yoro-ai-core' ),
+						'limit'         => __( 'Use a small numeric limit for list requests.', 'yoro-ai-core' ),
+					],
+					'clarification_hints' => [
+						'email' => __( 'Ask which customer they mean when there is no clear email, phone, customer ID, or customer name.', 'yoro-ai-core' ),
+					],
 				'capabilities' => [
 					'orders',
 					'read',
@@ -544,7 +705,7 @@ class YoRo_Orders_Actions {
 			'orders.find_by_identity',
 			[
 				'label'       => __( 'Find orders by identity', 'yoro-ai-core' ),
-				'description' => __( 'Find WooCommerce orders sharing email, phone, IP, or device identifier.', 'yoro-ai-core' ),
+				'description' => __( 'Find store orders sharing email, phone, IP, or device identifier.', 'yoro-ai-core' ),
 				'category'    => 'orders',
 				'permission'  => 'manage_woocommerce',
 				'callback'    => [ __CLASS__, 'find_orders_by_identity' ],
@@ -581,7 +742,7 @@ class YoRo_Orders_Actions {
 			'orders.refund_preview',
 			[
 				'label'            => __( 'Refund preview', 'yoro-ai-core' ),
-				'description'      => __( 'Preview refundable amount, refunded amount, and line item refund context for a WooCommerce order.', 'yoro-ai-core' ),
+				'description'      => __( 'Preview refundable amount, refunded amount, and line item refund context for a store order.', 'yoro-ai-core' ),
 				'category'         => 'orders',
 				'permission'       => 'manage_woocommerce',
 				'callback'         => [ __CLASS__, 'refund_preview' ],
@@ -706,6 +867,7 @@ class YoRo_Orders_Actions {
 					'subject' => 'string',
 					'body'    => 'string',
 				],
+				'preview_callback'    => [ __CLASS__, 'preview_save_email_template' ],
 				'ai_description'      => __( 'Save a reusable customer email template with a name, subject, and body.', 'yoro-ai-core' ),
 				'ai_examples'         => [
 					'Save this as template "shipping delay"',
@@ -767,6 +929,7 @@ class YoRo_Orders_Actions {
 				'input_schema'          => [
 					'template_id' => 'string',
 				],
+				'preview_callback'      => [ __CLASS__, 'preview_delete_email_template' ],
 				'ai_description'        => __( 'Delete a reusable customer email template after confirmation.', 'yoro-ai-core' ),
 				'ai_examples'           => [
 					'Delete the shipping delay template',
@@ -837,6 +1000,7 @@ class YoRo_Orders_Actions {
 				'input_schema'     => [
 					'order_id'     => 'integer',
 					'instruction'  => 'string',
+					'email_intent' => 'string',
 				],
 				'preview_callback' => [ __CLASS__, 'preview_compose_customer_email' ],
 				'max_items'        => 1,
@@ -850,6 +1014,7 @@ class YoRo_Orders_Actions {
 				'param_hints'         => [
 					'order_id'    => __( 'Use the specific order ID the email is about.', 'yoro-ai-core' ),
 					'instruction' => __( 'Use the natural-language goal of the email, such as shipping delay, payment confirmation, or address verification.', 'yoro-ai-core' ),
+					'email_intent' => __( 'Optional stable semantic key for validation, such as shipping_update, payment_review, refund_notice, status_update, or general_customer_message.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [
 					'order_id'    => __( 'Ask which order the email is for when no specific order is available.', 'yoro-ai-core' ),
@@ -877,9 +1042,10 @@ class YoRo_Orders_Actions {
 				'risk_level'       => 'low',
 				'write_action'     => true,
 				'input_schema'     => [
-					'order_id' => 'integer',
-					'subject'  => 'string',
-					'body'     => 'string',
+					'order_id'     => 'integer',
+					'subject'      => 'string',
+					'body'         => 'string',
+					'email_intent' => 'string',
 				],
 				'preview_callback' => [ __CLASS__, 'preview_save_customer_email_draft' ],
 				'max_items'        => 1,
@@ -893,6 +1059,7 @@ class YoRo_Orders_Actions {
 					'order_id' => __( 'Use the order ID tied to the current draft.', 'yoro-ai-core' ),
 					'subject'  => __( 'Use the reviewed draft subject line.', 'yoro-ai-core' ),
 					'body'     => __( 'Use the reviewed draft body text.', 'yoro-ai-core' ),
+					'email_intent' => __( 'Optional stable semantic key carried from the composed email when known.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [
 					'order_id' => __( 'Ask which order the draft belongs to when no draft context is active.', 'yoro-ai-core' ),
@@ -1029,7 +1196,7 @@ class YoRo_Orders_Actions {
 			'orders.render_customer_email_preview',
 			[
 				'label'            => __( 'Render customer email preview', 'yoro-ai-core' ),
-				'description'      => __( 'Render a WooCommerce-styled customer email preview from reviewed subject and body.', 'yoro-ai-core' ),
+				'description'      => __( 'Render a store-styled customer email preview from reviewed subject and body.', 'yoro-ai-core' ),
 				'category'         => 'orders',
 				'permission'       => 'manage_woocommerce',
 				'callback'         => [ __CLASS__, 'render_customer_email_preview' ],
@@ -1080,9 +1247,10 @@ class YoRo_Orders_Actions {
 				'risk_level'            => 'medium',
 				'write_action'          => true,
 				'input_schema'          => [
-					'order_id' => 'integer',
-					'subject'  => 'string',
-					'body'     => 'string',
+					'order_id'     => 'integer',
+					'subject'      => 'string',
+					'body'         => 'string',
+					'email_intent' => 'string',
 				],
 				'preview_callback'      => [ __CLASS__, 'preview_send_customer_email' ],
 				'max_items'             => 1,
@@ -1097,6 +1265,7 @@ class YoRo_Orders_Actions {
 					'order_id' => __( 'Use the specific order ID for the outgoing email.', 'yoro-ai-core' ),
 					'subject'  => __( 'Use the reviewed subject line.', 'yoro-ai-core' ),
 					'body'     => __( 'Use the reviewed body text.', 'yoro-ai-core' ),
+					'email_intent' => __( 'Optional stable semantic key carried from the composed email when known.', 'yoro-ai-core' ),
 				],
 				'clarification_hints'   => [
 					'order_id' => __( 'Ask which order the email belongs to when no active draft or order context is present.', 'yoro-ai-core' ),
@@ -1116,7 +1285,7 @@ class YoRo_Orders_Actions {
 			'orders.add_private_note_template',
 			[
 				'label'                 => __( 'Add private note template', 'yoro-ai-core' ),
-				'description'           => __( 'Add a predefined internal note to a WooCommerce order.', 'yoro-ai-core' ),
+				'description'           => __( 'Add a predefined internal note to a store order.', 'yoro-ai-core' ),
 				'category'              => 'orders',
 				'permission'            => 'manage_woocommerce',
 				'callback'              => [ __CLASS__, 'add_private_note_template' ],
@@ -1155,54 +1324,10 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
-			'orders.hold',
-			[
-				'label'                 => __( 'Put orders on hold', 'yoro-ai-core' ),
-				'description'           => __( 'Change selected WooCommerce orders to on-hold.', 'yoro-ai-core' ),
-				'category'              => 'orders',
-				'permission'            => 'manage_woocommerce',
-				'callback'              => [ __CLASS__, 'hold_orders' ],
-				'requires_confirmation' => true,
-				'risk_level'            => 'medium',
-				'write_action'          => true,
-				'input_schema'          => [
-					'order_ids' => 'array<int>',
-				],
-				'preview_callback' => [ __CLASS__, 'preview_hold_orders' ],
-				'max_items'        => 20,
-				'auto_resolve' => [
-					'order_ids' => [
-						'params.order_ids',
-						'context.order_ids',
-						'parsed.entities.order_ids',
-					],
-				],
-				'capabilities' => [
-					'orders',
-					'write',
-					'bulk',
-				],
-				'ai_description'      => __( 'Put one or more orders on hold after confirmation.', 'yoro-ai-core' ),
-				'ai_examples'         => [
-					'Put order #1234 on hold',
-					'Hold this order',
-					'Giữ đơn #1234',
-				],
-				'required_params'     => [ 'order_ids' ],
-				'param_hints'         => [
-					'order_ids' => __( 'Use one or more order IDs resolved from the command or conversation context.', 'yoro-ai-core' ),
-				],
-				'clarification_hints' => [
-					'order_ids' => __( 'Ask which order should be put on hold when no clear order target is available.', 'yoro-ai-core' ),
-				],
-			]
-		);
-
-		YoRo_Action_Registry::register(
 			'orders.add_note',
 			[
 				'label'                 => __( 'Add order note', 'yoro-ai-core' ),
-				'description'           => __( 'Add an internal note to a WooCommerce order.', 'yoro-ai-core' ),
+				'description'           => __( 'Add an internal note to a store order.', 'yoro-ai-core' ),
 				'category'              => 'orders',
 				'permission'            => 'manage_woocommerce',
 				'callback'              => [ __CLASS__, 'add_order_note' ],
@@ -1251,7 +1376,7 @@ class YoRo_Orders_Actions {
 			'orders.remove_note',
 			[
 				'label'                 => __( 'Remove order note', 'yoro-ai-core' ),
-				'description'           => __( 'Remove YoRo-created internal notes from WooCommerce orders.', 'yoro-ai-core' ),
+				'description'           => __( 'Remove YoRo-created internal notes from store orders.', 'yoro-ai-core' ),
 				'category'              => 'orders',
 				'permission'            => 'manage_woocommerce',
 				'callback'              => [ __CLASS__, 'remove_order_note' ],
@@ -1261,6 +1386,7 @@ class YoRo_Orders_Actions {
 				'input_schema'          => [
 					'note_ids' => 'array<int>',
 				],
+				'preview_callback'      => [ __CLASS__, 'preview_remove_order_note' ],
 				'max_items'             => 20,
 				'ai_description'        => __( 'Remove one or more YoRo-created internal order notes.', 'yoro-ai-core' ),
 				'ai_examples'           => [
@@ -1287,7 +1413,7 @@ class YoRo_Orders_Actions {
 			'orders.update_status',
 			[
 				'label'                 => __( 'Update order status', 'yoro-ai-core' ),
-				'description'           => __( 'Change selected WooCommerce orders to a specific status.', 'yoro-ai-core' ),
+				'description'           => __( 'Change selected store orders to a specific status.', 'yoro-ai-core' ),
 				'category'              => 'orders',
 				'permission'            => 'manage_woocommerce',
 				'callback'              => [ __CLASS__, 'update_order_status' ],
@@ -1322,7 +1448,7 @@ class YoRo_Orders_Actions {
 				'required_params'     => [ 'order_ids', 'status' ],
 				'param_hints'         => [
 					'order_ids' => __( 'Use one or more target order IDs.', 'yoro-ai-core' ),
-					'status'    => __( 'Use WooCommerce status slugs like pending, processing, completed, on-hold, cancelled, refunded, or failed.', 'yoro-ai-core' ),
+					'status'    => __( 'Use store order status slugs like pending, processing, completed, on-hold, cancelled, refunded, or failed.', 'yoro-ai-core' ),
 					'note'      => __( 'Use note only when the person explicitly wants a status update with an internal note.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [
@@ -1336,7 +1462,7 @@ class YoRo_Orders_Actions {
 			'orders.restore_statuses',
 			[
 				'label'                 => __( 'Restore order statuses', 'yoro-ai-core' ),
-				'description'           => __( 'Restore WooCommerce orders to their previous statuses.', 'yoro-ai-core' ),
+				'description'           => __( 'Restore store orders to their previous statuses.', 'yoro-ai-core' ),
 				'category'              => 'orders',
 				'permission'            => 'manage_woocommerce',
 				'callback'              => [ __CLASS__, 'restore_order_statuses' ],
@@ -1347,61 +1473,12 @@ class YoRo_Orders_Actions {
 				'input_schema'          => [
 					'statuses' => 'array',
 				],
+				'preview_callback'      => [ __CLASS__, 'preview_restore_order_statuses' ],
 				'max_items'             => 20,
 				'capabilities' => [
 					'orders',
 					'write',
 					'bulk',
-				],
-			]
-		);
-
-		YoRo_Action_Registry::register(
-			'orders.bulk_update_status_with_note',
-			[
-				'label'                 => __( 'Bulk update status with note', 'yoro-ai-core' ),
-				'description'           => __( 'Change selected WooCommerce orders to a specific status and add an internal note.', 'yoro-ai-core' ),
-				'category'              => 'orders',
-				'permission'            => 'manage_woocommerce',
-				'callback'              => [ __CLASS__, 'bulk_update_status_with_note' ],
-				'requires_confirmation' => true,
-				'risk_level'            => 'medium',
-				'write_action'          => true,
-				'input_schema'          => [
-					'order_ids' => 'array<int>',
-					'status'    => 'string',
-					'note'      => 'string',
-				],
-				'preview_callback'      => [ __CLASS__, 'preview_bulk_update_status_with_note' ],
-				'max_items'             => 20,
-				'auto_resolve' => [
-					'order_ids' => [
-						'params.order_ids',
-						'context.order_ids',
-						'parsed.entities.order_ids',
-					],
-				],
-				'capabilities' => [
-					'orders',
-					'write',
-					'bulk',
-				],
-				'ai_description'      => __( 'Update the status of one or more orders and save an internal note in the same confirmed action.', 'yoro-ai-core' ),
-				'ai_examples'         => [
-					'Mark order #1234 as completed with note: packed and verified',
-					'Update order #1234 to on hold with note: customer needs verification',
-					'Chuyển đơn #1234 sang hoàn tất và thêm ghi chú: đã đóng gói',
-				],
-				'required_params'     => [ 'order_ids', 'status', 'note' ],
-				'param_hints'         => [
-					'order_ids' => __( 'Use one or more target order IDs.', 'yoro-ai-core' ),
-					'status'    => __( 'Use a valid WooCommerce status slug.', 'yoro-ai-core' ),
-					'note'      => __( 'Use the internal note text that should be saved alongside the status change.', 'yoro-ai-core' ),
-				],
-				'clarification_hints' => [
-					'order_ids' => __( 'Ask which order should change status when no target order is clear.', 'yoro-ai-core' ),
-					'status'    => __( 'Ask what status should be applied when it is missing.', 'yoro-ai-core' ),
-					'note'      => __( 'Ask what note should be saved when the person wants a combined status-and-note action but did not provide the note text.', 'yoro-ai-core' ),
 				],
 			]
 		);
@@ -1424,6 +1501,7 @@ class YoRo_Orders_Actions {
 					'closest_supported_surface' => 'string',
 					'context_order_id'          => 'integer',
 				],
+				'preview_callback' => [ __CLASS__, 'preview_submit_developer_request' ],
 				'max_items' => 1,
 				'ai_description'   => __( 'Save an unsupported feature or integration request so developers can review it later.', 'yoro-ai-core' ),
 				'ai_examples'      => [
@@ -1476,16 +1554,28 @@ class YoRo_Orders_Actions {
 		return YoRo_Orders_Read_Service::get_inventory_queue( $params );
 	}
 
+	public static function update_product_stock( $params ) {
+		return YoRo_Store_Inventory_Service::update_product_stock( $params );
+	}
+
+	public static function update_product_stock_status( $params ) {
+		return YoRo_Store_Inventory_Service::update_product_stock_status( $params );
+	}
+
+	public static function lookup_coupon( $params ) {
+		return YoRo_Coupons_Service::lookup_coupon( $params );
+	}
+
+	public static function create_coupon( $params ) {
+		return YoRo_Coupons_Service::create_coupon( $params );
+	}
+
 	public static function get_store_insights( $params ) {
 		return YoRo_Orders_Read_Service::get_store_insights( $params );
 	}
 
 	public static function get_business_summary( $params ) {
 		return YoRo_Orders_Read_Service::get_business_summary( $params );
-	}
-
-	public static function get_morning_briefing( $params ) {
-		return YoRo_Orders_Read_Service::get_morning_briefing( $params );
 	}
 
 	public static function get_daily_briefing( $params ) {
@@ -1568,10 +1658,6 @@ class YoRo_Orders_Actions {
 		return YoRo_Orders_Write_Service::add_private_note_template( $params );
 	}
 
-	public static function hold_orders( $params ) {
-		return YoRo_Orders_Write_Service::hold_orders( $params );
-	}
-
 	public static function add_order_note( $params ) {
 		return YoRo_Orders_Write_Service::add_order_note( $params );
 	}
@@ -1604,16 +1690,28 @@ class YoRo_Orders_Actions {
 		return YoRo_Orders_Read_Service::preview_get_inventory_queue( $params );
 	}
 
+	public static function preview_update_product_stock( $params ) {
+		return YoRo_Store_Inventory_Service::preview_update_product_stock( $params );
+	}
+
+	public static function preview_update_product_stock_status( $params ) {
+		return YoRo_Store_Inventory_Service::preview_update_product_stock_status( $params );
+	}
+
+	public static function preview_lookup_coupon( $params ) {
+		return YoRo_Coupons_Service::preview_lookup_coupon( $params );
+	}
+
+	public static function preview_create_coupon( $params ) {
+		return YoRo_Coupons_Service::preview_create_coupon( $params );
+	}
+
 	public static function preview_get_store_insights( $params ) {
 		return YoRo_Orders_Read_Service::preview_get_store_insights( $params );
 	}
 
 	public static function preview_get_business_summary( $params ) {
 		return YoRo_Orders_Read_Service::preview_get_business_summary( $params );
-	}
-
-	public static function preview_get_morning_briefing( $params ) {
-		return YoRo_Orders_Read_Service::preview_get_morning_briefing( $params );
 	}
 
 	public static function preview_get_daily_briefing( $params ) {
@@ -1634,6 +1732,14 @@ class YoRo_Orders_Actions {
 
 	public static function preview_compose_customer_email( $params ) {
 		return YoRo_Orders_Email_Service::preview_compose_customer_email( $params );
+	}
+
+	public static function preview_save_email_template( $params ) {
+		return YoRo_Orders_Email_Service::preview_save_email_template( $params );
+	}
+
+	public static function preview_delete_email_template( $params ) {
+		return YoRo_Orders_Email_Service::preview_delete_email_template( $params );
 	}
 
 	public static function preview_save_customer_email_draft( $params ) {
@@ -1660,12 +1766,16 @@ class YoRo_Orders_Actions {
 		return YoRo_Orders_Email_Service::preview_send_customer_email( $params );
 	}
 
-	public static function preview_hold_orders( $params ) {
-		return YoRo_Orders_Write_Service::preview_hold_orders( $params );
-	}
-
 	public static function preview_add_order_note( $params ) {
 		return YoRo_Orders_Write_Service::preview_add_order_note( $params );
+	}
+
+	public static function preview_remove_order_note( $params ) {
+		return YoRo_Orders_Write_Service::preview_remove_order_note( $params );
+	}
+
+	public static function preview_restore_order_statuses( $params ) {
+		return YoRo_Orders_Write_Service::preview_restore_order_statuses( $params );
 	}
 
 	public static function update_order_status( $params ) {
@@ -1674,10 +1784,6 @@ class YoRo_Orders_Actions {
 
 	public static function restore_order_statuses( $params ) {
 		return YoRo_Orders_Write_Service::restore_order_statuses( $params );
-	}
-
-	public static function bulk_update_status_with_note( $params ) {
-		return YoRo_Orders_Write_Service::bulk_update_status_with_note( $params );
 	}
 
 	public static function submit_developer_request( $params ) {
@@ -1700,12 +1806,12 @@ class YoRo_Orders_Actions {
 		$wp_version     = function_exists( 'get_bloginfo' ) ? sanitize_text_field( get_bloginfo( 'version' ) ) : '';
 		$wc_version     = defined( 'WC_VERSION' ) ? sanitize_text_field( WC_VERSION ) : '';
 
-		if ( '' === $request_text ) {
-			return new WP_Error(
-				'yoro_empty_developer_request',
-				__( 'Developer request text is required.', 'yoro-ai-core' )
-			);
-		}
+			if ( '' === $request_text ) {
+				return new WP_Error(
+					'yoro_empty_developer_request',
+					__( 'Please describe what you want YoRo to support.', 'yoro-ai-core' )
+				);
+			}
 
 		$subject = sprintf(
 			/* translators: 1: family label, 2: site name */
@@ -1761,7 +1867,7 @@ class YoRo_Orders_Actions {
 		$body_lines[] = 'Site URL: ' . ( '' !== $site_url ? $site_url : 'unknown' );
 		$body_lines[] = 'Plugin version: ' . ( '' !== $plugin_version ? $plugin_version : 'unknown' );
 		$body_lines[] = 'WordPress version: ' . ( '' !== $wp_version ? $wp_version : 'unknown' );
-		$body_lines[] = 'WooCommerce version: ' . ( '' !== $wc_version ? $wc_version : 'unknown' );
+		$body_lines[] = 'Store commerce version: ' . ( '' !== $wc_version ? $wc_version : 'unknown' );
 		$body_lines[] = 'User ID: ' . absint( $user_id );
 
 		$headers = [ 'Content-Type: text/plain; charset=UTF-8' ];
@@ -1784,32 +1890,10 @@ class YoRo_Orders_Actions {
 			);
 		}
 
-		$suggestions = [];
-
-		if ( $order_id > 0 ) {
-			$suggestions[] = [
-				'type'  => 'command',
-				'label' => sprintf( __( 'Show order #%d details', 'yoro-ai-core' ), $order_id ),
-				'value' => 'Show order details for this order',
-			];
-		}
-
-		$suggestions[] = [
-			'type'  => 'command',
-			'label' => __( 'Show morning briefing', 'yoro-ai-core' ),
-			'value' => 'Show morning briefing',
-		];
-		$suggestions[] = [
-			'type'  => 'command',
-			'label' => __( 'Show operations attention queue', 'yoro-ai-core' ),
-			'value' => 'Show operations attention queue',
-		];
-
 		return [
 			'success'            => true,
 			'summary'            => __( 'I sent that request to the developers.', 'yoro-ai-core' ),
 			'message'            => __( 'I sent that request to the developers.', 'yoro-ai-core' ),
-			'assistant_followup' => __( 'Next, I can take you back to the order, queue, or briefing now.', 'yoro-ai-core' ),
 			'result_type'        => 'generic',
 			'display_type'       => 'generic',
 			'count'              => 1,
@@ -1824,7 +1908,31 @@ class YoRo_Orders_Actions {
 					'submitted_to'              => 'dev@yoohw.co',
 				],
 			],
-			'suggestions'        => array_slice( $suggestions, 0, 3 ),
+		];
+	}
+
+	public static function preview_submit_developer_request( $params ) {
+		$params = is_array( $params ) ? $params : [];
+		$request_text = sanitize_text_field( $params['request_text'] ?? '' );
+		$block_reason = '';
+		$message = __( 'This developer request is ready to save.', 'yoro-ai-core' );
+
+		if ( '' === $request_text ) {
+			$block_reason = 'missing_request_text';
+			$message = __( 'Please describe what should be sent to the developers before this can be saved.', 'yoro-ai-core' );
+		}
+
+		return [
+			'type'          => 'write',
+			'will_execute'  => false,
+			'action'        => 'Submit developer request',
+			'summary'       => $message,
+			'message'       => $message,
+			'blocked'       => '' !== $block_reason,
+			'block_reason'  => $block_reason,
+			'request_text'  => $request_text,
+			'context_order_id' => absint( $params['context_order_id'] ?? 0 ),
+			'changes_store' => false,
 		];
 	}
 
@@ -1852,8 +1960,10 @@ class YoRo_Orders_Actions {
 		return ucwords( str_replace( '_', ' ', $surface ) );
 	}
 
-	public static function preview_bulk_update_status_with_note( $params ) {
-		return YoRo_Orders_Write_Service::preview_bulk_update_status_with_note( $params );
+	private static function product_identifier_types() {
+		return class_exists( 'YoRo_Product_Helper' )
+			? YoRo_Product_Helper::get_product_identifier_types()
+			: [];
 	}
 
 	public static function preview_get_customer_summary( $params ) {

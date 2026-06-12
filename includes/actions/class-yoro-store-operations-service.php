@@ -8,14 +8,12 @@ class YoRo_Store_Operations_Service {
 
 	public static function get_operations_summary( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
 		}
 
-		$window_key = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( $params['window'] ?? 'today' );
+		$window_key = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( YoRo_Date_Helper::window_key_from_params( $params, 'window', 'today' ) );
 		$focus      = ! empty( $params['focus'] ) ? sanitize_key( $params['focus'] ) : 'overview';
-		$language   = ! empty( $params['original_command'] ) && YoRo_Date_Helper::is_likely_vietnamese( $params['original_command'] )
-			? 'vi'
-			: 'en';
+		$language   = sanitize_key( $params['response_language'] ?? '' ) ?: 'en';
 
 		return YoRo_Action_Cache::remember(
 			'operations_summary',
@@ -47,6 +45,19 @@ class YoRo_Store_Operations_Service {
 						]
 					);
 				}
+				$previous_window = YoRo_Date_Helper::build_previous_window( $window );
+				$previous_window_status_counts = [];
+
+				if ( ! empty( $previous_window['query'] ) ) {
+					foreach ( $window_statuses as $status ) {
+						$previous_window_status_counts[ $status ] = YoRo_Orders_Read_Service::briefing_count_orders(
+							[
+								'status'       => [ $status ],
+								'date_created' => $previous_window['query'],
+							]
+						);
+					}
+				}
 
 				$backlog_counts = [
 					'pending'    => YoRo_Orders_Read_Service::briefing_count_orders( [ 'status' => [ 'pending' ] ] ),
@@ -76,8 +87,18 @@ class YoRo_Store_Operations_Service {
 				];
 
 				$window_total    = array_sum( $window_status_counts );
+				$previous_window_total = array_sum( $previous_window_status_counts );
 				$backlog_total   = array_sum( $backlog_counts );
 				$attention_total = array_sum( $attention_counts );
+				$backlog_age     = self::summarize_backlog_age();
+				$comparison      = [
+					'window'  => YoRo_Date_Helper::build_window_payload( $previous_window ),
+					'metrics' => [
+						'new_orders'       => YoRo_Report_Builder::metric_comparison( $window_total, $previous_window_total ),
+						'completed_orders' => YoRo_Report_Builder::metric_comparison( absint( $window_status_counts['completed'] ?? 0 ), absint( $previous_window_status_counts['completed'] ?? 0 ) ),
+						'failed_orders'    => YoRo_Report_Builder::metric_comparison( absint( $window_status_counts['failed'] ?? 0 ), absint( $previous_window_status_counts['failed'] ?? 0 ) ),
+					],
+				];
 				$recent_orders   = [];
 
 				foreach (
@@ -104,12 +125,24 @@ class YoRo_Store_Operations_Service {
 						$attention_total
 					)
 					: sprintf(
-						'Operations summary for %1$s: %2$d new orders, %3$d open backlog, %4$d attention items.',
+						'Operations report for %1$s: %2$d new orders, %3$d open backlog, %4$d attention items.',
 						$window['label'],
 						$window_total,
 						$backlog_total,
 						$attention_total
 					);
+				$report = self::build_operations_summary_report(
+					$window,
+					$language,
+					$window_total,
+					$backlog_total,
+					$attention_total,
+					$backlog_counts,
+					$attention_counts,
+					$window_status_counts,
+					$comparison,
+					$backlog_age
+				);
 
 				return [
 					'success'              => true,
@@ -131,9 +164,12 @@ class YoRo_Store_Operations_Service {
 					'backlog_total'        => $backlog_total,
 					'attention_total'      => $attention_total,
 					'window_status_counts' => $window_status_counts,
+					'comparison'           => $comparison,
+					'backlog_age'          => $backlog_age,
 					'backlog_counts'       => $backlog_counts,
 					'attention_counts'     => $attention_counts,
 					'recent_orders'        => $recent_orders,
+					'report'               => $report,
 					'result_type'          => 'operations_summary',
 					'display_type'         => 'operations_summary',
 				];
@@ -141,9 +177,290 @@ class YoRo_Store_Operations_Service {
 		);
 	}
 
+	private static function build_operations_summary_report( $window, $language, $window_total, $backlog_total, $attention_total, $backlog_counts, $attention_counts, $window_status_counts = [], $comparison = [], $backlog_age = [] ) {
+		$is_vi = 'vi' === sanitize_key( $language );
+		$window_label = YoRo_Date_Helper::get_window_label( $window['key'] ?? '', $is_vi ? 'vi' : 'en' );
+		$health = $attention_total > 0 ? 'risk' : ( $backlog_total > 0 ? 'watch' : 'good' );
+		$order_comparison = self::comparison_for_metric( $comparison, 'new_orders' );
+		$completed_comparison = self::comparison_for_metric( $comparison, 'completed_orders' );
+		$failed_comparison = self::comparison_for_metric( $comparison, 'failed_orders' );
+		$oldest_backlog_hours = absint( $backlog_age['oldest_hours'] ?? 0 );
+		$average_backlog_hours = absint( $backlog_age['average_hours'] ?? 0 );
+		$headline = $is_vi
+			? sprintf( 'Vận hành trong %1$s %2$s: %3$d đơn mới, %4$d mục tồn đọng, %5$d mục cần chú ý.', $window_label, $attention_total > 0 ? 'đang cần chú ý' : 'đang ổn định', $window_total, $backlog_total, $attention_total )
+			: sprintf( 'Operations %1$s for %2$s: %3$d new orders, %4$d open backlog, %5$d attention items.', $attention_total > 0 ? 'need attention' : 'look stable', $window_label, $window_total, $backlog_total, $attention_total );
+
+		$metrics = [
+			YoRo_Report_Builder::metric( 'new_orders', __( 'New orders', 'yoro-ai-core' ), $window_total, 'orders', 'number', 'neutral', $order_comparison['trend'] ?? '', $order_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'open_backlog', __( 'Open backlog', 'yoro-ai-core' ), $backlog_total, 'orders', 'number', $backlog_total > 0 ? 'watch' : 'positive' ),
+			YoRo_Report_Builder::metric( 'attention_items', __( 'Needs attention', 'yoro-ai-core' ), $attention_total, 'orders', 'number', $attention_total > 0 ? 'risk' : 'positive' ),
+			YoRo_Report_Builder::metric( 'completed_orders', __( 'Completed orders', 'yoro-ai-core' ), absint( $window_status_counts['completed'] ?? 0 ), 'orders', 'number', 'neutral', $completed_comparison['trend'] ?? '', $completed_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'failed_orders', __( 'Failed orders', 'yoro-ai-core' ), absint( $window_status_counts['failed'] ?? 0 ), 'orders', 'number', absint( $window_status_counts['failed'] ?? 0 ) > 0 ? 'watch' : 'neutral', $failed_comparison['trend'] ?? '', $failed_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'pending_backlog', __( 'Pending backlog', 'yoro-ai-core' ), absint( $backlog_counts['pending'] ?? 0 ), 'orders' ),
+			YoRo_Report_Builder::metric( 'processing_backlog', __( 'Processing backlog', 'yoro-ai-core' ), absint( $backlog_counts['processing'] ?? 0 ), 'orders' ),
+			YoRo_Report_Builder::metric( 'on_hold_backlog', __( 'On-hold backlog', 'yoro-ai-core' ), absint( $backlog_counts['on-hold'] ?? 0 ), 'orders' ),
+			YoRo_Report_Builder::metric( 'oldest_backlog_age', __( 'Oldest backlog age', 'yoro-ai-core' ), wc_format_decimal( $oldest_backlog_hours / 24, 1 ), 'days', 'number', $oldest_backlog_hours >= 72 ? 'risk' : ( $oldest_backlog_hours >= 24 ? 'watch' : 'neutral' ), '', null, 'store', 'operations', __( 'Oldest sampled pending, processing, or on-hold order age.', 'yoro-ai-core' ), 55 ),
+			YoRo_Report_Builder::metric( 'average_backlog_age', __( 'Average backlog age', 'yoro-ai-core' ), wc_format_decimal( $average_backlog_hours / 24, 1 ), 'days', 'number', $average_backlog_hours >= 72 ? 'risk' : ( $average_backlog_hours >= 24 ? 'watch' : 'neutral' ), '', null, 'store', 'operations', __( 'Average age from the sampled open backlog.', 'yoro-ai-core' ), 56 ),
+		];
+
+		$profile_context  = YoRo_Report_Builder::store_profile_context( [ 'operations', 'fulfillment' ] );
+		$profile_insights = YoRo_Report_Builder::operations_profile_insights( $profile_context );
+		$insights = [
+			YoRo_Report_Builder::insight(
+				__( 'Backlog pressure', 'yoro-ai-core' ),
+				$backlog_total > 0
+					? sprintf( __( '%d open orders are still sitting in pending, processing, or on-hold queues.', 'yoro-ai-core' ), $backlog_total )
+					: __( 'No open operational backlog is visible in the main queues.', 'yoro-ai-core' ),
+				'operations',
+				$backlog_total > 0 ? 'watch' : 'positive'
+			),
+		];
+
+		if ( $oldest_backlog_hours >= 24 ) {
+			$insights[] = YoRo_Report_Builder::insight(
+				__( 'Backlog age needs attention', 'yoro-ai-core' ),
+				sprintf(
+					__( 'The oldest sampled open order has been waiting for %s days, and the sampled backlog averages %s days.', 'yoro-ai-core' ),
+					wc_format_decimal( $oldest_backlog_hours / 24, 1 ),
+					wc_format_decimal( $average_backlog_hours / 24, 1 )
+				),
+				'operations',
+				$oldest_backlog_hours >= 72 ? 'risk' : 'watch',
+				'operations',
+				15
+			);
+		}
+
+		$insights = array_merge( $insights, $profile_insights );
+
+		$alerts = [];
+
+		if ( $attention_total > 0 ) {
+			$alerts[] = YoRo_Report_Builder::alert(
+				__( 'Aged orders need review', 'yoro-ai-core' ),
+				sprintf( __( '%d orders are old enough to deserve a direct operations check.', 'yoro-ai-core' ), $attention_total ),
+				'risk',
+				'aged_orders',
+				'operations',
+				10
+			);
+		}
+
+		if ( $oldest_backlog_hours >= 72 ) {
+			$alerts[] = YoRo_Report_Builder::alert(
+				__( 'Oldest backlog item is stale', 'yoro-ai-core' ),
+				sprintf( __( 'At least one sampled open order is older than %s days.', 'yoro-ai-core' ), wc_format_decimal( $oldest_backlog_hours / 24, 1 ) ),
+				'risk',
+				'backlog_age',
+				'operations',
+				12
+			);
+		}
+
+		$actions = [
+			YoRo_Report_Builder::action( __( 'Show processing orders', 'yoro-ai-core' ), 'Show processing orders', 'view', 'operations', 20, __( 'Review the largest active fulfillment workload first.', 'yoro-ai-core' ) ),
+			YoRo_Report_Builder::action( __( 'Show pending orders', 'yoro-ai-core' ), 'Show pending orders', 'view', 'operations', 30, __( 'Check orders still waiting for payment or manual processing.', 'yoro-ai-core' ) ),
+			YoRo_Report_Builder::action( __( 'Show on-hold orders', 'yoro-ai-core' ), 'Show on-hold orders', 'view', 'operations', 40, __( 'Review held orders that may need a decision.', 'yoro-ai-core' ) ),
+		];
+
+		$breakdowns = self::build_operations_breakdowns( $window_status_counts, $backlog_counts, $attention_counts, $window_total, $backlog_total, $attention_total );
+		$report     = YoRo_Report_Builder::build( 'operations', $window, $health, $headline, $metrics, $insights, $alerts, $actions, $actions, $breakdowns );
+		$report     = YoRo_Report_Builder::attach_profile_context( $report, $profile_context );
+
+		if ( ! empty( $comparison ) ) {
+			$report['comparison'] = $comparison;
+		}
+
+		return $report;
+	}
+
+	private static function comparison_for_metric( $comparison, $key ) {
+		return is_array( $comparison ) && ! empty( $comparison['metrics'][ $key ] ) && is_array( $comparison['metrics'][ $key ] )
+			? $comparison['metrics'][ $key ]
+			: [];
+	}
+
+	private static function build_operations_breakdowns( $window_status_counts, $backlog_counts, $attention_counts, $window_total, $backlog_total, $attention_total ) {
+		$breakdowns = [];
+
+		$status_items = [];
+		foreach ( is_array( $window_status_counts ) ? $window_status_counts : [] as $status => $count ) {
+			$count = absint( $count );
+
+			if ( 0 === $count ) {
+				continue;
+			}
+
+			$status_items[] = YoRo_Report_Builder::breakdown_item(
+				self::operation_status_label( $status ),
+				$count,
+				__( 'orders', 'yoro-ai-core' ),
+				__( 'Created in this window', 'yoro-ai-core' ),
+				self::format_count_share( $count, $window_total ),
+				[
+					'status' => sanitize_key( $status ),
+				]
+			);
+		}
+
+		if ( ! empty( $status_items ) ) {
+			$breakdowns[] = YoRo_Report_Builder::breakdown(
+				'status_mix',
+				__( 'Order status mix', 'yoro-ai-core' ),
+				$status_items,
+				'operations',
+				30,
+				__( 'How new orders are distributed by current status in this report window.', 'yoro-ai-core' )
+			);
+		}
+
+		$backlog_items = [];
+		foreach ( is_array( $backlog_counts ) ? $backlog_counts : [] as $status => $count ) {
+			$count = absint( $count );
+
+			if ( 0 === $count ) {
+				continue;
+			}
+
+			$backlog_items[] = YoRo_Report_Builder::breakdown_item(
+				self::operation_status_label( $status ),
+				$count,
+				__( 'orders', 'yoro-ai-core' ),
+				__( 'Open backlog', 'yoro-ai-core' ),
+				self::format_count_share( $count, $backlog_total ),
+				[
+					'status' => sanitize_key( $status ),
+					'queue'  => 'backlog',
+				]
+			);
+		}
+
+		if ( ! empty( $backlog_items ) ) {
+			$breakdowns[] = YoRo_Report_Builder::breakdown(
+				'backlog_mix',
+				__( 'Open backlog', 'yoro-ai-core' ),
+				$backlog_items,
+				'operations',
+				35,
+				__( 'Pending, processing, and on-hold work currently waiting for action.', 'yoro-ai-core' )
+			);
+		}
+
+		$attention_labels = [
+			'pending_over_24h'    => __( 'Pending over 24h', 'yoro-ai-core' ),
+			'processing_over_72h' => __( 'Processing over 72h', 'yoro-ai-core' ),
+			'on_hold_over_48h'    => __( 'On-hold over 48h', 'yoro-ai-core' ),
+		];
+		$attention_items  = [];
+
+		foreach ( $attention_labels as $key => $label ) {
+			$count = absint( $attention_counts[ $key ] ?? 0 );
+
+			if ( 0 === $count ) {
+				continue;
+			}
+
+			$attention_items[] = YoRo_Report_Builder::breakdown_item(
+				$label,
+				$count,
+				__( 'orders', 'yoro-ai-core' ),
+				__( 'Aged queue', 'yoro-ai-core' ),
+				self::format_count_share( $count, $attention_total ),
+				[
+					'queue' => sanitize_key( $key ),
+				]
+			);
+		}
+
+		if ( ! empty( $attention_items ) ) {
+			$breakdowns[] = YoRo_Report_Builder::breakdown(
+				'attention_queues',
+				__( 'Attention queues', 'yoro-ai-core' ),
+				$attention_items,
+				'operations',
+				25,
+				__( 'Aged order queues most likely to need review.', 'yoro-ai-core' )
+			);
+		}
+
+		return $breakdowns;
+	}
+
+	private static function operation_status_label( $status ) {
+		$status = sanitize_key( $status );
+
+		if ( function_exists( 'wc_get_order_status_name' ) ) {
+			$label = wc_get_order_status_name( 'wc-' . $status );
+
+			if ( is_string( $label ) && '' !== $label ) {
+				return $label;
+			}
+		}
+
+		return ucwords( str_replace( [ '-', '_' ], ' ', $status ) );
+	}
+
+	private static function format_count_share( $count, $total ) {
+		$count = absint( $count );
+		$total = absint( $total );
+
+		if ( 0 === $count || 0 === $total ) {
+			return '';
+		}
+
+		return wc_format_decimal( ( $count / $total ) * 100, 1 ) . '%';
+	}
+
+	private static function summarize_backlog_age() {
+		$summary = [
+			'sampled_orders' => 0,
+			'oldest_hours'   => 0,
+			'average_hours'  => 0,
+		];
+
+		if ( ! function_exists( 'wc_get_orders' ) ) {
+			return $summary;
+		}
+
+		$orders = wc_get_orders(
+			[
+				'limit'   => 200,
+				'status'  => [ 'pending', 'processing', 'on-hold' ],
+				'orderby' => 'date',
+				'order'   => 'ASC',
+			]
+		);
+
+		$now = current_datetime()->getTimestamp();
+		$total_hours = 0;
+
+		foreach ( $orders as $order ) {
+			if ( ! $order instanceof WC_Order ) {
+				continue;
+			}
+
+			$created = $order->get_date_created();
+
+			if ( ! $created ) {
+				continue;
+			}
+
+			$age_hours = max( 0, (int) floor( ( $now - $created->getTimestamp() ) / HOUR_IN_SECONDS ) );
+			$summary['sampled_orders']++;
+			$total_hours += $age_hours;
+			$summary['oldest_hours'] = max( $summary['oldest_hours'], $age_hours );
+		}
+
+		if ( $summary['sampled_orders'] > 0 ) {
+			$summary['average_hours'] = (int) round( $total_hours / $summary['sampled_orders'] );
+		}
+
+		return $summary;
+	}
+
 	public static function get_operations_attention_queue( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
 		}
 
 		$limit                = isset( $params['limit'] ) ? absint( $params['limit'] ) : 5;
@@ -156,6 +473,7 @@ class YoRo_Store_Operations_Service {
 			[
 				'limit'                => $limit,
 				'high_value_threshold' => $high_value_threshold,
+				'schema_version'       => 2,
 			],
 			function() use ( $limit, $high_value_threshold ) {
 				$queues = [
@@ -227,21 +545,32 @@ class YoRo_Store_Operations_Service {
 				$recommended_sequence = self::build_operations_attention_recommended_sequence( $case_rankings, $attention_context );
 				$next_case            = self::build_operations_attention_next_recommended_case( $case_rankings );
 				$batch_candidates     = self::build_operations_attention_batch_candidates( $case_rankings );
+				$queue_count          = count( $queues );
+				$visible_case_count   = 0;
+
+				foreach ( $queues as $queue ) {
+					$visible_case_count += count( is_array( $queue['orders'] ?? null ) ? $queue['orders'] : [] );
+				}
+
+				$visible_unique_order_count = count( $orders );
+				$queue_summary        = sprintf(
+					/* translators: 1: queue match count, 2: queue count */
+					__( 'Operations attention queue: %1$d queue matches across %2$d queues.', 'yoro-ai-core' ),
+					$total_items,
+					$queue_count
+				);
 
 				return [
 					'success'              => true,
 					'action'               => 'operations.get_attention_queue',
-					'summary'              => sprintf(
-						'Operations attention queue: %d items across %d queues.',
-						$total_items,
-						count( $queues )
-					),
-					'message'              => sprintf(
-						'Operations attention queue: %d items across %d queues.',
-						$total_items,
-						count( $queues )
-					),
+					'summary'              => $queue_summary,
+					'message'              => $queue_summary,
 					'count'                => $total_items,
+					'queue_item_count'     => $total_items,
+					'queue_count'          => $queue_count,
+					'visible_case_count'   => $visible_case_count,
+					'visible_order_count'  => $visible_case_count,
+					'visible_unique_order_count' => $visible_unique_order_count,
 					'read_only'            => true,
 					'undoable'             => false,
 					'undo_plan'            => [],
@@ -404,7 +733,7 @@ class YoRo_Store_Operations_Service {
 			'kind'    => 'view',
 			'topic'   => 'operations_overview',
 			'label'   => __( 'Review today\'s operating picture', 'yoro-ai-core' ),
-			'command' => 'Show operations summary for today',
+			'command' => 'Show operations report for today',
 			'reason'  => __( 'Use this last when you want the broader store picture after the queue-specific checks.', 'yoro-ai-core' ),
 		];
 

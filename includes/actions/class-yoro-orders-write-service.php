@@ -75,57 +75,11 @@ class YoRo_Orders_Write_Service {
 		return $result;
 	}
 
-	public static function hold_orders( $params ) {
-		$order_ids = isset( $params['order_ids'] ) && is_array( $params['order_ids'] )
-			? array_map( 'absint', $params['order_ids'] )
-			: [];
-
-		$processed = [];
-		$skipped   = [];
-		$errors    = [];
-
-		foreach ( $order_ids as $order_id ) {
-			$order = wc_get_order( $order_id );
-
-			if ( ! $order ) {
-				$skipped[] = [
-					'id'     => $order_id,
-					'reason' => 'Order not found',
-				];
-				continue;
-			}
-
-			try {
-				$order->update_status(
-					'on-hold',
-					__( 'Order placed on hold by YoRo AI.', 'yoro-ai-core' )
-				);
-
-				$processed[] = $order_id;
-			} catch ( Exception $e ) {
-				$errors[] = [
-					'id'      => $order_id,
-					'message' => $e->getMessage(),
-				];
-			}
-		}
-
-		return [
-			'success'   => true,
-			'action'    => 'orders.hold',
-			'summary'   => sprintf( 'Placed %d orders on hold.', count( $processed ) ),
-			'processed' => $processed,
-			'skipped'   => $skipped,
-			'errors'    => $errors,
-			'count'     => count( $processed ),
-		];
-	}
-
 	public static function add_order_note( $params ) {
 		$note = isset( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : '';
 
 		if ( empty( $note ) ) {
-			return new WP_Error( 'invalid_params', __( 'Note is required.', 'yoro-ai-core' ) );
+			return new WP_Error( 'invalid_params', __( 'Please tell me what note to add.', 'yoro-ai-core' ) );
 		}
 
 		$order_ids = [];
@@ -139,7 +93,7 @@ class YoRo_Orders_Write_Service {
 		$order_ids = array_values( array_filter( array_unique( $order_ids ) ) );
 
 		if ( empty( $order_ids ) ) {
-			return new WP_Error( 'invalid_params', __( 'Order ID is required.', 'yoro-ai-core' ) );
+			return new WP_Error( 'invalid_params', __( 'Please choose an order first.', 'yoro-ai-core' ) );
 		}
 
 		$processed = [];
@@ -151,10 +105,10 @@ class YoRo_Orders_Write_Service {
 			$order = wc_get_order( $order_id );
 
 			if ( ! $order ) {
-				$skipped[] = [
-					'id'     => $order_id,
-					'reason' => 'Order not found',
-				];
+					$skipped[] = [
+						'id'     => $order_id,
+						'reason' => __( 'I could not find that order.', 'yoro-ai-core' ),
+					];
 				continue;
 			}
 
@@ -194,7 +148,7 @@ class YoRo_Orders_Write_Service {
 		if ( empty( $note_ids ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Note IDs are required.', 'yoro-ai-core' )
+				__( 'Please choose a note to remove first.', 'yoro-ai-core' )
 			);
 		}
 
@@ -253,49 +207,84 @@ class YoRo_Orders_Write_Service {
 		];
 	}
 
-	public static function preview_hold_orders( $params ) {
-		$order_ids = isset( $params['order_ids'] ) && is_array( $params['order_ids'] )
-			? array_map( 'absint', $params['order_ids'] )
+	public static function preview_remove_order_note( $params ) {
+		$note_ids = ! empty( $params['note_ids'] ) && is_array( $params['note_ids'] )
+			? array_values( array_unique( array_filter( array_map( 'absint', $params['note_ids'] ) ) ) )
 			: [];
 
-		$orders = [];
+		$notes = [];
+		$block_reason = '';
+		$message = __( 'This will remove the selected YoRo-created note after approval.', 'yoro-ai-core' );
 
-		foreach ( $order_ids as $order_id ) {
-			$order = wc_get_order( $order_id );
+		foreach ( $note_ids as $note_id ) {
+			$comment = get_comment( $note_id );
+			$is_order_note = $comment && 'order_note' === $comment->comment_type;
+			$is_yoro_created = $comment && self::is_yoro_created_note( $comment );
 
-			$orders[] = [
-				'id'             => $order_id,
-				'exists'         => (bool) $order,
-				'current_status' => $order ? $order->get_status() : '',
-				'target_status'  => 'on-hold',
+			if ( ! $comment && '' === $block_reason ) {
+				$block_reason = 'note_not_found';
+				$message = sprintf(
+					/* translators: %d: note ID */
+					__( 'I could not find note %d. Choose an existing YoRo-created note before approving this change.', 'yoro-ai-core' ),
+					$note_id
+				);
+			} elseif ( $comment && ! $is_order_note && '' === $block_reason ) {
+				$block_reason = 'invalid_note_target';
+				$message = sprintf(
+					/* translators: %d: note ID */
+					__( 'Note %d is not an order note, so it cannot be removed by this action.', 'yoro-ai-core' ),
+					$note_id
+				);
+			} elseif ( $comment && ! $is_yoro_created && '' === $block_reason ) {
+				$block_reason = 'protected_note';
+				$message = sprintf(
+					/* translators: %d: note ID */
+					__( 'Note %d was not created by YoRo AI, so it cannot be removed by this action.', 'yoro-ai-core' ),
+					$note_id
+				);
+			}
+
+			$notes[] = [
+				'id'           => $note_id,
+				'exists'       => (bool) $comment,
+				'order_id'     => $comment ? absint( $comment->comment_post_ID ) : 0,
+				'is_order_note'=> (bool) $is_order_note,
+				'yoro_created' => (bool) $is_yoro_created,
 			];
+		}
+
+		if ( empty( $note_ids ) ) {
+			$block_reason = 'missing_note_target';
+			$message = __( 'Please choose a YoRo-created note before this can be approved.', 'yoro-ai-core' );
 		}
 
 		return [
 			'type'          => 'write',
 			'will_execute'  => false,
-			'action'        => 'Put selected WooCommerce orders on hold',
-			'orders'        => $orders,
-			'count'         => count( $orders ),
-			'changes_store' => true,
+			'action'        => 'Remove YoRo-created order note',
+			'summary'       => $message,
+			'message'       => $message,
+			'blocked'       => '' !== $block_reason,
+			'block_reason'  => $block_reason,
+			'notes'         => $notes,
+			'note_ids'      => $note_ids,
+			'count'         => count( $notes ),
+			'changes_store' => '' === $block_reason,
 		];
 	}
 
 	public static function preview_add_order_note( $params ) {
 		$note = isset( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : '';
-
-		$order_ids = [];
-
-		if ( ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
-			$order_ids = array_map( 'absint', $params['order_ids'] );
-		} elseif ( ! empty( $params['order_id'] ) ) {
-			$order_ids = [ absint( $params['order_id'] ) ];
-		}
-
+		$order_ids = self::order_ids_from_params( $params );
 		$orders = [];
+		$missing_order_ids = [];
 
-		foreach ( array_filter( array_unique( $order_ids ) ) as $order_id ) {
+		foreach ( $order_ids as $order_id ) {
 			$order = wc_get_order( $order_id );
+
+			if ( ! $order ) {
+				$missing_order_ids[] = $order_id;
+			}
 
 			$orders[] = [
 				'id'            => $order_id,
@@ -304,21 +293,41 @@ class YoRo_Orders_Write_Service {
 			];
 		}
 
+		$block_reason = '';
+		$message = __( 'This will add an internal note after approval.', 'yoro-ai-core' );
+
+		if ( ! empty( $missing_order_ids ) ) {
+			$block_reason = 'order_not_found';
+			$message = sprintf(
+				/* translators: %s: comma-separated order IDs */
+				__( 'I could not find order %s. Choose an existing order before approving this change.', 'yoro-ai-core' ),
+				implode( ', ', $missing_order_ids )
+			);
+		} elseif ( '' === $note ) {
+			$block_reason = 'missing_note';
+			$message = __( 'Please provide the internal note text before this can be approved.', 'yoro-ai-core' );
+		} elseif ( empty( $order_ids ) ) {
+			$block_reason = 'missing_order_target';
+			$message = __( 'Please choose an order before this can be approved.', 'yoro-ai-core' );
+		}
+
 		return [
 			'type'          => 'write',
 			'will_execute'  => false,
-			'action'        => 'Add internal note to WooCommerce order(s)',
+			'action'        => 'Add internal note to store order(s)',
+			'summary'       => $message,
+			'message'       => $message,
+			'blocked'       => '' !== $block_reason,
+			'block_reason'  => $block_reason,
 			'orders'        => $orders,
 			'count'         => count( $orders ),
 			'note_preview'  => $note,
-			'changes_store' => true,
+			'changes_store' => '' === $block_reason,
 		];
 	}
 
 	public static function update_order_status( $params ) {
-		$order_ids = ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] )
-			? array_map( 'absint', $params['order_ids'] )
-			: [];
+		$order_ids = self::order_ids_from_params( $params );
 
 		$status = ! empty( $params['status'] )
 			? YoRo_Order_Helper::normalize_status_slug( $params['status'] )
@@ -327,18 +336,18 @@ class YoRo_Orders_Write_Service {
 		$note   = ! empty( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : __( 'Order status updated by YoRo AI.', 'yoro-ai-core' );
 
 		if ( empty( $order_ids ) || empty( $status ) ) {
-			return new WP_Error( 'invalid_params', __( 'Order IDs and status are required.', 'yoro-ai-core' ) );
+			return new WP_Error( 'invalid_params', __( 'Please choose at least one order and the status to apply.', 'yoro-ai-core' ) );
 		}
 
 		if ( ! YoRo_Order_Helper::is_valid_order_status( $status ) ) {
 			return new WP_Error(
 				'invalid_status',
 				sprintf(
-					/* translators: %s: order status */
-					__( 'Invalid WooCommerce order status: %s.', 'yoro-ai-core' ),
-					$status
-				)
-			);
+						/* translators: %s: order status */
+						__( 'I do not recognize the order status "%s".', 'yoro-ai-core' ),
+						$status
+					)
+				);
 		}
 
 		$processed = [];
@@ -349,10 +358,10 @@ class YoRo_Orders_Write_Service {
 			$order = wc_get_order( $order_id );
 
 			if ( ! $order ) {
-				$skipped[] = [
-					'id'     => $order_id,
-					'reason' => 'Order not found',
-				];
+					$skipped[] = [
+						'id'     => $order_id,
+						'reason' => __( 'I could not find that order.', 'yoro-ai-core' ),
+					];
 				continue;
 			}
 
@@ -370,7 +379,11 @@ class YoRo_Orders_Write_Service {
 		return [
 			'success'      => true,
 			'action'       => 'orders.update_status',
-			'summary'      => sprintf( 'Updated %d orders to %s.', count( $processed ), $status ),
+			'summary'      => sprintf(
+				'Updated %d orders to %s.',
+				count( $processed ),
+				YoRo_Order_Helper::get_order_status_label( $status )
+			),
 			'processed'    => $processed,
 			'skipped'      => $skipped,
 			'errors'       => $errors,
@@ -388,7 +401,7 @@ class YoRo_Orders_Write_Service {
 		if ( empty( $statuses ) ) {
 			return new WP_Error(
 				'invalid_params',
-				__( 'Previous statuses are required.', 'yoro-ai-core' )
+				__( 'I could not find the previous order status to restore.', 'yoro-ai-core' )
 			);
 		}
 
@@ -407,10 +420,10 @@ class YoRo_Orders_Write_Service {
 			$order = wc_get_order( $order_id );
 
 			if ( ! $order ) {
-				$skipped[] = [
-					'id'     => $order_id,
-					'reason' => 'Order not found',
-				];
+					$skipped[] = [
+						'id'     => $order_id,
+						'reason' => __( 'I could not find that order.', 'yoro-ai-core' ),
+					];
 				continue;
 			}
 
@@ -441,159 +454,140 @@ class YoRo_Orders_Write_Service {
 		];
 	}
 
-	public static function bulk_update_status_with_note( $params ) {
-		$order_ids = ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] )
-			? array_values( array_unique( array_filter( array_map( 'absint', $params['order_ids'] ) ) ) )
+	public static function preview_restore_order_statuses( $params ) {
+		$statuses = isset( $params['statuses'] ) && is_array( $params['statuses'] )
+			? $params['statuses']
 			: [];
 
+		$orders = [];
+		$block_reason = '';
+		$message = __( 'This will restore the selected order statuses after approval.', 'yoro-ai-core' );
+
+		foreach ( $statuses as $order_id => $status ) {
+			$order_id = absint( $order_id );
+			$status = YoRo_Order_Helper::normalize_status_slug( $status );
+
+			if ( ! $order_id || '' === $status ) {
+				continue;
+			}
+
+			$order = wc_get_order( $order_id );
+
+			if ( ! $order && '' === $block_reason ) {
+				$block_reason = 'order_not_found';
+				$message = sprintf(
+					/* translators: %d: order ID */
+					__( 'I could not find order %d. Choose an existing order before approving this change.', 'yoro-ai-core' ),
+					$order_id
+				);
+			} elseif ( ! YoRo_Order_Helper::is_valid_order_status( $status ) && '' === $block_reason ) {
+				$block_reason = 'invalid_status';
+				$message = sprintf(
+					/* translators: %s: order status */
+					__( 'I do not recognize the order status "%s". Choose a configured order status before approving this change.', 'yoro-ai-core' ),
+					$status
+				);
+			}
+
+			$orders[] = [
+				'id'             => $order_id,
+				'exists'         => (bool) $order,
+				'current_status' => $order ? $order->get_status() : '',
+				'current_status_label' => $order ? YoRo_Order_Helper::get_order_status_label( $order->get_status() ) : '',
+				'target_status'  => $status,
+				'target_status_label' => YoRo_Order_Helper::get_order_status_label( $status ),
+			];
+		}
+
+		if ( empty( $orders ) ) {
+			$block_reason = 'missing_restore_statuses';
+			$message = __( 'I could not find the previous order statuses to restore.', 'yoro-ai-core' );
+		}
+
+		return [
+			'type'          => 'write',
+			'will_execute'  => false,
+			'action'        => 'Restore store order statuses',
+			'summary'       => $message,
+			'message'       => $message,
+			'blocked'       => '' !== $block_reason,
+			'block_reason'  => $block_reason,
+			'orders'        => $orders,
+			'statuses'      => $statuses,
+			'count'         => count( $orders ),
+			'changes_store' => '' === $block_reason,
+		];
+	}
+
+	public static function preview_update_order_status( $params ) {
+		$order_ids = self::order_ids_from_params( $params );
 		$status = ! empty( $params['status'] )
 			? YoRo_Order_Helper::normalize_status_slug( $params['status'] )
 			: '';
 
-		$note   = ! empty( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : '';
-
-		if ( empty( $order_ids ) || empty( $status ) || empty( $note ) ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Order IDs, status, and note are required.', 'yoro-ai-core' )
-			);
-		}
-
-		if ( ! YoRo_Order_Helper::is_valid_order_status( $status ) ) {
-			return new WP_Error(
-				'invalid_status',
-				sprintf(
-					/* translators: %s: order status */
-					__( 'Invalid WooCommerce order status: %s.', 'yoro-ai-core' ),
-					$status
-				)
-			);
-		}
-
-		$processed = [];
-		$skipped   = [];
-		$errors    = [];
+		$orders = [];
+		$missing_order_ids = [];
 
 		foreach ( $order_ids as $order_id ) {
 			$order = wc_get_order( $order_id );
 
 			if ( ! $order ) {
-				$skipped[] = [
-					'id'     => $order_id,
-					'reason' => 'Order not found',
-				];
-				continue;
+				$missing_order_ids[] = $order_id;
 			}
 
-			try {
-				$order->update_status(
-					$status,
-					sprintf(
-						/* translators: %s: note text */
-						__( 'YoRo AI status update: %s', 'yoro-ai-core' ),
-						$note
-					)
-				);
-
-				$order_note_id = $order->add_order_note(
-					self::build_yoro_note_content( $note ),
-					0,
-					true
-				);
-
-				if ( $order_note_id ) {
-					self::mark_note_as_yoro_created( $order_note_id );
-				}
-
-				$processed[] = $order_id;
-			} catch ( Exception $e ) {
-				$errors[] = [
-					'id'      => $order_id,
-					'message' => $e->getMessage(),
-				];
-			}
+			$orders[] = [
+				'id'             => $order_id,
+				'exists'         => (bool) $order,
+				'current_status' => $order ? $order->get_status() : '',
+				'current_status_label' => $order ? YoRo_Order_Helper::get_order_status_label( $order->get_status() ) : '',
+				'target_status'  => $status,
+				'target_status_label' => YoRo_Order_Helper::get_order_status_label( $status ),
+			];
 		}
 
-		return [
-			'success'      => true,
-			'action'       => 'orders.bulk_update_status_with_note',
-			'summary'      => sprintf(
-				'Updated %d orders to %s and added note.',
-				count( $processed ),
+		$target_status_label = YoRo_Order_Helper::get_order_status_label( $status );
+		$block_reason = '';
+		$message = sprintf(
+			/* translators: %s: target order status */
+			__( 'This will update the selected order status to %s after approval.', 'yoro-ai-core' ),
+			$target_status_label
+		);
+
+		if ( empty( $order_ids ) ) {
+			$block_reason = 'missing_order_target';
+			$message = __( 'Please choose an order before this can be approved.', 'yoro-ai-core' );
+		} elseif ( '' === $status ) {
+			$block_reason = 'missing_status';
+			$message = __( 'Please choose a target order status before this can be approved.', 'yoro-ai-core' );
+		} elseif ( ! YoRo_Order_Helper::is_valid_order_status( $status ) ) {
+			$block_reason = 'invalid_status';
+			$message = sprintf(
+				/* translators: %s: order status */
+				__( 'I do not recognize the order status "%s". Choose a configured order status before approving this change.', 'yoro-ai-core' ),
 				$status
-			),
-			'processed'    => $processed,
-			'skipped'      => $skipped,
-			'errors'       => $errors,
-			'status'       => $status,
-			'status_label' => YoRo_Order_Helper::get_order_status_label( $status ),
-			'note'         => $note,
-			'count'        => count( $processed ),
-		];
-	}
-
-	public static function preview_update_order_status( $params ) {
-		$order_ids = ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] )
-			? array_map( 'absint', $params['order_ids'] )
-			: [];
-
-		$status = ! empty( $params['status'] ) ? sanitize_key( $params['status'] ) : '';
-
-		$orders = [];
-
-		foreach ( $order_ids as $order_id ) {
-			$order = wc_get_order( $order_id );
-
-			$orders[] = [
-				'id'             => $order_id,
-				'exists'         => (bool) $order,
-				'current_status' => $order ? $order->get_status() : '',
-				'target_status'  => $status,
-			];
+			);
+		} elseif ( ! empty( $missing_order_ids ) ) {
+			$block_reason = 'order_not_found';
+			$message = sprintf(
+				/* translators: %s: comma-separated order IDs */
+				__( 'I could not find order %s. Choose an existing order before approving this change.', 'yoro-ai-core' ),
+				implode( ', ', $missing_order_ids )
+			);
 		}
 
 		return [
 			'type'          => 'write',
 			'will_execute'  => false,
-			'action'        => 'Update WooCommerce order status',
+			'action'        => 'Update store order status',
+			'summary'       => $message,
+			'message'       => $message,
+			'blocked'       => '' !== $block_reason,
+			'block_reason'  => $block_reason,
 			'orders'        => $orders,
 			'count'         => count( $orders ),
 			'target_status' => $status,
-			'changes_store' => true,
-		];
-	}
-
-	public static function preview_bulk_update_status_with_note( $params ) {
-		$order_ids = ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] )
-			? array_values( array_unique( array_filter( array_map( 'absint', $params['order_ids'] ) ) ) )
-			: [];
-
-		$status = ! empty( $params['status'] ) ? sanitize_key( $params['status'] ) : '';
-		$note   = ! empty( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : '';
-
-		$orders = [];
-
-		foreach ( $order_ids as $order_id ) {
-			$order = wc_get_order( $order_id );
-
-			$orders[] = [
-				'id'             => $order_id,
-				'exists'         => (bool) $order,
-				'current_status' => $order ? $order->get_status() : '',
-				'target_status'  => $status,
-				'note_preview'   => $note,
-			];
-		}
-
-		return [
-			'type'          => 'write',
-			'will_execute'  => false,
-			'action'        => 'Bulk update WooCommerce order status with internal note',
-			'orders'        => $orders,
-			'count'         => count( $orders ),
-			'target_status' => $status,
-			'note_preview'  => $note,
-			'changes_store' => true,
+			'target_status_label' => $target_status_label,
+			'changes_store' => '' === $block_reason,
 		];
 	}
 
@@ -614,5 +608,17 @@ class YoRo_Orders_Write_Service {
 			'payment_mismatch'   => __( 'YoRo review: Payment information may not match the customer/order identity. Please verify before fulfillment.', 'yoro-ai-core' ),
 			'needs_verification' => __( 'YoRo review: Customer verification is required before this order is processed further.', 'yoro-ai-core' ),
 		];
+	}
+
+	private static function order_ids_from_params( $params ) {
+		$order_ids = [];
+
+		if ( ! empty( $params['order_ids'] ) && is_array( $params['order_ids'] ) ) {
+			$order_ids = array_map( 'absint', $params['order_ids'] );
+		} elseif ( ! empty( $params['order_id'] ) ) {
+			$order_ids = [ absint( $params['order_id'] ) ];
+		}
+
+		return array_values( array_filter( array_unique( $order_ids ) ) );
 	}
 }

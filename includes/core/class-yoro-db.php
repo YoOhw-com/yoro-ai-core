@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_DB {
 
-	const DB_VERSION = '0.1.4';
+	const DB_VERSION = '0.1.10';
 	const DB_VERSION_OPTION = 'yoro_ai_core_db_version';
 
 	const LOGS_TABLE = 'yoro_ai_logs';
@@ -82,8 +82,12 @@ class YoRo_DB {
 		dbDelta( $sql2 );
 
 		self::maybe_upgrade_log_columns();
+		self::cleanup_local_history_commands();
 		self::maybe_upgrade_policy_columns();
 		self::seed_default_policies();
+		self::cleanup_legacy_runtime_user_meta();
+
+		delete_option( 'yoro_workflow_ttl' );
 
 		update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
 	}
@@ -172,6 +176,50 @@ class YoRo_DB {
 		}
 	}
 
+	public static function cleanup_local_history_commands() {
+		global $wpdb;
+
+		$table = self::logs_table_name();
+
+		if ( ! self::table_exists( $table ) ) {
+			return [
+				'action_rows'     => 0,
+				'transcript_rows' => 0,
+			];
+		}
+
+		$action_rows = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table}
+				SET command = CONCAT(%s, action)
+				WHERE action IS NOT NULL
+				AND action <> ''
+				AND command IS NOT NULL
+				AND command <> ''
+				AND command NOT LIKE %s
+				AND command NOT LIKE %s
+				AND command NOT LIKE %s",
+				'action:',
+				'direct:%',
+				'action:%',
+				'proactive:%'
+			)
+		);
+
+		$transcript_rows = $wpdb->query(
+			"UPDATE {$table}
+			SET command = ''
+			WHERE (action IS NULL OR action = '')
+			AND command IS NOT NULL
+			AND command <> ''"
+		);
+
+		return [
+			'action_rows'     => false === $action_rows ? 0 : absint( $action_rows ),
+			'transcript_rows' => false === $transcript_rows ? 0 : absint( $transcript_rows ),
+		];
+	}
+
 	public static function seed_default_policies() {
 		global $wpdb;
 
@@ -184,32 +232,6 @@ class YoRo_DB {
 		}
 
 		$defaults = [
-			[
-				'action'                => 'orders.hold',
-				'role'                  => 'administrator',
-				'allow'                 => 1,
-				'max_items'             => 50,
-				'requires_preview'      => 0,
-				'requires_confirmation' => 1,
-				'allow_ai'              => 1,
-				'allow_direct'          => 1,
-				'allow_write'           => 1,
-				'allowed_risk_levels'   => wp_json_encode( [ 'low', 'medium', 'high' ] ),
-				'updated_at'            => current_time( 'mysql' ),
-			],
-			[
-				'action'                => 'orders.hold',
-				'role'                  => 'shop_manager',
-				'allow'                 => 1,
-				'max_items'             => 20,
-				'requires_preview'      => 0,
-				'requires_confirmation' => 1,
-				'allow_ai'              => 1,
-				'allow_direct'          => 1,
-				'allow_write'           => 1,
-				'allowed_risk_levels'   => wp_json_encode( [ 'low', 'medium' ] ),
-				'updated_at'            => current_time( 'mysql' ),
-			],
 			[
 				'action'                => 'orders.update_status',
 				'role'                  => 'administrator',
@@ -249,5 +271,19 @@ class YoRo_DB {
 		return $table === $wpdb->get_var(
 			$wpdb->prepare( 'SHOW TABLES LIKE %s', $table )
 		);
+	}
+
+	private static function cleanup_legacy_runtime_user_meta() {
+		global $wpdb;
+
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->usermeta} WHERE meta_key IN (%s, %s)",
+				'_yoro_conversation_memory',
+				'_yoro_proactive_state'
+			)
+		);
+
+		delete_option( 'yoro_memory_enabled' );
 	}
 }

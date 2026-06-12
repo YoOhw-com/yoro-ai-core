@@ -10,11 +10,11 @@ class YoRo_Action_Executor {
 		$action = YoRo_Action_Registry::get( $action_name );
 
 		if ( ! $action ) {
-			return new WP_Error( 'yoro_invalid_action', __( 'Action not found.', 'yoro-ai-core' ) );
+			return new WP_Error( 'yoro_invalid_action', __( 'I could not find that store action.', 'yoro-ai-core' ) );
 		}
 
 		if ( ! current_user_can( $action['permission'] ) ) {
-			return new WP_Error( 'yoro_permission_denied', __( 'Permission denied.', 'yoro-ai-core' ) );
+			return new WP_Error( 'yoro_permission_denied', __( 'You do not have permission to execute that store action.', 'yoro-ai-core' ) );
 		}
 
 		$limit_check = self::check_action_limits( $action_name, $action, $params );
@@ -44,7 +44,7 @@ class YoRo_Action_Executor {
 					'requires_confirmation' => true,
 					'action'                => $action_name,
 					'risk_level'            => $action['risk_level'],
-					'message'               => __( 'Confirmation is required before changing store data.', 'yoro-ai-core' ),
+					'message'               => __( 'Please approve this change when you are ready. Nothing has changed yet.', 'yoro-ai-core' ),
 					'result_type'           => 'confirmation',
 					'display_type'          => 'confirmation',
 					'read_only'             => true,
@@ -59,7 +59,7 @@ class YoRo_Action_Executor {
 		}
 
 		if ( empty( $action['callback'] ) || ! is_callable( $action['callback'] ) ) {
-			return new WP_Error( 'yoro_invalid_callback', __( 'Action callback is not callable.', 'yoro-ai-core' ) );
+			return new WP_Error( 'yoro_invalid_callback', __( 'I could not execute that action because the local handler is unavailable.', 'yoro-ai-core' ) );
 		}
 
 		do_action(
@@ -74,29 +74,34 @@ class YoRo_Action_Executor {
 			]
 		);
 
-		$result = call_user_func( $action['callback'], $params );
+		if (
+			! empty( $context['store_context_pack'] ) &&
+			is_array( $context['store_context_pack'] ) &&
+			class_exists( 'YoRo_Report_Builder' )
+		) {
+			$result = YoRo_Report_Builder::with_store_context_pack(
+				$context['store_context_pack'],
+				static function() use ( $action, $params ) {
+					return call_user_func( $action['callback'], $params );
+				}
+			);
+		} else {
+			$result = call_user_func( $action['callback'], $params );
+		}
 		$result = self::normalize_result( $action_name, $result, $action );
 
 		if (
-			! $is_undo &&
 			! empty( $action['write_action'] ) &&
 			is_array( $result ) &&
-			! empty( $result['success'] ) &&
-			class_exists( 'YoRo_Action_Cache' )
+			! empty( $result['success'] )
 		) {
 			YoRo_Action_Cache::flush_groups(
 				[
 					'operations_summary',
 					'operations_attention_queue',
 					'fulfillment_queue',
+					'inventory_queue',
 				]
-			);
-		}
-
-		if ( ! $is_undo ) {
-			$result['suggestions'] = YoRo_Suggestions::get(
-				$action_name,
-				$result
 			);
 		}
 
@@ -197,6 +202,10 @@ class YoRo_Action_Executor {
 		}
 
 		if ( isset( $params['order_id'] ) ) {
+			return 1;
+		}
+
+		if ( isset( $params['product_id'] ) ) {
 			return 1;
 		}
 
@@ -321,40 +330,32 @@ class YoRo_Action_Executor {
 			$result['meta'] = [];
 		}
 
-			if ( empty( $result['assistant_summary'] ) ) {
-				$result['assistant_summary'] = self::build_assistant_summary(
-					$action_name,
-					$result,
-					$is_write_action
+		if ( empty( $result['assistant_summary'] ) ) {
+			$result['assistant_summary'] = self::build_assistant_summary(
+				$action_name,
+				$result,
+				$is_write_action
 			);
 		}
 
-		if ( empty( $result['assistant_followup'] ) ) {
-			$result['assistant_followup'] = self::build_assistant_followup(
-				$action_name,
-				$result,
-					$is_write_action
-				);
-			}
+		$result = self::clean_user_facing_response_copy( $result );
 
-			$result = self::clean_user_facing_response_copy( $result );
+		return $result;
+	}
 
+	private static function clean_user_facing_response_copy( $result ) {
+		if ( ! is_array( $result ) ) {
 			return $result;
 		}
 
-		private static function clean_user_facing_response_copy( $result ) {
-			if ( ! is_array( $result ) || ! class_exists( 'YoRo_Response_UX_Formatter' ) ) {
-				return $result;
+		foreach ( [ 'summary', 'message', 'assistant_summary' ] as $key ) {
+			if ( array_key_exists( $key, $result ) ) {
+				$result[ $key ] = YoRo_Response_UX_Formatter::clean_user_facing_copy( $result[ $key ] );
 			}
-
-			foreach ( [ 'summary', 'message', 'assistant_summary', 'assistant_followup' ] as $key ) {
-				if ( array_key_exists( $key, $result ) ) {
-					$result[ $key ] = YoRo_Response_UX_Formatter::clean_user_facing_copy( $result[ $key ] );
-				}
-			}
-
-			return $result;
 		}
+
+		return $result;
+	}
 
 	private static function build_assistant_summary( $action_name, $result, $is_write_action ) {
 		$summary = sanitize_text_field( $result['summary'] ?? '' );
@@ -459,7 +460,7 @@ class YoRo_Action_Executor {
 				if ( '' !== $top_priority ) {
 					return sprintf(
 						/* translators: 1: window line, 2: top priority */
-						__( 'Here is the store briefing. %1$s %2$s', 'yoro-ai-core' ),
+						__( 'Here is the store report. %1$s %2$s', 'yoro-ai-core' ),
 						$window_line,
 						$top_priority
 					);
@@ -467,7 +468,7 @@ class YoRo_Action_Executor {
 
 				return sprintf(
 					/* translators: %s: window line */
-					__( 'Here is the store briefing. %s', 'yoro-ai-core' ),
+					__( 'Here is the store report. %s', 'yoro-ai-core' ),
 					$window_line
 				);
 
@@ -530,20 +531,20 @@ class YoRo_Action_Executor {
 			case 'operations.get_attention_queue':
 				return sprintf(
 					/* translators: %d: count */
-					__( 'I found %d operational items that look like the highest-priority issues to review next.', 'yoro-ai-core' ),
-					absint( $result['count'] ?? 0 )
+					__( 'I found %d operational queue matches that look like the highest-priority issues to review next.', 'yoro-ai-core' ),
+					self::get_queue_match_count( $result )
 				);
 
 			case 'operations.get_fulfillment_queue':
 				$fulfillment_summary = self::summarize_fulfillment_queue( $result );
-				$total_items = absint( $result['count'] ?? 0 );
+				$total_items = self::get_queue_match_count( $result );
 				$tracking_count = absint( $fulfillment_summary['tracking_gap_count'] ?? 0 );
 				$aging_count = absint( $fulfillment_summary['aging_processing_count'] ?? 0 );
 
 				if ( $tracking_count > 0 && $aging_count > 0 ) {
 					return sprintf(
 						/* translators: 1: total items, 2: tracking count, 3: aging count */
-						__( 'Fulfillment pressure is concentrated in missing tracking and aging processing orders. I found %1$d queue items, including %2$d orders without tracking signals and %3$d older processing orders.', 'yoro-ai-core' ),
+						__( 'Fulfillment pressure is concentrated in missing tracking and aging processing orders. I found %1$d queue matches, including %2$d without tracking signals and %3$d older processing matches.', 'yoro-ai-core' ),
 						$total_items,
 						$tracking_count,
 						$aging_count
@@ -553,7 +554,7 @@ class YoRo_Action_Executor {
 				if ( $tracking_count > 0 ) {
 					return sprintf(
 						/* translators: 1: total items, 2: tracking count */
-						__( 'The main fulfillment watchpoint is missing tracking coverage. I found %1$d queue items, including %2$d orders without a tracking signal.', 'yoro-ai-core' ),
+						__( 'The main fulfillment watchpoint is missing tracking coverage. I found %1$d queue matches, including %2$d without a tracking signal.', 'yoro-ai-core' ),
 						$total_items,
 						$tracking_count
 					);
@@ -562,7 +563,7 @@ class YoRo_Action_Executor {
 				if ( $aging_count > 0 ) {
 					return sprintf(
 						/* translators: 1: total items, 2: aging count */
-						__( 'The main fulfillment pressure is older processing orders that still need movement. I found %1$d queue items, including %2$d aging processing orders.', 'yoro-ai-core' ),
+						__( 'The main fulfillment pressure is older processing orders that still need movement. I found %1$d queue matches, including %2$d aging processing matches.', 'yoro-ai-core' ),
 						$total_items,
 						$aging_count
 					);
@@ -570,13 +571,13 @@ class YoRo_Action_Executor {
 
 				return sprintf(
 					/* translators: %d: count */
-					__( 'I pulled the fulfillment queue and found %d orders that may be waiting on shipping or tracking follow-up.', 'yoro-ai-core' ),
+					__( 'I pulled the fulfillment queue and found %d queue matches that may be waiting on shipping or tracking follow-up.', 'yoro-ai-core' ),
 					$total_items
 				);
 
 			case 'customers.get_service_queue':
 				$service_summary = self::summarize_customer_service_queue( $result );
-				$total_items = absint( $result['count'] ?? 0 );
+				$total_items = self::get_queue_match_count( $result );
 				$payment_followups = absint( $service_summary['pending_payment_followup'] ?? 0 );
 				$hold_followups = absint( $service_summary['on_hold_followup'] ?? 0 );
 				$drafts_waiting = absint( $service_summary['saved_email_drafts'] ?? 0 );
@@ -584,7 +585,7 @@ class YoRo_Action_Executor {
 				if ( $hold_followups > 0 && $payment_followups > 0 ) {
 					return sprintf(
 						/* translators: 1: total items, 2: on-hold follow-up count, 3: pending payment follow-up count */
-						__( 'Customer follow-up load is concentrated in on-hold orders and pending payment cases. I found %1$d items, including %2$d on-hold follow-ups and %3$d pending payment follow-ups.', 'yoro-ai-core' ),
+						__( 'Customer follow-up load is concentrated in on-hold orders and pending payment cases. I found %1$d queue matches, including %2$d on-hold follow-ups and %3$d pending payment follow-ups.', 'yoro-ai-core' ),
 						$total_items,
 						$hold_followups,
 						$payment_followups
@@ -594,7 +595,7 @@ class YoRo_Action_Executor {
 				if ( $drafts_waiting > 0 ) {
 					return sprintf(
 						/* translators: 1: total items, 2: saved draft count */
-						__( 'There is active customer follow-up work, with saved drafts already waiting for review. I found %1$d items, including %2$d saved email drafts.', 'yoro-ai-core' ),
+						__( 'There is active customer follow-up work, with saved drafts already waiting for review. I found %1$d queue matches, including %2$d saved email drafts.', 'yoro-ai-core' ),
 						$total_items,
 						$drafts_waiting
 					);
@@ -602,13 +603,13 @@ class YoRo_Action_Executor {
 
 				return sprintf(
 					/* translators: %d: count */
-					__( 'I found %d customer-facing items that may need a reply or follow-up from the team.', 'yoro-ai-core' ),
+					__( 'I found %d customer-facing queue matches that may need a reply or follow-up from the team.', 'yoro-ai-core' ),
 					$total_items
 				);
 
 			case 'products.get_inventory_queue':
 				$inventory_summary = self::summarize_inventory_queue( $result );
-				$total_items = absint( $result['count'] ?? 0 );
+				$total_items = self::get_queue_match_count( $result );
 				$out_of_stock = absint( $inventory_summary['out_of_stock'] ?? 0 );
 				$low_stock = absint( $inventory_summary['low_stock'] ?? 0 );
 				$backorder = absint( $inventory_summary['on_backorder'] ?? 0 );
@@ -625,7 +626,7 @@ class YoRo_Action_Executor {
 
 					return sprintf(
 						/* translators: 1: total items, 2: out of stock label, 3: backorder label */
-						__( 'Inventory pressure is showing up most clearly in stockouts and backorders. I found %1$d items, including %2$s and %3$s.', 'yoro-ai-core' ),
+						__( 'Inventory pressure is showing up most clearly in stockouts and backorders. I found %1$d queue matches, including %2$s and %3$s.', 'yoro-ai-core' ),
 						$total_items,
 						$out_of_stock_label,
 						$backorder_label
@@ -635,7 +636,7 @@ class YoRo_Action_Executor {
 				if ( $low_stock > 0 ) {
 					return sprintf(
 						/* translators: 1: total items, 2: low stock count */
-						__( 'Inventory risk is concentrated in low-stock products that may need replenishment soon. I found %1$d items, including %2$d low-stock products.', 'yoro-ai-core' ),
+						__( 'Inventory risk is concentrated in low-stock products that may need replenishment soon. I found %1$d queue matches, including %2$d low-stock products.', 'yoro-ai-core' ),
 						$total_items,
 						$low_stock
 					);
@@ -643,14 +644,14 @@ class YoRo_Action_Executor {
 
 				return sprintf(
 					/* translators: %d: count */
-					__( 'I found %d products that may need inventory attention, including low-stock, out-of-stock, or backorder risks.', 'yoro-ai-core' ),
+					__( 'I found %d product queue matches that may need inventory attention, including low-stock, out-of-stock, or backorder risks.', 'yoro-ai-core' ),
 					$total_items
 				);
 
 			case 'store.get_insights':
 				return sprintf(
 					/* translators: %d: count */
-					__( 'I summarized %d store insights across orders, customers, and products for this request.', 'yoro-ai-core' ),
+					__( 'I summarized %d store signals across orders, customers, and products for this request.', 'yoro-ai-core' ),
 					absint( $result['count'] ?? 0 )
 				);
 
@@ -744,124 +745,33 @@ class YoRo_Action_Executor {
 
 				return sprintf(
 					/* translators: 1: window summary, 2: pressure summary */
-					__( 'The business picture is mixed. %1$s %2$s', 'yoro-ai-core' ),
+					__( 'The sales picture is mixed. %1$s %2$s', 'yoro-ai-core' ),
 					$window_summary,
 					$pressure_summary
 				);
 
-			case 'customers.get_summary':
+			case 'customers.lookup':
+				$customer      = isset( $result['customer'] ) && is_array( $result['customer'] ) ? $result['customer'] : [];
+				$customer_name = trim( (string) ( $customer['name'] ?? '' ) );
+				$order_count   = absint( $customer['orders_count'] ?? ( $result['count'] ?? 0 ) );
+
+				if ( '' !== $customer_name ) {
+					return sprintf(
+						/* translators: 1: customer name, 2: related order count */
+						__( 'I found the customer profile for %1$s with %2$d related orders.', 'yoro-ai-core' ),
+						$customer_name,
+						$order_count
+					);
+				}
+
 				return sprintf(
 					/* translators: %d: count */
-					__( 'I pulled this customer summary and found %d related orders in the available history.', 'yoro-ai-core' ),
-					absint( $result['count'] ?? 0 )
+					__( 'I found this customer profile with %d related orders.', 'yoro-ai-core' ),
+					$order_count
 				);
 		}
 
 		return $summary;
-	}
-
-	private static function build_assistant_followup( $action_name, $result, $is_write_action ) {
-		if ( $is_write_action ) {
-			return '';
-		}
-
-		if ( ! empty( $result['meta']['assumption']['message'] ) ) {
-			return sanitize_text_field( $result['meta']['assumption']['message'] );
-		}
-
-		switch ( $action_name ) {
-			case 'store.get_daily_briefing':
-				$briefing_context = isset( $result['briefing_context'] ) && is_array( $result['briefing_context'] )
-					? $result['briefing_context']
-					: [];
-				$top_topic = sanitize_key( $briefing_context['top_topic'] ?? '' );
-
-				switch ( $top_topic ) {
-					case 'operations_attention':
-						return __( 'Next, I can open the attention queue or break this into fulfillment and customer follow-up.', 'yoro-ai-core' );
-
-					case 'fulfillment':
-						return __( 'Next, I can open fulfillment or focus on missing tracking and aging processing orders.', 'yoro-ai-core' );
-
-					case 'customer_service':
-						return __( 'Next, I can open customer follow-up or focus on saved drafts and the oldest unresolved cases.', 'yoro-ai-core' );
-
-					case 'inventory':
-						return __( 'Next, I can open inventory or focus on stockouts and backorders.', 'yoro-ai-core' );
-				}
-
-				return __( 'Next, I can open attention, fulfillment, customer follow-up, or inventory.', 'yoro-ai-core' );
-
-			case 'operations.get_summary':
-				$attention_total = absint( $result['attention_total'] ?? 0 );
-				$backlog_total = absint( $result['backlog_total'] ?? 0 );
-
-				if ( $attention_total > 0 && $backlog_total > 0 ) {
-					return __( 'Next, I can break this into attention, fulfillment blockers, customer follow-up, or inventory.', 'yoro-ai-core' );
-				}
-
-				return __( 'Next, I can break this down into attention, fulfillment, customer follow-up, or inventory.', 'yoro-ai-core' );
-
-			case 'operations.get_attention_queue':
-				return __( 'Next, I can narrow this to the orders that should be checked first.', 'yoro-ai-core' );
-
-			case 'operations.get_fulfillment_queue':
-				$fulfillment_summary = self::summarize_fulfillment_queue( $result );
-
-				if ( ! empty( $fulfillment_summary['tracking_gap_count'] ) && ! empty( $fulfillment_summary['aging_processing_count'] ) ) {
-					return __( 'Next, I can focus on missing tracking, older processing orders, or the next delay email.', 'yoro-ai-core' );
-				}
-
-				return __( 'Next, I can open the shipping queue in more detail or focus on orders missing tracking.', 'yoro-ai-core' );
-
-			case 'customers.get_service_queue':
-				$service_summary = self::summarize_customer_service_queue( $result );
-
-				if ( ! empty( $service_summary['saved_email_drafts'] ) ) {
-					return __( 'Next, I can focus on saved drafts, the oldest on-hold follow-ups, or the next customer reply.', 'yoro-ai-core' );
-				}
-
-				return __( 'Next, I can narrow this to the most urgent follow-ups or draft the next reply.', 'yoro-ai-core' );
-
-			case 'products.get_inventory_queue':
-				$inventory_summary = self::summarize_inventory_queue( $result );
-
-				if ( ! empty( $inventory_summary['out_of_stock'] ) || ! empty( $inventory_summary['on_backorder'] ) ) {
-					return __( 'Next, I can focus on stockouts, backorders, or replenishment priorities.', 'yoro-ai-core' );
-				}
-
-				return __( 'Next, I can narrow this to low stock, out of stock, or backorder items.', 'yoro-ai-core' );
-
-			case 'store.get_insights':
-				return __( 'Next, I can turn these insights into an operating summary or drill into one area.', 'yoro-ai-core' );
-
-			case 'store.get_business_summary':
-				$headline_insights = isset( $result['headline_insights'] ) && is_array( $result['headline_insights'] )
-					? $result['headline_insights']
-					: [];
-				$topic = sanitize_key( $headline_insights[1]['topic'] ?? $headline_insights[0]['topic'] ?? '' );
-					switch ( $topic ) {
-						case 'state_summary':
-							return __( 'Next, I can break this into live backlog, order mix, top customers, or top products.', 'yoro-ai-core' );
-
-						case 'operations_pressure':
-							return __( 'Next, I can break down backlog, top customers, top products, or the attention queue.', 'yoro-ai-core' );
-
-						case 'fulfillment_velocity':
-						case 'open_order_mix':
-							return __( 'Next, I can break down order mix, top customers, top products, or the attention queue.', 'yoro-ai-core' );
-
-						case 'top_customers':
-							return __( 'Next, I can open top customers, top products, or the attention queue.', 'yoro-ai-core' );
-
-						case 'top_products':
-							return __( 'Next, I can open top products, top customers, or the attention queue.', 'yoro-ai-core' );
-					}
-
-				return __( 'Next, I can open operations pressure, top customers, top products, or the attention queue.', 'yoro-ai-core' );
-		}
-
-		return '';
 	}
 
 	private static function classify_operations_summary_state( $window_orders, $backlog_total, $attention_total ) {
@@ -909,6 +819,14 @@ class YoRo_Action_Executor {
 			__( 'In %s,', 'yoro-ai-core' ),
 			$window_label
 		);
+	}
+
+	private static function get_queue_match_count( $result ) {
+		if ( is_array( $result ) && isset( $result['queue_item_count'] ) ) {
+			return absint( $result['queue_item_count'] );
+		}
+
+		return absint( is_array( $result ) ? ( $result['count'] ?? 0 ) : 0 );
 	}
 
 	private static function summarize_fulfillment_queue( $result ) {
@@ -963,7 +881,7 @@ class YoRo_Action_Executor {
 			'low_stock'                => 0,
 			'on_backorder'             => 0,
 			'unmanaged_stock_selling'  => 0,
-			'recent_processing_orders' => 0,
+			'low_stock_in_processing_orders' => 0,
 		];
 
 		foreach ( $queues as $queue ) {
@@ -1058,6 +976,10 @@ class YoRo_Action_Executor {
 		}
 
 		if ( 'products.get_inventory_queue' === $action_name ) {
+			return 'inventory_queue';
+		}
+
+		if ( in_array( $action_name, [ 'products.update_stock', 'products.update_stock_status' ], true ) ) {
 			return 'inventory_queue';
 		}
 

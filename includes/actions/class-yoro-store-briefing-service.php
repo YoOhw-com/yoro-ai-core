@@ -8,17 +8,16 @@ class YoRo_Store_Briefing_Service {
 
 	public static function get_business_summary( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
 		}
 
-		$window_key = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( $params['window'] ?? 'last_7_days' );
+		$window_key = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( YoRo_Date_Helper::window_key_from_params( $params, 'window', 'last_7_days' ) );
 		$focus      = ! empty( $params['focus'] ) ? sanitize_key( $params['focus'] ) : 'overview';
 		$window     = YoRo_Orders_Read_Service::briefing_get_operations_window( $window_key );
 
-		$orders = wc_get_orders(
+		$orders = YoRo_Orders_Read_Service::report_query_orders(
 			[
-				'limit'        => 200,
-				'status'       => YoRo_Orders_Read_Service::briefing_get_all_order_status_slugs(),
+				'status'       => YoRo_Orders_Read_Service::briefing_get_revenue_order_status_slugs(),
 				'date_created' => $window['query'],
 				'orderby'      => 'date',
 				'order'        => 'DESC',
@@ -27,18 +26,25 @@ class YoRo_Store_Briefing_Service {
 
 		$order_count         = 0;
 		$order_total         = 0.0;
-		$completed_total     = 0.0;
+		$discount_total      = 0.0;
+		$refund_total        = 0.0;
+		$shipping_total      = 0.0;
+		$tax_total           = 0.0;
+		$items_sold          = 0.0;
 		$customer_map        = [];
 		$product_map         = [];
-		$order_status_counts = [];
-		$recent_orders       = [];
+		$category_map        = [];
+		$category_cache      = [];
+		$order_status_counts  = [];
+		$excluded_order_count = 0;
+		$excluded_order_total = 0.0;
+		$recent_orders        = [];
 
 		foreach ( $orders as $order ) {
 			if ( ! $order instanceof WC_Order ) {
 				continue;
 			}
 
-			$order_count++;
 			$status = $order->get_status();
 
 			if ( ! isset( $order_status_counts[ $status ] ) ) {
@@ -48,10 +54,21 @@ class YoRo_Store_Briefing_Service {
 			$order_status_counts[ $status ]++;
 
 			$total       = (float) $order->get_total();
-			$order_total += $total;
 
-			if ( 'completed' === $status ) {
-				$completed_total += $total;
+			if ( ! YoRo_Orders_Read_Service::briefing_is_revenue_order_status( $status ) ) {
+				$excluded_order_count++;
+				$excluded_order_total += $total;
+				continue;
+			}
+
+			$order_count++;
+			$order_total += $total;
+			$discount_total += (float) $order->get_discount_total();
+			$shipping_total += (float) $order->get_shipping_total();
+			$tax_total      += (float) $order->get_total_tax();
+
+			if ( method_exists( $order, 'get_total_refunded' ) ) {
+				$refund_total += (float) $order->get_total_refunded();
 			}
 
 			$customer_key = strtolower( trim( $order->get_billing_email() ) );
@@ -77,20 +94,34 @@ class YoRo_Store_Briefing_Service {
 					continue;
 				}
 
+				$product    = $item->get_product();
 				$product_id = $item->get_product_id();
 				$key        = $product_id ? (string) $product_id : 'item:' . md5( $item->get_name() );
+				$category_context = YoRo_Orders_Read_Service::report_get_product_category_context( $product_id, $category_cache );
 
 				if ( ! isset( $product_map[ $key ] ) ) {
 					$product_map[ $key ] = [
-						'id'       => $product_id,
-						'name'     => $item->get_name(),
-						'quantity' => 0,
-						'total'    => 0.0,
+						'id'         => $product_id,
+						'name'       => $item->get_name(),
+						'sku'        => $product instanceof WC_Product ? $product->get_sku() : '',
+						'category'   => $category_context['primary_name'] ?? '',
+						'categories' => array_map(
+							function( $category ) {
+								return sanitize_text_field( $category['name'] ?? '' );
+							},
+							is_array( $category_context['categories'] ?? null ) ? $category_context['categories'] : []
+						),
+						'quantity'   => 0,
+						'total'      => 0.0,
 					];
 				}
 
-				$product_map[ $key ]['quantity'] += (float) $item->get_quantity();
-				$product_map[ $key ]['total']    += (float) $item->get_total();
+				$quantity = (float) $item->get_quantity();
+				$line_total = (float) $item->get_total();
+				$items_sold += $quantity;
+				$product_map[ $key ]['quantity'] += $quantity;
+				$product_map[ $key ]['total']    += $line_total;
+				YoRo_Orders_Read_Service::report_record_category_mix( $category_map, $category_context, $key, $quantity, $line_total );
 			}
 
 			if ( count( $recent_orders ) < 5 ) {
@@ -99,6 +130,19 @@ class YoRo_Store_Briefing_Service {
 		}
 
 		$average_order_value = $order_count > 0 ? $order_total / $order_count : 0;
+		$net_sales           = max( 0, $order_total - $refund_total );
+		$repeat_customer_count = count(
+			array_filter(
+				$customer_map,
+				function( $customer ) {
+					return is_array( $customer ) && absint( $customer['order_count'] ?? 0 ) > 1;
+				}
+			)
+		);
+		$repeat_customer_rate = count( $customer_map ) > 0 ? ( $repeat_customer_count / count( $customer_map ) ) * 100 : 0;
+		$refund_rate          = $order_total > 0 ? ( $refund_total / $order_total ) * 100 : 0;
+		$discount_rate        = $order_total > 0 ? ( $discount_total / $order_total ) * 100 : 0;
+		$items_per_order      = $order_count > 0 ? $items_sold / $order_count : 0;
 		$backlog_total       = YoRo_Orders_Read_Service::briefing_count_orders( [ 'status' => [ 'pending', 'processing', 'on-hold' ] ] );
 		$attention_total     = YoRo_Orders_Read_Service::briefing_count_orders(
 			[
@@ -140,10 +184,13 @@ class YoRo_Store_Briefing_Service {
 			array_map(
 				function( $product ) {
 					return [
-						'id'       => $product['id'],
-						'name'     => $product['name'],
-						'quantity' => $product['quantity'],
-						'total'    => wc_format_decimal( $product['total'], 2 ),
+						'id'         => $product['id'],
+						'name'       => $product['name'],
+						'sku'        => $product['sku'] ?? '',
+						'category'   => $product['category'] ?? '',
+						'categories' => array_values( array_filter( is_array( $product['categories'] ?? null ) ? $product['categories'] : [] ) ),
+						'quantity'   => $product['quantity'],
+						'total'      => wc_format_decimal( $product['total'], 2 ),
 					];
 				},
 				array_values( $product_map )
@@ -151,15 +198,33 @@ class YoRo_Store_Briefing_Service {
 			0,
 			5
 		);
+		$top_categories = YoRo_Orders_Read_Service::report_format_category_mix( $category_map, 5 );
 
 		$business_metrics = [
 			'order_count'         => $order_count,
 			'gross_sales'         => wc_format_decimal( $order_total, 2 ),
-			'completed_sales'     => wc_format_decimal( $completed_total, 2 ),
+			'net_sales'           => wc_format_decimal( $net_sales, 2 ),
 			'average_order_value' => wc_format_decimal( $average_order_value, 2 ),
+			'discount_total'      => wc_format_decimal( $discount_total, 2 ),
+			'refund_total'        => wc_format_decimal( $refund_total, 2 ),
+			'shipping_total'      => wc_format_decimal( $shipping_total, 2 ),
+			'tax_total'           => wc_format_decimal( $tax_total, 2 ),
 			'unique_customers'    => count( $customer_map ),
+			'repeat_customers'    => $repeat_customer_count,
+			'repeat_customer_rate' => wc_format_decimal( $repeat_customer_rate, 1 ),
+			'items_sold'          => wc_format_decimal( $items_sold, 0 ),
+			'items_per_order'     => wc_format_decimal( $items_per_order, 2 ),
 			'product_lines'       => count( $product_map ),
+			'product_categories'  => count( $category_map ),
+			'refund_rate'         => wc_format_decimal( $refund_rate, 1 ),
+			'discount_rate'       => wc_format_decimal( $discount_rate, 1 ),
+			'excluded_orders'     => $excluded_order_count,
+			'excluded_order_total' => wc_format_decimal( $excluded_order_total, 2 ),
+			'revenue_statuses'    => YoRo_Orders_Read_Service::briefing_get_revenue_order_status_slugs(),
 		];
+		$previous_window           = YoRo_Date_Helper::build_previous_window( $window );
+		$previous_business_metrics = self::summarize_business_window( $previous_window );
+		$comparison                = self::build_business_comparison( $business_metrics, $previous_business_metrics, $previous_window );
 
 		$customer_count_label = sprintf(
 			_n( '%d active customer', '%d active customers', count( $customer_map ), 'yoro-ai-core' ),
@@ -202,19 +267,31 @@ class YoRo_Store_Briefing_Service {
 		);
 		$recommended_sequence = self::build_business_recommended_sequence( $business_context );
 		$business_actions     = self::build_business_actions( $business_context );
+		$report               = self::build_business_report(
+			$window,
+			$business_metrics,
+			$order_status_counts,
+			$backlog_total,
+			$attention_total,
+			$headline_insights,
+			$business_actions,
+			$top_products,
+			$top_categories,
+			$comparison
+		);
 
 		return [
 			'success'      => true,
 			'action'       => 'store.get_business_summary',
 			'summary'      => sprintf(
-				'Business summary for %1$s: %2$d orders, %3$s gross sales, %4$s.',
+				'Sales report for %1$s: %2$d orders, %3$s gross sales, %4$s.',
 				$window['label'],
 				$order_count,
 				$gross_sales_label,
 				$customer_count_label
 			),
 			'message'      => sprintf(
-				'Business summary for %1$s: %2$d orders, %3$s gross sales, %4$s.',
+				'Sales report for %1$s: %2$d orders, %3$s gross sales, %4$s.',
 				$window['label'],
 				$order_count,
 				$gross_sales_label,
@@ -241,20 +318,387 @@ class YoRo_Store_Briefing_Service {
 			'attention_total'      => $attention_total,
 			'narrative_context'    => $narrative_context,
 			'business_context'     => $business_context,
+			'comparison'           => $comparison,
 			'priority_items'       => array_slice( $priority_items, 0, 3 ),
 			'recommended_sequence' => array_slice( $recommended_sequence, 0, 4 ),
 			'business_actions'     => array_slice( $business_actions, 0, 4 ),
 			'headline_insights'    => $headline_insights,
 			'top_customers'        => $top_customers,
 			'top_products'         => $top_products,
+			'top_categories'       => $top_categories,
 			'recent_orders'        => $recent_orders,
+			'report'               => $report,
 			'result_type'          => 'business_summary',
 			'display_type'         => 'business_summary',
 		];
 	}
 
+	private static function summarize_business_window( $window ) {
+		$summary = [
+			'order_count'         => 0,
+			'gross_sales'         => 0.0,
+			'net_sales'           => 0.0,
+			'average_order_value' => 0.0,
+			'unique_customers'    => 0,
+			'repeat_customers'    => 0,
+			'repeat_customer_rate' => 0.0,
+			'items_sold'          => 0.0,
+			'items_per_order'     => 0.0,
+			'product_lines'       => 0,
+			'product_categories'  => 0,
+			'refund_rate'         => 0.0,
+			'discount_rate'       => 0.0,
+		];
+
+		if ( empty( $window['query'] ) || ! function_exists( 'wc_get_orders' ) ) {
+			return $summary;
+		}
+
+		$customer_map = [];
+		$product_map  = [];
+		$category_map = [];
+		$category_cache = [];
+		$refund_total = 0.0;
+		$discount_total = 0.0;
+
+		$orders = YoRo_Orders_Read_Service::report_query_orders(
+			[
+				'status'       => YoRo_Orders_Read_Service::briefing_get_all_order_status_slugs(),
+				'date_created' => $window['query'],
+				'orderby'      => 'date',
+				'order'        => 'DESC',
+			]
+		);
+
+		foreach ( $orders as $order ) {
+			if ( ! $order instanceof WC_Order ) {
+				continue;
+			}
+
+			$summary['order_count']++;
+			$summary['gross_sales'] += (float) $order->get_total();
+			$discount_total += (float) $order->get_discount_total();
+
+			if ( method_exists( $order, 'get_total_refunded' ) ) {
+				$refund_total += (float) $order->get_total_refunded();
+			}
+
+			$customer_key = strtolower( trim( $order->get_billing_email() ) );
+			if ( empty( $customer_key ) ) {
+				$customer_key = 'guest:' . $order->get_id();
+			}
+
+			if ( ! isset( $customer_map[ $customer_key ] ) ) {
+				$customer_map[ $customer_key ] = 0;
+			}
+
+			$customer_map[ $customer_key ]++;
+
+			foreach ( $order->get_items( 'line_item' ) as $item ) {
+				if ( ! $item instanceof WC_Order_Item_Product ) {
+					continue;
+				}
+
+				$product_id = $item->get_product_id();
+				$product_key = $product_id ? (string) $product_id : 'item:' . md5( $item->get_name() );
+				$category_context = YoRo_Orders_Read_Service::report_get_product_category_context( $product_id, $category_cache );
+				$quantity = (float) $item->get_quantity();
+				$line_total = (float) $item->get_total();
+				$product_map[ $product_key ] = true;
+				$summary['items_sold'] += $quantity;
+				YoRo_Orders_Read_Service::report_record_category_mix( $category_map, $category_context, $product_key, $quantity, $line_total );
+			}
+		}
+
+		$summary['net_sales'] = max( 0, $summary['gross_sales'] - $refund_total );
+		$summary['average_order_value'] = $summary['order_count'] > 0 ? $summary['gross_sales'] / $summary['order_count'] : 0.0;
+		$summary['unique_customers'] = count( $customer_map );
+		$summary['repeat_customers'] = count(
+			array_filter(
+				$customer_map,
+				function( $order_count ) {
+					return absint( $order_count ) > 1;
+				}
+			)
+		);
+		$summary['repeat_customer_rate'] = $summary['unique_customers'] > 0 ? ( $summary['repeat_customers'] / $summary['unique_customers'] ) * 100 : 0.0;
+		$summary['product_lines'] = count( $product_map );
+		$summary['product_categories'] = count( $category_map );
+		$summary['items_per_order'] = $summary['order_count'] > 0 ? $summary['items_sold'] / $summary['order_count'] : 0.0;
+		$summary['refund_rate'] = $summary['gross_sales'] > 0 ? ( $refund_total / $summary['gross_sales'] ) * 100 : 0.0;
+		$summary['discount_rate'] = $summary['gross_sales'] > 0 ? ( $discount_total / $summary['gross_sales'] ) * 100 : 0.0;
+
+		return $summary;
+	}
+
+	private static function build_business_comparison( $business_metrics, $previous_metrics, $previous_window ) {
+		$keys = [ 'order_count', 'gross_sales', 'net_sales', 'average_order_value', 'unique_customers', 'repeat_customers', 'repeat_customer_rate', 'items_sold', 'items_per_order', 'product_lines', 'product_categories', 'refund_rate', 'discount_rate' ];
+		$comparison = [
+			'window'  => YoRo_Date_Helper::build_window_payload( is_array( $previous_window ) ? $previous_window : [] ),
+			'metrics' => [],
+		];
+
+		foreach ( $keys as $key ) {
+			$current = (float) ( $business_metrics[ $key ] ?? 0 );
+			$previous = (float) ( $previous_metrics[ $key ] ?? 0 );
+			$comparison['metrics'][ $key ] = YoRo_Report_Builder::metric_comparison( $current, $previous );
+			$comparison['metrics'][ $key ]['previous'] = wc_format_decimal( $previous, in_array( $key, [ 'gross_sales', 'net_sales', 'average_order_value', 'items_per_order' ], true ) ? 2 : ( in_array( $key, [ 'repeat_customer_rate', 'refund_rate', 'discount_rate' ], true ) ? 1 : 0 ) );
+		}
+
+		return $comparison;
+	}
+
+	private static function comparison_for_metric( $comparison, $key ) {
+		return is_array( $comparison ) && ! empty( $comparison['metrics'][ $key ] ) && is_array( $comparison['metrics'][ $key ] )
+			? $comparison['metrics'][ $key ]
+			: [];
+	}
+
+	private static function build_business_report( $window, $business_metrics, $order_status_counts, $backlog_total, $attention_total, $headline_insights, $business_actions, $top_products, $top_categories, $comparison = [] ) {
+		$order_count = absint( $business_metrics['order_count'] ?? 0 );
+		$gross_sales = sanitize_text_field( $business_metrics['gross_sales'] ?? '0' );
+		$net_sales = sanitize_text_field( $business_metrics['net_sales'] ?? '0' );
+		$average_order_value = sanitize_text_field( $business_metrics['average_order_value'] ?? '0' );
+		$discount_total = sanitize_text_field( $business_metrics['discount_total'] ?? '0' );
+		$refund_total = sanitize_text_field( $business_metrics['refund_total'] ?? '0' );
+		$shipping_total = sanitize_text_field( $business_metrics['shipping_total'] ?? '0' );
+		$tax_total = sanitize_text_field( $business_metrics['tax_total'] ?? '0' );
+		$items_sold = sanitize_text_field( $business_metrics['items_sold'] ?? '0' );
+		$items_per_order = sanitize_text_field( $business_metrics['items_per_order'] ?? '0' );
+		$product_lines = absint( $business_metrics['product_lines'] ?? 0 );
+		$product_categories = absint( $business_metrics['product_categories'] ?? 0 );
+		$repeat_customers = absint( $business_metrics['repeat_customers'] ?? 0 );
+		$repeat_customer_rate = sanitize_text_field( $business_metrics['repeat_customer_rate'] ?? '0' );
+		$refund_rate = sanitize_text_field( $business_metrics['refund_rate'] ?? '0' );
+		$discount_rate = sanitize_text_field( $business_metrics['discount_rate'] ?? '0' );
+		$excluded_orders = absint( $business_metrics['excluded_orders'] ?? 0 );
+		$currency = get_woocommerce_currency();
+		$health = $attention_total > 0 ? 'watch' : ( $order_count > 0 ? 'good' : 'watch' );
+		$gross_comparison = self::comparison_for_metric( $comparison, 'gross_sales' );
+		$net_comparison = self::comparison_for_metric( $comparison, 'net_sales' );
+		$order_comparison = self::comparison_for_metric( $comparison, 'order_count' );
+		$aov_comparison = self::comparison_for_metric( $comparison, 'average_order_value' );
+		$customer_comparison = self::comparison_for_metric( $comparison, 'unique_customers' );
+		$item_comparison = self::comparison_for_metric( $comparison, 'items_sold' );
+		$items_per_order_comparison = self::comparison_for_metric( $comparison, 'items_per_order' );
+		$product_line_comparison = self::comparison_for_metric( $comparison, 'product_lines' );
+		$product_category_comparison = self::comparison_for_metric( $comparison, 'product_categories' );
+		$repeat_customer_comparison = self::comparison_for_metric( $comparison, 'repeat_customers' );
+		$repeat_customer_rate_comparison = self::comparison_for_metric( $comparison, 'repeat_customer_rate' );
+		$refund_rate_comparison = self::comparison_for_metric( $comparison, 'refund_rate' );
+		$discount_rate_comparison = self::comparison_for_metric( $comparison, 'discount_rate' );
+		$headline = $order_count > 0
+			? sprintf( __( 'Sales activity for %1$s: %2$d orders, %3$s %4$s gross sales, and %5$s average order value.', 'yoro-ai-core' ), $window['label'], $order_count, $gross_sales, $currency, $average_order_value )
+			: sprintf( __( 'No order revenue is visible for %s yet.', 'yoro-ai-core' ), $window['label'] );
+
+		$metrics = [
+			YoRo_Report_Builder::metric( 'gross_sales', __( 'Gross sales', 'yoro-ai-core' ), $gross_sales, $currency, 'currency', $order_count > 0 ? 'positive' : 'watch', $gross_comparison['trend'] ?? '', $gross_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'net_sales', __( 'Net sales', 'yoro-ai-core' ), $net_sales, $currency, 'currency', $order_count > 0 ? 'positive' : 'watch', $net_comparison['trend'] ?? '', $net_comparison['delta'] ?? null, 'store', 'sales', __( 'Reportable order total after refunds for this window.', 'yoro-ai-core' ), 12 ),
+			YoRo_Report_Builder::metric( 'average_order_value', __( 'Average order value', 'yoro-ai-core' ), $average_order_value, $currency, 'currency', 'neutral', $aov_comparison['trend'] ?? '', $aov_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'discount_total', __( 'Discounts', 'yoro-ai-core' ), $discount_total, $currency, 'currency' ),
+			YoRo_Report_Builder::metric( 'refund_total', __( 'Refunded', 'yoro-ai-core' ), $refund_total, $currency, 'currency', (float) $refund_total > 0 ? 'watch' : 'neutral' ),
+			YoRo_Report_Builder::metric( 'shipping_total', __( 'Shipping', 'yoro-ai-core' ), $shipping_total, $currency, 'currency' ),
+			YoRo_Report_Builder::metric( 'tax_total', __( 'Tax', 'yoro-ai-core' ), $tax_total, $currency, 'currency' ),
+			YoRo_Report_Builder::metric( 'orders', __( 'Orders', 'yoro-ai-core' ), $order_count, 'orders', 'number', 'neutral', $order_comparison['trend'] ?? '', $order_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'active_customers', __( 'Active customers', 'yoro-ai-core' ), absint( $business_metrics['unique_customers'] ?? 0 ), 'customers', 'number', 'neutral', $customer_comparison['trend'] ?? '', $customer_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'repeat_customers', __( 'Repeat customers', 'yoro-ai-core' ), $repeat_customers, 'customers', 'number', 'neutral', $repeat_customer_comparison['trend'] ?? '', $repeat_customer_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'repeat_customer_rate', __( 'Repeat customer rate', 'yoro-ai-core' ), $repeat_customer_rate, '%', 'percent', $repeat_customers > 0 ? 'positive' : 'neutral', $repeat_customer_rate_comparison['trend'] ?? '', $repeat_customer_rate_comparison['delta'] ?? null, 'store', 'customers', __( 'Share of active customers with more than one order in this window.', 'yoro-ai-core' ), 35 ),
+			YoRo_Report_Builder::metric( 'items_sold', __( 'Items sold', 'yoro-ai-core' ), $items_sold, 'items', 'number', 'neutral', $item_comparison['trend'] ?? '', $item_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'items_per_order', __( 'Items per order', 'yoro-ai-core' ), $items_per_order, 'items', 'number', 'neutral', $items_per_order_comparison['trend'] ?? '', $items_per_order_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'product_lines', __( 'Product lines', 'yoro-ai-core' ), $product_lines, 'products', 'number', 'neutral', $product_line_comparison['trend'] ?? '', $product_line_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'product_categories', __( 'Categories sold', 'yoro-ai-core' ), $product_categories, 'categories', 'number', 'neutral', $product_category_comparison['trend'] ?? '', $product_category_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'refund_rate', __( 'Refund rate', 'yoro-ai-core' ), $refund_rate, '%', 'percent', (float) $refund_rate > 0 ? 'watch' : 'neutral', $refund_rate_comparison['trend'] ?? '', $refund_rate_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'discount_rate', __( 'Discount rate', 'yoro-ai-core' ), $discount_rate, '%', 'percent', (float) $discount_rate > 0 ? 'neutral' : 'neutral', $discount_rate_comparison['trend'] ?? '', $discount_rate_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'attention_items', __( 'Needs attention', 'yoro-ai-core' ), $attention_total, 'orders', 'number', $attention_total > 0 ? 'watch' : 'positive' ),
+		];
+
+		if ( $excluded_orders > 0 ) {
+			$metrics[] = YoRo_Report_Builder::metric(
+				'excluded_orders',
+				__( 'Not counted as sales', 'yoro-ai-core' ),
+				$excluded_orders,
+				'orders',
+				'number',
+				'neutral',
+				'',
+				null,
+				'store',
+				'sales',
+				__( 'Pending, failed, cancelled, or refunded orders kept out of the sales totals.', 'yoro-ai-core' ),
+				70
+			);
+		}
+
+		$profile_context  = YoRo_Report_Builder::store_profile_context( [ 'sales', 'reporting' ] );
+		$profile_insights = YoRo_Report_Builder::business_profile_insights( $profile_context, $business_metrics, $window );
+		$insights         = [];
+
+		foreach ( array_slice( is_array( $headline_insights ) ? $headline_insights : [], 0, 3 ) as $insight ) {
+			if ( ! is_array( $insight ) ) {
+				continue;
+			}
+
+			$insights[] = YoRo_Report_Builder::insight(
+				$insight['title'] ?? __( 'Business signal', 'yoro-ai-core' ),
+				$insight['message'] ?? '',
+				$insight['topic'] ?? 'business',
+				$insight['severity'] ?? $insight['tone'] ?? 'neutral'
+			);
+		}
+
+		if ( empty( $insights ) && ! empty( $top_products[0]['name'] ) ) {
+			$insights[] = YoRo_Report_Builder::insight(
+				__( 'Top product signal', 'yoro-ai-core' ),
+				sprintf( __( '%s is the strongest product signal in this window.', 'yoro-ai-core' ), sanitize_text_field( $top_products[0]['name'] ) ),
+				'products',
+				'positive'
+			);
+		}
+
+		if ( ! empty( $top_categories[0]['name'] ) ) {
+			$insights[] = YoRo_Report_Builder::insight(
+				__( 'Category demand signal', 'yoro-ai-core' ),
+				sprintf( __( '%1$s is the leading product category with %2$s items sold.', 'yoro-ai-core' ), sanitize_text_field( $top_categories[0]['name'] ), sanitize_text_field( $top_categories[0]['quantity'] ?? '0' ) ),
+				'products',
+				'neutral',
+				'products',
+				45
+			);
+		}
+
+		$insights = array_merge( $insights, $profile_insights );
+
+		$alerts = [];
+
+		if ( $attention_total > 0 ) {
+			$alerts[] = YoRo_Report_Builder::alert(
+				__( 'Operations may affect revenue follow-through', 'yoro-ai-core' ),
+				sprintf( __( '%d attention items are present while reading the sales report.', 'yoro-ai-core' ), $attention_total ),
+				'watch',
+				'operations',
+				'operations',
+				20
+			);
+		}
+
+		$actions = [];
+
+		foreach ( array_slice( is_array( $business_actions ) ? $business_actions : [], 0, 3 ) as $action ) {
+			if ( ! is_array( $action ) ) {
+				continue;
+			}
+
+			$actions[] = YoRo_Report_Builder::action(
+				$action['label'] ?? $action['command'] ?? '',
+				$action['command'] ?? '',
+				$action['kind'] ?? 'view',
+				$action['topic'] ?? '',
+				$action['priority'] ?? 50,
+				$action['reason'] ?? ''
+			);
+		}
+
+		if ( empty( $actions ) ) {
+			$actions = [
+				YoRo_Report_Builder::action( __( 'Show top products', 'yoro-ai-core' ), 'Show store signals for this week', 'view', 'products', 40, __( 'Use this to see whether product demand is concentrated.', 'yoro-ai-core' ) ),
+				YoRo_Report_Builder::action( __( 'Check operations', 'yoro-ai-core' ), 'Show operations report for today', 'view', 'operations', 50, __( 'Use this to see whether order pressure needs action.', 'yoro-ai-core' ) ),
+			];
+		}
+
+		$breakdowns = self::build_product_mix_breakdowns( $top_products, $top_categories, $currency, (float) $gross_sales );
+		$report     = YoRo_Report_Builder::build( 'business', $window, $health, $headline, $metrics, $insights, $alerts, $actions, $actions, $breakdowns );
+		$report     = YoRo_Report_Builder::attach_profile_context( $report, $profile_context );
+
+		if ( ! empty( $comparison ) ) {
+			$report['comparison'] = $comparison;
+		}
+
+		return $report;
+	}
+
+	public static function report_build_product_mix_breakdowns( $top_products, $top_categories, $currency, $gross_sales = 0.0 ) {
+		return self::build_product_mix_breakdowns( $top_products, $top_categories, $currency, $gross_sales );
+	}
+
+	private static function build_product_mix_breakdowns( $top_products, $top_categories, $currency, $gross_sales = 0.0 ) {
+		$breakdowns  = [];
+		$gross_sales = is_numeric( $gross_sales ) ? (float) $gross_sales : 0.0;
+
+		if ( is_array( $top_products ) && ! empty( $top_products ) ) {
+			$product_items = [];
+
+			foreach ( array_slice( $top_products, 0, 5 ) as $product ) {
+				if ( ! is_array( $product ) || empty( $product['name'] ) ) {
+					continue;
+				}
+
+				$total = (float) ( $product['total'] ?? 0 );
+				$product_items[] = YoRo_Report_Builder::breakdown_item(
+					$product['name'],
+					$product['quantity'] ?? 0,
+					__( 'items', 'yoro-ai-core' ),
+					wc_format_decimal( $total, 2 ) . ' ' . $currency,
+					$gross_sales > 0 ? wc_format_decimal( ( $total / $gross_sales ) * 100, 1 ) . '%' : '',
+					[
+						'id'         => $product['id'] ?? 0,
+						'sku'        => $product['sku'] ?? '',
+						'category'   => $product['category'] ?? '',
+						'categories' => is_array( $product['categories'] ?? null ) ? $product['categories'] : [],
+					]
+				);
+			}
+
+			if ( ! empty( $product_items ) ) {
+				$breakdowns[] = YoRo_Report_Builder::breakdown(
+					'top_products',
+					__( 'Top products', 'yoro-ai-core' ),
+					$product_items,
+					'products',
+					40,
+					__( 'Products contributing the most sales in this report window.', 'yoro-ai-core' )
+				);
+			}
+		}
+
+		if ( is_array( $top_categories ) && ! empty( $top_categories ) ) {
+			$category_items = [];
+
+			foreach ( array_slice( $top_categories, 0, 5 ) as $category ) {
+				if ( ! is_array( $category ) || empty( $category['name'] ) ) {
+					continue;
+				}
+
+				$total = (float) ( $category['total'] ?? 0 );
+				$category_items[] = YoRo_Report_Builder::breakdown_item(
+					$category['name'],
+					$category['quantity'] ?? 0,
+					__( 'items', 'yoro-ai-core' ),
+					wc_format_decimal( $total, 2 ) . ' ' . $currency,
+					$gross_sales > 0 ? wc_format_decimal( ( $total / $gross_sales ) * 100, 1 ) . '%' : '',
+					[
+						'id'            => $category['id'] ?? 0,
+						'product_lines' => $category['product_lines'] ?? 0,
+					]
+				);
+			}
+
+			if ( ! empty( $category_items ) ) {
+				$breakdowns[] = YoRo_Report_Builder::breakdown(
+					'top_categories',
+					__( 'Top categories', 'yoro-ai-core' ),
+					$category_items,
+					'products',
+					45,
+					__( 'Product categories contributing the most sales in this report window.', 'yoro-ai-core' )
+				);
+			}
+		}
+
+		return $breakdowns;
+	}
+
 	public static function get_daily_briefing( $params ) {
-		$window_key     = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( $params['window'] ?? 'today' );
+		$window_key     = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( YoRo_Date_Helper::window_key_from_params( $params, 'window', 'today' ) );
 		$limit          = isset( $params['limit'] ) ? min( max( absint( $params['limit'] ), 1 ), 10 ) : 5;
 		$window         = YoRo_Orders_Read_Service::briefing_get_operations_window( $window_key );
 		$briefing_label = self::get_briefing_label_for_window( $window_key, $window );
@@ -361,6 +805,16 @@ class YoRo_Store_Briefing_Service {
 			$briefing_actions,
 			$priority_items
 		);
+		$report = self::build_daily_briefing_report(
+			$window,
+			$briefing_label,
+			$briefing_context,
+			$sections,
+			$priority_items,
+			$briefing_actions,
+			$priority_drilldowns,
+			$business['comparison'] ?? []
+		);
 
 		return [
 			'success'      => true,
@@ -404,6 +858,7 @@ class YoRo_Store_Briefing_Service {
 			'sections'               => $sections,
 			'briefing_context'       => $briefing_context,
 			'briefing_label'         => $briefing_label,
+			'comparison'             => $business['comparison'] ?? [],
 			'priority_items'         => array_slice( $priority_items, 0, 3 ),
 			'priority_drilldowns'    => array_slice( $priority_drilldowns, 0, 4 ),
 			'briefing_actions'       => array_slice( $briefing_actions, 0, 4 ),
@@ -414,194 +869,182 @@ class YoRo_Store_Briefing_Service {
 			'customer_service_queue' => $customer_service,
 			'business_summary'       => $business,
 			'inventory_queue'        => $inventory,
+			'report'                 => $report,
 			'result_type'            => 'daily_briefing',
 			'display_type'           => 'daily_briefing',
 		];
 	}
 
-	public static function get_morning_briefing( $params ) {
-		$window_key           = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( $params['window'] ?? 'today' );
-		$yesterday_window_key = YoRo_Orders_Read_Service::briefing_normalize_operations_window_key( $params['yesterday_window'] ?? 'yesterday' );
-		$limit                = isset( $params['limit'] ) ? min( max( absint( $params['limit'] ), 1 ), 5 ) : 5;
-		$language             = ! empty( $params['original_command'] ) && YoRo_Date_Helper::is_likely_vietnamese( $params['original_command'] )
-			? 'vi'
-			: 'en';
-		$today_window         = YoRo_Orders_Read_Service::briefing_get_operations_window( $window_key );
-		$yesterday_window     = YoRo_Orders_Read_Service::briefing_get_operations_window( $yesterday_window_key );
-
-		$daily_briefing = self::get_daily_briefing(
-			[
-				'window' => $window_key,
-				'limit'  => $limit,
-			]
+	private static function build_daily_briefing_report( $window, $briefing_label, $briefing_context, $sections, $priority_items, $briefing_actions, $priority_drilldowns, $comparison = [] ) {
+		$window_orders = absint( $briefing_context['window_orders'] ?? 0 );
+		$attention_total = absint( $briefing_context['attention_total'] ?? 0 );
+		$backlog_total = absint( $briefing_context['backlog_total'] ?? 0 );
+		$fulfillment_total = absint( $briefing_context['fulfillment_items'] ?? 0 );
+		$customer_service_total = absint( $briefing_context['customer_followups'] ?? 0 );
+		$inventory_total = absint( $briefing_context['inventory_items'] ?? 0 );
+		$gross_sales = sanitize_text_field( $briefing_context['gross_sales'] ?? '0' );
+		$active_customers = absint( $briefing_context['active_customers'] ?? 0 );
+		$top_topic = sanitize_key( $briefing_context['top_topic'] ?? 'overview' );
+		$health = $attention_total > 0 ? 'watch' : ( $window_orders > 0 ? 'good' : 'watch' );
+		$order_comparison = self::comparison_for_metric( $comparison, 'order_count' );
+		$gross_comparison = self::comparison_for_metric( $comparison, 'gross_sales' );
+		$customer_comparison = self::comparison_for_metric( $comparison, 'unique_customers' );
+		$profile_context = YoRo_Report_Builder::store_profile_context( [ 'reporting', 'sales', 'operations', 'fulfillment', 'inventory', 'customers' ] );
+		$profile_business_metrics = [
+			'average_order_value' => $window_orders > 0 ? ( (float) $gross_sales / $window_orders ) : 0,
+		];
+		$profile_insights = array_merge(
+			YoRo_Report_Builder::business_profile_insights( $profile_context, $profile_business_metrics, $window ),
+			YoRo_Report_Builder::operations_profile_insights( $profile_context ),
+			YoRo_Report_Builder::inventory_profile_insights( $profile_context )
 		);
-		$yesterday_business = self::get_business_summary(
-			[
-				'window' => $yesterday_window_key,
-				'focus'  => 'overview',
-			]
-		);
-
-		if ( is_wp_error( $daily_briefing ) ) {
-			return $daily_briefing;
-		}
-
-		if ( is_wp_error( $yesterday_business ) ) {
-			return $yesterday_business;
-		}
-
-		$briefing_context = isset( $daily_briefing['briefing_context'] ) && is_array( $daily_briefing['briefing_context'] )
-			? $daily_briefing['briefing_context']
-			: [];
-		$priority_items = isset( $daily_briefing['priority_items'] ) && is_array( $daily_briefing['priority_items'] )
-			? array_slice( $daily_briefing['priority_items'], 0, 3 )
-			: [];
-		$priority_drilldowns = isset( $daily_briefing['priority_drilldowns'] ) && is_array( $daily_briefing['priority_drilldowns'] )
-			? array_values( array_slice( $daily_briefing['priority_drilldowns'], 0, 4 ) )
-			: [];
-		$recommended_sequence = isset( $daily_briefing['recommended_sequence'] ) && is_array( $daily_briefing['recommended_sequence'] )
-			? array_values( array_slice( $daily_briefing['recommended_sequence'], 0, 4 ) )
-			: [];
-		$business_metrics = isset( $yesterday_business['business_metrics'] ) && is_array( $yesterday_business['business_metrics'] )
-			? $yesterday_business['business_metrics']
-			: [];
-		$business_context = isset( $yesterday_business['business_context'] ) && is_array( $yesterday_business['business_context'] )
-			? $yesterday_business['business_context']
-			: [];
-		$top_priority = ! empty( $priority_items[0] ) && is_array( $priority_items[0] ) ? $priority_items[0] : [];
-		$first_recommended_action = ! empty( $recommended_sequence[0] ) && is_array( $recommended_sequence[0] ) ? $recommended_sequence[0] : [];
-
-		$headline = self::build_morning_briefing_headline(
-			$business_context,
-			$briefing_context,
-			$top_priority,
-			$language
+		$headline = sprintf(
+			__( '%1$s for %2$s: %3$d new orders, %4$s gross sales, and %5$d attention items.', 'yoro-ai-core' ),
+			$briefing_label,
+			$window['label'],
+			$window_orders,
+			$gross_sales,
+			$attention_total
 		);
 
-		$yesterday_snapshot = [
-			'orders'      => absint( $business_metrics['order_count'] ?? 0 ),
-			'gross_sales' => sanitize_text_field( $business_metrics['gross_sales'] ?? '0' ),
-			'customers'   => absint( $business_metrics['unique_customers'] ?? 0 ),
-			'summary'     => sanitize_text_field( $yesterday_business['summary'] ?? '' ),
+		$metrics = [
+			YoRo_Report_Builder::metric( 'new_orders', __( 'New orders', 'yoro-ai-core' ), $window_orders, 'orders', 'number', 'neutral', $order_comparison['trend'] ?? '', $order_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'gross_sales', __( 'Gross sales', 'yoro-ai-core' ), $gross_sales, get_woocommerce_currency(), 'currency', 'neutral', $gross_comparison['trend'] ?? '', $gross_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'active_customers', __( 'Active customers', 'yoro-ai-core' ), $active_customers, 'customers', 'number', 'neutral', $customer_comparison['trend'] ?? '', $customer_comparison['delta'] ?? null ),
+			YoRo_Report_Builder::metric( 'attention_items', __( 'Needs attention', 'yoro-ai-core' ), $attention_total, 'items', 'number', $attention_total > 0 ? 'watch' : 'positive' ),
+			YoRo_Report_Builder::metric( 'open_backlog', __( 'Open backlog', 'yoro-ai-core' ), $backlog_total, 'orders', 'number', $backlog_total > 0 ? 'watch' : 'positive', '', null, 'store', 'operations', __( 'Live unresolved order backlog across the store.', 'yoro-ai-core' ), 35 ),
+			YoRo_Report_Builder::metric( 'fulfillment_items', __( 'Fulfillment items', 'yoro-ai-core' ), $fulfillment_total, 'items', 'number', $fulfillment_total > 0 ? 'watch' : 'neutral', '', null, 'store', 'operations', __( 'Orders or fulfillment cases that may need shipping or handling review.', 'yoro-ai-core' ), 40 ),
+			YoRo_Report_Builder::metric( 'customer_followups', __( 'Customer follow-ups', 'yoro-ai-core' ), $customer_service_total, 'items', 'number', $customer_service_total > 0 ? 'watch' : 'neutral', '', null, 'store', 'operations', __( 'Customer-facing cases currently waiting for review or reply.', 'yoro-ai-core' ), 45 ),
+			YoRo_Report_Builder::metric( 'inventory_items', __( 'Inventory items', 'yoro-ai-core' ), $inventory_total, 'items', 'number', $inventory_total > 0 ? 'watch' : 'neutral', '', null, 'store', 'inventory', __( 'Stock-related items that may affect sales or fulfillment.', 'yoro-ai-core' ), 50 ),
+			YoRo_Report_Builder::metric( 'tracked_sections', __( 'Queues tracked', 'yoro-ai-core' ), count( is_array( $sections ) ? $sections : [] ), 'queues' ),
+			YoRo_Report_Builder::metric( 'main_pressure', __( 'Main pressure', 'yoro-ai-core' ), str_replace( '_', ' ', $top_topic ), '', 'text', $attention_total > 0 ? 'watch' : 'neutral' ),
 		];
 
-		$live_pressure = [
-			'main_pressure'            => sanitize_key( $briefing_context['top_topic'] ?? '' ),
-			'attention_items'          => absint( $daily_briefing['operations_summary']['attention_total'] ?? 0 ),
-			'fulfillment_items'        => absint( $daily_briefing['fulfillment_queue']['count'] ?? 0 ),
-			'customer_followup_items'  => absint( $daily_briefing['customer_service_queue']['count'] ?? 0 ),
-			'inventory_pressure_items' => absint( $daily_briefing['inventory_queue']['count'] ?? 0 ),
-			'inventory_items'          => absint( $daily_briefing['inventory_queue']['count'] ?? 0 ),
-		];
+		$insights = [];
 
-		$morning_drilldowns = self::build_morning_briefing_drilldowns(
-			$priority_drilldowns,
-			$recommended_sequence,
-			$live_pressure
-		);
-
-		$suggested_commands = [];
-
-		if ( ! empty( $first_recommended_action['command'] ) ) {
-			$suggested_commands[] = sanitize_text_field( $first_recommended_action['command'] );
-		}
-
-		foreach ( [ 'Show operations attention queue', 'Show fulfillment queue', 'Show customer service queue' ] as $command ) {
-			if ( ! in_array( $command, $suggested_commands, true ) ) {
-				$suggested_commands[] = $command;
+		foreach ( array_slice( is_array( $priority_items ) ? $priority_items : [], 0, 3 ) as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
 			}
+
+			$insights[] = YoRo_Report_Builder::insight(
+				$item['title'] ?? __( 'Store signal', 'yoro-ai-core' ),
+				$item['message'] ?? $item['reason'] ?? '',
+				$item['topic'] ?? 'overview',
+				$item['severity'] ?? 'neutral'
+			);
 		}
 
-		$result = [
-			'success'             => true,
-			'action'              => 'store.get_morning_briefing',
-			'summary'             => $headline,
-			'message'             => $headline,
-			'assistant_summary'   => self::build_morning_briefing_assistant_summary(
-				$headline,
-				$yesterday_window,
-				$business_metrics,
-				$language
-			),
-			'assistant_followup'  => ! empty( $first_recommended_action['reason'] )
-				? sanitize_text_field( $first_recommended_action['reason'] )
-				: __( 'I can take you straight to the first queue worth reviewing.', 'yoro-ai-core' ),
-			'count'               => 1,
-			'read_only'           => true,
-			'undoable'            => false,
-			'undo_plan'           => [],
-			'data'                => [],
-			'meta'                => [
-				'changes_store' => false,
-				'proactive'     => true,
-			],
-			'processed'           => [],
-			'skipped'             => [],
-			'errors'              => [],
-			'briefing_date'       => YoRo_Date_Helper::format_timestamp( current_datetime()->getTimestamp() ),
-			'briefing_date_ts'    => current_datetime()->getTimestamp(),
-			'time_window_label'   => __( 'Yesterday and this morning', 'yoro-ai-core' ),
-			'headline'            => $headline,
-			'yesterday_window'    => [
-				'key'            => $yesterday_window_key,
-				'label'          => sanitize_text_field( $yesterday_window['label'] ?? __( 'Yesterday', 'yoro-ai-core' ) ),
-				'start'          => sanitize_text_field( $yesterday_window['start'] ?? '' ),
-				'end'            => sanitize_text_field( $yesterday_window['end'] ?? '' ),
-				'start_ts'       => isset( $yesterday_window['start_ts'] ) ? (int) $yesterday_window['start_ts'] : 0,
-				'end_ts'         => isset( $yesterday_window['end_ts'] ) ? (int) $yesterday_window['end_ts'] : 0,
-				'timezone'       => sanitize_text_field( $yesterday_window['timezone'] ?? '' ),
-				'week_starts_on' => isset( $yesterday_window['week_starts_on'] ) ? absint( $yesterday_window['week_starts_on'] ) : absint( get_option( 'start_of_week', 1 ) ),
-			],
-			'live_window'         => [
-				'key'            => $window_key,
-				'label'          => sanitize_text_field( $today_window['label'] ?? __( 'Today', 'yoro-ai-core' ) ),
-				'start'          => sanitize_text_field( $today_window['start'] ?? '' ),
-				'end'            => sanitize_text_field( $today_window['end'] ?? '' ),
-				'start_ts'       => isset( $today_window['start_ts'] ) ? (int) $today_window['start_ts'] : 0,
-				'end_ts'         => isset( $today_window['end_ts'] ) ? (int) $today_window['end_ts'] : 0,
-				'timezone'       => sanitize_text_field( $today_window['timezone'] ?? '' ),
-				'week_starts_on' => isset( $today_window['week_starts_on'] ) ? absint( $today_window['week_starts_on'] ) : absint( get_option( 'start_of_week', 1 ) ),
-			],
-			'yesterday_snapshot'       => $yesterday_snapshot,
-			'live_pressure'            => $live_pressure,
-			'top_priorities'           => $priority_items,
-			'first_recommended_action' => [
-				'label'   => sanitize_text_field( $first_recommended_action['label'] ?? __( 'Open operations attention queue', 'yoro-ai-core' ) ),
-				'command' => sanitize_text_field( $first_recommended_action['command'] ?? 'Show operations attention queue' ),
-				'reason'  => sanitize_text_field( $first_recommended_action['reason'] ?? '' ),
-				'kind'    => sanitize_key( $first_recommended_action['kind'] ?? 'step' ),
-			],
-			'priority_drilldowns' => $morning_drilldowns,
-			'suggested_commands' => array_slice( $suggested_commands, 0, 4 ),
-			'dismissible'        => true,
-			'daily_briefing'     => $daily_briefing,
-			'business_summary'   => $yesterday_business,
-			'result_type'        => 'morning_briefing',
-			'display_type'       => 'morning_briefing',
-		];
+		$insights = array_merge( $insights, $profile_insights );
 
-		$result['signature'] = self::build_morning_briefing_signature( $result );
+		$alerts = [];
 
-		return $result;
+		if ( $attention_total > 0 ) {
+			$alerts[] = YoRo_Report_Builder::alert(
+				__( 'Attention queue is active', 'yoro-ai-core' ),
+				sprintf( __( '%d items need review before the store can be considered clear.', 'yoro-ai-core' ), $attention_total ),
+				'watch',
+				'operations',
+				'operations',
+				20
+			);
+		}
+
+		$actions = [];
+
+		foreach ( array_slice( is_array( $briefing_actions ) ? $briefing_actions : [], 0, 3 ) as $action ) {
+			if ( ! is_array( $action ) ) {
+				continue;
+			}
+
+			$actions[] = YoRo_Report_Builder::action(
+				$action['label'] ?? $action['command'] ?? '',
+				$action['command'] ?? '',
+				$action['kind'] ?? 'view',
+				$action['topic'] ?? '',
+				$action['priority'] ?? 50,
+				$action['reason'] ?? ''
+			);
+		}
+
+		$drilldowns = [];
+
+		foreach ( array_slice( is_array( $priority_drilldowns ) ? $priority_drilldowns : [], 0, 4 ) as $drilldown ) {
+			if ( ! is_array( $drilldown ) ) {
+				continue;
+			}
+
+			$drilldowns[] = YoRo_Report_Builder::action(
+				$drilldown['label'] ?? $drilldown['command'] ?? '',
+				$drilldown['command'] ?? '',
+				$drilldown['kind'] ?? 'view',
+				$drilldown['topic'] ?? '',
+				$drilldown['priority'] ?? 50,
+				$drilldown['reason'] ?? ''
+			);
+		}
+
+		$report = YoRo_Report_Builder::build( 'store_overview', $window, $health, $headline, $metrics, $insights, $alerts, $actions, $drilldowns );
+		$report = YoRo_Report_Builder::attach_profile_context( $report, $profile_context );
+
+		if ( ! empty( $comparison ) ) {
+			$report['comparison'] = $comparison;
+		}
+
+		return $report;
 	}
 
 	private static function get_briefing_label_for_window( $window_key, $window ) {
+		$relative_days = YoRo_Date_Helper::get_relative_days_from_window_key( $window_key );
+
+		if ( $relative_days > 0 ) {
+			return sprintf( __( '%d-day store report', 'yoro-ai-core' ), $relative_days );
+		}
+
+		if ( ! empty( YoRo_Date_Helper::get_relative_window_from_window_key( $window_key ) ) || preg_match( '/^(?:range|month|quarter|year)_/', sanitize_key( $window_key ) ) ) {
+			return sprintf( __( '%s store report', 'yoro-ai-core' ), YoRo_Date_Helper::get_window_label( $window_key ) );
+		}
+
 		switch ( sanitize_key( $window_key ) ) {
+			case 'last_24_hours':
+				return __( '24-hour store report', 'yoro-ai-core' );
+			case 'today':
+				return __( 'Today store report', 'yoro-ai-core' );
+			case 'yesterday':
+				return __( 'Yesterday store report', 'yoro-ai-core' );
 			case 'this_week':
 			case 'last_week':
 			case 'last_7_days':
-				return __( 'Weekly briefing', 'yoro-ai-core' );
+				return __( 'Weekly store report', 'yoro-ai-core' );
 			case 'this_month':
 			case 'last_month':
 			case 'last_30_days':
-				return __( 'Monthly briefing', 'yoro-ai-core' );
+				return __( 'Monthly store report', 'yoro-ai-core' );
+			case 'this_quarter':
+			case 'last_quarter':
+				return __( 'Quarterly store report', 'yoro-ai-core' );
+			case 'this_year':
+			case 'last_year':
+				return __( 'Yearly store report', 'yoro-ai-core' );
 			default:
-				return __( 'Daily briefing', 'yoro-ai-core' );
+				return __( 'Store report', 'yoro-ai-core' );
 		}
 	}
 
 	private static function get_briefing_window_phrase( $window_key ) {
+		$relative_days = YoRo_Date_Helper::get_relative_days_from_window_key( $window_key );
+
+		if ( $relative_days > 0 ) {
+			return sprintf( 'last %d days', $relative_days );
+		}
+
+		if ( ! empty( YoRo_Date_Helper::get_relative_window_from_window_key( $window_key ) ) || preg_match( '/^(?:range|month|quarter|year)_/', sanitize_key( $window_key ) ) ) {
+			return strtolower( YoRo_Date_Helper::get_window_label( $window_key ) );
+		}
+
 		switch ( sanitize_key( $window_key ) ) {
+			case 'last_24_hours':
+				return 'last 24 hours';
 			case 'this_week':
 				return 'this week';
 			case 'last_week':
@@ -614,6 +1057,14 @@ class YoRo_Store_Briefing_Service {
 				return 'last month';
 			case 'last_30_days':
 				return 'last 30 days';
+			case 'this_quarter':
+				return 'this quarter';
+			case 'last_quarter':
+				return 'last quarter';
+			case 'this_year':
+				return 'this year';
+			case 'last_year':
+				return 'last year';
 			case 'yesterday':
 				return 'yesterday';
 			default:
@@ -691,10 +1142,14 @@ class YoRo_Store_Briefing_Service {
 			'second_score'     => $second_score,
 			'window_orders'    => $window_orders,
 			'gross_sales'      => wc_format_decimal( $gross_sales, 2 ),
-			'active_customers' => $active_customers,
-			'business_state'   => $business_state,
-			'business_message' => $business_message,
-			'priority_scores'  => $priority_scores,
+			'active_customers'   => $active_customers,
+			'backlog_total'      => $backlog_total,
+			'fulfillment_items'  => $fulfillment_total,
+			'customer_followups' => $customer_service_total,
+			'inventory_items'    => $inventory_total,
+			'business_state'     => $business_state,
+			'business_message'   => $business_message,
+			'priority_scores'    => $priority_scores,
 		];
 	}
 
@@ -775,7 +1230,7 @@ class YoRo_Store_Briefing_Service {
 				'score'   => 0,
 				'tone'    => 'neutral',
 				'title'   => __( 'No single queue stands out as critical right now', 'yoro-ai-core' ),
-				'message' => __( 'The store still has routine operational work, but nothing in this briefing looks unusually acute.', 'yoro-ai-core' ),
+				'message' => __( 'The store still has routine operational work, but nothing in this report looks unusually acute.', 'yoro-ai-core' ),
 			];
 		}
 
@@ -804,19 +1259,23 @@ class YoRo_Store_Briefing_Service {
 				$drilldowns = [
 					[
 						'label'   => __( 'Open attention queue', 'yoro-ai-core' ),
+						'topic'   => 'operations_attention',
 						'command' => 'Show operations attention queue',
 					],
 					[
 						'label'   => __( 'Check fulfillment pressure', 'yoro-ai-core' ),
+						'topic'   => 'fulfillment',
 						'command' => 'Show fulfillment queue',
 					],
 					[
 						'label'   => __( 'Check customer follow-up', 'yoro-ai-core' ),
+						'topic'   => 'customer_service',
 						'command' => 'Show customer service queue',
 					],
 					[
 						'label'   => $summary_label,
-						'command' => 'Show operations summary for ' . $window_phrase,
+						'topic'   => 'operations_overview',
+						'command' => 'Show operations report for ' . $window_phrase,
 					],
 				];
 				break;
@@ -825,14 +1284,17 @@ class YoRo_Store_Briefing_Service {
 				$drilldowns = [
 					[
 						'label'   => __( 'Open fulfillment queue', 'yoro-ai-core' ),
+						'topic'   => 'fulfillment',
 						'command' => 'Show fulfillment queue',
 					],
 					[
 						'label'   => __( 'Check shipping blockers', 'yoro-ai-core' ),
+						'topic'   => 'fulfillment',
 						'command' => 'What looks stuck in shipping?',
 					],
 					[
 						'label'   => __( 'Review attention queue', 'yoro-ai-core' ),
+						'topic'   => 'operations_attention',
 						'command' => 'Show operations attention queue',
 					],
 				];
@@ -842,14 +1304,17 @@ class YoRo_Store_Briefing_Service {
 				$drilldowns = [
 					[
 						'label'   => __( 'Open customer follow-up', 'yoro-ai-core' ),
+						'topic'   => 'customer_service',
 						'command' => 'Show customer service queue',
 					],
 					[
 						'label'   => __( 'See who needs a reply first', 'yoro-ai-core' ),
+						'topic'   => 'customer_service',
 						'command' => 'Who should we answer first ' . $window_phrase . '?',
 					],
 					[
 						'label'   => __( 'Review fulfillment queue', 'yoro-ai-core' ),
+						'topic'   => 'fulfillment',
 						'command' => 'Show fulfillment queue',
 					],
 				];
@@ -859,15 +1324,18 @@ class YoRo_Store_Briefing_Service {
 				$drilldowns = [
 					[
 						'label'   => __( 'Open inventory queue', 'yoro-ai-core' ),
+						'topic'   => 'inventory',
 						'command' => 'Show inventory queue',
 					],
 					[
 						'label'   => __( 'Focus on restock priorities', 'yoro-ai-core' ),
+						'topic'   => 'inventory',
 						'command' => 'What should we restock first?',
 					],
 					[
 						'label'   => $summary_label,
-						'command' => 'Show operations summary for ' . $window_phrase,
+						'topic'   => 'operations_overview',
+						'command' => 'Show operations report for ' . $window_phrase,
 					],
 				];
 				break;
@@ -875,15 +1343,18 @@ class YoRo_Store_Briefing_Service {
 			case 'business':
 				$drilldowns = [
 					[
-						'label'   => __( 'Open business summary', 'yoro-ai-core' ),
-						'command' => 'Show business summary for ' . $window_phrase,
+						'label'   => __( 'Open sales report', 'yoro-ai-core' ),
+						'topic'   => 'business',
+						'command' => 'Show sales report for ' . $window_phrase,
 					],
 					[
-						'label'   => __( 'Review operations summary', 'yoro-ai-core' ),
-						'command' => 'Show operations summary for ' . $window_phrase,
+						'label'   => __( 'Review operations report', 'yoro-ai-core' ),
+						'topic'   => 'operations_overview',
+						'command' => 'Show operations report for ' . $window_phrase,
 					],
 					[
 						'label'   => __( 'Check customer follow-up', 'yoro-ai-core' ),
+						'topic'   => 'customer_service',
 						'command' => 'Show customer service queue',
 					],
 				];
@@ -894,15 +1365,18 @@ class YoRo_Store_Briefing_Service {
 			$drilldowns = [
 				[
 					'label'   => $summary_label,
-					'command' => 'Show operations summary for ' . $window_phrase,
+					'topic'   => 'operations_overview',
+					'command' => 'Show operations report for ' . $window_phrase,
 				],
 				[
 					'label'   => __( 'Open attention queue', 'yoro-ai-core' ),
+					'topic'   => 'operations_attention',
 					'command' => 'Show operations attention queue',
 				],
 				[
-					'label'   => __( 'Open business summary', 'yoro-ai-core' ),
-					'command' => 'Show business summary for ' . $window_phrase,
+					'label'   => __( 'Open sales report', 'yoro-ai-core' ),
+					'topic'   => 'business',
+					'command' => 'Show sales report for ' . $window_phrase,
 				],
 			];
 		}
@@ -923,6 +1397,7 @@ class YoRo_Store_Briefing_Service {
 					__( 'Review: %s', 'yoro-ai-core' ),
 					sanitize_text_field( $priority_item['title'] )
 				),
+				'topic'   => $priority_topic,
 				'command' => self::get_briefing_review_command_for_topic( $priority_topic, $window_phrase ),
 			];
 		}
@@ -932,6 +1407,7 @@ class YoRo_Store_Briefing_Service {
 
 		foreach ( $drilldowns as $drilldown ) {
 			$label   = sanitize_text_field( $drilldown['label'] ?? '' );
+			$topic   = sanitize_key( $drilldown['topic'] ?? '' );
 			$command = sanitize_text_field( $drilldown['command'] ?? '' );
 
 			if ( '' === $label || '' === $command ) {
@@ -947,6 +1423,7 @@ class YoRo_Store_Briefing_Service {
 			$seen[ $key ] = true;
 			$normalized[] = [
 				'label'   => $label,
+				'topic'   => '' !== $topic ? $topic : 'operations_overview',
 				'command' => $command,
 			];
 		}
@@ -955,17 +1432,35 @@ class YoRo_Store_Briefing_Service {
 	}
 
 	private static function get_operations_summary_label_for_window( $window_key ) {
+		$relative_days = YoRo_Date_Helper::get_relative_days_from_window_key( $window_key );
+
+		if ( $relative_days > 0 ) {
+			return sprintf( __( 'Review %d-day operations report', 'yoro-ai-core' ), $relative_days );
+		}
+
+		if ( ! empty( YoRo_Date_Helper::get_relative_window_from_window_key( $window_key ) ) || preg_match( '/^(?:range|month|quarter|year)_/', sanitize_key( $window_key ) ) ) {
+			return sprintf( __( 'Review %s operations report', 'yoro-ai-core' ), YoRo_Date_Helper::get_window_label( $window_key ) );
+		}
+
 		switch ( sanitize_key( $window_key ) ) {
+			case 'last_24_hours':
+				return __( 'Review 24-hour operations report', 'yoro-ai-core' );
 			case 'this_week':
 			case 'last_week':
 			case 'last_7_days':
-				return __( 'Review weekly operations summary', 'yoro-ai-core' );
+				return __( 'Review weekly operations report', 'yoro-ai-core' );
 			case 'this_month':
 			case 'last_month':
 			case 'last_30_days':
-				return __( 'Review monthly operations summary', 'yoro-ai-core' );
+				return __( 'Review monthly operations report', 'yoro-ai-core' );
+			case 'this_quarter':
+			case 'last_quarter':
+				return __( 'Review quarterly operations report', 'yoro-ai-core' );
+			case 'this_year':
+			case 'last_year':
+				return __( 'Review yearly operations report', 'yoro-ai-core' );
 			default:
-				return __( 'Review operations summary', 'yoro-ai-core' );
+				return __( 'Review operations report', 'yoro-ai-core' );
 		}
 	}
 
@@ -980,9 +1475,9 @@ class YoRo_Store_Briefing_Service {
 			case 'inventory':
 				return 'Show inventory queue';
 			case 'business':
-				return 'Show business summary for ' . $window_phrase;
+				return 'Show sales report for ' . $window_phrase;
 			default:
-				return 'Show operations summary for ' . $window_phrase;
+				return 'Show operations report for ' . $window_phrase;
 		}
 	}
 
@@ -1044,6 +1539,7 @@ class YoRo_Store_Briefing_Service {
 
 		foreach ( $priority_drilldowns as $drilldown ) {
 			$command = sanitize_text_field( $drilldown['command'] ?? '' );
+			$topic   = sanitize_key( $drilldown['topic'] ?? '' );
 
 			if ( '' === $command ) {
 				continue;
@@ -1051,10 +1547,10 @@ class YoRo_Store_Briefing_Service {
 
 			$sequence[] = [
 				'kind'    => 'view',
-				'topic'   => self::infer_briefing_topic_from_command( $command ),
+				'topic'   => '' !== $topic ? $topic : 'operations_overview',
 				'label'   => sanitize_text_field( $drilldown['label'] ?? $command ),
 				'command' => $command,
-				'reason'  => self::build_briefing_sequence_reason_for_command( $command, $top_topic, $window_label ),
+				'reason'  => self::build_briefing_sequence_reason_for_topic( '' !== $topic ? $topic : 'operations_overview', $top_topic, $window_label ),
 			];
 		}
 
@@ -1122,34 +1618,8 @@ class YoRo_Store_Briefing_Service {
 		return $normalized;
 	}
 
-	private static function infer_briefing_topic_from_command( $command ) {
-		$normalized = strtolower( sanitize_text_field( $command ) );
-
-		if ( false !== strpos( $normalized, 'attention' ) ) {
-			return 'operations_attention';
-		}
-
-		if ( false !== strpos( $normalized, 'fulfillment' ) || false !== strpos( $normalized, 'shipping' ) ) {
-			return 'fulfillment';
-		}
-
-		if ( false !== strpos( $normalized, 'customer service' ) || false !== strpos( $normalized, 'reply' ) ) {
-			return 'customer_service';
-		}
-
-		if ( false !== strpos( $normalized, 'inventory' ) || false !== strpos( $normalized, 'restock' ) ) {
-			return 'inventory';
-		}
-
-		if ( false !== strpos( $normalized, 'business' ) || false !== strpos( $normalized, 'sales' ) ) {
-			return 'business';
-		}
-
-		return 'operations_overview';
-	}
-
-	private static function build_briefing_sequence_reason_for_command( $command, $top_topic, $window_label ) {
-		$topic = self::infer_briefing_topic_from_command( $command );
+	private static function build_briefing_sequence_reason_for_topic( $topic, $top_topic, $window_label ) {
+		$topic = sanitize_key( $topic );
 
 		switch ( $topic ) {
 			case 'operations_attention':
@@ -1184,7 +1654,7 @@ class YoRo_Store_Briefing_Service {
 			case 'inventory':
 				return __( 'Use this if you want to turn the inventory signal into a restock decision next.', 'yoro-ai-core' );
 			default:
-				return __( 'Use this when you are ready to act on the current briefing.', 'yoro-ai-core' );
+				return __( 'Use this when you are ready to act on the current store report.', 'yoro-ai-core' );
 		}
 	}
 
@@ -1250,6 +1720,11 @@ class YoRo_Store_Briefing_Service {
 		$pending_count    = absint( $order_status_counts['pending'] ?? 0 );
 		$on_hold_count    = absint( $order_status_counts['on-hold'] ?? 0 );
 		$state            = sanitize_key( $narrative_context['state'] ?? '' );
+		$repeat_customers = absint( $business_metrics['repeat_customers'] ?? 0 );
+		$repeat_customer_rate = (float) ( $business_metrics['repeat_customer_rate'] ?? 0 );
+		$refund_rate      = (float) ( $business_metrics['refund_rate'] ?? 0 );
+		$discount_rate    = (float) ( $business_metrics['discount_rate'] ?? 0 );
+		$items_per_order  = (float) ( $business_metrics['items_per_order'] ?? 0 );
 
 		switch ( $state ) {
 			case 'quiet_but_under_pressure':
@@ -1287,6 +1762,55 @@ class YoRo_Store_Briefing_Service {
 					'message' => __( 'The requested window looks stable overall, but the current queue still has a few areas worth monitoring.', 'yoro-ai-core' ),
 				];
 				break;
+		}
+
+		if ( $repeat_customers > 0 ) {
+			$insights[] = [
+				'topic'   => 'repeat_customers',
+				'tone'    => $repeat_customer_rate >= 25 ? 'positive' : 'neutral',
+				'title'   => __( 'Repeat customers are visible in this window', 'yoro-ai-core' ),
+				'message' => sprintf(
+					__( '%1$d customers ordered more than once, giving this window a %2$s%% repeat customer rate.', 'yoro-ai-core' ),
+					$repeat_customers,
+					wc_format_decimal( $repeat_customer_rate, 1 )
+				),
+			];
+		}
+
+		if ( $refund_rate > 0 ) {
+			$insights[] = [
+				'topic'   => 'refunds',
+				'tone'    => $refund_rate >= 5 ? 'watch' : 'neutral',
+				'title'   => __( 'Refunds affect the sales readout', 'yoro-ai-core' ),
+				'message' => sprintf(
+					__( 'Refunds represent %s%% of gross sales in this window, so net sales are the better health check.', 'yoro-ai-core' ),
+					wc_format_decimal( $refund_rate, 1 )
+				),
+			];
+		}
+
+		if ( $discount_rate >= 10 ) {
+			$insights[] = [
+				'topic'   => 'discounts',
+				'tone'    => 'watch',
+				'title'   => __( 'Discounting is shaping sales quality', 'yoro-ai-core' ),
+				'message' => sprintf(
+					__( 'Discounts are %s%% of gross sales in this window, so margin quality may deserve a quick check.', 'yoro-ai-core' ),
+					wc_format_decimal( $discount_rate, 1 )
+				),
+			];
+		}
+
+		if ( $items_per_order >= 2 ) {
+			$insights[] = [
+				'topic'   => 'basket_size',
+				'tone'    => 'positive',
+				'title'   => __( 'Basket size is helping order value', 'yoro-ai-core' ),
+				'message' => sprintf(
+					__( 'Customers are buying %s items per order on average in this window.', 'yoro-ai-core' ),
+					wc_format_decimal( $items_per_order, 2 )
+				),
+			];
 		}
 
 		if ( $attention_total > 0 ) {
@@ -1371,7 +1895,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => 'watch',
 				'title'   => __( 'There is no order activity in this window', 'yoro-ai-core' ),
 				'message' => sprintf(
-					__( 'YoRo did not find any orders in %s, so the business summary is mostly a pressure check rather than a sales readout.', 'yoro-ai-core' ),
+					__( 'YoRo did not find any orders in %s, so the sales report is mostly a pressure check rather than a revenue readout.', 'yoro-ai-core' ),
 					sanitize_text_field( $window['label'] ?? __( 'this period', 'yoro-ai-core' ) )
 				),
 			];
@@ -1507,7 +2031,7 @@ class YoRo_Store_Briefing_Service {
 				'kind'    => 'view',
 				'topic'   => 'operations_overview',
 				'label'   => $window_label,
-				'command' => 'Show operations summary for ' . $window_phrase,
+				'command' => 'Show operations report for ' . $window_phrase,
 				'reason'  => __( 'Start here when you want the operating context behind the commercial picture.', 'yoro-ai-core' ),
 			];
 			$sequence[] = [
@@ -1529,8 +2053,8 @@ class YoRo_Store_Briefing_Service {
 		$sequence[] = [
 			'kind'    => 'view',
 			'topic'   => 'business_summary',
-			'label'   => __( 'Re-check this business window', 'yoro-ai-core' ),
-			'command' => 'Show business summary for ' . $window_phrase,
+			'label'   => __( 'Re-check this sales window', 'yoro-ai-core' ),
+			'command' => 'Show sales report for ' . $window_phrase,
 			'reason'  => __( 'Use this last after queue checks when you want a refreshed commercial read for the same window.', 'yoro-ai-core' ),
 		];
 
@@ -1558,183 +2082,10 @@ class YoRo_Store_Briefing_Service {
 			],
 			[
 				'topic'   => 'operations_overview',
-				'label'   => __( 'Open operations summary', 'yoro-ai-core' ),
-				'command' => 'Show operations summary for ' . $window_phrase,
+				'label'   => __( 'Open operations report', 'yoro-ai-core' ),
+				'command' => 'Show operations report for ' . $window_phrase,
 			],
 		];
 	}
 
-	private static function build_morning_briefing_headline( $business_context, $briefing_context, $top_priority, $language = 'en' ) {
-		$business_state = sanitize_key( $business_context['state'] ?? '' );
-		$briefing_state = sanitize_key( $briefing_context['state'] ?? '' );
-		$top_message    = sanitize_text_field( $top_priority['message'] ?? '' );
-		$language       = sanitize_key( $language ?: 'en' );
-
-		if ( 'vi' === $language ) {
-			if ( 'positive' === $business_state && in_array( $briefing_state, [ 'high_pressure', 'focused_pressure', 'split_pressure' ], true ) ) {
-				return 'Doanh số hôm qua vẫn ổn, nhưng sáng nay vẫn cần tập trung xử lý một số hàng đợi.';
-			}
-
-			if ( in_array( $briefing_state, [ 'high_pressure', 'focused_pressure' ], true ) ) {
-				return 'Một hàng đợi đang cần ưu tiên hơn các phần còn lại trong sáng nay.';
-			}
-
-			return 'Cửa hàng đang ở trạng thái ổn định sáng nay, nhưng vẫn có vài mục nên kiểm tra trước.';
-		}
-
-		if ( 'positive' === $business_state && in_array( $briefing_state, [ 'high_pressure', 'focused_pressure', 'split_pressure' ], true ) ) {
-			return __( 'Sales held up yesterday, but this morning still needs focused attention.', 'yoro-ai-core' );
-		}
-
-		if ( in_array( $briefing_state, [ 'high_pressure', 'focused_pressure' ], true ) ) {
-			return __( 'One queue is clearly more urgent than the rest this morning.', 'yoro-ai-core' );
-		}
-
-		if ( '' !== $top_message ) {
-			return $top_message;
-		}
-
-		return __( 'Your store is in a stable place this morning, with a few items worth checking first.', 'yoro-ai-core' );
-	}
-
-	private static function build_morning_briefing_assistant_summary( $headline, $yesterday_window, $business_metrics, $language = 'en' ) {
-		$language = sanitize_key( $language ?: 'en' );
-
-		if ( 'vi' === $language ) {
-			return sprintf(
-				'%1$s Trong %2$s, cửa hàng có %3$d đơn và %4$s doanh thu gộp.',
-				sanitize_text_field( $headline ),
-				YoRo_Date_Helper::get_window_label( sanitize_key( $yesterday_window['key'] ?? 'yesterday' ), 'vi' ),
-				absint( $business_metrics['order_count'] ?? 0 ),
-				sanitize_text_field( $business_metrics['gross_sales'] ?? '0' )
-			);
-		}
-
-		return sprintf(
-			/* translators: 1: headline, 2: yesterday label, 3: order count, 4: gross sales */
-			__( '%1$s Over %2$s, the store closed with %3$d orders and %4$s in gross sales.', 'yoro-ai-core' ),
-			sanitize_text_field( $headline ),
-			sanitize_text_field( strtolower( $yesterday_window['label'] ?? __( 'yesterday', 'yoro-ai-core' ) ) ),
-			absint( $business_metrics['order_count'] ?? 0 ),
-			sanitize_text_field( $business_metrics['gross_sales'] ?? '0' )
-		);
-	}
-
-	private static function build_morning_briefing_drilldowns( $priority_drilldowns = [], $recommended_sequence = [], $live_pressure = [] ) {
-		$items = [];
-
-		foreach ( $priority_drilldowns as $drilldown ) {
-			$command = sanitize_text_field( $drilldown['command'] ?? '' );
-			$label   = sanitize_text_field( $drilldown['label'] ?? $command );
-
-			if ( '' === $command || '' === $label ) {
-				continue;
-			}
-
-			$topic = self::infer_briefing_topic_from_command( $command );
-
-			$items[] = [
-				'topic'         => $topic,
-				'label'         => $label,
-				'command'       => $command,
-				'command_label' => $label,
-				'summary'       => self::build_morning_drilldown_summary( $topic, $live_pressure ),
-				'count'         => self::get_morning_drilldown_count( $topic, $live_pressure ),
-				'recommended'   => false,
-			];
-		}
-
-		$first_recommended = ! empty( $recommended_sequence[0] ) && is_array( $recommended_sequence[0] )
-			? $recommended_sequence[0]
-			: [];
-		$recommended_topic = sanitize_key( $first_recommended['topic'] ?? self::infer_briefing_topic_from_command( $first_recommended['command'] ?? '' ) );
-		$recommended_key   = strtolower( sanitize_text_field( $first_recommended['command'] ?? '' ) );
-
-		foreach ( $items as $index => $item ) {
-			if ( $recommended_key && strtolower( $item['command'] ) === $recommended_key ) {
-				$items[ $index ]['recommended'] = true;
-			}
-		}
-
-		if ( $recommended_topic ) {
-			usort(
-				$items,
-				function( $a, $b ) use ( $recommended_topic ) {
-					$a_match = $recommended_topic === sanitize_key( $a['topic'] ?? '' ) ? 1 : 0;
-					$b_match = $recommended_topic === sanitize_key( $b['topic'] ?? '' ) ? 1 : 0;
-
-					if ( $a_match !== $b_match ) {
-						return $b_match <=> $a_match;
-					}
-
-					return (int) ( $b['count'] ?? 0 ) <=> (int) ( $a['count'] ?? 0 );
-				}
-			);
-		}
-
-		return array_slice( $items, 0, 3 );
-	}
-
-	private static function build_morning_drilldown_summary( $topic, $live_pressure = [] ) {
-		$count = self::get_morning_drilldown_count( $topic, $live_pressure );
-
-		switch ( sanitize_key( $topic ) ) {
-			case 'operations_attention':
-				return sprintf(
-					_n( '%d order needs operational attention first.', '%d orders need operational attention first.', $count, 'yoro-ai-core' ),
-					$count
-				);
-			case 'fulfillment':
-				return sprintf(
-					_n( '%d fulfillment item is waiting on progress.', '%d fulfillment items are waiting on progress.', $count, 'yoro-ai-core' ),
-					$count
-				);
-			case 'customer_service':
-				return sprintf(
-					_n( '%d customer follow-up item is open.', '%d customer follow-up items are open.', $count, 'yoro-ai-core' ),
-					$count
-				);
-			case 'inventory':
-				return sprintf(
-					_n( '%d inventory item looks at risk.', '%d inventory items look at risk.', $count, 'yoro-ai-core' ),
-					$count
-				);
-			case 'business':
-				return __( 'Review the commercial picture behind today\'s operating pressure.', 'yoro-ai-core' );
-			default:
-				return __( 'Open the queue view behind this morning priority.', 'yoro-ai-core' );
-		}
-	}
-
-	private static function get_morning_drilldown_count( $topic, $live_pressure = [] ) {
-		switch ( sanitize_key( $topic ) ) {
-			case 'operations_attention':
-				return absint( $live_pressure['attention_items'] ?? 0 );
-			case 'fulfillment':
-				return absint( $live_pressure['fulfillment_items'] ?? 0 );
-			case 'customer_service':
-				return absint( $live_pressure['customer_followup_items'] ?? 0 );
-			case 'inventory':
-				return absint( $live_pressure['inventory_items'] ?? $live_pressure['inventory_pressure_items'] ?? 0 );
-			default:
-				return 0;
-		}
-	}
-
-	private static function build_morning_briefing_signature( $result ) {
-		$parts = [
-			sanitize_text_field( $result['briefing_date'] ?? '' ),
-			sanitize_text_field( $result['headline'] ?? '' ),
-		];
-
-		$top_priorities = isset( $result['top_priorities'] ) && is_array( $result['top_priorities'] )
-			? $result['top_priorities']
-			: [];
-
-		foreach ( array_slice( $top_priorities, 0, 3 ) as $priority ) {
-			$parts[] = sanitize_text_field( $priority['title'] ?? '' );
-		}
-
-		return md5( wp_json_encode( $parts ) );
-	}
 }

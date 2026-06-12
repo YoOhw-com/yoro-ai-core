@@ -10,7 +10,7 @@ class YoRo_Runtime_Guard {
 		if ( ! is_array( $plan ) || empty( $plan['type'] ) ) {
 			return new WP_Error(
 				'yoro_invalid_runtime_plan',
-				__( 'Invalid runtime plan.', 'yoro-ai-core' )
+				__( 'I could not prepare this action safely.', 'yoro-ai-core' )
 			);
 		}
 
@@ -83,6 +83,7 @@ class YoRo_Runtime_Guard {
 
 	public static function build_confirmation_response( $plan, $parsed, $runtime ) {
 		$action = self::get_plan_action_label( $plan );
+		$confirmation_preview = self::build_confirmation_preview( $plan );
 
 		$risk   = isset( $runtime['risk'] ) && is_array( $runtime['risk'] ) ? $runtime['risk'] : [];
 		$policy = isset( $runtime['policy'] ) && is_array( $runtime['policy'] ) ? $runtime['policy'] : [];
@@ -93,7 +94,7 @@ class YoRo_Runtime_Guard {
 			'parsed'           => is_array( $parsed ) ? $parsed : [],
 			'plan'             => is_array( $plan ) ? $plan : [],
 			'confirm_required' => true,
-			'message'          => __( 'This action requires confirmation before running.', 'yoro-ai-core' ),
+			'message'          => __( 'Please approve this change when you are ready. Nothing has changed yet.', 'yoro-ai-core' ),
 			'risk'             => $risk,
 			'policy'           => $policy,
 			'result'           => [
@@ -103,11 +104,40 @@ class YoRo_Runtime_Guard {
 				'risk_level'            => $risk['risk_level'] ?? 'medium',
 				'risk_reasons'          => $risk['reasons'] ?? [],
 				'policy_reasons'        => $policy['reasons'] ?? [],
+				'preview'               => $confirmation_preview,
 				'display_type'          => 'confirmation',
 				'result_type'           => 'confirmation',
 				'read_only'             => true,
 			],
 		];
+	}
+
+	private static function build_confirmation_preview( $plan ) {
+		if ( ! is_array( $plan ) || 'single' !== ( $plan['type'] ?? '' ) ) {
+			return [];
+		}
+
+		$action_name = sanitize_text_field( (string) ( $plan['action'] ?? '' ) );
+		$params      = isset( $plan['params'] ) && is_array( $plan['params'] ) ? $plan['params'] : [];
+		$action      = '' !== $action_name && class_exists( 'YoRo_Action_Registry' )
+			? YoRo_Action_Registry::get( $action_name )
+			: null;
+
+		if ( ! is_array( $action ) || empty( $action['preview_callback'] ) || ! is_callable( $action['preview_callback'] ) ) {
+			return [];
+		}
+
+		$preview = call_user_func( $action['preview_callback'], $params );
+
+		if ( is_wp_error( $preview ) ) {
+			return [
+				'success' => false,
+				'code'    => sanitize_key( $preview->get_error_code() ),
+				'message' => sanitize_text_field( $preview->get_error_message() ),
+			];
+		}
+
+		return is_array( $preview ) ? $preview : [];
 	}
 
 	private static function get_plan_action_label( $plan ) {

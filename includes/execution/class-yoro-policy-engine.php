@@ -309,14 +309,6 @@ class YoRo_Policy_Engine {
 		$is_bulk        = YoRo_Action_Registry::has_capability( $action, 'bulk' );
 		$is_email       = YoRo_Action_Registry::has_capability( $action, 'customer_communication' );
 		$is_confirmation_exempt_read = 'orders.refund_preview' === $action;
-		$is_guided_workflow_preview = in_array(
-			$action,
-			[
-				'workflow.fulfillment_followup_preview',
-				'workflow.customer_followup_preview',
-			],
-			true
-		);
 
 		$policy = [
 			'allow'                 => 1,
@@ -346,7 +338,7 @@ class YoRo_Policy_Engine {
 		}
 
 		if ( 'balanced' === $mode ) {
-			if ( $is_guided_workflow_preview || $is_confirmation_exempt_read ) {
+			if ( $is_confirmation_exempt_read ) {
 				$policy['requires_confirmation'] = 0;
 				return $policy;
 			}

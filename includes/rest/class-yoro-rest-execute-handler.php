@@ -14,71 +14,121 @@ class YoRo_REST_Execute_Handler {
 			return $rate_limit;
 		}
 
-		$action  = sanitize_text_field( $request->get_param( 'action' ) );
-		$params  = $request->get_param( 'params' );
-		$confirm = (bool) $request->get_param( 'confirm' );
-		$preview = (bool) $request->get_param( 'preview' );
-		$action_state_token = sanitize_text_field(
-			$request->get_param( 'action_state_token' )
-				?: $request->get_param( 'pending_action_token' )
-		);
+		$action                  = sanitize_text_field( $request->get_param( 'action' ) );
+		$params                  = $request->get_param( 'params' );
+		$confirm                 = (bool) $request->get_param( 'confirm' );
+		$preview                 = (bool) $request->get_param( 'preview' );
+		$conversation_id         = sanitize_text_field( $request->get_param( 'conversation_id' ) );
+		$pending_operation_token = sanitize_text_field( $request->get_param( 'pending_operation_token' ) );
+
 		if ( ! is_array( $params ) ) {
 			$params = [];
 		}
 
-		if ( empty( $action ) ) {
-			return new WP_Error(
-				'yoro_empty_action',
-				__( 'Action is required.', 'yoro-ai-core' )
-			);
-		}
-
-		$registered_action = YoRo_Action_Registry::get( $action );
-
-		if ( ! $registered_action ) {
-			return new WP_Error(
-				'yoro_invalid_action',
-				__( 'Action not found.', 'yoro-ai-core' )
-			);
-		}
-
-		$user_id = get_current_user_id();
+		$user_id  = get_current_user_id();
 		$trace_id = 'yoro_' . wp_generate_uuid4();
 
-		$parsed = [
-			'success' => true,
-			'matched' => true,
-			'action'  => $action,
-			'params'  => $params,
-		];
+		$stored_action_state = null;
+		$direct_confirmation_allowed = '' === $pending_operation_token;
 
-		$plan = [
-			'type'   => 'single',
-			'action' => $action,
-			'params' => $params,
-			'parsed' => $parsed,
-		];
-
-		if ( $confirm ) {
-			$stored_action_state = YoRo_REST_Workflow_State::get_action(
-				$user_id,
-				$action_state_token,
-				$action,
-				$params
+		if ( $confirm && '' !== $conversation_id && '' !== $pending_operation_token ) {
+			$stored_action_state = YoRo_REST_Conversation_Action_Coordinator::get_pending_operation_state(
+				$conversation_id,
+				$pending_operation_token
 			);
+		}
 
-			if ( empty( $stored_action_state ) ) {
-				return rest_ensure_response(
-					self::build_stale_action_confirmation_response( $trace_id )
-				);
-			}
+		if ( $confirm && '' !== $pending_operation_token && empty( $stored_action_state ) ) {
+			return rest_ensure_response(
+				self::build_stale_action_confirmation_response( $trace_id )
+			);
+		}
 
-			$parsed = $stored_action_state['parsed'];
-			$plan   = $stored_action_state['plan'];
-			$action = sanitize_text_field( $plan['action'] ?? $action );
+		if ( ! empty( $stored_action_state ) ) {
+			$parsed = isset( $stored_action_state['parsed'] ) && is_array( $stored_action_state['parsed'] )
+				? $stored_action_state['parsed']
+				: [];
+			$plan   = isset( $stored_action_state['plan'] ) && is_array( $stored_action_state['plan'] )
+				? $stored_action_state['plan']
+				: [];
+			$action = sanitize_text_field( $plan['action'] ?? ( $parsed['action'] ?? $action ) );
 			$params = isset( $plan['params'] ) && is_array( $plan['params'] )
 				? $plan['params']
 				: $params;
+			$direct_confirmation_allowed = false;
+		} else {
+			if ( empty( $action ) ) {
+				return new WP_Error(
+					'yoro_empty_action',
+					__( 'I need a store action before I can continue.', 'yoro-ai-core' )
+				);
+			}
+
+			$registered_action = YoRo_Action_Registry::get( $action );
+
+			if ( ! $registered_action ) {
+				return new WP_Error(
+					'yoro_invalid_action',
+					__( 'I could not find that store action.', 'yoro-ai-core' )
+				);
+			}
+
+			$parsed = [
+				'success' => true,
+				'matched' => true,
+				'action'  => $action,
+				'params'  => $params,
+				'meta'    => [
+					'conversation_id'         => $conversation_id,
+					'pending_operation_token' => $pending_operation_token,
+				],
+			];
+
+			$plan = [
+				'type'   => 'single',
+				'action' => $action,
+				'params' => $params,
+				'parsed' => $parsed,
+			];
+		}
+
+		if ( '' !== $conversation_id ) {
+			$parsed['meta'] = isset( $parsed['meta'] ) && is_array( $parsed['meta'] ) ? $parsed['meta'] : [];
+			$parsed['meta']['conversation_id'] = $conversation_id;
+		}
+
+		$parsed = YoRo_REST_Conversation_Action_Coordinator::merge_pending_operation_token(
+			$parsed,
+			$pending_operation_token
+		);
+		$pending_operation_token = YoRo_REST_Conversation_Action_Coordinator::pending_operation_token_from_parsed(
+			$parsed,
+			$pending_operation_token
+		);
+
+		if ( $confirm && self::is_laravel_internal_action( $action ) && '' !== $pending_operation_token ) {
+			$confirmation = YoRo_REST_Conversation_Action_Coordinator::confirm_pending_operation(
+				$parsed,
+				$pending_operation_token
+			);
+
+			if ( is_wp_error( $confirmation ) ) {
+				return rest_ensure_response(
+					YoRo_REST_Conversation_Action_Coordinator::build_confirmation_error_response(
+						$trace_id,
+						$confirmation
+					)
+				);
+			}
+
+			return rest_ensure_response(
+				self::build_laravel_internal_action_response(
+					$trace_id,
+					$parsed,
+					$plan,
+					is_array( $confirmation ) ? $confirmation : []
+				)
+			);
 		}
 
 		$policy_context = [
@@ -134,18 +184,8 @@ class YoRo_REST_Execute_Handler {
 				$runtime
 			);
 
-			$action_state_token = YoRo_REST_Workflow_State::create_action_token(
-				$user_id,
-				$action,
-				$params,
-				$parsed,
-				$plan
-			);
-
-			$response['action_state_token']   = $action_state_token;
-			$response['pending_action_token'] = $action_state_token;
-
 			$response['trace_id'] = $trace_id;
+			$response['direct_confirmation_allowed'] = $direct_confirmation_allowed;
 			YoRo_REST_Execute_Log_Helper::log_runtime_confirmation_required(
 				$user_id,
 				$action,
@@ -156,6 +196,22 @@ class YoRo_REST_Execute_Handler {
 			);
 
 			return rest_ensure_response( $response );
+		}
+
+		if ( $confirm ) {
+			$confirmation = YoRo_REST_Conversation_Action_Coordinator::confirm_pending_operation(
+				$parsed,
+				$pending_operation_token
+			);
+
+			if ( is_wp_error( $confirmation ) ) {
+				return rest_ensure_response(
+					YoRo_REST_Conversation_Action_Coordinator::build_confirmation_error_response(
+						$trace_id,
+						$confirmation
+					)
+				);
+			}
 		}
 
 		$result = YoRo_Plan_Executor::execute( $plan, $confirm, $preview );
@@ -177,6 +233,16 @@ class YoRo_REST_Execute_Handler {
 			if ( is_array( $semantic_response ) ) {
 				return rest_ensure_response( $semantic_response );
 			}
+
+			self::report_conversation_action_events(
+				$conversation_id,
+				$pending_operation_token,
+				$action,
+				$params,
+				$result,
+				$trace_id,
+				$plan
+			);
 
 			YoRo_REST_Execute_Log_Helper::log_error(
 				$user_id,
@@ -206,27 +272,17 @@ class YoRo_REST_Execute_Handler {
 
 		if ( $preview ) {
 			$response = [
-				'success' => true,
-				'stage'   => 'preview',
-				'trace_id' => $trace_id,
-				'parsed'  => $parsed,
-				'plan'    => $plan,
-				'risk'    => $risk,
-				'policy'  => $policy,
-				'preview' => $result,
-				'result'  => $result,
+				'success'                     => true,
+				'stage'                       => 'preview',
+				'trace_id'                    => $trace_id,
+				'parsed'                      => $parsed,
+				'plan'                        => $plan,
+				'risk'                        => $risk,
+				'policy'                      => $policy,
+				'preview'                     => $result,
+				'result'                      => $result,
+				'direct_confirmation_allowed' => $direct_confirmation_allowed,
 			];
-
-			$action_state_token = YoRo_REST_Workflow_State::create_action_token(
-				$user_id,
-				$action,
-				$params,
-				$parsed,
-				$plan
-			);
-
-			$response['action_state_token']   = $action_state_token;
-			$response['pending_action_token'] = $action_state_token;
 
 			YoRo_REST_Execute_Log_Helper::log_preview(
 				$user_id,
@@ -244,14 +300,6 @@ class YoRo_REST_Execute_Handler {
 		if ( is_array( $result ) && ! empty( $result['requires_confirmation'] ) ) {
 			$result['result_type']  = $result['result_type'] ?? 'confirmation';
 			$result['display_type'] = $result['display_type'] ?? 'confirmation';
-
-			$action_state_token = YoRo_REST_Workflow_State::create_action_token(
-				$user_id,
-				$action,
-				$params,
-				$parsed,
-				$plan
-			);
 
 			YoRo_REST_Execute_Log_Helper::log_confirmation_required(
 				$user_id,
@@ -271,12 +319,11 @@ class YoRo_REST_Execute_Handler {
 					'parsed'           => $parsed,
 					'plan'             => $plan,
 					'confirm_required' => true,
-					'action_state_token'  => $action_state_token,
-					'pending_action_token' => $action_state_token,
 					'message'          => $result['message'] ?? __( 'Please confirm before I continue.', 'yoro-ai-core' ),
 					'result'           => $result,
 					'risk'             => $risk,
 					'policy'           => $policy,
+					'direct_confirmation_allowed' => $direct_confirmation_allowed,
 				]
 			);
 		}
@@ -292,11 +339,15 @@ class YoRo_REST_Execute_Handler {
 			$runtime
 		);
 
-		YoRo_REST_Memory_Sync::maybe_update( $user_id, 'direct:' . $action, $parsed, $result );
-
-		if ( $confirm && ! empty( $action_state_token ) ) {
-			YoRo_REST_Workflow_State::delete( $user_id, $action_state_token );
-		}
+		self::report_conversation_action_events(
+			$conversation_id,
+			$pending_operation_token,
+			$action,
+			$params,
+			$result,
+			$trace_id,
+			$plan
+		);
 
 		return rest_ensure_response(
 			[
@@ -313,8 +364,68 @@ class YoRo_REST_Execute_Handler {
 		);
 	}
 
+	private static function is_laravel_internal_action( $action ) {
+		$action = sanitize_text_field( (string) $action );
+
+		return 0 === strpos( $action, 'store_preferences.' );
+	}
+
+	private static function build_laravel_internal_action_response( $trace_id, $parsed, $plan, $confirmation ) {
+		$result = isset( $confirmation['result'] ) && is_array( $confirmation['result'] )
+			? $confirmation['result']
+			: [];
+		$message = sanitize_text_field(
+			$result['message']
+				?? ( $confirmation['message'] ?? __( 'I saved that store preference.', 'yoro-ai-core' ) )
+		);
+
+		if ( empty( $confirmation['success'] ) || empty( $confirmation['internal_execution'] ) ) {
+			$message = sanitize_text_field(
+				$confirmation['message'] ?? __( 'I could not complete that internal store-memory action.', 'yoro-ai-core' )
+			);
+
+			return [
+				'success' => false,
+				'stage'   => 'error',
+				'trace_id' => sanitize_text_field( (string) $trace_id ),
+				'parsed'  => is_array( $parsed ) ? $parsed : [],
+				'plan'    => is_array( $plan ) ? $plan : [],
+				'message' => $message,
+				'result'  => [
+					'success'      => false,
+					'message'      => $message,
+					'summary'      => $message,
+					'read_only'    => true,
+					'result_type'  => 'error',
+					'display_type' => 'error',
+				],
+			];
+		}
+
+		$result['success']      = true;
+		$result['message']      = $message;
+		$result['summary']      = sanitize_text_field( $result['summary'] ?? $message );
+		$result['read_only']    = true;
+		$result['result_type']  = $result['result_type'] ?? 'assistant_message';
+		$result['display_type'] = $result['display_type'] ?? 'assistant_message';
+
+		return [
+			'success'                  => true,
+			'stage'                    => 'done',
+			'trace_id'                 => sanitize_text_field( (string) $trace_id ),
+			'conversation_id'          => sanitize_text_field( (string) ( $confirmation['conversation_id'] ?? '' ) ),
+			'pending_operation_token'  => sanitize_text_field( (string) ( $confirmation['pending_operation_token'] ?? '' ) ),
+			'pending_operation_active' => false,
+			'parsed'                   => is_array( $parsed ) ? $parsed : [],
+			'plan'                     => is_array( $plan ) ? $plan : [],
+			'result'                   => $result,
+			'message'                  => $message,
+			'internal_execution'       => true,
+		];
+	}
+
 	private static function build_stale_action_confirmation_response( $trace_id ) {
-		$message = __( 'This confirmation has expired. Please review the action again before confirming.', 'yoro-ai-core' );
+		$message = __( 'This approval request expired. Please review the action again before approving.', 'yoro-ai-core' );
 
 		return [
 			'success'          => false,
@@ -337,5 +448,411 @@ class YoRo_REST_Execute_Handler {
 				],
 			],
 		];
+	}
+
+	private static function report_conversation_action_events( $conversation_id, $pending_operation_token, $action, $params, $result, $trace_id, $plan = [] ) {
+		$conversation_id = sanitize_text_field( (string) $conversation_id );
+
+		if ( '' === $conversation_id ) {
+			return;
+		}
+
+		$payloads = self::build_conversation_action_event_payloads(
+			$conversation_id,
+			$pending_operation_token,
+			$action,
+			$params,
+			$result,
+			$trace_id,
+			is_array( $plan ) ? $plan : []
+		);
+
+		if ( empty( $payloads ) ) {
+			return;
+		}
+
+		$client = YoRo_AI_Provider_Resolver::get_client();
+
+		foreach ( $payloads as $payload ) {
+			$client->record_action_execution( $payload );
+		}
+	}
+
+	private static function build_conversation_action_event_payloads( $conversation_id, $pending_operation_token, $action, $params, $result, $trace_id, $plan ) {
+		$result = is_array( $result ) ? $result : [];
+
+		if ( empty( $result ) || ! empty( $result['preview'] ) || ! empty( $result['requires_confirmation'] ) ) {
+			return [];
+		}
+
+		if ( self::is_multi_action_execution_result( $result ) ) {
+			$payloads = [];
+			$steps    = array_values( $result['actions'] );
+
+			foreach ( $steps as $index => $step ) {
+				if ( ! is_array( $step ) ) {
+					continue;
+				}
+
+				$step_action = sanitize_text_field( (string) ( $step['action'] ?? '' ) );
+
+				if ( '' === $step_action ) {
+					continue;
+				}
+
+				$step_result = isset( $step['result'] ) && is_array( $step['result'] )
+					? $step['result']
+					: [];
+				$status = self::action_event_status_for_step( $step, $step_result );
+
+				$payloads[] = self::build_action_event_payload(
+					$conversation_id,
+					$pending_operation_token,
+					$step_action,
+					isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [],
+					$step_result,
+					$status,
+					self::summary_for_action_event( $step_result, $step, $step_action ),
+					self::operation_id_for_step( $step, $index, $plan ),
+					self::trace_id_for_step( $trace_id, $index ),
+					self::user_content_slots_for_step( $step, $index, $plan )
+				);
+			}
+
+			return $payloads;
+		}
+
+		$summary = is_array( $result )
+			? sanitize_text_field( $result['message'] ?? ( $result['summary'] ?? '' ) )
+			: '';
+		$status = self::action_event_status_for_result( $result );
+
+		return [
+			self::build_action_event_payload(
+				$conversation_id,
+				$pending_operation_token,
+				$action,
+				is_array( $params ) ? $params : [],
+				$result,
+				$status,
+				$summary,
+				self::operation_id_for_single_action( $plan ),
+				$trace_id,
+				self::user_content_slots_for_single_action( $plan )
+			),
+		];
+	}
+
+	private static function is_multi_action_execution_result( $result ) {
+		return is_array( $result )
+			&& ! empty( $result['multi_action'] )
+			&& ! empty( $result['actions'] )
+			&& is_array( $result['actions'] );
+	}
+
+	private static function build_action_event_payload( $conversation_id, $pending_operation_token, $action, $params, $result, $status, $summary, $operation_id, $trace_id, $user_content_slots = [] ) {
+		$status = sanitize_key( (string) $status );
+
+		if ( ! in_array( $status, [ 'executed', 'failed' ], true ) ) {
+			$status = 'executed';
+		}
+
+		return [
+			'conversation_id'         => sanitize_text_field( (string) $conversation_id ),
+			'pending_operation_token' => sanitize_text_field( (string) $pending_operation_token ),
+			'event_type'              => $status,
+			'status'                  => $status,
+			'action'                  => sanitize_text_field( (string) $action ),
+			'operation_id'            => sanitize_text_field( (string) $operation_id ),
+			'summary'                 => sanitize_text_field( (string) $summary ),
+			'params'                  => is_array( $params ) ? $params : [],
+			'result'                  => is_array( $result ) ? $result : [],
+			'user_content_slots'      => self::normalize_user_content_slots_for_event( $user_content_slots ),
+			'source'                  => 'plugin',
+			'trace_id'                => sanitize_text_field( (string) $trace_id ),
+		];
+	}
+
+	private static function user_content_slots_for_step( $step, $index, $plan ) {
+		$step = is_array( $step ) ? $step : [];
+		$plan = is_array( $plan ) ? $plan : [];
+		$slots = self::user_content_slots_from_container( $step );
+
+		if ( ! empty( $slots ) ) {
+			return $slots;
+		}
+
+		$plan_steps = isset( $plan['steps'] ) && is_array( $plan['steps'] ) ? array_values( $plan['steps'] ) : [];
+		$slots = self::user_content_slots_from_container( $plan_steps[ $index ] ?? [] );
+
+		if ( ! empty( $slots ) ) {
+			return $slots;
+		}
+
+		$parsed = isset( $plan['parsed'] ) && is_array( $plan['parsed'] ) ? $plan['parsed'] : [];
+		$action_plan = isset( $parsed['action_plan'] ) && is_array( $parsed['action_plan'] ) ? $parsed['action_plan'] : [];
+		$action_plan_steps = isset( $action_plan['steps'] ) && is_array( $action_plan['steps'] ) ? array_values( $action_plan['steps'] ) : [];
+		$slots = self::user_content_slots_from_container( $action_plan_steps[ $index ] ?? [] );
+
+		if ( ! empty( $slots ) ) {
+			return $slots;
+		}
+
+		$operation_id = self::operation_id_for_step( $step, $index, $plan );
+		$operation_graph = isset( $parsed['operation_graph'] ) && is_array( $parsed['operation_graph'] ) ? $parsed['operation_graph'] : [];
+		$slots = self::user_content_slots_from_operations( $operation_graph['operations'] ?? [], $operation_id, $index );
+
+		if ( ! empty( $slots ) ) {
+			return $slots;
+		}
+
+		return self::user_content_slots_from_operations( $parsed['requested_operations'] ?? [], $operation_id, $index );
+	}
+
+	private static function user_content_slots_for_single_action( $plan ) {
+		$plan = is_array( $plan ) ? $plan : [];
+		$slots = self::user_content_slots_from_container( $plan );
+
+		if ( ! empty( $slots ) ) {
+			return $slots;
+		}
+
+		$parsed = isset( $plan['parsed'] ) && is_array( $plan['parsed'] ) ? $plan['parsed'] : [];
+		$action_plan = isset( $parsed['action_plan'] ) && is_array( $parsed['action_plan'] ) ? $parsed['action_plan'] : [];
+		$action_plan_steps = isset( $action_plan['steps'] ) && is_array( $action_plan['steps'] ) ? array_values( $action_plan['steps'] ) : [];
+		$slots = self::user_content_slots_from_container( $action_plan_steps[0] ?? [] );
+
+		if ( ! empty( $slots ) ) {
+			return $slots;
+		}
+
+		$operation_id = self::operation_id_for_single_action( $plan );
+		$operation_graph = isset( $parsed['operation_graph'] ) && is_array( $parsed['operation_graph'] ) ? $parsed['operation_graph'] : [];
+		$slots = self::user_content_slots_from_operations( $operation_graph['operations'] ?? [], $operation_id, 0 );
+
+		if ( ! empty( $slots ) ) {
+			return $slots;
+		}
+
+		return self::user_content_slots_from_operations( $parsed['requested_operations'] ?? [], $operation_id, 0 );
+	}
+
+	private static function user_content_slots_from_container( $container ) {
+		$container = is_array( $container ) ? $container : [];
+
+		if ( ! empty( $container['user_content_slots'] ) && is_array( $container['user_content_slots'] ) ) {
+			return $container['user_content_slots'];
+		}
+
+		$meta = isset( $container['meta'] ) && is_array( $container['meta'] ) ? $container['meta'] : [];
+
+		return ! empty( $meta['user_content_slots'] ) && is_array( $meta['user_content_slots'] )
+			? $meta['user_content_slots']
+			: [];
+	}
+
+	private static function user_content_slots_from_operations( $operations, $operation_id, $index ) {
+		$operations = is_array( $operations ) ? array_values( $operations ) : [];
+		$operation_id = sanitize_text_field( (string) $operation_id );
+
+		if ( '' !== $operation_id ) {
+			foreach ( $operations as $operation ) {
+				if ( ! is_array( $operation ) ) {
+					continue;
+				}
+
+				if ( sanitize_text_field( (string) ( $operation['id'] ?? '' ) ) !== $operation_id ) {
+					continue;
+				}
+
+				return self::user_content_slots_from_container( $operation );
+			}
+		}
+
+		return self::user_content_slots_from_container( $operations[ $index ] ?? [] );
+	}
+
+	private static function normalize_user_content_slots_for_event( $slots ) {
+		if ( empty( $slots ) || ! is_array( $slots ) ) {
+			return [];
+		}
+
+		$normalized = [];
+
+		foreach ( array_values( $slots ) as $slot ) {
+			if ( ! is_array( $slot ) ) {
+				continue;
+			}
+
+			$value = array_key_exists( 'value', $slot ) && null !== $slot['value']
+				? sanitize_textarea_field( (string) $slot['value'] )
+				: null;
+			$field = sanitize_key( $slot['field'] ?? '' );
+
+			if ( '' === $field && null === $value ) {
+				continue;
+			}
+
+			$item = [
+				'operation_id' => sanitize_key( $slot['operation_id'] ?? '' ),
+				'operation_key' => sanitize_key( $slot['operation_key'] ?? '' ),
+				'action' => sanitize_text_field( $slot['action'] ?? '' ),
+				'field' => $field,
+				'value' => $value,
+				'content_scope' => sanitize_key( $slot['content_scope'] ?? '' ),
+				'provenance' => sanitize_key( $slot['provenance'] ?? '' ),
+				'source_text_from_latest_user_message' => sanitize_textarea_field( $slot['source_text_from_latest_user_message'] ?? '' ),
+				'source_text' => sanitize_textarea_field( $slot['source_text'] ?? '' ),
+				'source_span' => self::normalize_user_content_source_span_for_event( $slot['source_span'] ?? [] ),
+				'confidence' => isset( $slot['confidence'] ) ? max( 0, min( 1, (float) $slot['confidence'] ) ) : null,
+			];
+
+			$normalized[] = array_filter(
+				$item,
+				static function ( $value ) {
+					return null !== $value && '' !== $value && [] !== $value;
+				}
+			);
+
+			if ( count( $normalized ) >= 20 ) {
+				break;
+			}
+		}
+
+		return $normalized;
+	}
+
+	private static function normalize_user_content_source_span_for_event( $source_span ) {
+		if ( ! is_array( $source_span ) ) {
+			return [];
+		}
+
+		$start = array_key_exists( 'start', $source_span ) && null !== $source_span['start']
+			? absint( $source_span['start'] )
+			: null;
+		$end = array_key_exists( 'end', $source_span ) && null !== $source_span['end']
+			? absint( $source_span['end'] )
+			: null;
+
+		if ( null === $start && null === $end ) {
+			return [];
+		}
+
+		return [
+			'start' => $start,
+			'end'   => $end,
+		];
+	}
+
+	private static function action_event_status_for_step( $step, $result ) {
+		$step   = is_array( $step ) ? $step : [];
+		$result = is_array( $result ) ? $result : [];
+
+		if ( ! empty( $step['failed'] ) || ( array_key_exists( 'success', $result ) && empty( $result['success'] ) ) ) {
+			return 'failed';
+		}
+
+		return 'executed';
+	}
+
+	private static function action_event_status_for_result( $result ) {
+		$result = is_array( $result ) ? $result : [];
+
+		if ( array_key_exists( 'success', $result ) && empty( $result['success'] ) ) {
+			return 'failed';
+		}
+
+		return 'executed';
+	}
+
+	private static function summary_for_action_event( $result, $step, $fallback_action ) {
+		$result = is_array( $result ) ? $result : [];
+		$step   = is_array( $step ) ? $step : [];
+
+		return sanitize_text_field(
+			$result['message']
+				?? ( $result['summary'] ?? ( $step['label'] ?? $fallback_action ) )
+		);
+	}
+
+	private static function operation_id_for_step( $step, $index, $plan ) {
+		$step = is_array( $step ) ? $step : [];
+		$plan = is_array( $plan ) ? $plan : [];
+
+		$operation_id = sanitize_text_field( (string) ( $step['id'] ?? '' ) );
+
+		if ( '' !== $operation_id ) {
+			return $operation_id;
+		}
+
+		$operation_id = self::operation_id_from_plan_steps( $plan['steps'] ?? [], $index );
+
+		if ( '' !== $operation_id ) {
+			return $operation_id;
+		}
+
+		$parsed = isset( $plan['parsed'] ) && is_array( $plan['parsed'] ) ? $plan['parsed'] : [];
+		$action_plan = isset( $parsed['action_plan'] ) && is_array( $parsed['action_plan'] ) ? $parsed['action_plan'] : [];
+
+		$operation_id = self::operation_id_from_plan_steps( $action_plan['steps'] ?? [], $index );
+
+		if ( '' !== $operation_id ) {
+			return $operation_id;
+		}
+
+		$operation_graph = isset( $parsed['operation_graph'] ) && is_array( $parsed['operation_graph'] ) ? $parsed['operation_graph'] : [];
+
+		$operation_id = self::operation_id_from_graph_operations( $operation_graph['operations'] ?? [], $index );
+
+		if ( '' !== $operation_id ) {
+			return $operation_id;
+		}
+
+		return 'step_' . ( absint( $index ) + 1 );
+	}
+
+	private static function operation_id_for_single_action( $plan ) {
+		$plan = is_array( $plan ) ? $plan : [];
+		$parsed = isset( $plan['parsed'] ) && is_array( $plan['parsed'] ) ? $plan['parsed'] : [];
+		$action_plan = isset( $parsed['action_plan'] ) && is_array( $parsed['action_plan'] ) ? $parsed['action_plan'] : [];
+		$operation_graph = isset( $parsed['operation_graph'] ) && is_array( $parsed['operation_graph'] ) ? $parsed['operation_graph'] : [];
+
+		foreach (
+			[
+				self::operation_id_from_plan_steps( $plan['steps'] ?? [], 0 ),
+				self::operation_id_from_plan_steps( $action_plan['steps'] ?? [], 0 ),
+				self::operation_id_from_graph_operations( $operation_graph['operations'] ?? [], 0 ),
+			] as $operation_id
+		) {
+			if ( '' !== $operation_id ) {
+				return $operation_id;
+			}
+		}
+
+		return '';
+	}
+
+	private static function operation_id_from_plan_steps( $steps, $index ) {
+		$steps = is_array( $steps ) ? array_values( $steps ) : [];
+		$step  = isset( $steps[ $index ] ) && is_array( $steps[ $index ] ) ? $steps[ $index ] : [];
+
+		return sanitize_text_field( (string) ( $step['id'] ?? '' ) );
+	}
+
+	private static function operation_id_from_graph_operations( $operations, $index ) {
+		$operations = is_array( $operations ) ? array_values( $operations ) : [];
+		$operation  = isset( $operations[ $index ] ) && is_array( $operations[ $index ] ) ? $operations[ $index ] : [];
+
+		return sanitize_text_field( (string) ( $operation['id'] ?? '' ) );
+	}
+
+	private static function trace_id_for_step( $trace_id, $index ) {
+		$trace_id = sanitize_text_field( (string) $trace_id );
+
+		if ( '' === $trace_id ) {
+			return '';
+		}
+
+		return $trace_id . '_step_' . ( absint( $index ) + 1 );
 	}
 }

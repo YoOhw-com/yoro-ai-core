@@ -10,21 +10,21 @@ class YoRo_Orders_Email_Service {
 		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
 		$template = ! empty( $params['template'] ) ? sanitize_key( $params['template'] ) : '';
 
-		if ( ! $order_id || ! $template ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Order ID and template are required.', 'yoro-ai-core' )
-			);
-		}
+			if ( ! $order_id || ! $template ) {
+				return new WP_Error(
+					'invalid_params',
+					__( 'Please choose an order and an email template first.', 'yoro-ai-core' )
+				);
+			}
 
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
 			return new WP_Error(
-				'order_not_found',
-				__( 'Order not found.', 'yoro-ai-core' )
-			);
-		}
+					'order_not_found',
+					__( 'I could not find that order.', 'yoro-ai-core' )
+				);
+			}
 
 		$email = self::build_customer_email_from_template( $order, $template );
 
@@ -77,21 +77,21 @@ class YoRo_Orders_Email_Service {
 		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
 		$template = ! empty( $params['template'] ) ? sanitize_key( $params['template'] ) : '';
 
-		if ( ! $order_id || ! $template ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Order ID and template are required.', 'yoro-ai-core' )
-			);
-		}
+			if ( ! $order_id || ! $template ) {
+				return new WP_Error(
+					'invalid_params',
+					__( 'Please choose an order and an email template first.', 'yoro-ai-core' )
+				);
+			}
 
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
 			return new WP_Error(
-				'order_not_found',
-				__( 'Order not found.', 'yoro-ai-core' )
-			);
-		}
+					'order_not_found',
+					__( 'I could not find that order.', 'yoro-ai-core' )
+				);
+			}
 
 		$email = self::build_customer_email_from_template( $order, $template );
 
@@ -101,10 +101,10 @@ class YoRo_Orders_Email_Service {
 
 		if ( empty( $email['to'] ) || ! is_email( $email['to'] ) ) {
 			return new WP_Error(
-				'invalid_recipient',
-				__( 'Order billing email is missing or invalid.', 'yoro-ai-core' )
-			);
-		}
+					'invalid_recipient',
+					__( 'That order does not have a valid customer email address.', 'yoro-ai-core' )
+				);
+			}
 
 		$mailer  = WC()->mailer();
 		$message = self::wrap_customer_email_with_woocommerce_template(
@@ -125,10 +125,10 @@ class YoRo_Orders_Email_Service {
 
 		if ( ! $sent ) {
 			return new WP_Error(
-				'email_send_failed',
-				__( 'The email could not be sent.', 'yoro-ai-core' )
-			);
-		}
+					'email_send_failed',
+					__( 'I could not send the email. Please try again.', 'yoro-ai-core' )
+				);
+			}
 
 		$order->add_order_note(
 			sprintf(
@@ -178,15 +178,15 @@ class YoRo_Orders_Email_Service {
 		$order_id    = absint( $params['order_id'] ?? 0 );
 		$template_id = sanitize_key( $params['template_id'] ?? '' );
 
-		if ( ! $order_id || empty( $template_id ) ) {
-			return new WP_Error( 'invalid_params', 'Order ID and template ID required.' );
-		}
+			if ( ! $order_id || empty( $template_id ) ) {
+				return new WP_Error( 'invalid_params', __( 'Please choose an order and an email template first.', 'yoro-ai-core' ) );
+			}
 
 		$order = wc_get_order( $order_id );
 
-		if ( ! $order ) {
-			return new WP_Error( 'order_not_found', 'Order not found.' );
-		}
+			if ( ! $order ) {
+				return new WP_Error( 'order_not_found', __( 'I could not find that order.', 'yoro-ai-core' ) );
+			}
 
 		$templates = self::get_email_templates();
 		$template  = null;
@@ -198,9 +198,9 @@ class YoRo_Orders_Email_Service {
 			}
 		}
 
-		if ( ! $template ) {
-			return new WP_Error( 'template_not_found', 'Template not found.' );
-		}
+			if ( ! $template ) {
+				return new WP_Error( 'template_not_found', __( 'I could not find that saved template.', 'yoro-ai-core' ) );
+			}
 
 		$subject = self::replace_template_placeholders( $template['subject'], $order );
 		$body    = self::replace_template_placeholders( $template['body'], $order );
@@ -218,21 +218,21 @@ class YoRo_Orders_Email_Service {
 		$order_id    = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
 		$instruction = ! empty( $params['instruction'] ) ? sanitize_textarea_field( $params['instruction'] ) : '';
 
-		if ( ! $order_id || empty( $instruction ) ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Order ID and instruction are required.', 'yoro-ai-core' )
-			);
-		}
+			if ( ! $order_id || empty( $instruction ) ) {
+				return new WP_Error(
+					'invalid_params',
+					__( 'Please choose an order and describe what the email should say.', 'yoro-ai-core' )
+				);
+			}
 
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
 			return new WP_Error(
-				'order_not_found',
-				__( 'Order not found.', 'yoro-ai-core' )
-			);
-		}
+					'order_not_found',
+					__( 'I could not find that order.', 'yoro-ai-core' )
+				);
+			}
 
 		$email = self::compose_customer_email_with_ai( $order, $instruction );
 
@@ -257,8 +257,6 @@ class YoRo_Orders_Email_Service {
 			'draft_id'   => '',
 			'updated_at' => current_time( 'mysql' ),
 		];
-
-		YoRo_Conversation_Memory::set_workflow( get_current_user_id(), $workflow );
 
 		return [
 			'success'      => true,
@@ -285,27 +283,22 @@ class YoRo_Orders_Email_Service {
 			'display_type' => 'customer_email_preview',
 			'workflow'     => $workflow,
 			'order'        => self::build_order_context( $order ),
-			'send_payload' => [
-				'order_id' => $order->get_id(),
-				'subject'  => $email['subject'],
-				'body'     => $email['body'],
-			],
-			'suggestions'  => self::get_email_suggestions(
-				$order,
-				$email['subject'],
-				$email['body']
-			),
-		];
-	}
+				'send_payload' => [
+					'order_id' => $order->get_id(),
+					'subject'  => $email['subject'],
+					'body'     => $email['body'],
+				],
+			];
+		}
 
 	public static function save_email_template( $params ) {
 		$name    = ! empty( $params['name'] ) ? sanitize_text_field( $params['name'] ) : '';
 		$subject = ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '';
 		$body    = ! empty( $params['body'] ) ? sanitize_textarea_field( $params['body'] ) : '';
 
-		if ( empty( $name ) || empty( $subject ) || empty( $body ) ) {
-			return new WP_Error( 'invalid_params', __( 'Name, subject, and body are required.', 'yoro-ai-core' ) );
-		}
+			if ( empty( $name ) || empty( $subject ) || empty( $body ) ) {
+				return new WP_Error( 'invalid_params', __( 'Please name the template and make sure it has both a subject and body.', 'yoro-ai-core' ) );
+			}
 
 		$templates = self::get_email_templates();
 
@@ -323,20 +316,6 @@ class YoRo_Orders_Email_Service {
 		$templates = array_slice( $templates, 0, 50 );
 
 		self::save_email_templates( $templates );
-
-		$current_workflow = YoRo_Conversation_Memory::get_workflow( get_current_user_id() );
-
-		if ( ! empty( $current_workflow ) && is_array( $current_workflow ) && 'customer_email' === sanitize_key( $current_workflow['type'] ?? '' ) ) {
-			YoRo_Conversation_Memory::update_workflow(
-				get_current_user_id(),
-				[
-					'step'        => sanitize_key( $current_workflow['step'] ?? 'previewed' ),
-					'template_id' => sanitize_key( $template['id'] ),
-					'subject'     => $template['subject'],
-					'body'        => $template['body'],
-				]
-			);
-		}
 
 		return [
 			'success'      => true,
@@ -385,9 +364,9 @@ class YoRo_Orders_Email_Service {
 	public static function delete_email_template( $params ) {
 		$template_id = ! empty( $params['template_id'] ) ? sanitize_key( $params['template_id'] ) : '';
 
-		if ( empty( $template_id ) ) {
-			return new WP_Error( 'invalid_params', __( 'Template ID is required.', 'yoro-ai-core' ) );
-		}
+			if ( empty( $template_id ) ) {
+				return new WP_Error( 'invalid_params', __( 'I could not identify that saved template. Please choose it again.', 'yoro-ai-core' ) );
+			}
 
 		$templates = self::get_email_templates();
 		$remaining = [];
@@ -402,27 +381,11 @@ class YoRo_Orders_Email_Service {
 			$remaining[] = $tpl;
 		}
 
-		if ( ! $deleted ) {
-			return new WP_Error( 'not_found', __( 'Template not found.', 'yoro-ai-core' ) );
-		}
+			if ( ! $deleted ) {
+				return new WP_Error( 'not_found', __( 'I could not find that saved template.', 'yoro-ai-core' ) );
+			}
 
 		self::save_email_templates( $remaining );
-
-		$current_workflow = YoRo_Conversation_Memory::get_workflow( get_current_user_id() );
-
-		if (
-			! empty( $current_workflow ) &&
-			is_array( $current_workflow ) &&
-			'customer_email' === sanitize_key( $current_workflow['type'] ?? '' ) &&
-			sanitize_key( $current_workflow['template_id'] ?? '' ) === $template_id
-		) {
-			YoRo_Conversation_Memory::update_workflow(
-				get_current_user_id(),
-				[
-					'template_id' => '',
-				]
-			);
-		}
 
 		return [
 			'success'      => true,
@@ -451,21 +414,21 @@ class YoRo_Orders_Email_Service {
 		$subject  = ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '';
 		$body     = ! empty( $params['body'] ) ? sanitize_textarea_field( $params['body'] ) : '';
 
-		if ( ! $order_id || empty( $subject ) || empty( $body ) ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Order ID, subject, and body are required.', 'yoro-ai-core' )
-			);
-		}
+			if ( ! $order_id || empty( $subject ) || empty( $body ) ) {
+				return new WP_Error(
+					'invalid_params',
+					__( 'Please open an order and make sure the email has both a subject and body.', 'yoro-ai-core' )
+				);
+			}
 
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
 			return new WP_Error(
-				'order_not_found',
-				__( 'Order not found.', 'yoro-ai-core' )
-			);
-		}
+					'order_not_found',
+					__( 'I could not find that order.', 'yoro-ai-core' )
+				);
+			}
 
 		$drafts = self::get_order_email_drafts( $order );
 
@@ -490,19 +453,6 @@ class YoRo_Orders_Email_Service {
 				__( 'YoRo AI saved a customer email draft. Subject: %s', 'yoro-ai-core' ),
 				$subject
 			)
-		);
-
-		YoRo_Conversation_Memory::set_workflow(
-			get_current_user_id(),
-			[
-				'id'       => 'wf_' . wp_generate_uuid4(),
-				'type'     => 'customer_email',
-				'step'     => 'draft_saved',
-				'order_id' => $order->get_id(),
-				'subject'  => $subject,
-				'body'     => $body,
-				'draft_id' => $draft['id'],
-			]
 		);
 
 		return [
@@ -539,21 +489,21 @@ class YoRo_Orders_Email_Service {
 	public static function get_customer_email_drafts( $params ) {
 		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
 
-		if ( ! $order_id ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Order ID is required.', 'yoro-ai-core' )
-			);
-		}
+			if ( ! $order_id ) {
+				return new WP_Error(
+					'invalid_params',
+					__( 'Please open an order first.', 'yoro-ai-core' )
+				);
+			}
 
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
 			return new WP_Error(
-				'order_not_found',
-				__( 'Order not found.', 'yoro-ai-core' )
-			);
-		}
+					'order_not_found',
+					__( 'I could not find that order.', 'yoro-ai-core' )
+				);
+			}
 
 		$drafts = self::get_order_email_drafts( $order );
 
@@ -584,21 +534,21 @@ class YoRo_Orders_Email_Service {
 		$subject  = ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '';
 		$body     = ! empty( $params['body'] ) ? sanitize_textarea_field( $params['body'] ) : '';
 
-		if ( ! $order_id || empty( $draft_id ) || empty( $subject ) || empty( $body ) ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Order ID, draft ID, subject, and body are required.', 'yoro-ai-core' )
-			);
-		}
+			if ( ! $order_id || empty( $draft_id ) || empty( $subject ) || empty( $body ) ) {
+				return new WP_Error(
+					'invalid_params',
+					__( 'Please reopen the saved draft and make sure it has both a subject and body.', 'yoro-ai-core' )
+				);
+			}
 
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
 			return new WP_Error(
-				'order_not_found',
-				__( 'Order not found.', 'yoro-ai-core' )
-			);
-		}
+					'order_not_found',
+					__( 'I could not find that order.', 'yoro-ai-core' )
+				);
+			}
 
 		$drafts  = self::get_order_email_drafts( $order );
 		$updated = null;
@@ -616,10 +566,10 @@ class YoRo_Orders_Email_Service {
 
 		if ( ! $updated ) {
 			return new WP_Error(
-				'draft_not_found',
-				__( 'Email draft not found.', 'yoro-ai-core' )
-			);
-		}
+					'draft_not_found',
+					__( 'I could not find that saved draft.', 'yoro-ai-core' )
+				);
+			}
 
 		$order->update_meta_data( '_yoro_customer_email_drafts', $drafts );
 		$order->save();
@@ -629,18 +579,6 @@ class YoRo_Orders_Email_Service {
 				__( 'YoRo AI updated a customer email draft. Subject: %s', 'yoro-ai-core' ),
 				$subject
 			)
-		);
-
-		YoRo_Conversation_Memory::update_workflow(
-			get_current_user_id(),
-			[
-				'type'     => 'customer_email',
-				'step'     => 'draft_saved',
-				'order_id' => $order->get_id(),
-				'subject'  => $subject,
-				'body'     => $body,
-				'draft_id' => $draft_id,
-			]
 		);
 
 		return [
@@ -670,21 +608,21 @@ class YoRo_Orders_Email_Service {
 		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
 		$draft_id = ! empty( $params['draft_id'] ) ? sanitize_key( $params['draft_id'] ) : '';
 
-		if ( ! $order_id || empty( $draft_id ) ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Order ID and draft ID are required.', 'yoro-ai-core' )
-			);
-		}
+			if ( ! $order_id || empty( $draft_id ) ) {
+				return new WP_Error(
+					'invalid_params',
+					__( 'Please reopen the saved draft from the order.', 'yoro-ai-core' )
+				);
+			}
 
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
 			return new WP_Error(
-				'order_not_found',
-				__( 'Order not found.', 'yoro-ai-core' )
-			);
-		}
+					'order_not_found',
+					__( 'I could not find that order.', 'yoro-ai-core' )
+				);
+			}
 
 		$drafts    = self::get_order_email_drafts( $order );
 		$deleted   = null;
@@ -717,23 +655,6 @@ class YoRo_Orders_Email_Service {
 			)
 		);
 
-		$current_workflow = YoRo_Conversation_Memory::get_workflow( get_current_user_id() );
-
-		if (
-			! empty( $current_workflow ) &&
-			is_array( $current_workflow ) &&
-			'customer_email' === sanitize_key( $current_workflow['type'] ?? '' ) &&
-			sanitize_key( $current_workflow['draft_id'] ?? '' ) === $draft_id
-		) {
-			YoRo_Conversation_Memory::update_workflow(
-				get_current_user_id(),
-				[
-					'draft_id' => '',
-					'step'     => 'previewed',
-				]
-			);
-		}
-
 		return [
 			'success'      => true,
 			'action'       => 'orders.delete_customer_email_draft',
@@ -764,64 +685,41 @@ class YoRo_Orders_Email_Service {
 		$body     = ! empty( $params['body'] ) ? sanitize_textarea_field( $params['body'] ) : '';
 		$preview_source = ! empty( $params['preview_source'] ) ? sanitize_key( $params['preview_source'] ) : 'initial';
 
-		if ( ! $order_id || empty( $subject ) || empty( $body ) ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Order ID, subject, and body are required.', 'yoro-ai-core' )
-			);
-		}
+			if ( ! $order_id || empty( $subject ) || empty( $body ) ) {
+				return new WP_Error(
+					'invalid_params',
+					__( 'Please open an order and make sure the email has both a subject and body.', 'yoro-ai-core' )
+				);
+			}
 
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
 			return new WP_Error(
-				'order_not_found',
-				__( 'Order not found.', 'yoro-ai-core' )
-			);
-		}
+					'order_not_found',
+					__( 'I could not find that order.', 'yoro-ai-core' )
+				);
+			}
 
 		$to = sanitize_email( $order->get_billing_email() );
 
 		if ( empty( $to ) || ! is_email( $to ) ) {
 			return new WP_Error(
-				'invalid_recipient',
-				__( 'Order billing email is missing or invalid.', 'yoro-ai-core' )
-			);
-		}
+					'invalid_recipient',
+					__( 'That order does not have a valid customer email address.', 'yoro-ai-core' )
+				);
+			}
 
-		$user_id          = get_current_user_id();
-		$current_workflow = YoRo_Conversation_Memory::get_workflow( $user_id );
-
-		if (
-			! empty( $current_workflow ) &&
-			isset( $current_workflow['type'] ) &&
-			'customer_email' === $current_workflow['type']
-		) {
-			$workflow = array_merge(
-				$current_workflow,
-				[
-					'step'     => 'previewed',
-					'order_id' => $order->get_id(),
-					'subject'  => $subject,
-					'body'     => $body,
-				]
-			);
-
-			YoRo_Conversation_Memory::update_workflow( $user_id, $workflow );
-		} else {
-			$workflow = [
-				'id'         => 'wf_' . wp_generate_uuid4(),
-				'type'       => 'customer_email',
-				'step'       => 'previewed',
-				'order_id'   => $order->get_id(),
-				'subject'    => $subject,
-				'body'       => $body,
-				'draft_id'   => ! empty( $params['draft_id'] ) ? sanitize_key( $params['draft_id'] ) : '',
-				'updated_at' => current_time( 'mysql' ),
-			];
-
-			YoRo_Conversation_Memory::set_workflow( $user_id, $workflow );
-		}
+		$workflow = [
+			'id'         => 'wf_' . wp_generate_uuid4(),
+			'type'       => 'customer_email',
+			'step'       => 'previewed',
+			'order_id'   => $order->get_id(),
+			'subject'    => $subject,
+			'body'       => $body,
+			'draft_id'   => ! empty( $params['draft_id'] ) ? sanitize_key( $params['draft_id'] ) : '',
+			'updated_at' => current_time( 'mysql' ),
+		];
 
 		return [
 			'success'      => true,
@@ -869,52 +767,34 @@ class YoRo_Orders_Email_Service {
 		$subject  = ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '';
 		$body     = ! empty( $params['body'] ) ? sanitize_textarea_field( $params['body'] ) : '';
 
-		if ( ! $order_id || empty( $subject ) || empty( $body ) ) {
-			return new WP_Error(
-				'invalid_params',
-				__( 'Order ID, subject, and body are required.', 'yoro-ai-core' )
-			);
-		}
+			if ( ! $order_id || empty( $subject ) || empty( $body ) ) {
+				return new WP_Error(
+					'invalid_params',
+					__( 'Please open an order and make sure the email has both a subject and body.', 'yoro-ai-core' )
+				);
+			}
 
 		$order = wc_get_order( $order_id );
 
 		if ( ! $order ) {
 			return new WP_Error(
-				'order_not_found',
-				__( 'Order not found.', 'yoro-ai-core' )
-			);
-		}
+					'order_not_found',
+					__( 'I could not find that order.', 'yoro-ai-core' )
+				);
+			}
 
 		$to = sanitize_email( $order->get_billing_email() );
 
 		if ( empty( $to ) || ! is_email( $to ) ) {
 			return new WP_Error(
-				'invalid_recipient',
-				__( 'Order billing email is missing or invalid.', 'yoro-ai-core' )
-			);
-		}
+					'invalid_recipient',
+					__( 'That order does not have a valid customer email address.', 'yoro-ai-core' )
+				);
+			}
 
 		$message = self::wrap_customer_email_with_woocommerce_template( $subject, $body );
 
-		$sent_override = null;
-
-		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			$sent_override = apply_filters(
-				'yoro_send_customer_email_mock_result',
-				null,
-				[
-					'order'   => $order,
-					'to'      => $to,
-					'subject' => $subject,
-					'body'    => $body,
-					'html'    => $message,
-				]
-			);
-		}
-
-		$sent = null !== $sent_override
-			? (bool) $sent_override
-			: WC()->mailer()->send(
+			$sent = WC()->mailer()->send(
 				$to,
 				$subject,
 				$message,
@@ -936,20 +816,6 @@ class YoRo_Orders_Email_Service {
 				$subject
 			)
 		);
-
-		$user_id = get_current_user_id();
-
-		YoRo_Conversation_Memory::update_workflow(
-			$user_id,
-			[
-				'step'     => 'sent',
-				'order_id' => $order->get_id(),
-				'subject'  => $subject,
-				'body'     => $body,
-			]
-		);
-
-		YoRo_Conversation_Memory::clear_workflow( $user_id );
 
 		return [
 			'success'      => true,
@@ -977,12 +843,47 @@ class YoRo_Orders_Email_Service {
 	}
 
 	public static function preview_email_customer_preview( $params ) {
+		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
+		$template = ! empty( $params['template'] ) ? sanitize_key( $params['template'] ) : '';
+		$order = $order_id ? wc_get_order( $order_id ) : false;
+		$email = null;
+		$block = self::build_order_write_preview_block(
+			$order_id,
+			$order,
+			__( 'This customer email preview is ready.', 'yoro-ai-core' )
+		);
+
+		if ( $order && $template ) {
+			$email = self::build_customer_email_from_template( $order, $template );
+
+			if ( is_wp_error( $email ) ) {
+				$block = self::preview_block(
+					'template_not_found',
+					__( 'I could not find that email template. Choose an existing template before continuing.', 'yoro-ai-core' )
+				);
+				$email = null;
+			}
+		}
+
+		if ( '' === $block['block_reason'] && '' === $template ) {
+			$block = self::preview_block(
+				'missing_template',
+				__( 'Please choose an email template before this can continue.', 'yoro-ai-core' )
+			);
+		}
+
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
 			'action'        => 'Preview customer email from template',
-			'order_id'      => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
-			'template'      => ! empty( $params['template'] ) ? sanitize_key( $params['template'] ) : '',
+			'summary'       => $block['message'],
+			'message'       => $block['message'],
+			'blocked'       => '' !== $block['block_reason'],
+			'block_reason'  => $block['block_reason'],
+			'order_id'      => $order_id,
+			'order_exists'  => (bool) $order,
+			'template'      => $template,
+			'subject'       => ( is_array( $email ) && ! empty( $email['subject'] ) ) ? $email['subject'] : '',
 			'changes_store' => false,
 		];
 	}
@@ -993,101 +894,426 @@ class YoRo_Orders_Email_Service {
 
 		$order = $order_id ? wc_get_order( $order_id ) : false;
 		$email = null;
+		$block = self::build_order_write_preview_block(
+			$order_id,
+			$order,
+			__( 'This customer email is ready for approval.', 'yoro-ai-core' )
+		);
 
 		if ( $order && $template ) {
 			$email = self::build_customer_email_from_template( $order, $template );
+
+			if ( is_wp_error( $email ) ) {
+				$block = self::preview_block(
+					'template_not_found',
+					__( 'I could not find that email template. Choose an existing template before approving this change.', 'yoro-ai-core' )
+				);
+				$email = null;
+			}
+		}
+
+		if ( '' === $block['block_reason'] && '' === $template ) {
+			$block = self::preview_block(
+				'missing_template',
+				__( 'Please choose an email template before this can be approved.', 'yoro-ai-core' )
+			);
+		} elseif ( '' === $block['block_reason'] && is_array( $email ) && ! is_email( $email['to'] ?? '' ) ) {
+			$block = self::preview_block(
+				'invalid_recipient',
+				__( 'This order does not have a valid customer email address, so the email cannot be approved for sending.', 'yoro-ai-core' )
+			);
 		}
 
 		return [
 			'type'          => 'write',
 			'will_execute'  => false,
 			'action'        => 'Send customer email from template',
+			'summary'       => $block['message'],
+			'message'       => $block['message'],
+			'blocked'       => '' !== $block['block_reason'],
+			'block_reason'  => $block['block_reason'],
 			'order_id'      => $order_id,
+			'order_exists'  => (bool) $order,
 			'template'      => $template,
 			'recipient'     => $order ? YoRo_Order_Presenter::mask_email( $order->get_billing_email() ) : '',
 			'subject'       => ( is_array( $email ) && ! empty( $email['subject'] ) ) ? $email['subject'] : '',
-			'changes_store' => true,
+			'changes_store' => '' === $block['block_reason'],
 		];
 	}
 
 	public static function preview_compose_customer_email( $params ) {
+		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
+		$order = $order_id ? wc_get_order( $order_id ) : false;
+		$instruction = ! empty( $params['instruction'] ) ? sanitize_textarea_field( $params['instruction'] ) : '';
+		$block = self::build_order_write_preview_block(
+			$order_id,
+			$order,
+			__( 'This customer email draft request is ready.', 'yoro-ai-core' )
+		);
+
+		if ( '' === $block['block_reason'] && '' === $instruction ) {
+			$block = self::preview_block(
+				'missing_instruction',
+				__( 'Please describe what the customer email should say before this can continue.', 'yoro-ai-core' )
+			);
+		}
+
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
 			'action'        => 'Compose customer email draft',
-			'order_id'      => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
-			'instruction'   => ! empty( $params['instruction'] ) ? sanitize_textarea_field( $params['instruction'] ) : '',
+			'summary'       => $block['message'],
+			'message'       => $block['message'],
+			'blocked'       => '' !== $block['block_reason'],
+			'block_reason'  => $block['block_reason'],
+			'order_id'      => $order_id,
+			'order_exists'  => (bool) $order,
+			'instruction'   => $instruction,
 			'changes_store' => false,
 		];
 	}
 
+	public static function preview_save_email_template( $params ) {
+		$name    = ! empty( $params['name'] ) ? sanitize_text_field( $params['name'] ) : '';
+		$subject = ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '';
+		$body    = ! empty( $params['body'] ) ? sanitize_textarea_field( $params['body'] ) : '';
+		$block   = self::preview_block(
+			'',
+			__( 'This email template is ready to save.', 'yoro-ai-core' )
+		);
+
+		if ( '' === $name ) {
+			$block = self::preview_block(
+				'missing_template_name',
+				__( 'Please provide a template name before this can be saved.', 'yoro-ai-core' )
+			);
+		} elseif ( '' === $subject ) {
+			$block = self::preview_block(
+				'missing_subject',
+				__( 'Please provide the template subject before this can be saved.', 'yoro-ai-core' )
+			);
+		} elseif ( '' === $body ) {
+			$block = self::preview_block(
+				'missing_body',
+				__( 'Please provide the template body before this can be saved.', 'yoro-ai-core' )
+			);
+		}
+
+		return [
+			'type'          => 'write',
+			'will_execute'  => false,
+			'action'        => 'Save email template',
+			'summary'       => $block['message'],
+			'message'       => $block['message'],
+			'blocked'       => '' !== $block['block_reason'],
+			'block_reason'  => $block['block_reason'],
+			'name'          => $name,
+			'subject'       => $subject,
+			'body_preview'  => '' !== $body ? wp_trim_words( $body, 40 ) : '',
+			'changes_store' => '' === $block['block_reason'],
+		];
+	}
+
+	public static function preview_delete_email_template( $params ) {
+		$template_id = ! empty( $params['template_id'] ) ? sanitize_key( $params['template_id'] ) : '';
+		$template    = null;
+		$block       = self::preview_block(
+			'',
+			__( 'This email template deletion is ready for approval.', 'yoro-ai-core' )
+		);
+
+		if ( '' === $template_id ) {
+			$block = self::preview_block(
+				'missing_template_id',
+				__( 'Please choose an email template before this can be approved.', 'yoro-ai-core' )
+			);
+		} else {
+			foreach ( self::get_email_templates() as $candidate ) {
+				if ( is_array( $candidate ) && ! empty( $candidate['id'] ) && $candidate['id'] === $template_id ) {
+					$template = $candidate;
+					break;
+				}
+			}
+
+			if ( ! $template ) {
+				$block = self::preview_block(
+					'template_not_found',
+					__( 'I could not find that saved email template. Choose an existing template before approving this change.', 'yoro-ai-core' )
+				);
+			}
+		}
+
+		return [
+			'type'            => 'write',
+			'will_execute'    => false,
+			'action'          => 'Delete email template',
+			'summary'         => $block['message'],
+			'message'         => $block['message'],
+			'blocked'         => '' !== $block['block_reason'],
+			'block_reason'    => $block['block_reason'],
+			'template_id'     => $template_id,
+			'template_exists' => (bool) $template,
+			'template'        => $template ? self::format_email_template_record( $template ) : [],
+			'changes_store'   => '' === $block['block_reason'],
+		];
+	}
+
 	public static function preview_save_customer_email_draft( $params ) {
+		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
+		$order = $order_id ? wc_get_order( $order_id ) : false;
+		$subject = ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '';
+		$body = ! empty( $params['body'] ) ? sanitize_textarea_field( $params['body'] ) : '';
+		$block = self::build_order_write_preview_block( $order_id, $order );
+
+		if ( '' === $block['block_reason'] && '' === $subject ) {
+			$block = self::preview_block(
+				'missing_subject',
+				__( 'Please provide the email subject before this can be approved.', 'yoro-ai-core' )
+			);
+		} elseif ( '' === $block['block_reason'] && '' === $body ) {
+			$block = self::preview_block(
+				'missing_body',
+				__( 'Please provide the email body before this can be approved.', 'yoro-ai-core' )
+			);
+		}
+
 		return [
 			'type'          => 'write',
 			'will_execute'  => false,
 			'action'        => 'Save customer email draft',
-			'order_id'      => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
-			'subject'       => ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '',
-			'body_preview'  => ! empty( $params['body'] ) ? wp_trim_words( sanitize_textarea_field( $params['body'] ), 40 ) : '',
-			'changes_store' => true,
+			'summary'       => $block['message'],
+			'message'       => $block['message'],
+			'blocked'       => '' !== $block['block_reason'],
+			'block_reason'  => $block['block_reason'],
+			'order_id'      => $order_id,
+			'order_exists'  => (bool) $order,
+			'subject'       => $subject,
+			'body_preview'  => '' !== $body ? wp_trim_words( $body, 40 ) : '',
+			'changes_store' => '' === $block['block_reason'],
 		];
 	}
 
 	public static function preview_get_customer_email_drafts( $params ) {
+		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
+		$order = $order_id ? wc_get_order( $order_id ) : false;
+		$block = self::build_order_write_preview_block(
+			$order_id,
+			$order,
+			__( 'This email draft lookup is ready.', 'yoro-ai-core' )
+		);
+
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
 			'action'        => 'Load customer email drafts',
-			'order_id'      => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
+			'summary'       => $block['message'],
+			'message'       => $block['message'],
+			'blocked'       => '' !== $block['block_reason'],
+			'block_reason'  => $block['block_reason'],
+			'order_id'      => $order_id,
+			'order_exists'  => (bool) $order,
 			'changes_store' => false,
 		];
 	}
 
 	public static function preview_update_customer_email_draft( $params ) {
+		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
+		$order = $order_id ? wc_get_order( $order_id ) : false;
+		$draft_id = ! empty( $params['draft_id'] ) ? sanitize_key( $params['draft_id'] ) : '';
+		$subject = ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '';
+		$body = ! empty( $params['body'] ) ? sanitize_textarea_field( $params['body'] ) : '';
+		$block = self::build_order_write_preview_block( $order_id, $order );
+
+		if ( '' === $block['block_reason'] && '' === $draft_id ) {
+			$block = self::preview_block(
+				'missing_draft_id',
+				__( 'Please choose an email draft before this can be approved.', 'yoro-ai-core' )
+			);
+		} elseif ( '' === $block['block_reason'] && $order && ! self::find_order_email_draft( $order, $draft_id ) ) {
+			$block = self::preview_block(
+				'draft_not_found',
+				__( 'I could not find that saved email draft. Choose an existing draft before continuing.', 'yoro-ai-core' )
+			);
+		} elseif ( '' === $block['block_reason'] && '' === $subject ) {
+			$block = self::preview_block(
+				'missing_subject',
+				__( 'Please provide the email subject before this can continue.', 'yoro-ai-core' )
+			);
+		} elseif ( '' === $block['block_reason'] && '' === $body ) {
+			$block = self::preview_block(
+				'missing_body',
+				__( 'Please provide the email body before this can continue.', 'yoro-ai-core' )
+			);
+		}
+
 		return [
 			'type'          => 'write',
 			'will_execute'  => false,
 			'action'        => 'Update customer email draft',
-			'order_id'      => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
-			'draft_id'      => ! empty( $params['draft_id'] ) ? sanitize_key( $params['draft_id'] ) : '',
-			'subject'       => ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '',
-			'body_preview'  => ! empty( $params['body'] ) ? wp_trim_words( sanitize_textarea_field( $params['body'] ), 40 ) : '',
-			'changes_store' => true,
+			'summary'       => $block['message'],
+			'message'       => $block['message'],
+			'blocked'       => '' !== $block['block_reason'],
+			'block_reason'  => $block['block_reason'],
+			'order_id'      => $order_id,
+			'order_exists'  => (bool) $order,
+			'draft_id'      => $draft_id,
+			'draft_exists'  => $order && '' !== $draft_id ? (bool) self::find_order_email_draft( $order, $draft_id ) : false,
+			'subject'       => $subject,
+			'body_preview'  => '' !== $body ? wp_trim_words( $body, 40 ) : '',
+			'changes_store' => '' === $block['block_reason'],
 		];
 	}
 
 	public static function preview_delete_customer_email_draft( $params ) {
+		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
+		$order = $order_id ? wc_get_order( $order_id ) : false;
+		$draft_id = ! empty( $params['draft_id'] ) ? sanitize_key( $params['draft_id'] ) : '';
+		$block = self::build_order_write_preview_block( $order_id, $order );
+
+		if ( '' === $block['block_reason'] && '' === $draft_id ) {
+			$block = self::preview_block(
+				'missing_draft_id',
+				__( 'Please choose an email draft before this can be approved.', 'yoro-ai-core' )
+			);
+		} elseif ( '' === $block['block_reason'] && $order && ! self::find_order_email_draft( $order, $draft_id ) ) {
+			$block = self::preview_block(
+				'draft_not_found',
+				__( 'I could not find that saved email draft. Choose an existing draft before approving this change.', 'yoro-ai-core' )
+			);
+		}
+
 		return [
 			'type'          => 'write',
 			'will_execute'  => false,
 			'action'        => 'Delete customer email draft',
-			'order_id'      => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
-			'draft_id'      => ! empty( $params['draft_id'] ) ? sanitize_key( $params['draft_id'] ) : '',
-			'changes_store' => true,
+			'summary'       => $block['message'],
+			'message'       => $block['message'],
+			'blocked'       => '' !== $block['block_reason'],
+			'block_reason'  => $block['block_reason'],
+			'order_id'      => $order_id,
+			'order_exists'  => (bool) $order,
+			'draft_id'      => $draft_id,
+			'draft_exists'  => $order && '' !== $draft_id ? (bool) self::find_order_email_draft( $order, $draft_id ) : false,
+			'changes_store' => '' === $block['block_reason'],
 		];
 	}
 
 	public static function preview_render_customer_email_preview( $params ) {
+		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
+		$order = $order_id ? wc_get_order( $order_id ) : false;
+		$subject = ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '';
+		$body = ! empty( $params['body'] ) ? sanitize_textarea_field( $params['body'] ) : '';
+		$block = self::build_order_write_preview_block(
+			$order_id,
+			$order,
+			__( 'This customer email preview is ready.', 'yoro-ai-core' )
+		);
+
+		if ( '' === $block['block_reason'] && '' === $subject ) {
+			$block = self::preview_block(
+				'missing_subject',
+				__( 'Please provide the email subject before this can continue.', 'yoro-ai-core' )
+			);
+		} elseif ( '' === $block['block_reason'] && '' === $body ) {
+			$block = self::preview_block(
+				'missing_body',
+				__( 'Please provide the email body before this can continue.', 'yoro-ai-core' )
+			);
+		} elseif ( '' === $block['block_reason'] && $order && ! is_email( $order->get_billing_email() ) ) {
+			$block = self::preview_block(
+				'invalid_recipient',
+				__( 'This order does not have a valid customer email address, so the preview cannot continue.', 'yoro-ai-core' )
+			);
+		}
+
 		return [
 			'type'          => 'read',
 			'will_execute'  => false,
-			'action'        => 'Render WooCommerce customer email preview',
-			'order_id'      => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
-			'subject'       => ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '',
-			'body_preview'  => ! empty( $params['body'] ) ? wp_trim_words( sanitize_textarea_field( $params['body'] ), 40 ) : '',
+			'action'        => 'Render store customer email preview',
+			'summary'       => $block['message'],
+			'message'       => $block['message'],
+			'blocked'       => '' !== $block['block_reason'],
+			'block_reason'  => $block['block_reason'],
+			'order_id'      => $order_id,
+			'order_exists'  => (bool) $order,
+			'subject'       => $subject,
+			'body_preview'  => '' !== $body ? wp_trim_words( $body, 40 ) : '',
 			'changes_store' => false,
 		];
 	}
 
 	public static function preview_send_customer_email( $params ) {
+		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
+		$order = $order_id ? wc_get_order( $order_id ) : false;
+		$subject = ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '';
+		$body = ! empty( $params['body'] ) ? sanitize_textarea_field( $params['body'] ) : '';
+		$block = self::build_order_write_preview_block( $order_id, $order );
+
+		if ( '' === $block['block_reason'] && '' === $subject ) {
+			$block = self::preview_block(
+				'missing_subject',
+				__( 'Please provide the email subject before this can be approved.', 'yoro-ai-core' )
+			);
+		} elseif ( '' === $block['block_reason'] && '' === $body ) {
+			$block = self::preview_block(
+				'missing_body',
+				__( 'Please provide the email body before this can be approved.', 'yoro-ai-core' )
+			);
+		} elseif ( '' === $block['block_reason'] && $order && ! is_email( $order->get_billing_email() ) ) {
+			$block = self::preview_block(
+				'missing_recipient',
+				__( 'This order does not have a customer email address, so the email cannot be approved for sending.', 'yoro-ai-core' )
+			);
+		}
+
 		return [
 			'type'          => 'write',
 			'will_execute'  => false,
 			'action'        => 'Send reviewed customer email',
-			'order_id'      => ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0,
-			'subject'       => ! empty( $params['subject'] ) ? sanitize_text_field( $params['subject'] ) : '',
-			'body_preview'  => ! empty( $params['body'] ) ? wp_trim_words( sanitize_textarea_field( $params['body'] ), 40 ) : '',
-			'changes_store' => true,
+			'summary'       => $block['message'],
+			'message'       => $block['message'],
+			'blocked'       => '' !== $block['block_reason'],
+			'block_reason'  => $block['block_reason'],
+			'order_id'      => $order_id,
+			'order_exists'  => (bool) $order,
+			'recipient'     => $order ? YoRo_Order_Presenter::mask_email( $order->get_billing_email() ) : '',
+			'subject'       => $subject,
+			'body_preview'  => '' !== $body ? wp_trim_words( $body, 40 ) : '',
+			'changes_store' => '' === $block['block_reason'],
+		];
+	}
+
+	private static function build_order_write_preview_block( $order_id, $order, $ready_message = '' ) {
+		$order_id = absint( $order_id );
+
+		if ( $order_id <= 0 ) {
+			return self::preview_block(
+				'missing_order_target',
+				__( 'Please choose an order before this can continue.', 'yoro-ai-core' )
+			);
+		}
+
+		if ( ! $order ) {
+			return self::preview_block(
+				'order_not_found',
+				sprintf(
+					/* translators: %d: order ID */
+					__( 'I could not find order %d. Choose an existing order before continuing.', 'yoro-ai-core' ),
+					$order_id
+				)
+			);
+		}
+
+		return self::preview_block(
+			'',
+			'' !== $ready_message ? $ready_message : __( 'This customer email change is ready for approval.', 'yoro-ai-core' )
+		);
+	}
+
+	private static function preview_block( $reason, $message ) {
+		return [
+			'block_reason' => sanitize_key( $reason ),
+			'message'      => sanitize_textarea_field( $message ),
 		];
 	}
 
@@ -1106,101 +1332,11 @@ class YoRo_Orders_Email_Service {
 			'id'            => $order->get_id(),
 			'number'        => $order->get_order_number(),
 			'status'        => $order->get_status(),
+			'status_label'  => YoRo_Order_Helper::get_order_status_label( $order->get_status() ),
 			'billing_name'  => trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() ),
 			'billing_email' => YoRo_Order_Presenter::mask_email( $order->get_billing_email() ),
 			'edit_url'      => method_exists( $order, 'get_edit_order_url' ) ? $order->get_edit_order_url() : admin_url( 'post.php?post=' . $order->get_id() . '&action=edit' ),
 		];
-	}
-
-	private static function get_email_suggestions( WC_Order $order, $subject, $body ) {
-		$templates   = self::get_email_templates();
-		$suggestions = [];
-
-		if ( empty( $templates ) ) {
-			return [];
-		}
-
-		$haystack = strtolower( $subject . ' ' . $body );
-
-		$intent_keywords = [
-			'verification' => [ 'verify', 'verification', 'confirm', 'confirmation', 'review' ],
-			'address'      => [ 'address', 'shipping address', 'billing address' ],
-			'payment'      => [ 'payment', 'transaction', 'card', 'paypal', 'mismatch' ],
-			'shipping'     => [ 'shipping', 'delivery', 'shipment', 'delay', 'delayed' ],
-			'followup'     => [ 'follow up', 'follow-up', 'update', 'check' ],
-			'apology'      => [ 'sorry', 'apologize', 'apology', 'inconvenience' ],
-		];
-
-		$detected_intents = [];
-
-		foreach ( $intent_keywords as $intent => $keywords ) {
-			foreach ( $keywords as $kw ) {
-				if ( false !== strpos( $haystack, $kw ) ) {
-					$detected_intents[] = $intent;
-					break;
-				}
-			}
-		}
-
-		if ( empty( $detected_intents ) ) {
-			return [];
-		}
-
-		foreach ( $templates as $tpl ) {
-			$template_text = strtolower(
-				( $tpl['name'] ?? '' ) . ' ' .
-				( $tpl['subject'] ?? '' ) . ' ' .
-				( $tpl['body'] ?? '' )
-			);
-
-			$score           = 0;
-			$matched_intents = [];
-
-			foreach ( $detected_intents as $intent ) {
-				foreach ( $intent_keywords[ $intent ] as $kw ) {
-					if ( false !== strpos( $template_text, $kw ) ) {
-						$score++;
-						$matched_intents[] = $intent;
-						break;
-					}
-				}
-			}
-
-			$confidence = min( 1, round( $score / max( count( $detected_intents ), 1 ), 2 ) );
-
-			if ( $score > 0 && $confidence >= 0.5 ) {
-				$suggestions[] = [
-					'type'        => 'use_template',
-					'label'       => 'Use template: ' . sanitize_text_field( $tpl['name'] ?? '' ),
-					'template_id' => sanitize_key( $tpl['id'] ?? '' ),
-					'confidence'  => $confidence,
-					'reason'      => 'Matched intent: ' . implode( ', ', array_unique( $matched_intents ) ),
-					'intents'     => array_values( array_unique( $matched_intents ) ),
-					'score'       => $score,
-				];
-			}
-		}
-
-		usort(
-			$suggestions,
-			function( $a, $b ) {
-				return ( $b['score'] ?? 0 ) <=> ( $a['score'] ?? 0 );
-			}
-		);
-
-		$suggestions = array_values(
-			array_filter(
-				$suggestions,
-				function( $suggestion ) {
-					return ! empty( $suggestion['template_id'] )
-						&& ! empty( $suggestion['label'] )
-						&& isset( $suggestion['confidence'] )
-						&& (float) $suggestion['confidence'] >= 0.5;
-				}
-			)
-		);
-
-		return array_slice( $suggestions, 0, 3 );
 	}
 
 	private static function wrap_customer_email_with_woocommerce_template( $heading, $body ) {
@@ -1306,7 +1442,7 @@ class YoRo_Orders_Email_Service {
 			);
 		}
 
-		return YoRo_AI_Parser::compose_email( $order, $instruction );
+		return YoRo_AI_Email_Composer::compose( $order, $instruction );
 	}
 
 	private static function apply_custom_email_signature( $body ) {
@@ -1326,7 +1462,7 @@ class YoRo_Orders_Email_Service {
 		$site_name  = wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES );
 		$user_name  = $user instanceof WP_User ? trim( (string) $user->display_name ) : '';
 		$site_name  = trim( (string) $site_name );
-		$signature  = [ __( 'Best regards,', 'yoro-ai-core' ) ];
+		$signature  = [];
 
 		if ( '' !== $user_name ) {
 			$signature[] = $user_name;
@@ -1354,8 +1490,9 @@ class YoRo_Orders_Email_Service {
 		}
 
 		$patterns = [
-			'/\n{2,}(best regards|regards|kind regards|thanks|thank you|sincerely|cheers),?\s*\n.*$/is',
-			'/\n{2,}.*\b(shop support|store support|support team|customer support|customer care)\b.*$/is',
+			'/(?:\r?\n){1,}(best regards|regards|kind regards|thanks|thank you|sincerely|cheers),?\s*(?:\r?\n)+.*$/is',
+			'/(?:\r?\n){1,}(best regards|regards|kind regards|thanks|thank you|sincerely|cheers),?\s*$/is',
+			'/(?:\r?\n){1,}.*\b(shop support|store support|support team|customer support|customer care)\b.*$/is',
 		];
 
 		foreach ( $patterns as $pattern ) {
@@ -1403,6 +1540,22 @@ class YoRo_Orders_Email_Service {
 		}
 
 		return $clean;
+	}
+
+	private static function find_order_email_draft( WC_Order $order, $draft_id ) {
+		$draft_id = sanitize_key( $draft_id );
+
+		if ( '' === $draft_id ) {
+			return null;
+		}
+
+		foreach ( self::get_order_email_drafts( $order ) as $draft ) {
+			if ( is_array( $draft ) && ! empty( $draft['id'] ) && $draft['id'] === $draft_id ) {
+				return $draft;
+			}
+		}
+
+		return null;
 	}
 
 	private static function format_email_template_records( $templates ) {

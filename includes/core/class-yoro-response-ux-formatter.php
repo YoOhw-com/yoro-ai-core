@@ -34,7 +34,19 @@ class YoRo_Response_UX_Formatter {
 			'/\bUser\b/'                      => 'You',
 			'/\bDecision route:\s*[a-z0-9_.-]+\.?/i' => '',
 			'/\bparser_rule:\s*[a-z0-9_.-]+\.?/i' => '',
-			'/\bIf you want,\s*I can\b/i'     => 'Next, I can',
+			'/^Command cannot be empty\.?$/i'      => 'Please enter a request first.',
+			'/^No action could be resolved from intent\.?$/i' => 'I could not find a safe action for that request.',
+			'/^Invalid runtime plan\.?$/i'         => 'I could not prepare this action safely.',
+			'/^(The AI service|YoRo AI API) is not configured yet\.?$/i' => 'YoRo AI API is not connected yet.',
+			'/^Action\s+"[^"]+"\s+requires confirmation\.?$/i' => 'This will update your store, so I need your approval first.',
+			'/^Action\s+"[^"]+"\s+changes store data\.?$/i' => 'This will update your store.',
+			'/^Action\s+"[^"]+"\s+affects\s+([0-9]+)\s+items\.?$/i' => 'This touches $1 items.',
+			'/^Action\s+"[^"]+"\s+changes financial information\.?$/i' => 'This changes financial information.',
+			'/^Action\s+"[^"]+"\s+reads financial information\.?$/i' => 'This includes financial information.',
+			'/^Action\s+"[^"]+"\s+may remove or delete data\.?$/i' => 'This may remove store information.',
+			'/^Action\s+"[^"]+"\s+communicates with a customer\.?$/i' => 'This contacts a customer.',
+			'/^Policy requires preview for action\s+"[^"]+"\.?$/i' => 'I prepared this for review before anything changes.',
+			'/^Policy requires confirmation for action\s+"[^"]+"\.?$/i' => 'I need your approval before I update your store.',
 		];
 
 		foreach ( $patterns as $pattern => $replacement ) {
@@ -263,13 +275,6 @@ class YoRo_Response_UX_Formatter {
 			return $shape_label;
 		}
 
-		$command = sanitize_text_field( (string) ( $source['command'] ?? '' ) );
-		$command_label = self::age_threshold_label_from_command( $command, $min_age_hours, $locale );
-
-		if ( '' !== $command_label ) {
-			return $command_label;
-		}
-
 		return self::age_threshold_label_from_hours( $min_age_hours, $locale );
 	}
 
@@ -285,39 +290,6 @@ class YoRo_Response_UX_Formatter {
 			: sprintf( 'older than %s', $label );
 	}
 
-	public static function write_missing_target_question( $action, $target_status = '', $quantity = 0, $locale = 'en' ) {
-		$action = sanitize_text_field( $action );
-		$target_status = sanitize_key( $target_status );
-		$quantity = absint( $quantity );
-		$locale = self::normalize_response_locale( $locale ?: 'en' );
-
-		if ( 'vi' === $locale ) {
-			if ( 'orders.hold' === $action ) {
-				return $quantity > 0
-					? sprintf( 'Bạn muốn đưa %d đơn hàng nào vào trạng thái on-hold? Vui lòng cung cấp order ID.', $quantity )
-					: 'Bạn muốn đưa đơn hàng nào vào trạng thái on-hold? Vui lòng cung cấp order ID.';
-			}
-
-			$status_label = self::order_status_action_label( $target_status, $locale );
-
-			return $quantity > 0
-				? sprintf( 'Bạn muốn %1$s %2$d đơn hàng nào? Vui lòng cung cấp order ID.', $status_label, $quantity )
-				: sprintf( 'Bạn muốn %s đơn hàng nào? Vui lòng cung cấp order ID.', $status_label );
-		}
-
-		if ( 'orders.hold' === $action ) {
-			return $quantity > 0
-				? sprintf( 'Which %d order IDs should I put on hold?', $quantity )
-				: 'Which order IDs should I put on hold?';
-		}
-
-		$action_label = self::order_status_action_label( $target_status, $locale );
-
-		return $quantity > 0
-			? sprintf( 'Which %1$d order IDs should I %2$s?', $quantity, $action_label )
-			: sprintf( 'Which order IDs should I %s?', $action_label );
-	}
-
 	private static function order_status_label( $params, $locale = 'en' ) {
 		$params = is_array( $params ) ? $params : [];
 		$locale = self::normalize_response_locale( $locale ?: 'en' );
@@ -331,13 +303,13 @@ class YoRo_Response_UX_Formatter {
 
 		$labels = [
 			'en' => [
-				'pending'    => 'pending',
-				'processing' => 'processing',
-				'completed'  => 'completed',
-				'on-hold'    => 'on-hold',
-				'cancelled'  => 'cancelled',
-				'refunded'   => 'refunded',
-				'failed'     => 'failed',
+				'pending'    => 'Pending payment',
+				'processing' => 'Processing',
+				'completed'  => 'Completed',
+				'on-hold'    => 'On hold',
+				'cancelled'  => 'Cancelled',
+				'refunded'   => 'Refunded',
+				'failed'     => 'Failed',
 			],
 				'vi' => [
 					'pending'    => 'đang chờ xử lý',
@@ -426,7 +398,7 @@ class YoRo_Response_UX_Formatter {
 			return $labels[ $locale ][ $status ];
 		}
 
-		return trim( preg_replace( '/\s+/', ' ', str_replace( '-', ' ', $status ) ) );
+		return ucwords( trim( preg_replace( '/\s+/', ' ', str_replace( [ '_', '-' ], ' ', $status ) ) ) );
 	}
 
 	private static function order_status_action_label( $status, $locale ) {
@@ -462,7 +434,7 @@ class YoRo_Response_UX_Formatter {
 		$resolved_window = is_array( $resolved_window ) ? $resolved_window : [];
 		$window_key = sanitize_key( $resolved_window['key'] ?? ( $params['date_window'] ?? '' ) );
 
-		if ( '' === $window_key || ! class_exists( 'YoRo_Date_Helper' ) ) {
+		if ( '' === $window_key ) {
 			return '';
 		}
 
@@ -612,42 +584,6 @@ class YoRo_Response_UX_Formatter {
 		return self::format_duration_label( $value, $unit, $locale );
 	}
 
-	private static function age_threshold_label_from_command( $command, $min_age_hours, $locale ) {
-		if ( '' === trim( $command ) ) {
-			return '';
-		}
-
-		$patterns = 'vi' === sanitize_key( $locale )
-			? [
-				'/\b(?:hon|hơn|qua|quá|tren|trên)\s+(\d{1,4})\s*(gio|giờ|ngay|ngày|tuan|tuần)\b/iu',
-			]
-			: [
-				'/\b(?:more\s+than|older\s+than|over|at\s+least)\s+(\d{1,4})\s*(hours?|hrs?|h|days?|d|weeks?|w)\b/iu',
-				'/\bfor\s+(?:more\s+than\s+)?(\d{1,4})\s*(hours?|hrs?|h|days?|d|weeks?|w)\b/iu',
-			];
-
-		foreach ( $patterns as $pattern ) {
-			if ( ! preg_match( $pattern, $command, $matches ) ) {
-				continue;
-			}
-
-			$value = absint( $matches[1] ?? 0 );
-			$unit  = sanitize_key( $matches[2] ?? '' );
-
-			if ( $value <= 0 || '' === $unit ) {
-				continue;
-			}
-
-			if ( self::duration_to_hours( $value, $unit ) !== $min_age_hours ) {
-				continue;
-			}
-
-			return self::format_duration_label( $value, $unit, $locale );
-		}
-
-		return '';
-	}
-
 	private static function age_threshold_label_from_hours( $hours, $locale ) {
 		$hours = absint( $hours );
 
@@ -660,25 +596,6 @@ class YoRo_Response_UX_Formatter {
 		}
 
 		return self::format_duration_label( $hours, 'hours', $locale );
-	}
-
-	private static function duration_to_hours( $value, $unit ) {
-		$value = absint( $value );
-		$unit  = sanitize_key( $unit );
-
-		if ( $value <= 0 ) {
-			return 0;
-		}
-
-		if ( in_array( $unit, [ 'week', 'weeks', 'w', 'tuan', 'tuần' ], true ) ) {
-			return $value * 168;
-		}
-
-		if ( in_array( $unit, [ 'day', 'days', 'd', 'ngay', 'ngày' ], true ) ) {
-			return $value * 24;
-		}
-
-		return $value;
 	}
 
 	private static function format_duration_label( $value, $unit, $locale ) {

@@ -151,9 +151,7 @@ class YoRo_REST_Runtime_Log {
 	}
 
 	private static function normalize_public_routing_provider( $provider ) {
-		$provider = sanitize_key( (string) $provider );
-
-		return 'mock' === $provider ? 'mock' : 'yoro_ai_api';
+		return 'yoro_ai_api';
 	}
 
 	private static function normalize_retrieved_examples( $examples ) {

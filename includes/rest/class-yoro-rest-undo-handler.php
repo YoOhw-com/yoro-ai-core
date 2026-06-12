@@ -90,56 +90,102 @@ class YoRo_REST_Undo_Handler {
 			return $mark_result;
 		}
 
+		self::flush_store_action_cache();
+
 		return [
-			'success' => true,
-			'message' => __( 'Undo completed.', 'yoro-ai-core' ),
-			'type'    => 'undo_plan',
-			'count'   => count( $results ),
-			'result'  => $results,
+			'success'      => true,
+			'message'      => __( 'I undid that change.', 'yoro-ai-core' ),
+			'summary'      => __( 'I restored the saved change.', 'yoro-ai-core' ),
+			'type'         => 'undo_plan',
+			'action'       => 'undo',
+			'count'        => count( $results ),
+			'processed'    => self::collect_processed_ids_from_steps( $results ),
+			'result'       => $results,
+			'steps'        => $results,
+			'read_only'    => false,
+			'undoable'     => false,
+			'undo_plan'    => [],
+			'result_type'  => 'undo',
+			'display_type' => 'undo',
 		];
 	}
 
 	private static function handle_undo_type( $log, array $undo ) {
 		$type = $undo['type'] ?? '';
+		$result = [];
 
 		switch ( $type ) {
-			case 'orders.hold':
 			case 'orders.update_status':
-				$restore_result = self::restore_order_statuses( $undo );
+				$result = self::restore_order_statuses( $undo );
 
-				if ( is_wp_error( $restore_result ) ) {
-					return $restore_result;
+				if ( is_wp_error( $result ) ) {
+					return $result;
 				}
 				break;
 
 			case 'orders.add_note':
 				if ( ! empty( $undo['note_ids'] ) && is_array( $undo['note_ids'] ) ) {
-					return YoRo_Orders_Actions::remove_order_note(
+					$result = YoRo_Orders_Actions::remove_order_note(
 						[
 							'note_ids' => $undo['note_ids'],
 						]
 					);
+
+					if ( is_wp_error( $result ) ) {
+						return $result;
+					}
+
+					break;
 				}
 
-				return [
-					'success' => true,
-					'message' => __( 'No removable YoRo note IDs were found.', 'yoro-ai-core' ),
+				$result = [
+					'success'   => true,
+					'action'    => 'orders.remove_note',
+					'summary'   => __( 'I did not find a saved YoRo note to remove.', 'yoro-ai-core' ),
+					'message'   => __( 'I did not find a saved YoRo note to remove.', 'yoro-ai-core' ),
+					'processed' => [],
+					'count'     => 0,
 				];
+				break;
 
 			case 'delete_email_draft':
 				self::delete_email_draft( $undo );
+				$result = [
+					'success'   => true,
+					'action'    => 'delete_email_draft',
+					'summary'   => __( 'I removed the saved email draft.', 'yoro-ai-core' ),
+					'processed' => ! empty( $undo['order_id'] ) ? [ absint( $undo['order_id'] ) ] : [],
+				];
 				break;
 
 			case 'restore_email_draft':
 				self::restore_email_draft( $undo );
+				$result = [
+					'success'   => true,
+					'action'    => 'restore_email_draft',
+					'summary'   => __( 'I restored the previous email draft.', 'yoro-ai-core' ),
+					'processed' => ! empty( $undo['order_id'] ) ? [ absint( $undo['order_id'] ) ] : [],
+				];
 				break;
 
 			case 'delete_template':
 				self::delete_template( $undo );
+				$result = [
+					'success'   => true,
+					'action'    => 'delete_template',
+					'summary'   => __( 'I removed the saved email template.', 'yoro-ai-core' ),
+					'processed' => ! empty( $undo['template_id'] ) ? [ sanitize_key( $undo['template_id'] ) ] : [],
+				];
 				break;
 
 			case 'restore_template':
 				self::restore_template( $undo );
+				$result = [
+					'success'   => true,
+					'action'    => 'restore_template',
+					'summary'   => __( 'I restored the previous email template.', 'yoro-ai-core' ),
+					'processed' => ! empty( $undo['template_id'] ) ? [ sanitize_key( $undo['template_id'] ) ] : [],
+				];
 				break;
 
 			default:
@@ -155,30 +201,61 @@ class YoRo_REST_Undo_Handler {
 			return $mark_result;
 		}
 
+		self::flush_store_action_cache();
+
 		return [
-			'success' => true,
-			'message' => __( 'Undo completed.', 'yoro-ai-core' ),
-			'type'    => $type,
+			'success'      => true,
+			'message'      => __( 'I undid that change.', 'yoro-ai-core' ),
+			'summary'      => __( 'I restored the saved change.', 'yoro-ai-core' ),
+			'type'         => $type,
+			'action'       => is_array( $result ) ? ( $result['action'] ?? $type ) : $type,
+			'count'        => is_array( $result ) ? absint( $result['count'] ?? count( $result['processed'] ?? [] ) ) : 0,
+			'processed'    => is_array( $result ) && ! empty( $result['processed'] ) && is_array( $result['processed'] ) ? $result['processed'] : [],
+			'result'       => is_array( $result ) ? $result : [],
+			'steps'        => [
+				[
+					'action' => is_array( $result ) ? ( $result['action'] ?? $type ) : $type,
+					'params' => [],
+					'result' => is_array( $result ) ? $result : [],
+				],
+			],
+			'read_only'    => false,
+			'undoable'     => false,
+			'undo_plan'    => [],
+			'result_type'  => 'undo',
+			'display_type' => 'undo',
 		];
 	}
 
 	private static function restore_order_statuses( array $undo ) {
 		if ( empty( $undo['orders'] ) ) {
-			return true;
+			return [
+				'success'   => true,
+				'action'    => 'orders.restore_statuses',
+				'summary'   => __( 'I did not find any saved order statuses to restore.', 'yoro-ai-core' ),
+				'processed' => [],
+				'count'     => 0,
+			];
 		}
 
 		$restored = [];
+		$statuses = [];
+		$status_labels = [];
 
 		foreach ( $undo['orders'] as $item ) {
 			$order = wc_get_order( $item['id'] );
 
 			if ( $order && ! empty( $item['previous_status'] ) ) {
+				$previous_status = sanitize_key( $item['previous_status'] );
 				$order->update_status(
-					$item['previous_status'],
+					$previous_status,
 					__( 'Undo YoRo AI status action.', 'yoro-ai-core' )
 				);
 
-				$restored[] = absint( $item['id'] );
+				$order_id = absint( $item['id'] );
+				$restored[] = $order_id;
+				$statuses[ $order_id ] = $previous_status;
+				$status_labels[ $order_id ] = YoRo_Order_Helper::get_order_status_label( $previous_status );
 			}
 		}
 
@@ -189,7 +266,47 @@ class YoRo_REST_Undo_Handler {
 			);
 		}
 
-		return true;
+		return [
+			'success'   => true,
+			'action'    => 'orders.restore_statuses',
+			'summary'   => sprintf(
+				/* translators: %d: order count */
+				__( 'Restored %d order statuses.', 'yoro-ai-core' ),
+				count( $restored )
+			),
+			'processed' => $restored,
+			'statuses'  => $statuses,
+			'status_labels' => $status_labels,
+			'count'     => count( $restored ),
+		];
+	}
+
+	private static function collect_processed_ids_from_steps( array $steps ) {
+		$processed = [];
+
+		foreach ( $steps as $step ) {
+			$result = isset( $step['result'] ) && is_array( $step['result'] ) ? $step['result'] : [];
+			$ids = isset( $result['processed'] ) && is_array( $result['processed'] ) ? $result['processed'] : [];
+
+			foreach ( $ids as $id ) {
+				if ( ! in_array( $id, $processed, true ) ) {
+					$processed[] = $id;
+				}
+			}
+		}
+
+		return $processed;
+	}
+
+	private static function flush_store_action_cache() {
+		YoRo_Action_Cache::flush_groups(
+			[
+				'operations_summary',
+				'operations_attention_queue',
+				'fulfillment_queue',
+				'orders',
+			]
+		);
 	}
 
 	private static function delete_email_draft( array $undo ) {
@@ -273,7 +390,7 @@ class YoRo_REST_Undo_Handler {
 		if ( false === $marked ) {
 			return new WP_Error(
 				'yoro_undo_mark_failed',
-				__( 'Undo completed, but YoRo could not mark the action as undone.', 'yoro-ai-core' )
+				__( 'I restored the saved change, but could not mark the original action as undone.', 'yoro-ai-core' )
 			);
 		}
 

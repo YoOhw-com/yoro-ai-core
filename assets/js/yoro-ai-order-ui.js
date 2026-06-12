@@ -9,18 +9,15 @@
 			formatDateTime: helpers.formatDateTime,
 			renderDebugJson: helpers.renderDebugJson,
 			shouldShowDebugJson: helpers.shouldShowDebugJson,
-			renderSuggestions: helpers.renderSuggestions,
-			getResultSuggestions: helpers.getResultSuggestions,
 			getConversationState: helpers.getConversationState,
 			addAssistantMessage: helpers.addAssistantMessage,
 			addLoadingMessage: helpers.addLoadingMessage,
 			updateConversationState: helpers.updateConversationState,
 			openModal: helpers.openModal,
-			openTextModal: helpers.openTextModal,
-			openNoteModal: helpers.openNoteModal,
-			openStatusModal: helpers.openStatusModal,
-			openStatusNoteModal: helpers.openStatusNoteModal,
-			executeActionDirect: helpers.executeActionDirect,
+				openTextModal: helpers.openTextModal,
+				openNoteModal: helpers.openNoteModal,
+				openStatusModal: helpers.openStatusModal,
+				executeActionDirect: helpers.executeActionDirect,
 			setCurrentOrderId: helpers.setCurrentOrderId,
 			getSelectedOrderIds: helpers.getSelectedOrderIds
 		};
@@ -39,17 +36,8 @@
 			renderCustomerSummaryResult: function(data) {
 				return renderCustomerSummaryResult(data, h);
 			},
-			renderOperationsSummaryResult: function(data) {
-				return renderOperationsSummaryResult(data, h);
-			},
-			renderBusinessSummaryResult: function(data) {
-				return renderBusinessSummaryResult(data, h);
-			},
-			renderMorningBriefingResult: function(data) {
-				return renderMorningBriefingResult(data, h);
-			},
-			renderDailyBriefingResult: function(data) {
-				return renderDailyBriefingResult(data, h);
+			renderReportResult: function(data) {
+				return renderReportResult(data, h);
 			},
 			renderOperationsAttentionQueueResult: function(data) {
 				return renderOperationsAttentionQueueResult(data, h);
@@ -59,9 +47,6 @@
 			},
 			renderInventoryQueueResult: function(data) {
 				return renderInventoryQueueResult(data, h);
-			},
-			renderStoreInsightsResult: function(data) {
-				return renderStoreInsightsResult(data, h);
 			},
 			renderCustomerServiceQueueResult: function(data) {
 				return renderCustomerServiceQueueResult(data, h);
@@ -129,6 +114,50 @@
 		return text;
 	}
 
+	function displayLabel(value, options) {
+		const labels = typeof window !== 'undefined' ? window.YoRoAIDisplayLabels : null;
+
+		if (labels && typeof labels.labelFor === 'function') {
+			return labels.labelFor(value, options);
+		}
+
+		return String(value || '').replace(/[_-]+/g, ' ');
+	}
+
+	function displayText(value) {
+		const labels = typeof window !== 'undefined' ? window.YoRoAIDisplayLabels : null;
+
+		if (labels && typeof labels.formatText === 'function') {
+			return labels.formatText(value);
+		}
+
+		return String(value || '');
+	}
+
+	function displayKeyLabel(value) {
+		const labels = typeof window !== 'undefined' ? window.YoRoAIDisplayLabels : null;
+
+		if (labels && typeof labels.keyLabel === 'function') {
+			return labels.keyLabel(value);
+		}
+
+		return displayLabel(value, { key: true });
+	}
+
+	function displayReportValue(value) {
+		if (value === undefined || value === null) {
+			return '';
+		}
+
+		return displayText(String(value));
+	}
+
+	function productStockStatusLabel(product) {
+		product = product || {};
+
+		return product.stock_status_label || displayLabel(product.stock_status || '');
+	}
+
 		function getResultLocale(data) {
 			data = data || {};
 			const parsed = data.parsed || {};
@@ -164,7 +193,6 @@
 					viewDetails: 'Xem chi tiết',
 					addNote: 'Thêm ghi chú',
 					updateStatus: 'Cập nhật trạng thái',
-					statusNote: 'Trạng thái + ghi chú',
 					order: 'Đơn',
 					customer: 'Khách hàng',
 					case: 'Trường hợp',
@@ -203,7 +231,6 @@
 					viewDetails: 'Ver detalles',
 					addNote: 'Añadir nota',
 					updateStatus: 'Actualizar estado',
-					statusNote: 'Estado + nota',
 					order: 'Pedido',
 					customer: 'Cliente',
 					case: 'Caso',
@@ -236,7 +263,6 @@
 					viewDetails: 'Voir les détails',
 					addNote: 'Ajouter une note',
 					updateStatus: 'Mettre à jour le statut',
-					statusNote: 'Statut + note',
 					order: 'Commande',
 					customer: 'Client',
 					case: 'Cas',
@@ -268,7 +294,6 @@
 					viewDetails: 'Details ansehen',
 					addNote: 'Notiz hinzufügen',
 					updateStatus: 'Status aktualisieren',
-					statusNote: 'Status + Notiz',
 					order: 'Bestellung',
 					customer: 'Kunde',
 					case: 'Fall',
@@ -300,7 +325,6 @@
 					viewDetails: '詳細を見る',
 					addNote: 'メモを追加',
 					updateStatus: 'ステータス更新',
-					statusNote: 'ステータス + メモ',
 					order: '注文',
 					customer: '顧客',
 					case: '内容',
@@ -332,7 +356,6 @@
 					viewDetails: 'ดูรายละเอียด',
 					addNote: 'เพิ่มบันทึก',
 					updateStatus: 'อัปเดตสถานะ',
-					statusNote: 'สถานะ + บันทึก',
 					order: 'คำสั่งซื้อ',
 					customer: 'ลูกค้า',
 					case: 'กรณี',
@@ -364,7 +387,6 @@
 					viewDetails: 'Lihat detail',
 					addNote: 'Tambah catatan',
 					updateStatus: 'Perbarui status',
-					statusNote: 'Status + catatan',
 					order: 'Pesanan',
 					customer: 'Pelanggan',
 					case: 'Kasus',
@@ -396,7 +418,6 @@
 					viewDetails: 'Ver detalhes',
 					addNote: 'Adicionar nota',
 					updateStatus: 'Atualizar estado',
-					statusNote: 'Estado + nota',
 					order: 'Pedido',
 					customer: 'Cliente',
 					case: 'Caso',
@@ -428,7 +449,6 @@
 					viewDetails: 'عرض التفاصيل',
 					addNote: 'إضافة ملاحظة',
 					updateStatus: 'تحديث الحالة',
-					statusNote: 'الحالة + ملاحظة',
 					order: 'الطلب',
 					customer: 'العميل',
 					case: 'الحالة',
@@ -482,14 +502,30 @@
 			return count + ' order' + (count === 1 ? '' : 's');
 		}
 
-		function orderStatusLabel(status, locale) {
-			status = String(status || '').trim();
-			locale = normalizeLocale(locale);
+			function orderStatusLabel(status, locale) {
+				const rawStatus = String(status || '').trim();
+				status = rawStatus
+					.toLowerCase()
+					.replace(/^wc-/, '')
+					.replace(/_/g, '-')
+					.replace(/\s+/g, '-');
+				locale = normalizeLocale(locale);
 
-			const labelsByLocale = {
-				vi: {
-					pending: 'đang chờ xử lý',
-					processing: 'đang xử lý',
+				const labelsByLocale = {
+					en: {
+						pending: 'Pending payment',
+						processing: 'Processing',
+						completed: 'Completed',
+						'on-hold': 'On hold',
+						cancelled: 'Cancelled',
+						canceled: 'Cancelled',
+						refunded: 'Refunded',
+						failed: 'Failed',
+						'request-cancel': 'Request cancellation'
+					},
+					vi: {
+						pending: 'đang chờ xử lý',
+						processing: 'đang xử lý',
 					completed: 'hoàn tất',
 					'on-hold': 'tạm giữ',
 					cancelled: 'đã hủy',
@@ -586,458 +622,82 @@
 					failed: 'فاشل',
 					'request-cancel': 'طلب إلغاء'
 				}
-			};
-			const labels = labelsByLocale[locale] || {};
+				};
+				const labels = labelsByLocale[locale] || {};
 
-			return labels[status] || status.replace(/-/g, ' ');
-		}
+				return labels[status] || rawStatus.replace(/^wc-/, '').replace(/[_-]/g, ' ').replace(/\b\w/g, function(char) {
+					return char.toUpperCase();
+				});
+			}
 
-		function operationalUiText(locale, key, fallback) {
-			locale = normalizeLocale(locale);
-			const labelsByLocale = {
-				vi: {
-					operationsSummary: 'Tổng quan vận hành',
-					storeOperations: 'Vận hành cửa hàng',
-					newOrders: 'Đơn mới',
-					openBacklog: 'Tồn đọng đang mở',
-					ordersInWindow: 'Đơn trong khoảng thời gian',
-					status: 'Trạng thái',
-					count: 'Số lượng',
-					currentBacklog: 'Tồn đọng hiện tại',
-					queue: 'Hàng đợi',
-					agedQueues: 'Hàng đợi quá hạn',
-					recentOpenOrders: 'Đơn đang mở gần đây',
-					details: 'Chi tiết',
-					suggestedNextChecks: 'Kiểm tra tiếp theo',
-					pendingOrders: 'Đơn đang chờ',
-					processingOrders: 'Đơn đang xử lý',
-					onHoldOrders: 'Đơn tạm giữ',
-					window: 'Khoảng thời gian',
-					overview: 'Tổng quan'
-				},
-				es: {
-					operationsSummary: 'Resumen operativo',
-					storeOperations: 'Operaciones de la tienda',
-					newOrders: 'Pedidos nuevos',
-					openBacklog: 'Backlog abierto',
-					ordersInWindow: 'Pedidos en el periodo',
-					status: 'Estado',
-					count: 'Cantidad',
-					currentBacklog: 'Backlog actual',
-					queue: 'Cola',
-					agedQueues: 'Colas con antigüedad',
-					recentOpenOrders: 'Pedidos abiertos recientes',
-					details: 'Detalles',
-					suggestedNextChecks: 'Siguientes revisiones sugeridas',
-					pendingOrders: 'Pedidos pendientes',
-					processingOrders: 'Pedidos en proceso',
-					onHoldOrders: 'Pedidos en espera',
-					window: 'Periodo',
-					overview: 'Resumen'
-				},
-				fr: {
-					operationsSummary: 'Résumé opérationnel',
-					storeOperations: 'Opérations de la boutique',
-					newOrders: 'Nouvelles commandes',
-					openBacklog: 'Backlog ouvert',
-					ordersInWindow: 'Commandes sur la période',
-					status: 'Statut',
-					count: 'Nombre',
-					currentBacklog: 'Backlog actuel',
-					queue: 'File',
-					agedQueues: 'Files anciennes',
-					recentOpenOrders: 'Commandes ouvertes récentes',
-					details: 'Détails',
-					suggestedNextChecks: 'Prochaines vérifications',
-					pendingOrders: 'Commandes en attente',
-					processingOrders: 'Commandes en traitement',
-					onHoldOrders: 'Commandes en pause',
-					window: 'Période',
-					overview: 'Vue d’ensemble'
-				},
-				de: {
-					operationsSummary: 'Betriebsübersicht',
-					storeOperations: 'Shop-Betrieb',
-					newOrders: 'Neue Bestellungen',
-					openBacklog: 'Offener Rückstand',
-					ordersInWindow: 'Bestellungen im Zeitraum',
-					status: 'Status',
-					count: 'Anzahl',
-					currentBacklog: 'Aktueller Rückstand',
-					queue: 'Warteschlange',
-					agedQueues: 'Überfällige Warteschlangen',
-					recentOpenOrders: 'Aktuelle offene Bestellungen',
-					details: 'Details',
-					suggestedNextChecks: 'Empfohlene nächste Prüfungen',
-					pendingOrders: 'Ausstehende Bestellungen',
-					processingOrders: 'Bestellungen in Bearbeitung',
-					onHoldOrders: 'Zurückgestellte Bestellungen',
-					window: 'Zeitraum',
-					overview: 'Übersicht'
-				},
-				ja: {
-					operationsSummary: '運用サマリー',
-					storeOperations: 'ストア運用',
-					newOrders: '新規注文',
-					openBacklog: '未処理バックログ',
-					ordersInWindow: '期間内の注文',
-					status: 'ステータス',
-					count: '件数',
-					currentBacklog: '現在のバックログ',
-					queue: 'キュー',
-					agedQueues: '滞留キュー',
-					recentOpenOrders: '最近の未処理注文',
-					details: '詳細',
-					suggestedNextChecks: '次の確認候補',
-					pendingOrders: '保留中の注文',
-					processingOrders: '処理中の注文',
-					onHoldOrders: '保留の注文',
-					window: '期間',
-					overview: '概要'
-				},
-				th: {
-					operationsSummary: 'สรุปการดำเนินงาน',
-					storeOperations: 'การดำเนินงานร้านค้า',
-					newOrders: 'คำสั่งซื้อใหม่',
-					openBacklog: 'งานค้างที่เปิดอยู่',
-					ordersInWindow: 'คำสั่งซื้อในช่วงเวลา',
-					status: 'สถานะ',
-					count: 'จำนวน',
-					currentBacklog: 'งานค้างปัจจุบัน',
-					queue: 'คิว',
-					agedQueues: 'คิวที่ค้างนาน',
-					recentOpenOrders: 'คำสั่งซื้อเปิดล่าสุด',
-					details: 'รายละเอียด',
-					suggestedNextChecks: 'การตรวจสอบถัดไป',
-					pendingOrders: 'คำสั่งซื้อที่รอดำเนินการ',
-					processingOrders: 'คำสั่งซื้อที่กำลังประมวลผล',
-					onHoldOrders: 'คำสั่งซื้อที่พักไว้',
-					window: 'ช่วงเวลา',
-					overview: 'ภาพรวม'
-				},
-				id: {
-					operationsSummary: 'Ringkasan operasional',
-					storeOperations: 'Operasional toko',
-					newOrders: 'Pesanan baru',
-					openBacklog: 'Backlog terbuka',
-					ordersInWindow: 'Pesanan dalam periode',
-					status: 'Status',
-					count: 'Jumlah',
-					currentBacklog: 'Backlog saat ini',
-					queue: 'Antrean',
-					agedQueues: 'Antrean lama',
-					recentOpenOrders: 'Pesanan terbuka terbaru',
-					details: 'Detail',
-					suggestedNextChecks: 'Pemeriksaan berikutnya',
-					pendingOrders: 'Pesanan tertunda',
-					processingOrders: 'Pesanan diproses',
-					onHoldOrders: 'Pesanan ditahan',
-					window: 'Periode',
-					overview: 'Ringkasan'
-				},
-				pt: {
-					operationsSummary: 'Resumo operacional',
-					storeOperations: 'Operações da loja',
-					newOrders: 'Novos pedidos',
-					openBacklog: 'Backlog aberto',
-					ordersInWindow: 'Pedidos no período',
-					status: 'Estado',
-					count: 'Contagem',
-					currentBacklog: 'Backlog atual',
-					queue: 'Fila',
-					agedQueues: 'Filas antigas',
-					recentOpenOrders: 'Pedidos abertos recentes',
-					details: 'Detalhes',
-					suggestedNextChecks: 'Próximas verificações',
-					pendingOrders: 'Pedidos pendentes',
-					processingOrders: 'Pedidos em processamento',
-					onHoldOrders: 'Pedidos em espera',
-					window: 'Período',
-					overview: 'Visão geral'
-				},
-				ar: {
-					operationsSummary: 'ملخص العمليات',
-					storeOperations: 'عمليات المتجر',
-					newOrders: 'طلبات جديدة',
-					openBacklog: 'تراكم مفتوح',
-					ordersInWindow: 'الطلبات في الفترة',
-					status: 'الحالة',
-					count: 'العدد',
-					currentBacklog: 'التراكم الحالي',
-					queue: 'القائمة',
-					agedQueues: 'قوائم قديمة',
-					recentOpenOrders: 'طلبات مفتوحة حديثة',
-					details: 'التفاصيل',
-					suggestedNextChecks: 'الفحوصات التالية المقترحة',
-					pendingOrders: 'طلبات معلقة',
-					processingOrders: 'طلبات قيد المعالجة',
-					onHoldOrders: 'طلبات قيد الانتظار',
-					window: 'الفترة',
-					overview: 'نظرة عامة'
-				}
-			};
-			const labels = labelsByLocale[locale] || {};
-			return labels[key] || fallback;
-		}
+			function orderDisplayStatus(order, locale) {
+				order = order || {};
 
-		function businessUiText(locale, key, fallback) {
-			locale = normalizeLocale(locale);
-			const labelsByLocale = {
-				vi: {
-					businessSummary: 'Tổng quan kinh doanh',
-					readOnly: 'Tóm tắt chỉ đọc. Không thay đổi dữ liệu cửa hàng.',
-					businessOverview: 'Bức tranh kinh doanh',
-					grossSales: 'Doanh thu gộp',
-					customers: 'Khách hàng',
-					attention: 'Cần chú ý',
-					mainSignal: 'Tín hiệu chính',
-					seeDetailView: 'Xem chi tiết',
-					seeDetailSubtitle: 'Mở chi tiết thương mại, cơ cấu đơn và nhóm nổi bật',
-					orderMix: 'Cơ cấu đơn',
-					operatingPressure: 'Áp lực vận hành',
-					attentionItems: 'Mục cần chú ý',
-					completedSales: 'Doanh thu hoàn tất',
-					topCustomers: 'Khách hàng hàng đầu',
-					topProducts: 'Sản phẩm hàng đầu',
-					product: 'Sản phẩm',
-					qty: 'SL',
-					totalSpent: 'Tổng chi tiêu',
-					recentOrders: 'Đơn gần đây',
-					aov: 'AOV',
-					productLines: 'Dòng sản phẩm',
-					backlog: 'Tồn đọng',
-					otherPressures: 'Áp lực khác cần theo dõi',
-					overview: 'Tổng quan'
-				},
-				es: {
-					businessSummary: 'Resumen de negocio',
-					readOnly: 'Resumen ejecutivo de solo lectura. No se cambia ningún dato de la tienda.',
-					businessOverview: 'Visión general del negocio',
-					grossSales: 'Ventas brutas',
-					customers: 'Clientes',
-					attention: 'Atención',
-					mainSignal: 'Señal principal',
-					seeDetailView: 'Ver detalle',
-					seeDetailSubtitle: 'Abrir detalle comercial, mezcla de pedidos y mejores resultados',
-					orderMix: 'Mezcla de pedidos',
-					operatingPressure: 'Presión operativa',
-					attentionItems: 'Elementos que requieren atención',
-					completedSales: 'Ventas completadas',
-					topCustomers: 'Clientes principales',
-					topProducts: 'Productos principales',
-					product: 'Producto',
-					qty: 'Cant.',
-					totalSpent: 'Gasto total',
-					recentOrders: 'Pedidos recientes',
-					aov: 'AOV',
-					productLines: 'Líneas de producto',
-					backlog: 'Backlog',
-					otherPressures: 'Otras presiones a vigilar',
-					overview: 'Resumen'
-				},
-				fr: {
-					businessSummary: 'Résumé commercial',
-					readOnly: 'Résumé exécutif en lecture seule. Aucune donnée de la boutique n’est modifiée.',
-					businessOverview: 'Vue d’ensemble commerciale',
-					grossSales: 'Ventes brutes',
-					customers: 'Clients',
-					attention: 'Attention',
-					mainSignal: 'Signal principal',
-					seeDetailView: 'Voir le détail',
-					seeDetailSubtitle: 'Ouvrir le détail commercial, le mix de commandes et les meilleurs résultats',
-					orderMix: 'Mix de commandes',
-					operatingPressure: 'Pression opérationnelle',
-					attentionItems: 'Éléments à traiter',
-					completedSales: 'Ventes terminées',
-					topCustomers: 'Meilleurs clients',
-					topProducts: 'Meilleurs produits',
-					product: 'Produit',
-					qty: 'Qté',
-					totalSpent: 'Dépense totale',
-					recentOrders: 'Commandes récentes',
-					aov: 'Panier moyen',
-					productLines: 'Lignes produit',
-					backlog: 'Backlog',
-					otherPressures: 'Autres pressions à surveiller',
-					overview: 'Vue d’ensemble'
-				},
-				id: {
-					businessSummary: 'Ringkasan bisnis',
-					readOnly: 'Ringkasan eksekutif baca-saja. Data toko tidak diubah.',
-					businessOverview: 'Gambaran bisnis',
-					grossSales: 'Penjualan kotor',
-					customers: 'Pelanggan',
-					attention: 'Perhatian',
-					mainSignal: 'Sinyal utama',
-					seeDetailView: 'Lihat detail',
-					seeDetailSubtitle: 'Buka detail komersial, komposisi pesanan, dan performa teratas',
-					orderMix: 'Komposisi pesanan',
-					operatingPressure: 'Tekanan operasional',
-					attentionItems: 'Item yang perlu perhatian',
-					completedSales: 'Penjualan selesai',
-					topCustomers: 'Pelanggan teratas',
-					topProducts: 'Produk teratas',
-					product: 'Produk',
-					qty: 'Jml',
-					totalSpent: 'Total belanja',
-					recentOrders: 'Pesanan terbaru',
-					aov: 'AOV',
-					productLines: 'Lini produk',
-					backlog: 'Backlog',
-					otherPressures: 'Tekanan lain untuk dipantau',
-					overview: 'Ringkasan'
-				},
-				de: {
-					businessSummary: 'Geschäftsübersicht',
-					readOnly: 'Schreibgeschützte Management-Zusammenfassung. Shop-Daten werden nicht geändert.',
-					businessOverview: 'Geschäftsüberblick',
-					grossSales: 'Bruttoumsatz',
-					customers: 'Kunden',
-					attention: 'Aufmerksamkeit',
-					mainSignal: 'Hauptsignal',
-					seeDetailView: 'Details anzeigen',
-					seeDetailSubtitle: 'Kommerzielle Details, Bestellmix und Top-Leistung öffnen',
-					orderMix: 'Bestellmix',
-					operatingPressure: 'Operativer Druck',
-					attentionItems: 'Elemente mit Handlungsbedarf',
-					completedSales: 'Abgeschlossene Verkäufe',
-					topCustomers: 'Top-Kunden',
-					topProducts: 'Top-Produkte',
-					product: 'Produkt',
-					qty: 'Menge',
-					totalSpent: 'Gesamtausgaben',
-					recentOrders: 'Aktuelle Bestellungen',
-					aov: 'AOV',
-					productLines: 'Produktlinien',
-					backlog: 'Rückstand',
-					otherPressures: 'Weitere Druckpunkte beobachten',
-					overview: 'Übersicht'
-				},
-				ja: {
-					businessSummary: 'ビジネスサマリー',
-					readOnly: '読み取り専用の経営サマリーです。ストアデータは変更されません。',
-					businessOverview: 'ビジネス概要',
-					grossSales: '総売上',
-					customers: '顧客',
-					attention: '要対応',
-					mainSignal: '主なシグナル',
-					seeDetailView: '詳細を見る',
-					seeDetailSubtitle: '売上詳細、注文構成、上位実績を開く',
-					orderMix: '注文構成',
-					operatingPressure: '運用負荷',
-					attentionItems: '要対応項目',
-					completedSales: '完了売上',
-					topCustomers: '上位顧客',
-					topProducts: '上位商品',
-					product: '商品',
-					qty: '数量',
-					totalSpent: '合計購入額',
-					recentOrders: '最近の注文',
-					aov: '平均注文額',
-					productLines: '商品ライン',
-					backlog: 'バックログ',
-					otherPressures: '注視すべき他の負荷',
-					overview: '概要'
-				},
-				th: {
-					businessSummary: 'สรุปธุรกิจ',
-					readOnly: 'สรุปสำหรับผู้บริหารแบบอ่านอย่างเดียว ไม่มีการเปลี่ยนแปลงข้อมูลร้านค้า',
-					businessOverview: 'ภาพรวมธุรกิจ',
-					grossSales: 'ยอดขายรวม',
-					customers: 'ลูกค้า',
-					attention: 'ต้องตรวจสอบ',
-					mainSignal: 'สัญญาณหลัก',
-					seeDetailView: 'ดูรายละเอียด',
-					seeDetailSubtitle: 'เปิดรายละเอียดเชิงพาณิชย์ ส่วนผสมคำสั่งซื้อ และรายการเด่น',
-					orderMix: 'ส่วนผสมคำสั่งซื้อ',
-					operatingPressure: 'แรงกดดันด้านปฏิบัติการ',
-					attentionItems: 'รายการที่ต้องตรวจสอบ',
-					completedSales: 'ยอดขายที่เสร็จสมบูรณ์',
-					topCustomers: 'ลูกค้าสูงสุด',
-					topProducts: 'สินค้าสูงสุด',
-					product: 'สินค้า',
-					qty: 'จำนวน',
-					totalSpent: 'ยอดใช้จ่ายรวม',
-					recentOrders: 'คำสั่งซื้อล่าสุด',
-					aov: 'AOV',
-					productLines: 'กลุ่มสินค้า',
-					backlog: 'งานค้าง',
-					otherPressures: 'แรงกดดันอื่นที่ควรติดตาม',
-					overview: 'ภาพรวม'
-				},
-				pt: {
-					businessSummary: 'Resumo do negócio',
-					readOnly: 'Resumo executivo somente leitura. Nenhum dado da loja é alterado.',
-					businessOverview: 'Visão geral do negócio',
-					grossSales: 'Vendas brutas',
-					customers: 'Clientes',
-					attention: 'Atenção',
-					mainSignal: 'Sinal principal',
-					seeDetailView: 'Ver detalhes',
-					seeDetailSubtitle: 'Abrir detalhe comercial, mix de pedidos e melhores desempenhos',
-					orderMix: 'Mix de pedidos',
-					operatingPressure: 'Pressão operacional',
-					attentionItems: 'Itens que precisam de atenção',
-					completedSales: 'Vendas concluídas',
-					topCustomers: 'Principais clientes',
-					topProducts: 'Principais produtos',
-					product: 'Produto',
-					qty: 'Qtd.',
-					totalSpent: 'Total gasto',
-					recentOrders: 'Pedidos recentes',
-					aov: 'AOV',
-					productLines: 'Linhas de produto',
-					backlog: 'Backlog',
-					otherPressures: 'Outras pressões a acompanhar',
-					overview: 'Visão geral'
-				},
-				ar: {
-					businessSummary: 'ملخص الأعمال',
-					readOnly: 'ملخص تنفيذي للقراءة فقط. لا يتم تغيير بيانات المتجر.',
-					businessOverview: 'نظرة عامة على الأعمال',
-					grossSales: 'إجمالي المبيعات',
-					customers: 'العملاء',
-					attention: 'تحتاج إلى مراجعة',
-					mainSignal: 'الإشارة الرئيسية',
-					seeDetailView: 'عرض التفاصيل',
-					seeDetailSubtitle: 'فتح التفاصيل التجارية ومزيج الطلبات وأفضل الأداء',
-					orderMix: 'مزيج الطلبات',
-					operatingPressure: 'ضغط العمليات',
-					attentionItems: 'عناصر تحتاج إلى مراجعة',
-					completedSales: 'المبيعات المكتملة',
-					topCustomers: 'أفضل العملاء',
-					topProducts: 'أفضل المنتجات',
-					product: 'المنتج',
-					qty: 'الكمية',
-					totalSpent: 'إجمالي الإنفاق',
-					recentOrders: 'الطلبات الحديثة',
-					aov: 'متوسط قيمة الطلب',
-					productLines: 'خطوط المنتجات',
-					backlog: 'التراكم',
-					otherPressures: 'ضغوط أخرى للمتابعة',
-					overview: 'نظرة عامة'
-				}
-			};
-			const labels = labelsByLocale[locale] || {};
-			return labels[key] || fallback;
-		}
+				return order.status_label || orderStatusLabel(order.status || '', locale);
+			}
 
-		function localizedWindowLabel(windowInfo, locale) {
+						function localizedWindowLabel(windowInfo, locale) {
 			const key = String((windowInfo && windowInfo.key) || '').toLowerCase();
 			const fallback = String((windowInfo && windowInfo.label) || '').trim();
 			const labels = {
-				es: { today: 'hoy', this_week: 'esta semana', this_month: 'este mes', last_7_days: 'los últimos 7 días', last_30_days: 'los últimos 30 días' },
-				fr: { today: 'aujourd’hui', this_week: 'cette semaine', this_month: 'ce mois-ci', last_7_days: 'les 7 derniers jours', last_30_days: 'les 30 derniers jours' },
-				de: { today: 'heute', this_week: 'diese Woche', this_month: 'diesen Monat', last_7_days: 'die letzten 7 Tage', last_30_days: 'die letzten 30 Tage' },
-				ja: { today: '今日', this_week: '今週', this_month: '今月', last_7_days: '過去7日間', last_30_days: '過去30日間' },
-				th: { today: 'วันนี้', this_week: 'สัปดาห์นี้', this_month: 'เดือนนี้', last_7_days: '7 วันที่ผ่านมา', last_30_days: '30 วันที่ผ่านมา' },
-				id: { today: 'hari ini', this_week: 'minggu ini', this_month: 'bulan ini', last_7_days: '7 hari terakhir', last_30_days: '30 hari terakhir' },
-				pt: { today: 'hoje', this_week: 'esta semana', this_month: 'este mês', last_7_days: 'últimos 7 dias', last_30_days: 'últimos 30 dias' },
-				ar: { today: 'اليوم', this_week: 'هذا الأسبوع', this_month: 'هذا الشهر', last_7_days: 'آخر 7 أيام', last_30_days: 'آخر 30 يوما' },
-				vi: { today: 'hôm nay', this_week: 'tuần này', this_month: 'tháng này', last_7_days: '7 ngày qua', last_30_days: '30 ngày qua' }
+				es: { today: 'hoy', last_24_hours: 'últimas 24 horas', this_week: 'esta semana', this_month: 'este mes', this_year: 'este año', last_7_days: 'los últimos 7 días', last_30_days: 'los últimos 30 días', last_year: 'el año pasado' },
+				fr: { today: 'aujourd’hui', last_24_hours: 'les dernières 24 heures', this_week: 'cette semaine', this_month: 'ce mois-ci', this_year: 'cette année', last_7_days: 'les 7 derniers jours', last_30_days: 'les 30 derniers jours', last_year: 'l’année dernière' },
+				de: { today: 'heute', last_24_hours: 'die letzten 24 Stunden', this_week: 'diese Woche', this_month: 'diesen Monat', this_year: 'dieses Jahr', last_7_days: 'die letzten 7 Tage', last_30_days: 'die letzten 30 Tage', last_year: 'letztes Jahr' },
+				ja: { today: '今日', last_24_hours: '過去24時間', this_week: '今週', this_month: '今月', this_year: '今年', last_7_days: '過去7日間', last_30_days: '過去30日間', last_year: '昨年' },
+				th: { today: 'วันนี้', last_24_hours: '24 ชั่วโมงที่ผ่านมา', this_week: 'สัปดาห์นี้', this_month: 'เดือนนี้', this_year: 'ปีนี้', last_7_days: '7 วันที่ผ่านมา', last_30_days: '30 วันที่ผ่านมา', last_year: 'ปีที่แล้ว' },
+				id: { today: 'hari ini', last_24_hours: '24 jam terakhir', this_week: 'minggu ini', this_month: 'bulan ini', this_year: 'tahun ini', last_7_days: '7 hari terakhir', last_30_days: '30 hari terakhir', last_year: 'tahun lalu' },
+				pt: { today: 'hoje', last_24_hours: 'últimas 24 horas', this_week: 'esta semana', this_month: 'este mês', this_year: 'este ano', last_7_days: 'últimos 7 dias', last_30_days: 'últimos 30 dias', last_year: 'ano passado' },
+				ar: { today: 'اليوم', last_24_hours: 'آخر 24 ساعة', this_week: 'هذا الأسبوع', this_month: 'هذا الشهر', this_year: 'هذا العام', last_7_days: 'آخر 7 أيام', last_30_days: 'آخر 30 يوما', last_year: 'العام الماضي' },
+				vi: { today: 'hôm nay', last_24_hours: '24 giờ qua', this_week: 'tuần này', this_month: 'tháng này', this_year: 'năm nay', last_7_days: '7 ngày qua', last_30_days: '30 ngày qua', last_year: 'năm trước' }
 			};
 			locale = normalizeLocale(locale);
-			return labels[locale] && labels[locale][key] ? labels[locale][key] : fallback;
+			if (labels[locale] && labels[locale][key]) {
+				return labels[locale][key];
+			}
+
+			const relativeMatch = key.match(/^last_(\d+)_(hours|days|weeks|months|years)$/);
+
+			if (relativeMatch) {
+				const value = relativeMatch[1];
+				const unit = relativeMatch[2];
+
+				if (locale === 'vi') {
+					const viUnits = { hours: 'giờ', days: 'ngày', weeks: 'tuần', months: 'tháng', years: 'năm' };
+					return value + ' ' + (viUnits[unit] || unit) + ' qua';
+				}
+
+				return 'last ' + value + ' ' + unit.replace(/s$/, '') + (value === '1' ? '' : 's');
+			}
+
+			const monthMatch = key.match(/^month_(\d{4})_(\d{2})$/);
+
+			if (monthMatch) {
+				return locale === 'vi' ? ('tháng ' + parseInt(monthMatch[2], 10) + '/' + monthMatch[1]) : fallback;
+			}
+
+			const rangeMatch = key.match(/^range_(\d{4})_(\d{2})_(\d{2})_to_(\d{4})_(\d{2})_(\d{2})$/);
+
+			if (rangeMatch) {
+				if (locale === 'vi') {
+					return rangeMatch[3] + '/' + rangeMatch[2] + '/' + rangeMatch[1] + ' đến ' + rangeMatch[6] + '/' + rangeMatch[5] + '/' + rangeMatch[4];
+				}
+
+				return rangeMatch[1] + '-' + rangeMatch[2] + '-' + rangeMatch[3] + ' to ' + rangeMatch[4] + '-' + rangeMatch[5] + '-' + rangeMatch[6];
+			}
+
+			const quarterMatch = key.match(/^quarter_(\d{4})_q([1-4])$/);
+
+			if (quarterMatch) {
+				return locale === 'vi' ? ('quý ' + quarterMatch[2] + '/' + quarterMatch[1]) : ('Q' + quarterMatch[2] + ' ' + quarterMatch[1]);
+			}
+
+			const yearMatch = key.match(/^year_(\d{4})$/);
+
+			if (yearMatch) {
+				return yearMatch[1];
+			}
+
+			return fallback;
 		}
 
 		function localizedOperationsSummary(result, locale) {
@@ -1072,7 +732,7 @@
 				return 'ملخص العمليات لـ ' + windowLabel + ': ' + orders + ' طلبات جديدة، ' + backlog + ' في التراكم، ' + attention + ' عناصر تحتاج إلى مراجعة.';
 			}
 
-			return result.summary || 'Operations summary';
+			return result.summary || 'Operations report';
 		}
 
 		function localizedBusinessSummary(result, locale) {
@@ -1109,7 +769,7 @@
 				return 'ملخص الأعمال لـ ' + windowLabel + ': ' + orders + ' طلبات، ' + grossSales + ' إجمالي المبيعات، ' + customers + ' عملاء نشطون.';
 			}
 
-			return result.summary || 'Business summary';
+			return result.summary || 'Sales report';
 		}
 
 		function queueLabel(key, locale) {
@@ -1153,22 +813,10 @@
 			if (['pending', 'processing', 'completed', 'on-hold', 'cancelled', 'refunded', 'failed', 'request-cancel'].indexOf(normalized) !== -1) {
 				return orderStatusLabel(normalized, locale);
 			}
-			return normalized.replace(/_/g, ' ').replace(/\b\w/g, function(char) {
-				return char.toUpperCase();
-			});
+			return displayLabel(normalized);
 		}
 
-		function localizedFocusLabel(value, locale, textResolver) {
-			const normalized = String(value || 'overview').toLowerCase();
-
-			if (normalized === 'overview') {
-				return textResolver(locale, 'overview', 'overview');
-			}
-
-			return value || textResolver(locale, 'overview', 'overview');
-		}
-
-	function paymentMethodLabel(method, locale) {
+			function paymentMethodLabel(method, locale) {
 		method = String(method || '').trim();
 
 		if (!isVietnamese(locale)) {
@@ -1227,8 +875,15 @@
 		return !!(h && typeof h.shouldShowDebugJson === 'function' && h.shouldShowDebugJson());
 	}
 
-	function formatWindowRange(windowInfo, h) {
+	function formatWindowRange(windowInfo, h, locale) {
 		windowInfo = windowInfo || {};
+
+		const dateStart = formatWindowDateOnly(windowInfo.date_from || extractDateOnly(windowInfo.start), locale);
+		const dateEnd = formatWindowDateOnly(windowInfo.date_to || extractDateOnly(windowInfo.end), locale);
+
+		if (dateStart && dateEnd) {
+			return dateStart + ' → ' + dateEnd;
+		}
 
 		const start = formatDateTime(windowInfo.start, windowInfo.start_ts, h);
 		const end = formatDateTime(windowInfo.end, windowInfo.end_ts, h);
@@ -1240,185 +895,93 @@
 		return start || end || '';
 	}
 
-	function inferCalendarWindowFromCommand(normalized) {
-		if (/\bthis\s+week\b/i.test(normalized)) {
-			return 'this_week';
-		}
+	function extractDateOnly(value) {
+		const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})/);
 
-		if (/\b(last|past)\s+7\s+days\b/i.test(normalized) || /\bpast\s+week\b/i.test(normalized)) {
-			return 'last_7_days';
-		}
-
-		if (/\b(last|past)\s+30\s+days\b/i.test(normalized) || /\bpast\s+month\b/i.test(normalized)) {
-			return 'last_30_days';
-		}
-
-		if (/\bthis\s+month\b/i.test(normalized)) {
-			return 'this_month';
-		}
-
-		if (/\blast\s+month\b/i.test(normalized)) {
-			return 'last_month';
-		}
-
-		if (/\blast\s+week\b/i.test(normalized)) {
-			return 'last_week';
-		}
-
-		if (/\bweekly\b|\bweek\b/i.test(normalized)) {
-			return 'this_week';
-		}
-
-		return 'today';
+		return match ? match[1] : '';
 	}
 
-	function getDirectActionForCommand(command) {
-		const text = String(command || '').trim();
-		const normalized = text.toLowerCase();
+	function formatWindowDateOnly(value, locale) {
+		const match = String(value || '').match(/^([12][0-9]{3})-([0-1][0-9])-([0-3][0-9])$/);
 
-		if (!text) {
+		if (!match) {
+			return '';
+		}
+
+		const year = parseInt(match[1], 10);
+		const month = parseInt(match[2], 10);
+		const day = parseInt(match[3], 10);
+
+		if (!year || month < 1 || month > 12 || day < 1 || day > 31) {
+			return '';
+		}
+
+		try {
+			const fallbackLocale = document.documentElement && document.documentElement.lang ? document.documentElement.lang : 'en-US';
+			const formatter = new Intl.DateTimeFormat(String(locale || fallbackLocale || 'en-US'), {
+				day: 'numeric',
+				month: 'short',
+				year: 'numeric'
+			});
+
+			return formatter.format(new Date(Date.UTC(year, month - 1, day, 12, 0, 0)));
+		} catch (error) {
+			return value;
+		}
+	}
+
+	function normalizeActionCommandText(command) {
+		return String(command || '').trim().replace(/\s+/g, ' ');
+	}
+
+	function commandTextFromActionSpec(actionSpec) {
+		return normalizeActionCommandText(
+			actionSpec && typeof actionSpec === 'object'
+				? actionSpec.command
+				: actionSpec
+		);
+	}
+
+	function structuredDirectActionFromSpec(actionSpec) {
+		if (!actionSpec || typeof actionSpec !== 'object') {
 			return null;
 		}
 
-		let match = text.match(/\border\s*#?\s*(\d+)\b/i) || text.match(/\border\s+(\d+)\s+details?\b/i);
+		const action = normalizeActionCommandText(actionSpec.action || actionSpec.name || '');
 
-		if (match && /\b(show|view|open|details?)\b/i.test(text)) {
-			const orderId = parseInt(match[1], 10);
-
-			if (orderId > 0) {
-				return {
-					action: 'orders.get_details',
-					params: {
-						order_id: orderId,
-						order_ids: [orderId]
-					}
-				};
-			}
+		if (!action) {
+			return null;
 		}
 
-		match = text.match(/preview\s+shipping\s+delay\s+email\s+for\s+order\s*#?\s*(\d+)/i);
-
-		if (match) {
-			const orderId = parseInt(match[1], 10);
-
-			if (orderId > 0) {
-				return {
-					action: 'orders.email_customer_preview',
-					params: {
-						order_id: orderId,
-						template: 'shipping_delay'
-					}
-				};
-			}
-		}
-
-		match = text.match(/load\s+email\s+drafts\s+for\s+order\s*#?\s*(\d+)/i);
-
-		if (match) {
-			const orderId = parseInt(match[1], 10);
-
-			if (orderId > 0) {
-				return {
-					action: 'orders.get_customer_email_drafts',
-					params: {
-						order_id: orderId
-					}
-				};
-			}
-		}
-
-		match = text.match(/write\s+email\s+for\s+order\s*#?\s*(\d+)(?:\s+about:\s*(.+))?/i);
-
-		if (match) {
-			const orderId = parseInt(match[1], 10);
-			const instruction = String(match[2] || 'Write a concise customer follow-up.').trim();
-
-			if (orderId > 0) {
-				return {
-					action: 'orders.compose_customer_email',
-					params: {
-						order_id: orderId,
-						instruction: instruction
-					}
-				};
-			}
-		}
-
-		if (/show\s+(pending|processing|on-hold|completed|cancelled|refunded|failed)\s+orders/i.test(normalized)) {
-			const status = normalized.match(/show\s+(pending|processing|on-hold|completed|cancelled|refunded|failed)\s+orders/i)[1];
-
-			return {
-				action: 'orders.search',
-				params: {
-					status: [status],
-					limit: 10
-				}
-			};
-		}
-
-		const directMap = {
-			'show latest 5 orders': { action: 'orders.search', params: { limit: 5 } },
-			'show operations attention queue': { action: 'operations.get_attention_queue', params: {} },
-			'show fulfillment queue': { action: 'operations.get_fulfillment_queue', params: {} },
-			'show customer service queue': { action: 'customers.get_service_queue', params: {} },
-			'show inventory queue': { action: 'products.get_inventory_queue', params: {} },
-			'show morning briefing': { action: 'store.get_morning_briefing', params: {} },
-			'continue with the first recommendation': null,
-			'continue previous workflow': null,
-			'continue the plan': null,
-			'do the next recommendation': null
+		return {
+			action: action,
+			params: actionSpec.params && typeof actionSpec.params === 'object' ? actionSpec.params : {},
+			preview: !!actionSpec.preview
 		};
-
-		if (Object.prototype.hasOwnProperty.call(directMap, normalized)) {
-			return directMap[normalized];
-		}
-
-		if (/show operations summary/i.test(normalized)) {
-			return {
-				action: 'operations.get_summary',
-				params: {
-					window: inferCalendarWindowFromCommand(normalized)
-				}
-			};
-		}
-
-		if (/show business summary/i.test(normalized)) {
-			return {
-				action: 'store.get_business_summary',
-				params: {
-					window: inferCalendarWindowFromCommand(normalized)
-				}
-			};
-		}
-
-		return null;
 	}
 
-	function renderDirectActionButton(label, command, h, className) {
-		const direct = getDirectActionForCommand(command);
+	function renderDirectActionButton(label, actionSpec, h, className) {
+		const text = commandTextFromActionSpec(actionSpec);
 		const classes = className || 'button button-small';
+		const directAction = structuredDirectActionFromSpec(actionSpec);
 
-		if (!direct || !direct.action) {
+		if (!directAction && !text) {
 			return '';
 		}
 
-		let html = '<button type="button" class="' + h.escapeHtml(classes + ' yoro-suggestion-btn') + '"';
+		let html = '<button type="button" class="' + h.escapeHtml(classes + (directAction ? ' yoro-direct-action' : ' yoro-clarify-option')) + '"';
 
-		html += ' data-action="' + h.escapeHtml(direct.action) + '"';
-		html += ' data-params="' + h.escapeHtml(JSON.stringify(direct.params || {})) + '"';
-		html += ' data-confirm="0" data-preview="0"';
+		if (directAction) {
+			html += ' data-direct-action="' + h.escapeHtml(directAction.action) + '"';
+			html += ' data-direct-params="' + h.escapeHtml(JSON.stringify(directAction.params || {})) + '"';
+			html += directAction.preview ? ' data-direct-preview="1"' : '';
+		} else {
+			html += ' data-command="' + h.escapeHtml(text) + '"';
+		}
 
-		html += '>' + h.escapeHtml(label || command || 'Open') + '</button>';
+		html += '>' + h.escapeHtml(label || text || 'Open') + '</button>';
 
 		return html;
-	}
-
-	function renderInlineResultSuggestions(data, h) {
-		if (!h || typeof h.getResultSuggestions !== 'function' || typeof h.renderSuggestions !== 'function') {
-			return '';
-		}
-
-		return h.renderSuggestions(h.getResultSuggestions(data) || []);
 	}
 
 	function executeOrderUiAction(h, action, params, preview) {
@@ -1428,7 +991,7 @@
 
 		const loading = h.addLoadingMessage ? h.addLoadingMessage() : null;
 
-		h.executeActionDirect(action, params || {}, false, !!preview, 'order_ui')
+		h.executeActionDirect(action, params || {}, false, !!preview, 'order_ui', '')
 			.then(function(data) {
 				if (loading) {
 					loading.remove();
@@ -1457,6 +1020,7 @@
 		const result = data.result || {};
 		const orders = Array.isArray(result.orders) ? result.orders : [];
 		const parsed = data.parsed || {};
+		const locale = getResultLocale(data);
 
 		let html = '<div class="yoro-result-summary">';
 		html += '<strong>' + h.escapeHtml(result.summary || ('Order details: ' + orders.length)) + '</strong>';
@@ -1509,7 +1073,7 @@
 			html += '<strong class="yoro-order-detail-title">Order #' + h.escapeHtml(order.number || order.id) + '</strong>';
 			html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + ' · ' + h.escapeHtml(formatAgeHours(order.age_hours) + ' old') + '</div>';
 			html += '</div>';
-			html += '<span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span>';
+			html += '<span class="yoro-status-badge">' + h.escapeHtml(orderDisplayStatus(order, locale)) + '</span>';
 			html += '</div>';
 
 			html += '<div class="yoro-order-detail-metrics yoro-order-detail-metrics-compact">';
@@ -1631,10 +1195,10 @@
 		html += h.renderDebugJson(data);
 
 		return html;
-	}	
+	}
 
 	function renderAssistantIntro(result, h, locale) {
-		if (!result || (!result.assistant_summary && !result.assistant_followup && !(result.meta && result.meta.assumption))) {
+		if (!result || (!result.assistant_summary && !(result.meta && result.meta.assumption))) {
 			return '';
 		}
 
@@ -1643,24 +1207,24 @@
 			return '';
 		}
 
+		const assistantSummary = String(result.assistant_summary || '').trim();
 		const assumption = result.meta && result.meta.assumption ? result.meta.assumption : null;
-		let html = '<div class="yoro-result-notice yoro-result-success">';
+		const assumptionMessage = assumption && assumption.message ? String(assumption.message).trim() : '';
+		let body = '';
 
-		if (result.assistant_summary && result.assistant_summary !== result.summary) {
-			html += '<p>' + h.escapeHtml(result.assistant_summary) + '</p>';
+		if (assistantSummary && assistantSummary !== String(result.summary || '').trim()) {
+			body += '<p>' + h.escapeHtml(assistantSummary) + '</p>';
 		}
 
-		if (assumption && assumption.message) {
-			html += '<p class="yoro-result-subtle">' + h.escapeHtml(assumption.message) + '</p>';
+		if (assumptionMessage) {
+			body += '<p class="yoro-result-subtle">' + h.escapeHtml(assumptionMessage) + '</p>';
 		}
 
-		if (result.assistant_followup) {
-			html += '<p class="yoro-result-subtle">' + h.escapeHtml(result.assistant_followup) + '</p>';
+		if (!body) {
+			return '';
 		}
 
-		html += '</div>';
-
-		return html;
+		return '<div class="yoro-result-notice yoro-result-success">' + body + '</div>';
 	}
 
 	function renderAdminCopilotBoundaryCard(result, h) {
@@ -1704,10 +1268,9 @@
 
 		html += renderSupportFlowPanel(result, h);
 
-		if (!orders.length) {
-			html += renderOrdersEmptyState(result, parsed, contextMeta, h);
-			html += renderInlineResultSuggestions(data, h);
-			html += h.renderDebugJson(data);
+			if (!orders.length) {
+				html += renderOrdersEmptyState(result, parsed, contextMeta, h);
+				html += h.renderDebugJson(data);
 
 			return html;
 		}
@@ -1723,7 +1286,7 @@
 
 		html += '<div class="yoro-order-detail-metrics yoro-order-detail-metrics-compact">';
 		html += '<div><span>' + h.escapeHtml(orderUiText(locale, 'orders', 'Orders')) + '</span><strong>' + h.escapeHtml(String(result.count || orders.length)) + '</strong><small class="yoro-result-subtle">' + h.escapeHtml(contextMeta.metricSubtle) + '</small></div>';
-		html += '<div><span>' + h.escapeHtml(orderUiText(locale, 'needsAttention', 'Needs attention')) + '</span><strong>' + h.escapeHtml(String(needsAttentionCount)) + '</strong><small class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'needsAttentionSubtle', 'Pending, on-hold, or failed')) + '</small></div>';
+		html += '<div><span>' + h.escapeHtml(orderUiText(locale, 'needsAttention', 'Needs attention')) + '</span><strong>' + h.escapeHtml(String(needsAttentionCount)) + '</strong><small class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'needsAttentionSubtle', 'Pending payment, On hold, or Failed')) + '</small></div>';
 		html += '<div><span>' + h.escapeHtml(orderUiText(locale, 'combinedTotal', 'Combined total')) + '</span><strong>' + h.escapeHtml(combinedTotal.toFixed(2) + ' ' + getOrdersListCurrency(orders)) + '</strong><small class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'combinedTotalSubtle', 'Across visible results')) + '</small></div>';
 		html += '<div><span>' + h.escapeHtml(orderUiText(locale, 'averageAge', 'Average age')) + '</span><strong>' + h.escapeHtml(formatAgeHoursForLocale(averageAge, locale)) + '</strong><small class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'visibleResults', 'Visible results')) + '</small></div>';
 		html += '</div>';
@@ -1733,7 +1296,6 @@
 		html += '<button type="button" class="button yoro-bulk-details">' + h.escapeHtml(orderUiText(locale, 'viewDetails', 'View details')) + '</button>';
 		html += '<button type="button" class="button yoro-bulk-add-note">' + h.escapeHtml(orderUiText(locale, 'addNote', 'Add note')) + '</button>';
 		html += '<button type="button" class="button yoro-bulk-update-status">' + h.escapeHtml(orderUiText(locale, 'updateStatus', 'Update status')) + '</button>';
-		html += '<button type="button" class="button yoro-bulk-status-note">' + h.escapeHtml(orderUiText(locale, 'statusNote', 'Status + Note')) + '</button>';
 		html += '</div>';
 
 		html += '<table class="yoro-orders-table">';
@@ -1760,7 +1322,7 @@
 			html += '<td><input type="checkbox" class="yoro-order-checkbox" value="' + h.escapeHtml(order.id) + '"></td>';
 			html += '<td><strong>#' + h.escapeHtml(order.number || order.id) + '</strong></td>';
 			html += '<td><strong>' + h.escapeHtml(customerLabel) + '</strong><div class="yoro-result-subtle">' + h.escapeHtml(order.billing_email || order.billing_phone || '—') + '</div></td>';
-			html += '<td><span class="yoro-status-badge">' + h.escapeHtml(orderStatusLabel(order.status || '', locale)) + '</span><div class="yoro-result-subtle">' + h.escapeHtml(caseLabel) + '</div></td>';
+			html += '<td><span class="yoro-status-badge">' + h.escapeHtml(orderDisplayStatus(order, locale)) + '</span><div class="yoro-result-subtle">' + h.escapeHtml(caseLabel) + '</div></td>';
 			html += '<td>' + h.escapeHtml(order.total || '') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
 			html += '<td>' + h.escapeHtml(formatAgeHoursForLocale(order.age_hours, locale)) + '<div class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</div></td>';
 			html += '<td class="yoro-row-actions">';
@@ -1778,9 +1340,9 @@
 		html += '</tbody>';
 		html += '</table>';
 		html += renderQueueActionStrip([
-			firstOrder ? { label: orderUiText(locale, 'showFirstOrder', 'Show first order'), command: 'Show order #' + (firstOrder.number || firstOrder.id) + ' details' } : null,
+			firstOrder ? { label: orderUiText(locale, 'showFirstOrder', 'Show first order'), command: 'Show order #' + firstOrder.id + ' details' } : null,
 			action === 'orders.find_by_customer' && (result.email || result.phone)
-				? { label: orderUiText(locale, 'customerSummary', 'Customer summary'), command: buildCustomerSummaryCommand(result) }
+				? { label: orderUiText(locale, 'customerProfile', 'Customer profile'), command: buildCustomerSummaryCommand(result) }
 				: null,
 			action === 'orders.find_by_identity' && result.order_id
 				? { label: orderUiText(locale, 'showSourceOrder', 'Show source order'), command: 'Show order #' + result.order_id + ' details' }
@@ -1789,8 +1351,7 @@
 		].filter(Boolean), h, orderUiText(locale, 'whatNext', 'What to do next'));
 		html += '</div>';
 
-		html += renderInlineResultSuggestions(data, h);
-		html += h.renderDebugJson(data);
+			html += h.renderDebugJson(data);
 
 		return html;
 	}
@@ -1878,30 +1439,70 @@
 
 	function buildCustomerSummaryCommand(result) {
 		if (result && result.email) {
-			return 'Show customer summary for ' + result.email;
+			return 'Look up customer ' + result.email;
 		}
 		if (result && result.phone) {
-			return 'Show customer summary for ' + result.phone;
+			return 'Look up customer ' + result.phone;
 		}
-		return 'Show customer summary';
+		return 'Look up customer';
 	}
 
 	function renderCustomerSummaryResult(data, h) {
 		const result = data.result || {};
 		const parsed = data.parsed || {};
-		const orders = Array.isArray(result.orders) ? result.orders : [];
-		const statusCounts = result.status_counts || {};
-		const paymentMethods = result.payment_methods || {};
+		const locale = getResultLocale(data);
+		const customer = result.customer && typeof result.customer === 'object' ? result.customer : {};
+		const related = result.related && typeof result.related === 'object' ? result.related : {};
+		const relatedOrders = Array.isArray(related.recent_orders) ? related.recent_orders : [];
+		const legacyOrders = Array.isArray(result.orders) ? result.orders : [];
+		const orders = relatedOrders.length ? relatedOrders : legacyOrders;
+		const customerMeta = customer.meta && typeof customer.meta === 'object' ? customer.meta : {};
+		const statusCounts = customerMeta.status_counts || result.status_counts || {};
+		const statusCountLabels = result.status_count_labels || {};
+		const paymentMethods = customerMeta.payment_methods || result.payment_methods || {};
 		const latestOrderId = result.latest_order_id || 0;
-		const latestOrderNo = result.latest_order_no || latestOrderId;
-		const customerLabel = result.customer_name || result.email || result.phone || 'Customer summary';
+		const orderCount = parseInt(customer.orders_count || result.count || orders.length || 0, 10) || 0;
+		const customerName = customer.name || result.customer_name || '';
+		const customerEmail = customer.email || result.email || '';
+		const customerPhone = customer.phone || result.phone || '';
+		const customerId = customer.id || result.customer_id || 0;
+		const customerEditUrl = customer.edit_url || result.customer_edit_url || '';
+		const customerSegments = Array.isArray(customer.segments) ? customer.segments : [];
+		const customerLabel = customerName || customerEmail || customerPhone || 'Customer profile';
+		const lifetimeValue = customer.lifetime_value || result.total_spent || '0.00';
+		const currency = customer.currency || result.currency || '';
+		const firstOrder = customer.first_order_at || formatDateTime(result.first_order_date, result.first_order_date_ts, h) || '';
+		const lastOrder = customer.last_order_at || formatDateTime(result.last_order_date, result.last_order_date_ts, h) || '';
 
 		function labelize(key) {
-			return String(key || '')
-				.replace(/_/g, ' ')
-				.replace(/\b\w/g, function(char) {
-					return char.toUpperCase();
-				});
+			return displayKeyLabel(key);
+		}
+
+		function customerProfileSummaryText() {
+			const orderLabel = orderCount === 1 ? 'related order' : 'related orders';
+
+			if (customerName) {
+				return 'Found customer profile for ' + customerName + ' with ' + orderCount + ' ' + orderLabel + '.';
+			}
+
+			return 'Found this customer profile with ' + orderCount + ' ' + orderLabel + '.';
+		}
+
+		function customerProfileIntroText() {
+			const orderLabel = orderCount === 1 ? 'related order' : 'related orders';
+
+			if (customerName) {
+				return 'I found the customer profile for ' + customerName + ' with ' + orderCount + ' ' + orderLabel + '.';
+			}
+
+			return 'I found this customer profile with ' + orderCount + ' ' + orderLabel + '.';
+		}
+
+		function isLegacyCustomerLookupCopy(value) {
+			const text = String(value || '').toLowerCase();
+
+			return text.indexOf('customer summary') !== -1
+				|| /^found\s+\d+\s+orders\s+for\s+this\s+customer/.test(text);
 		}
 
 		function renderStatusMix(counts) {
@@ -1915,7 +1516,7 @@
 			html += '<thead><tr><th>Status</th><th>Orders</th></tr></thead><tbody>';
 			entries.forEach(function(key) {
 				html += '<tr>';
-				html += '<td>' + h.escapeHtml(labelize(key)) + '</td>';
+				html += '<td>' + h.escapeHtml(statusCountLabels[key] || orderStatusLabel(key, getResultLocale(data))) + '</td>';
 				html += '<td>' + h.escapeHtml(counts[key] || 0) + '</td>';
 				html += '</tr>';
 			});
@@ -1942,9 +1543,33 @@
 			return html;
 		}
 
-		let html = renderAssistantIntro(result, h);
+		function customerInitials() {
+			const source = String(customerName || customerEmail || customerPhone || 'Customer').trim();
+			const normalized = source.indexOf('@') !== -1 ? source.split('@')[0] : source;
+			const parts = normalized.split(/\s+/).filter(Boolean);
+			const initials = parts.slice(0, 2).map(function(part) {
+				return part.charAt(0);
+			}).join('');
+
+			return (initials || 'C').toUpperCase();
+		}
+
+		const customerIdLabel = customerId ? String(customerId) : 'Guest';
+		const customerSegmentLabels = customerSegments.length ? customerSegments.map(labelize) : [];
+		const displaySummary = result.summary && !isLegacyCustomerLookupCopy(result.summary)
+			? result.summary
+			: customerProfileSummaryText();
+		const introResult = Object.assign({}, result, {
+			summary: displaySummary
+		});
+
+		if (result.assistant_summary && isLegacyCustomerLookupCopy(result.assistant_summary)) {
+			introResult.assistant_summary = customerProfileIntroText();
+		}
+
+		let html = renderAssistantIntro(introResult, h);
 		html += '<div class="yoro-result-summary">';
-		html += '<strong>' + h.escapeHtml(result.summary || ('Found ' + orders.length + ' orders for this customer.')) + '</strong>';
+		html += '<strong>' + h.escapeHtml(displaySummary) + '</strong>';
 
 		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
 			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
@@ -1955,30 +1580,49 @@
 		html += '<div class="yoro-order-detail-card">';
 		html += '<div class="yoro-order-detail-header">';
 		html += '<div>';
-		html += '<strong class="yoro-order-detail-title">Customer summary</strong>';
+		html += '<strong class="yoro-order-detail-title">Customer profile</strong>';
 		html += '<div class="yoro-result-subtle">' + h.escapeHtml(customerLabel) + '</div>';
 		html += '</div>';
-		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(result.count || orders.length) + ' orders</span>';
+		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(orderCount) + ' related orders</span>';
 		html += '</div>';
 
 		html += '<div class="yoro-order-detail-metrics">';
-		html += '<div><span>Total spent</span><strong>' + h.escapeHtml(result.total_spent || '0.00') + ' ' + h.escapeHtml(result.currency || '') + '</strong></div>';
-		html += '<div><span>Orders</span><strong>' + h.escapeHtml(result.count || orders.length) + '</strong></div>';
-		html += '<div><span>First order</span><strong>' + h.escapeHtml(formatDateTime(result.first_order_date, result.first_order_date_ts, h) || '—') + '</strong></div>';
-		html += '<div><span>Last order</span><strong>' + h.escapeHtml(formatDateTime(result.last_order_date, result.last_order_date_ts, h) || '—') + '</strong></div>';
+		html += '<div><span>Lifetime value</span><strong>' + h.escapeHtml(lifetimeValue) + ' ' + h.escapeHtml(currency) + '</strong></div>';
+		html += '<div><span>Related orders</span><strong>' + h.escapeHtml(orderCount) + '</strong></div>';
+		html += '<div><span>First order</span><strong>' + h.escapeHtml(firstOrder || '—') + '</strong></div>';
+		html += '<div><span>Last order</span><strong>' + h.escapeHtml(lastOrder || '—') + '</strong></div>';
 		html += '</div>';
 
 		html += '<div class="yoro-order-detail-section">';
-		html += '<h4>Customer snapshot</h4>';
-		html += '<div class="yoro-order-detail-columns">';
-		html += '<div>';
-		html += '<p><strong>Name:</strong> ' + h.escapeHtml(result.customer_name || '—') + '</p>';
-		html += '<p><strong>Email:</strong> ' + h.escapeHtml(result.email || '—') + '</p>';
+		html += '<h4>Profile snapshot</h4>';
+		html += '<div class="yoro-customer-profile-snapshot">';
+		html += '<div class="yoro-customer-profile-primary">';
+		html += '<div class="yoro-customer-profile-avatar" aria-hidden="true">' + h.escapeHtml(customerInitials()) + '</div>';
+		html += '<div class="yoro-customer-profile-copy">';
+		html += '<strong class="yoro-customer-profile-name">' + h.escapeHtml(customerName || customerLabel) + '</strong>';
+		html += '<div class="yoro-customer-profile-meta">';
+		html += '<span>' + h.escapeHtml(customerId ? 'Customer #' + customerIdLabel : 'Guest customer') + '</span>';
 		html += '</div>';
-		html += '<div>';
-		html += '<p><strong>Phone:</strong> ' + h.escapeHtml(result.phone || '—') + '</p>';
-		html += '<p><strong>Customer ID:</strong> ' + h.escapeHtml(result.customer_id || 'Guest') + '</p>';
+		html += '<div class="yoro-customer-profile-chips">';
+		if (customerSegmentLabels.length) {
+			customerSegmentLabels.forEach(function(segment) {
+				html += '<span class="yoro-customer-profile-chip">' + h.escapeHtml(segment) + '</span>';
+			});
+		} else {
+			html += '<span class="yoro-customer-profile-chip yoro-customer-profile-chip-muted">No segment</span>';
+		}
 		html += '</div>';
+		html += '</div>';
+		if (customerId && customerEditUrl) {
+			html += '<div class="yoro-customer-profile-actions">';
+			html += '<a class="button button-small" href="' + h.escapeHtml(customerEditUrl) + '" target="_blank" rel="noopener noreferrer">Edit user</a>';
+			html += '</div>';
+		}
+		html += '</div>';
+		html += '<div class="yoro-customer-profile-fields">';
+		html += '<div class="yoro-customer-profile-field"><span>Email</span><strong>' + h.escapeHtml(customerEmail || '—') + '</strong></div>';
+		html += '<div class="yoro-customer-profile-field"><span>Phone</span><strong>' + h.escapeHtml(customerPhone || '—') + '</strong></div>';
+		html += '<div class="yoro-customer-profile-field"><span>Customer ID</span><strong>' + h.escapeHtml(customerIdLabel) + '</strong></div>';
 		html += '</div>';
 		html += '</div>';
 
@@ -1996,14 +1640,14 @@
 		html += '<h4>Recent orders</h4>';
 
 		if (!orders.length) {
-			html += '<p class="yoro-result-subtle">No recent orders found for this customer.</p>';
+			html += '<p class="yoro-result-subtle">No related orders found for this customer profile.</p>';
 		} else {
 			html += '<table class="yoro-orders-table">';
 			html += '<thead><tr><th>Order</th><th>Status</th><th>Total</th><th>Payment</th><th>Date</th><th>Actions</th></tr></thead><tbody>';
 			orders.slice(0, 8).forEach(function(order) {
 				html += '<tr>';
 				html += '<td><strong>#' + h.escapeHtml(order.number || order.id) + '</strong></td>';
-				html += '<td><span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span></td>';
+				html += '<td><span class="yoro-status-badge">' + h.escapeHtml(orderDisplayStatus(order, locale)) + '</span></td>';
 				html += '<td>' + h.escapeHtml(order.total || '') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
 				html += '<td>' + h.escapeHtml(order.payment_method || '—') + '</td>';
 				html += '<td>' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h) || '—') + '</td>';
@@ -2021,7 +1665,7 @@
 		html += '</div>';
 
 		html += renderQueueActionStrip([
-			latestOrderId ? { label: 'Show latest order', command: 'Show order #' + latestOrderNo + ' details' } : null,
+			latestOrderId ? { label: 'Show latest order', command: 'Show order #' + latestOrderId + ' details' } : null,
 			{ label: 'Customer service', command: 'Show customer service queue' },
 			{ label: 'Latest 5 orders', command: 'Show latest 5 orders' }
 		].filter(Boolean), h, 'What to do next');
@@ -2036,746 +1680,854 @@
 		return '';
 	}
 
-		function renderOperationsSummaryResult(data, h) {
-			const result = data.result || {};
-			const parsed = data.parsed || {};
-			const locale = getResultLocale(data);
-			const windowInfo = result.window || {};
-			const recentOrders = Array.isArray(result.recent_orders) ? result.recent_orders : [];
-			const windowStatusCounts = result.window_status_counts || {};
-			const backlogCounts = result.backlog_counts || {};
-			const attentionCounts = result.attention_counts || {};
-
-			function labelize(key) {
-				return queueLabel(key, locale);
-			}
-
-			let html = renderAssistantIntro(result, h, locale);
-			html += '<div class="yoro-result-summary">';
-			html += '<strong>' + h.escapeHtml(localizedOperationsSummary(result, locale)) + '</strong>';
-
-			if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
-				html += '<span class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'decisionRoute', 'Decision route')) + ': ' + h.escapeHtml(parsed.parser_rule) + '</span>';
-			}
-
-			if (windowInfo.label) {
-				html += '<span class="yoro-result-subtle">' + h.escapeHtml(operationalUiText(locale, 'window', 'Window')) + ': ' + h.escapeHtml(localizedWindowLabel(windowInfo, locale)) + '</span>';
-			}
-
-		html += '</div>';
-
-		html += '<div class="yoro-order-detail-card">';
-			html += '<div class="yoro-order-detail-header">';
-			html += '<div>';
-			html += '<strong class="yoro-order-detail-title">' + h.escapeHtml(operationalUiText(locale, 'storeOperations', 'Store operations')) + '</strong>';
-			html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatWindowRange(windowInfo, h)) + '</div>';
-			html += '</div>';
-			html += '<span class="yoro-current-order-badge">' + h.escapeHtml(localizedFocusLabel(result.focus, locale, operationalUiText)) + '</span>';
-			html += '</div>';
-
-			html += '<div class="yoro-order-detail-metrics">';
-			html += '<div><span>' + h.escapeHtml(operationalUiText(locale, 'newOrders', 'New orders')) + '</span><strong>' + h.escapeHtml(result.window_order_count || 0) + '</strong></div>';
-			html += '<div><span>' + h.escapeHtml(operationalUiText(locale, 'openBacklog', 'Open backlog')) + '</span><strong>' + h.escapeHtml(result.backlog_total || 0) + '</strong></div>';
-			html += '<div><span>' + h.escapeHtml(orderUiText(locale, 'needsAttention', 'Needs attention')) + '</span><strong>' + h.escapeHtml(result.attention_total || 0) + '</strong></div>';
-			html += '</div>';
-
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>' + h.escapeHtml(operationalUiText(locale, 'ordersInWindow', 'Orders in window')) + '</h4>';
-			html += '<table class="yoro-orders-table">';
-			html += '<thead><tr><th>' + h.escapeHtml(operationalUiText(locale, 'status', 'Status')) + '</th><th>' + h.escapeHtml(operationalUiText(locale, 'count', 'Count')) + '</th></tr></thead><tbody>';
-		Object.keys(windowStatusCounts).forEach(function(key) {
-			html += '<tr>';
-			html += '<td>' + h.escapeHtml(labelize(key)) + '</td>';
-			html += '<td>' + h.escapeHtml(windowStatusCounts[key] || 0) + '</td>';
-			html += '</tr>';
-		});
-		html += '</tbody></table>';
-			html += '</div>';
-
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>' + h.escapeHtml(operationalUiText(locale, 'currentBacklog', 'Current backlog')) + '</h4>';
-			html += '<table class="yoro-orders-table">';
-			html += '<thead><tr><th>' + h.escapeHtml(operationalUiText(locale, 'queue', 'Queue')) + '</th><th>' + h.escapeHtml(operationalUiText(locale, 'count', 'Count')) + '</th></tr></thead><tbody>';
-		Object.keys(backlogCounts).forEach(function(key) {
-			html += '<tr>';
-			html += '<td>' + h.escapeHtml(labelize(key)) + '</td>';
-			html += '<td>' + h.escapeHtml(backlogCounts[key] || 0) + '</td>';
-			html += '</tr>';
-		});
-		html += '</tbody></table>';
-			html += '</div>';
-
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>' + h.escapeHtml(operationalUiText(locale, 'agedQueues', 'Aged queues')) + '</h4>';
-			html += '<table class="yoro-orders-table">';
-			html += '<thead><tr><th>' + h.escapeHtml(operationalUiText(locale, 'queue', 'Queue')) + '</th><th>' + h.escapeHtml(operationalUiText(locale, 'count', 'Count')) + '</th></tr></thead><tbody>';
-		Object.keys(attentionCounts).forEach(function(key) {
-			html += '<tr>';
-			html += '<td>' + h.escapeHtml(labelize(key)) + '</td>';
-			html += '<td>' + h.escapeHtml(attentionCounts[key] || 0) + '</td>';
-			html += '</tr>';
-		});
-		html += '</tbody></table>';
-		html += '</div>';
-
-			if (recentOrders.length) {
-				html += '<div class="yoro-order-detail-section">';
-				html += '<h4>' + h.escapeHtml(operationalUiText(locale, 'recentOpenOrders', 'Recent open orders')) + '</h4>';
-				html += '<table class="yoro-orders-table">';
-				html += '<thead><tr><th>' + h.escapeHtml(orderUiText(locale, 'order', 'Order')) + '</th><th>' + h.escapeHtml(operationalUiText(locale, 'status', 'Status')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'total', 'Total')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'email', 'Email')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'date', 'Date')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'actions', 'Actions')) + '</th></tr></thead><tbody>';
-
-			recentOrders.forEach(function(order) {
-				html += '<tr>';
-				html += '<td><strong>#' + h.escapeHtml(order.number || order.id) + '</strong></td>';
-					html += '<td><span class="yoro-status-badge">' + h.escapeHtml(orderStatusLabel(order.status || '', locale)) + '</span></td>';
-				html += '<td>' + h.escapeHtml(order.total || '') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
-				html += '<td>' + h.escapeHtml(order.billing_email || '') + '</td>';
-				html += '<td>' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</td>';
-				html += '<td class="yoro-row-actions">';
-					html += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h.escapeHtml(order.id) + '">' + h.escapeHtml(operationalUiText(locale, 'details', 'Details')) + '</button> ';
-					html += '<button type="button" class="button button-small yoro-row-action-menu" data-order-id="' + h.escapeHtml(order.id) + '" data-action-scope="row" data-has-email-drafts="' + (order.has_email_drafts ? '1' : '0') + '" data-draft-count="' + h.escapeHtml(order.draft_count || 0) + '">' + h.escapeHtml(orderUiText(locale, 'actions', 'Actions')) + '</button> ';
-
-					if (order.edit_url) {
-						html += '<a class="button button-small" href="' + h.escapeHtml(order.edit_url) + '" target="_blank" rel="noopener noreferrer">' + h.escapeHtml(orderUiText(locale, 'open', 'Open')) + '</a>';
-					}
-
-				html += '</td>';
-				html += '</tr>';
-			});
-
-			html += '</tbody></table>';
-			html += '</div>';
+	function getUnifiedReportFromResult(result, data, locale) {
+		if (result && result.report && typeof result.report === 'object') {
+			return result.report;
 		}
 
-			html += '<div class="yoro-suggestions">';
-			html += '<strong>' + h.escapeHtml(operationalUiText(locale, 'suggestedNextChecks', 'Suggested next checks')) + '</strong>';
-			html += '<div class="yoro-suggestion-list">';
-			html += renderDirectActionButton(operationalUiText(locale, 'pendingOrders', 'Pending orders'), 'Show pending orders', h);
-			html += renderDirectActionButton(operationalUiText(locale, 'processingOrders', 'Processing orders'), 'Show processing orders', h);
-			html += renderDirectActionButton(operationalUiText(locale, 'onHoldOrders', 'On-hold orders'), 'Show on-hold orders', h);
-		html += '</div>';
-		html += '</div>';
-
-		html += '</div>';
-		html += h.renderDebugJson(data);
-
-		return html;
+		return null;
 	}
 
-		function renderBusinessSummaryResult(data, h) {
-			const result = data.result || {};
-			const parsed = data.parsed || {};
-			const locale = getResultLocale(data);
-			const windowInfo = result.window || {};
-			const metrics = result.business_metrics || {};
-		const businessContext = result.business_context || {};
-		const priorityItems = Array.isArray(result.priority_items) ? result.priority_items : [];
-		const recommendedSequence = Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
-		const statusCounts = result.order_status_counts || {};
-		const topCustomers = Array.isArray(result.top_customers) ? result.top_customers : [];
-		const topProducts = Array.isArray(result.top_products) ? result.top_products : [];
-		const recentOrders = Array.isArray(result.recent_orders) ? result.recent_orders : [];
-			const topPriority = priorityItems.length ? priorityItems[0] : null;
-			const mainSignalLabel = humanizeBusinessTopic(businessContext.top_topic || 'overview');
-			const startHere = buildBriefingStartHereFromSequence(recommendedSequence);
-			const supportingPriorityItems = priorityItems.slice(1, 4);
-			const showNarrativeCards = ['en', 'vi', ''].indexOf(normalizeLocale(locale)) !== -1;
-
-		function labelize(key) {
-			return String(key || '')
-				.replace(/_/g, ' ')
-				.replace(/\b\w/g, function(char) {
-					return char.toUpperCase();
-				});
-		}
-
-			let html = renderAssistantIntro(result, h, locale);
-			html += '<div class="yoro-result-summary">';
-			html += '<strong>' + h.escapeHtml(businessUiText(locale, 'businessSummary', 'Business summary')) + '</strong>';
-			html += '<span class="yoro-result-subtle">' + h.escapeHtml(businessUiText(locale, 'readOnly', 'Read-only executive summary. No store data is changed.')) + '</span>';
-
-			if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
-				html += '<span class="yoro-result-subtle">' + h.escapeHtml(orderUiText(locale, 'decisionRoute', 'Decision route')) + ': ' + h.escapeHtml(parsed.parser_rule) + '</span>';
-			}
-
-			if (windowInfo.label) {
-				html += '<span class="yoro-result-subtle">' + h.escapeHtml(operationalUiText(locale, 'window', 'Window')) + ': ' + h.escapeHtml(localizedWindowLabel(windowInfo, locale)) + '</span>';
-			}
-
-		html += '</div>';
-
-		html += '<div class="yoro-order-detail-card">';
-			html += '<div class="yoro-order-detail-header">';
-			html += '<div>';
-			html += '<strong class="yoro-order-detail-title">' + h.escapeHtml(businessUiText(locale, 'businessOverview', 'Business overview')) + '</strong>';
-			html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatWindowRange(windowInfo, h)) + '</div>';
-			html += '</div>';
-			html += '<span class="yoro-current-order-badge">' + h.escapeHtml(localizedFocusLabel(result.focus, locale, businessUiText)) + '</span>';
-			html += '</div>';
-
-			html += '<div class="yoro-result-summary">';
-			html += '<strong>' + h.escapeHtml(localizedBusinessSummary(result, locale)) + '</strong>';
-			html += '</div>';
-
-			if (!showNarrativeCards) {
-				html += renderQueueMetaMetrics([
-					{ label: orderUiText(locale, 'orders', 'Orders'), value: metrics.order_count || 0 },
-					{ label: businessUiText(locale, 'grossSales', 'Gross sales'), value: metrics.gross_sales || 0 },
-					{ label: businessUiText(locale, 'customers', 'Customers'), value: metrics.unique_customers || 0 },
-					{ label: businessUiText(locale, 'attention', 'Attention'), value: result.attention_total || 0 }
-				], h);
-			} else if (topPriority) {
-				html += renderQueueWorkbenchHero(topPriority, [
-					{ label: orderUiText(locale, 'orders', 'Orders'), value: metrics.order_count || 0 },
-					{ label: businessUiText(locale, 'grossSales', 'Gross sales'), value: metrics.gross_sales || 0 },
-					{ label: businessUiText(locale, 'customers', 'Customers'), value: metrics.unique_customers || 0 },
-					{ label: businessUiText(locale, 'attention', 'Attention'), value: result.attention_total || 0 },
-					{ label: businessUiText(locale, 'mainSignal', 'Main signal'), value: mainSignalLabel }
-				], h);
-			}
-
-			if (showNarrativeCards && startHere) {
-				html += renderQueueStartHereCard(startHere, h);
-			}
-			if (showNarrativeCards) {
-				html += renderWorklistModeCard(result, h);
-			}
-
-			if (showNarrativeCards && supportingPriorityItems.length) {
-				html += renderQueuePriorityCards(supportingPriorityItems, h, businessUiText(locale, 'otherPressures', 'Other pressures to watch'));
-			}
-
-			html += '<details class="yoro-order-detail-section yoro-briefing-disclosure">';
-			html += '<summary><strong>' + h.escapeHtml(businessUiText(locale, 'seeDetailView', 'See detail view')) + '</strong><span>' + h.escapeHtml(businessUiText(locale, 'seeDetailSubtitle', 'Open commercial detail, order mix, and top performers')) + '</span></summary>';
-			html += '<div class="yoro-briefing-disclosure-body">';
-			html += renderQueueMetaMetrics([
-				{ label: orderUiText(locale, 'orders', 'Orders'), value: metrics.order_count || 0 },
-				{ label: businessUiText(locale, 'grossSales', 'Gross sales'), value: metrics.gross_sales || 0 },
-				{ label: businessUiText(locale, 'aov', 'AOV'), value: metrics.average_order_value || 0 },
-				{ label: businessUiText(locale, 'customers', 'Customers'), value: metrics.unique_customers || 0 },
-				{ label: businessUiText(locale, 'productLines', 'Product lines'), value: metrics.product_lines || 0 },
-				{ label: businessUiText(locale, 'backlog', 'Backlog'), value: result.backlog_total || 0 }
-			], h);
-
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>' + h.escapeHtml(businessUiText(locale, 'orderMix', 'Order mix')) + '</h4>';
-			html += '<table class="yoro-orders-table">';
-			html += '<thead><tr><th>' + h.escapeHtml(operationalUiText(locale, 'status', 'Status')) + '</th><th>' + h.escapeHtml(operationalUiText(locale, 'count', 'Count')) + '</th></tr></thead><tbody>';
-			Object.keys(statusCounts).forEach(function(key) {
-				html += '<tr>';
-				html += '<td>' + h.escapeHtml(queueLabel(key, locale)) + '</td>';
-				html += '<td>' + h.escapeHtml(statusCounts[key] || 0) + '</td>';
-				html += '</tr>';
-			});
-		html += '</tbody></table>';
-		html += '</div>';
-
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>' + h.escapeHtml(businessUiText(locale, 'operatingPressure', 'Operating pressure')) + '</h4>';
-			html += '<div class="yoro-order-detail-metrics">';
-			html += '<div><span>' + h.escapeHtml(businessUiText(locale, 'backlog', 'Backlog')) + '</span><strong>' + h.escapeHtml(result.backlog_total || 0) + '</strong></div>';
-			html += '<div><span>' + h.escapeHtml(businessUiText(locale, 'attentionItems', 'Attention items')) + '</span><strong>' + h.escapeHtml(result.attention_total || 0) + '</strong></div>';
-			html += '<div><span>' + h.escapeHtml(businessUiText(locale, 'completedSales', 'Completed sales')) + '</span><strong>' + h.escapeHtml(metrics.completed_sales || 0) + '</strong></div>';
-			html += '</div>';
-			html += '</div>';
-
-			if (topCustomers.length) {
-				html += '<div class="yoro-order-detail-section">';
-				html += '<h4>' + h.escapeHtml(businessUiText(locale, 'topCustomers', 'Top customers')) + '</h4>';
-				html += '<table class="yoro-orders-table">';
-				html += '<thead><tr><th>' + h.escapeHtml(orderUiText(locale, 'customer', 'Customer')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'email', 'Email')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'orders', 'Orders')) + '</th><th>' + h.escapeHtml(businessUiText(locale, 'totalSpent', 'Total spent')) + '</th></tr></thead><tbody>';
-			topCustomers.forEach(function(customer) {
-				html += '<tr>';
-				html += '<td>' + h.escapeHtml(customer.name || '—') + '</td>';
-				html += '<td>' + h.escapeHtml(customer.email || '') + '</td>';
-				html += '<td>' + h.escapeHtml(customer.order_count || 0) + '</td>';
-				html += '<td>' + h.escapeHtml(customer.total_spent || 0) + '</td>';
-				html += '</tr>';
-			});
-			html += '</tbody></table>';
-			html += '</div>';
-		}
-
-			if (topProducts.length) {
-				html += '<div class="yoro-order-detail-section">';
-				html += '<h4>' + h.escapeHtml(businessUiText(locale, 'topProducts', 'Top products')) + '</h4>';
-				html += '<table class="yoro-orders-table">';
-				html += '<thead><tr><th>' + h.escapeHtml(businessUiText(locale, 'product', 'Product')) + '</th><th>' + h.escapeHtml(businessUiText(locale, 'qty', 'Qty')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'total', 'Total')) + '</th></tr></thead><tbody>';
-			topProducts.forEach(function(product) {
-				html += '<tr>';
-				html += '<td>' + h.escapeHtml(product.name || ('#' + product.id)) + '</td>';
-				html += '<td>' + h.escapeHtml(product.quantity || 0) + '</td>';
-				html += '<td>' + h.escapeHtml(product.total || 0) + '</td>';
-				html += '</tr>';
-			});
-			html += '</tbody></table>';
-			html += '</div>';
-		}
-
-			if (recentOrders.length) {
-				html += '<div class="yoro-order-detail-section">';
-				html += '<h4>' + h.escapeHtml(businessUiText(locale, 'recentOrders', 'Recent orders')) + '</h4>';
-				html += '<table class="yoro-orders-table">';
-				html += '<thead><tr><th>' + h.escapeHtml(orderUiText(locale, 'order', 'Order')) + '</th><th>' + h.escapeHtml(operationalUiText(locale, 'status', 'Status')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'total', 'Total')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'email', 'Email')) + '</th><th>' + h.escapeHtml(orderUiText(locale, 'date', 'Date')) + '</th></tr></thead><tbody>';
-				recentOrders.forEach(function(order) {
-					html += '<tr>';
-					html += '<td><strong>#' + h.escapeHtml(order.number || order.id) + '</strong></td>';
-					html += '<td><span class="yoro-status-badge">' + h.escapeHtml(orderStatusLabel(order.status || '', locale)) + '</span></td>';
-				html += '<td>' + h.escapeHtml(order.total || '') + ' ' + h.escapeHtml(order.currency || '') + '</td>';
-				html += '<td>' + h.escapeHtml(order.billing_email || '') + '</td>';
-				html += '<td>' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</td>';
-				html += '</tr>';
-			});
-			html += '</tbody></table>';
-			html += '</div>';
-		}
-
-		html += '</div>';
-		html += '</details>';
-		html += '</div>';
-		html += h.renderDebugJson(data);
-
-		return html;
-	}
-
-	function renderMorningBriefingResult(data, h) {
+	function renderUnifiedReportResult(data, h, locale) {
 		const result = data.result || {};
-		const parsed = data.parsed || {};
-		const yesterdaySnapshot = result.yesterday_snapshot || {};
-		const livePressure = result.live_pressure || {};
-		const topPriorities = Array.isArray(result.top_priorities) ? result.top_priorities : [];
-		const firstAction = result.first_recommended_action || {};
-		const priorityDrilldowns = buildMorningDrilldowns(result);
-		const visiblePriorityItems = topPriorities.slice(0, 3);
-		const queueOverview = buildMorningQueueOverview(result);
-		const supportingPriorityItems = visiblePriorityItems.slice(1);
-		const compactSnapshotParts = [
-			(yesterdaySnapshot.orders || 0) + ' orders yesterday',
-			String(yesterdaySnapshot.gross_sales || '0') + ' gross sales',
-			(yesterdaySnapshot.customers || 0) + ' active customer' + ((Number(yesterdaySnapshot.customers || 0) === 1) ? '' : 's'),
-			'Main pressure: ' + humanizeMorningPressure(livePressure.main_pressure || 'overview')
-		];
+		const report = getUnifiedReportFromResult(result, data, locale);
 
-		let html = '<div class="yoro-result-notice yoro-result-success">';
-		html += '<p>' + h.escapeHtml(result.assistant_summary || result.headline || 'Here is your morning briefing.') + '</p>';
-
-		if (result.assistant_followup) {
-			html += '<p class="yoro-result-subtle">' + h.escapeHtml(result.assistant_followup) + '</p>';
-		}
-
-		html += '</div>';
-
-		html += '<div class="yoro-result-summary">';
-		html += '<strong>Morning briefing</strong>';
-		html += '<span class="yoro-result-subtle">Proactive morning brief. No store data is changed.</span>';
-		html += '<span class="yoro-result-subtle">Proactive</span>';
-
-		html += '</div>';
-
-		html += '<div class="yoro-order-detail-card">';
-		html += '<div class="yoro-order-detail-header">';
-		html += '<div>';
-		html += '<strong class="yoro-order-detail-title">Morning briefing</strong>';
-		html += '<div class="yoro-result-subtle">' + h.escapeHtml(result.time_window_label || 'Yesterday and this morning') + '</div>';
-		html += '</div>';
-		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(formatDateTime(result.briefing_date, result.briefing_date_ts, h)) + '</span>';
-		html += '</div>';
-
-		html += '<div class="yoro-briefing-hero">';
-		html += '<div class="yoro-briefing-hero-copy">';
-		html += '<strong>' + h.escapeHtml(result.headline || 'Morning briefing') + '</strong>';
-		html += '<p>' + h.escapeHtml(yesterdaySnapshot.summary || '') + '</p>';
-		html += '<p class="yoro-result-subtle">' + h.escapeHtml(compactSnapshotParts.join(' · ')) + '</p>';
-		html += '</div>';
-		html += '</div>';
-
-		if (firstAction.command) {
-			html += renderControlHomeStartHere(firstAction, result.dismissible, h);
-		}
-		html += renderWorklistModeCard(result, h);
-
-		if (priorityDrilldowns.length) {
-			html += renderControlHomeQueueOverview('Open one of these next', 'These drilldowns take you straight into the queues behind this morning briefing.', priorityDrilldowns, h);
-		}
-
-		if (supportingPriorityItems.length) {
-			html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
-		}
-
-		html += '<details class="yoro-order-detail-section yoro-briefing-disclosure">';
-		html += '<summary><strong>See detail view</strong><span>Open queue counts and extra checks</span></summary>';
-		html += '<div class="yoro-briefing-disclosure-body">';
-		html += '<div class="yoro-briefing-metrics">';
-		html += '<div><span>Yesterday orders</span><strong>' + h.escapeHtml(yesterdaySnapshot.orders || 0) + '</strong></div>';
-		html += '<div><span>Gross sales</span><strong>' + h.escapeHtml(yesterdaySnapshot.gross_sales || '0') + '</strong></div>';
-		html += '<div><span>Customers</span><strong>' + h.escapeHtml(yesterdaySnapshot.customers || 0) + '</strong></div>';
-		html += '<div><span>Main pressure</span><strong>' + h.escapeHtml(humanizeMorningPressure(livePressure.main_pressure || 'overview')) + '</strong></div>';
-		html += '<div><span>Attention</span><strong>' + h.escapeHtml(livePressure.attention_items || 0) + '</strong></div>';
-		html += '<div><span>Fulfillment</span><strong>' + h.escapeHtml(livePressure.fulfillment_items || 0) + '</strong></div>';
-		html += '<div><span>Customer follow-up</span><strong>' + h.escapeHtml(livePressure.customer_followup_items || 0) + '</strong></div>';
-		html += '<div><span>Inventory</span><strong>' + h.escapeHtml(livePressure.inventory_items || livePressure.inventory_pressure_items || 0) + '</strong></div>';
-		html += '</div>';
-
-		if (queueOverview.length) {
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>Queue overview</h4>';
-			html += '<p class="yoro-result-subtle">Use this if you want the wider operating picture, not just the next drilldown.</p>';
-			html += '<div class="yoro-briefing-sections-grid">';
-			queueOverview.forEach(function(queue) {
-				html += '<div class="yoro-briefing-section-card yoro-control-home-queue-card' + (queue.recommended ? ' is-recommended' : '') + '">';
-				html += '<div class="yoro-briefing-section-head">';
-				html += '<strong>' + h.escapeHtml(queue.label || 'Queue') + '</strong>';
-				html += '<span>' + h.escapeHtml(queue.count || 0) + '</span>';
-				html += '</div>';
-				if (queue.summary) {
-					html += '<p>' + h.escapeHtml(queue.summary) + '</p>';
-				}
-				html += '</div>';
-			});
-			html += '</div>';
-			html += '</div>';
-		}
-
-		html += '</div>';
-		html += '</details>';
-
-		html += '</div>';
-		html += h.renderDebugJson(data);
-
-		return html;
-	}
-
-	function buildMorningDrilldowns(result) {
-		const items = Array.isArray(result && result.priority_drilldowns) ? result.priority_drilldowns : [];
-
-		return items.slice(0, 3).map(function (item) {
-			const count = parseInt(item && item.count ? item.count : 0, 10);
-
-			return {
-				key: item && item.topic ? item.topic : '',
-				label: item && item.label ? item.label : 'Drilldown',
-				count: Number.isNaN(count) ? 0 : count,
-				summary: item && item.summary ? item.summary : '',
-				command: item && item.command ? item.command : '',
-				commandLabel: item && item.command_label ? item.command_label : (item && item.label ? item.label : 'Open queue'),
-				recommended: !!(item && item.recommended)
-			};
-		}).filter(function (item) {
-			return item.command;
-		});
-	}
-
-	function humanizeMorningPressure(topic) {
-		switch (String(topic || '')) {
-			case 'attention':
-			case 'operations_attention':
-				return 'Operations attention';
-			case 'fulfillment':
-				return 'Fulfillment';
-			case 'customer_service':
-				return 'Customer follow-up';
-			case 'inventory':
-				return 'Inventory';
-			case 'business':
-				return 'Business';
-			default:
-				return 'Store overview';
-		}
-	}
-
-	function buildMorningQueueOverview(result) {
-		const livePressure = result && result.live_pressure ? result.live_pressure : {};
-		const firstAction = result && result.first_recommended_action ? result.first_recommended_action : {};
-		const queues = [
-			{
-				key: 'attention',
-				label: 'Operations',
-				count: parseInt(livePressure.attention_items || 0, 10),
-				summary: 'Review orders that need operational attention first.',
-				command: 'Show operations attention queue'
-			},
-			{
-				key: 'fulfillment',
-				label: 'Fulfillment',
-				count: parseInt(livePressure.fulfillment_items || 0, 10),
-				summary: 'Check shipping and processing pressure.',
-				command: 'Show fulfillment queue'
-			},
-			{
-				key: 'customer_service',
-				label: 'Customer follow-up',
-				count: parseInt(livePressure.customer_followup_items || 0, 10),
-				summary: 'Review customer-facing follow-up work and drafts.',
-				command: 'Show customer service queue'
-			}
-		];
-
-		if ((livePressure.main_pressure || '') === 'inventory') {
-			queues.push({
-				key: 'inventory',
-				label: 'Inventory',
-				count: parseInt(livePressure.inventory_items || livePressure.inventory_pressure_items || 0, 10),
-				summary: 'Inspect inventory pressure before it spreads into fulfillment.',
-				command: 'Show inventory queue'
-			});
-		}
-
-		if (firstAction.command) {
-			queues.forEach(function (queue) {
-				if (queue.command === firstAction.command) {
-					queue.recommended = true;
-				}
-			});
-		}
-
-		return queues.filter(function (queue) {
-			return queue.count > 0 || queue.recommended;
-		});
-	}
-
-	function buildDailyQueueOverview(sections, priorityDrilldowns, briefingActions) {
-		const drilldownMap = {};
-		const actionMap = {};
-
-		(priorityDrilldowns || []).forEach(function (item) {
-			if (item && item.topic) {
-				drilldownMap[String(item.topic)] = item;
-			}
-		});
-
-		(briefingActions || []).forEach(function (item) {
-			if (item && item.topic) {
-				actionMap[String(item.topic)] = item;
-			}
-		});
-
-		return (sections || []).map(function (section) {
-			const key = String(section && section.key ? section.key : '');
-			const drilldown = drilldownMap[key] || null;
-			const action = actionMap[key] || null;
-
-			return {
-				key: key,
-				label: section && section.label ? section.label : 'Queue',
-				count: parseInt(section && section.count ? section.count : 0, 10),
-				summary: section && section.summary ? section.summary : '',
-				command: (drilldown && drilldown.command) || (action && action.command) || getDefaultQueueCommand(key),
-				commandLabel: (drilldown && drilldown.label) || (action && action.label) || 'Open queue',
-				recommended: !!drilldown
-			};
-		});
-	}
-
-	function getDefaultQueueCommand(key) {
-		switch (String(key || '')) {
-			case 'operations':
-			case 'attention':
-				return 'Show operations attention queue';
-			case 'fulfillment':
-				return 'Show fulfillment queue';
-			case 'customer_service':
-				return 'Show customer service queue';
-			case 'inventory':
-				return 'Show inventory queue';
-			case 'business':
-				return 'Show business summary for this week';
-			default:
-				return '';
-		}
-	}
-
-	function renderControlHomeStartHere(firstAction, dismissible, h) {
-		let html = '<div class="yoro-control-home-primary">';
-		html += '<div class="yoro-control-home-primary-copy">';
-		html += '<span class="yoro-control-home-kicker">Start here</span>';
-		html += '<strong>' + h.escapeHtml(firstAction.label || firstAction.command || 'Open the top queue') + '</strong>';
-		if (firstAction.reason) {
-			html += '<p>' + h.escapeHtml(firstAction.reason) + '</p>';
-		}
-		html += '</div>';
-		html += '<div class="yoro-suggestion-list">';
-		if (firstAction.command) {
-			html += renderDirectActionButton(firstAction.label || firstAction.command, firstAction.command, h, 'button button-primary');
-		}
-		if (dismissible) {
-			html += '<button class="button button-small yoro-dismiss-morning-briefing">Dismiss for today</button>';
-		}
-		html += '</div>';
-		html += '</div>';
-
-		return html;
-	}
-
-	function renderControlHomeQueueOverview(title, description, queues, h) {
-		if (!Array.isArray(queues) || !queues.length) {
+		if (!report || (!report.headline && !Array.isArray(report.metrics))) {
 			return '';
 		}
 
-		let html = '<div class="yoro-order-detail-section">';
-		html += '<h4>' + h.escapeHtml(title) + '</h4>';
-		if (description) {
-			html += '<p class="yoro-result-subtle">' + h.escapeHtml(description) + '</p>';
+		const parsed = data.parsed || {};
+		const windowInfo = report.window || result.window || {};
+		let html = renderAssistantIntro(result, h, locale);
+
+		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
+			html += '<div class="yoro-result-summary yoro-result-summary-meta">';
+			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
+			html += '</div>';
 		}
-		html += '<div class="yoro-briefing-sections-grid">';
 
-		queues.forEach(function (queue) {
-			if (!queue) {
-				return;
-			}
+		html += renderUnifiedReportPanel(report, h, locale, windowInfo);
+		html += h.renderDebugJson(data);
 
-			html += '<div class="yoro-briefing-section-card yoro-control-home-queue-card' + (queue.recommended ? ' is-recommended' : '') + '">';
-			html += '<div class="yoro-briefing-section-head">';
-			html += '<strong>' + h.escapeHtml(queue.label || 'Queue') + '</strong>';
-			html += '<span>' + h.escapeHtml(queue.count || 0) + '</span>';
-			html += '</div>';
-			if (queue.summary) {
-				html += '<p>' + h.escapeHtml(queue.summary) + '</p>';
-			}
-			if (queue.command) {
-				html += '<div class="yoro-suggestion-list">';
-				html += renderDirectActionButton(queue.commandLabel || 'Open queue', queue.command, h);
-				html += '</div>';
-			}
-			html += '</div>';
-		});
-
-		html += '</div>';
-		html += '</div>';
 		return html;
 	}
 
-	function renderDailyBriefingResult(data, h) {
+	function renderReportContractFallback(data, h, locale, title) {
 		const result = data.result || {};
-		const windowInfo = result.window || {};
-		const briefingLabel = result.briefing_label || 'Daily briefing';
-		const sections = Array.isArray(result.sections) ? result.sections : [];
-		const priorityItems = Array.isArray(result.priority_items) ? result.priority_items : [];
-		const priorityDrilldowns = Array.isArray(result.priority_drilldowns) ? result.priority_drilldowns : [];
-		const recommendedSequence = Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
-		const briefingContext = result.briefing_context || {};
-		const topTopic = briefingContext.top_topic || 'overview';
-		const state = briefingContext.state || 'steady_watch';
-		const windowOrders = briefingContext.window_orders || 0;
-		const grossSales = briefingContext.gross_sales || 0;
-		const activeCustomers = briefingContext.active_customers || 0;
-		const topPriority = priorityItems.length ? priorityItems[0] : null;
-		const secondaryPriority = priorityItems.length > 1 ? priorityItems[1] : null;
-		const topTopicLabel = String(topTopic || 'overview').replace(/_/g, ' ');
-		const queueOverview = buildDailyQueueOverview(sections, priorityDrilldowns, []);
-		const startHere = buildBriefingStartHereFromSequence(recommendedSequence);
-		const supportingPriorityItems = priorityItems.slice(1, 4);
+		const parsed = data.parsed || {};
+		let html = renderAssistantIntro(result, h, locale);
 
-		let html = renderAssistantIntro(result, h);
-		html += '<div class="yoro-briefing-shell yoro-briefing-state-' + h.escapeHtml(state) + '">';
-		html += '<div class="yoro-result-summary yoro-briefing-summary">';
-		html += '<strong>' + h.escapeHtml(briefingLabel) + '</strong>';
-		html += '<span class="yoro-result-subtle">Executive snapshot across the store\'s main operating queues.</span>';
-		if (windowInfo.label) {
-			html += '<span class="yoro-result-subtle">Window: ' + h.escapeHtml(windowInfo.label) + '</span>';
-		}
+		html += '<div class="yoro-result-notice yoro-result-preview">';
+		html += '<p>' + h.escapeHtml(result.summary || result.message || 'YoRo received a report response, but it was not in the current report format.') + '</p>';
 		html += '</div>';
 
-		html += '<div class="yoro-order-detail-card yoro-briefing-card">';
-		html += '<div class="yoro-order-detail-header">';
-		html += '<div>';
-		html += '<strong class="yoro-order-detail-title">' + h.escapeHtml(briefingLabel) + '</strong>';
-			html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatWindowRange(windowInfo, h)) + '</div>';
-		html += '</div>';
-		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(topTopic.replace(/_/g, ' ')) + '</span>';
-		html += '</div>';
+		html += '<div class="yoro-result-summary">';
+		html += '<strong>' + h.escapeHtml(title || 'Store report') + '</strong>';
+		html += '<span class="yoro-result-subtle">The raw payload is available in debug mode so the report contract can be fixed at the source.</span>';
 
-		html += '<div class="yoro-briefing-hero">';
-		html += '<div class="yoro-briefing-hero-copy">';
-		html += '<strong>' + h.escapeHtml((topPriority && topPriority.title) || 'Store snapshot') + '</strong>';
-		if (secondaryPriority) {
-			html += '<p>' + h.escapeHtml(getBriefingSecondaryLine(secondaryPriority)) + '</p>';
-		} else {
-			html += '<p>' + h.escapeHtml('The main operating queues are summarized below.') + '</p>';
-		}
-		html += '</div>';
-		html += '<div class="yoro-briefing-metrics">';
-		html += '<div><span>New orders</span><strong>' + h.escapeHtml(windowOrders) + '</strong></div>';
-		html += '<div><span>Gross sales</span><strong>' + h.escapeHtml(grossSales) + '</strong></div>';
-		html += '<div><span>Active customers</span><strong>' + h.escapeHtml(activeCustomers) + '</strong></div>';
-		html += '<div><span>Main pressure</span><strong>' + h.escapeHtml(topTopicLabel) + '</strong></div>';
-		html += '<div><span>Queues tracked</span><strong>' + h.escapeHtml(sections.length) + '</strong></div>';
-		html += '</div>';
-		html += '</div>';
-
-		if (startHere) {
-			html += renderQueueStartHereCard(startHere, h);
-		}
-		html += renderWorklistModeCard(result, h);
-
-		if (queueOverview.length) {
-			html += renderControlHomeQueueOverview(
-				'Open one of these next',
-				'Jump directly into the work surface that matches today\'s pressure.',
-				queueOverview,
-				h
-			);
+		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
+			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
 		}
 
-		if (supportingPriorityItems.length) {
-			html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
-		}
-
-		html += '</div>';
 		html += '</div>';
 		html += h.renderDebugJson(data);
 
 		return html;
 	}
 
-function getBriefingSecondaryLine(priorityItem) {
-		const topic = priorityItem && priorityItem.topic ? String(priorityItem.topic) : '';
+	function renderUnifiedReportPanel(report, h, locale, windowInfo) {
+		const health = ['good', 'watch', 'risk'].indexOf(report.health) !== -1 ? report.health : 'watch';
+		const metrics = filterApplicableReportItems(Array.isArray(report.metrics) ? report.metrics : [], report);
+		const insights = filterApplicableReportItems(Array.isArray(report.insights) ? report.insights : [], report);
+		const alerts = filterApplicableReportItems(Array.isArray(report.alerts) ? report.alerts : [], report);
+		const recommendedActions = filterApplicableReportItems(Array.isArray(report.recommended_actions) ? report.recommended_actions : [], report);
+		const drilldowns = filterApplicableReportItems(Array.isArray(report.drilldowns) ? report.drilldowns : [], report);
+		const breakdowns = filterApplicableReportItems(Array.isArray(report.breakdowns) ? report.breakdowns : [], report);
+		const profileFollowups = Array.isArray(report.profile_followups) ? report.profile_followups : [];
+		const typeMeta = reportTypeMeta(report.type);
 
-		switch (topic) {
-			case 'fulfillment':
-				return 'Secondary pressure is building in fulfillment and still needs active review.';
-			case 'customer_service':
-				return 'Customer follow-up is the next pressure point worth reviewing after the main queue.';
-			case 'inventory':
-				return 'Inventory risk is present in the background and should stay on the watchlist.';
-			case 'business':
-				return 'Commercial activity is worth a quick read alongside the operating queues.';
-			case 'operations_attention':
-				return 'Another operational queue is also showing meaningful pressure right now.';
-			default:
-				if (priorityItem && priorityItem.message) {
-					return String(priorityItem.message);
+		let html = '<div class="yoro-report-card yoro-report-health-' + h.escapeHtml(health) + ' yoro-report-type-' + h.escapeHtml(typeMeta.key) + '" data-health="' + h.escapeHtml(health) + '" data-report-type="' + h.escapeHtml(typeMeta.key) + '">';
+		html += '<div class="yoro-report-header">';
+		html += '<div class="yoro-report-header-main">';
+		html += '<div class="yoro-report-kicker">';
+		html += '<span>' + h.escapeHtml(typeMeta.surface) + '</span>';
+		html += '<span class="yoro-report-scope-badge">' + h.escapeHtml(typeMeta.scope) + '</span>';
+		html += '</div>';
+		html += '<strong class="yoro-report-headline">' + h.escapeHtml(report.headline || 'Store report') + '</strong>';
+		if (typeMeta.description) {
+			html += '<span class="yoro-report-scope-line">' + h.escapeHtml(typeMeta.description) + '</span>';
+		}
+		html += renderReportWindowMeta(windowInfo || report.window || {}, h, locale);
+		html += '</div>';
+		html += '<span class="yoro-report-health-badge">' + h.escapeHtml(reportHealthLabel(health)) + '</span>';
+		html += '</div>';
+
+		html += renderReportHighlights(report, metrics, h);
+		html += renderReportMetricGroups(metrics, report.metric_groups, h, report);
+		html += renderReportBreakdowns(breakdowns, h);
+
+		html += renderReportInsightList('Key takeaways', insights, h, 'yoro-report-insights');
+		html += renderReportInsightList('Needs attention', alerts, h, 'yoro-report-alerts');
+		html += renderReportProfileFollowups(profileFollowups, h);
+		html += renderReportActionGroup('Next actions', recommendedActions, h);
+		html += renderReportActionGroup('Related views', filterDuplicateReportActions(drilldowns, recommendedActions), h);
+		html += '</div>';
+
+		return html;
+	}
+
+	function renderReportWindowMeta(windowInfo, h, locale) {
+		windowInfo = windowInfo || {};
+		const parts = [];
+		const label = windowInfo.label ? localizedWindowLabel(windowInfo, locale) : '';
+		const range = formatWindowRange(windowInfo, h, locale);
+
+		if (label) {
+			parts.push(label);
+		}
+
+		if (range) {
+			parts.push(range);
+		}
+
+		if (!parts.length) {
+			return '';
+		}
+
+		return '<span class="yoro-report-window-line">' + parts.map(function(part) {
+			return h.escapeHtml(part);
+		}).join(' · ') + '</span>';
+	}
+
+	function renderReportHighlights(report, metrics, h) {
+		const highlighted = selectReportHighlights(report, metrics);
+
+		if (!highlighted.length) {
+			return '';
+		}
+
+		let html = '<div class="yoro-report-highlights">';
+		highlighted.forEach(function(metric) {
+			const severity = ['positive', 'neutral', 'watch', 'risk'].indexOf(metric.severity) !== -1 ? metric.severity : 'neutral';
+			const unit = metric.unit ? String(metric.unit) : '';
+			html += '<div class="yoro-report-highlight yoro-report-severity-' + h.escapeHtml(severity) + '">';
+			html += '<span class="yoro-report-highlight-label">' + h.escapeHtml(displayText(metric.label || metric.key || '')) + '</span>';
+			html += '<strong class="yoro-report-highlight-value">' + h.escapeHtml(displayReportValue(metric.value)) + '</strong>';
+			if (unit) {
+				html += '<span class="yoro-report-highlight-unit">' + h.escapeHtml(unit) + '</span>';
+			}
+			html += renderReportMetricTrend(metric, h);
+			html += '</div>';
+		});
+		html += '</div>';
+
+		return html;
+	}
+
+	function selectReportHighlights(report, metrics) {
+		if (!Array.isArray(metrics) || !metrics.length) {
+			return [];
+		}
+
+		const keys = reportHighlightKeys(report && report.type);
+		const selected = [];
+		const used = {};
+
+		keys.forEach(function(key) {
+			const metric = metrics.find(function(item) {
+				return item && item.key === key;
+			});
+
+			if (metric && !used[metric.key]) {
+				selected.push(metric);
+				used[metric.key] = true;
+			}
+		});
+
+		if (selected.length < 3) {
+			metrics.forEach(function(metric) {
+				if (selected.length >= 3 || !metric || used[metric.key]) {
+					return;
 				}
 
-				return 'The main operating queues are summarized below.';
-	}
-}
+				selected.push(metric);
+				used[metric.key] = true;
+			});
+		}
 
-function buildBriefingStartHereFromSequence(sequence) {
-	if (!Array.isArray(sequence) || !sequence.length) {
-		return null;
-	}
-
-	const first = sequence[0];
-
-	if (!first || !first.command) {
-		return null;
+		return selected.slice(0, 4);
 	}
 
-	return {
-		title: first.label || first.command || 'Recommended next step',
-		meta: first.kind && first.kind !== 'view' ? first.kind : '',
-		message: first.reason || '',
-		reason: '',
-		actions: [
-			{
-				label: first.label || first.command,
-				command: first.command
+	function reportHighlightKeys(type) {
+		switch (String(type || '')) {
+			case 'business':
+				return ['gross_sales', 'net_sales', 'orders', 'average_order_value'];
+			case 'operations':
+				return ['attention_items', 'open_backlog', 'new_orders', 'processing_backlog'];
+			case 'store_insights':
+				return ['orders', 'gross_sales', 'inventory_risk', 'unique_customers'];
+			case 'store_overview':
+			default:
+				return ['gross_sales', 'new_orders', 'attention_items', 'main_pressure'];
+		}
+	}
+
+	function renderReportMetricGroups(metrics, metricGroups, h, report) {
+		if (!Array.isArray(metrics) || !metrics.length) {
+			return '';
+		}
+
+		const reportType = String(report && report.type || '').toLowerCase();
+		const highlighted = {};
+		selectReportHighlights(report || {}, metrics).forEach(function(metric) {
+			if (metric && metric.key) {
+				highlighted[metric.key] = true;
 			}
-		]
-	};
-}
+		});
+		const groupsByDomain = {};
 
-function renderQueueWorkbenchIntro(config, h) {
+		if (reportType === 'store_overview') {
+			groupsByDomain.overview = {
+				domain: 'overview',
+				label: 'Additional signals',
+				description: 'Supporting commercial and operating signals for this window.',
+				priority: 20,
+				metrics: []
+			};
+		} else {
+			(Array.isArray(metricGroups) ? metricGroups : []).forEach(function(group) {
+				const domain = normalizeReportMetricDomain(group && group.domain, '');
+
+				if (!domain || groupsByDomain[domain]) {
+					return;
+				}
+
+				groupsByDomain[domain] = {
+					domain: domain,
+					label: group.label || reportMetricDomainLabel(domain),
+					description: group.description || '',
+					priority: parseInt(group.priority, 10) || reportMetricDomainPriority(domain),
+					metrics: []
+				};
+			});
+		}
+
+		metrics.forEach(function(metric) {
+			if (!shouldRenderReportDetailMetric(metric, reportType, highlighted)) {
+				return;
+			}
+
+			const domain = reportType === 'store_overview'
+				? 'overview'
+				: normalizeReportMetricDomain(metric && metric.domain, metric && metric.key);
+
+			if (!groupsByDomain[domain]) {
+				groupsByDomain[domain] = {
+					domain: domain,
+					label: reportMetricDomainLabel(domain),
+					description: '',
+					priority: reportMetricDomainPriority(domain),
+					metrics: []
+				};
+			}
+
+			groupsByDomain[domain].metrics.push(metric);
+		});
+
+		const groups = Object.keys(groupsByDomain)
+			.map(function(domain) {
+				return groupsByDomain[domain];
+			})
+			.filter(function(group) {
+				return group.metrics.length > 0;
+			})
+			.sort(function(a, b) {
+				return (a.priority || 50) - (b.priority || 50);
+			});
+
+		if (!groups.length) {
+			return '';
+		}
+
+		let html = '<div class="yoro-report-metric-groups">';
+		groups.forEach(function(group) {
+			group.metrics.sort(function(a, b) {
+				return (parseInt((a || {}).priority, 10) || 50) - (parseInt((b || {}).priority, 10) || 50);
+			});
+			html += '<div class="yoro-report-metric-group yoro-report-metric-group-' + h.escapeHtml(group.domain) + '">';
+			html += '<div class="yoro-report-metric-group-head">';
+			html += '<h4>' + h.escapeHtml(group.label || reportMetricDomainLabel(group.domain)) + '</h4>';
+			if (group.description) {
+				html += '<span>' + h.escapeHtml(group.description) + '</span>';
+			}
+			html += '</div>';
+			html += '<div class="yoro-report-metrics">';
+			group.metrics.forEach(function(metric) {
+				html += renderReportMetric(metric, h, !!highlighted[metric.key]);
+			});
+			html += '</div>';
+			html += '</div>';
+		});
+		html += '</div>';
+
+		return html;
+	}
+
+	function shouldRenderReportDetailMetric(metric, reportType, highlighted) {
+		if (!metric || !metric.key) {
+			return false;
+		}
+
+		if (reportType === 'store_overview' && highlighted && highlighted[metric.key]) {
+			return false;
+		}
+
+		return true;
+	}
+
+	function filterApplicableReportItems(items, report) {
+		if (!Array.isArray(items) || !items.length) {
+			return [];
+		}
+
+		return items.filter(function(item) {
+			return isReportItemApplicable(item, report);
+		});
+	}
+
+	function isReportItemApplicable(item, report) {
+		const gates = getReportApplicabilityGates(report);
+		const domains = reportApplicabilityDomainsForItem(item);
+
+		if (!domains.length) {
+			return true;
+		}
+
+		return domains.every(function(domain) {
+			const gate = gates[domain];
+
+			if (!gate || typeof gate !== 'object' || typeof gate.applicable === 'undefined') {
+				return true;
+			}
+
+			return !!gate.applicable;
+		});
+	}
+
+	function getReportApplicabilityGates(report) {
+		const direct = report && report.applicability && typeof report.applicability === 'object'
+			? report.applicability
+			: {};
+		const profile = report && report.profile_context && report.profile_context.settings_applicability && typeof report.profile_context.settings_applicability === 'object'
+			? report.profile_context.settings_applicability
+			: {};
+
+		return Object.assign({}, profile, direct);
+	}
+
+	function reportApplicabilityDomainsForItem(item) {
+		item = item || {};
+		const text = [
+			item.key,
+			item.label,
+			item.value,
+			item.title,
+			item.message,
+			item.topic,
+			item.domain,
+			item.command,
+			item.description,
+			item.reason
+		].map(function(value) {
+			return String(value || '').toLowerCase();
+		}).join(' ');
+		const domains = [];
+
+		if (/(shipping|ship|shippable|delivery|tracking|fulfillment)/.test(text)) {
+			domains.push('shipping');
+		}
+
+		if (/(inventory|stock|backorder|restock|out of stock|low stock)/.test(text)) {
+			domains.push('inventory');
+		}
+
+		if (/(tax|vat|gst)/.test(text)) {
+			domains.push('tax');
+		}
+
+		if (/(discount|coupon)/.test(text)) {
+			domains.push('coupons');
+		}
+
+		if (/(payment|gateway)/.test(text)) {
+			domains.push('payments');
+		}
+
+		return domains.filter(function(domain, index) {
+			return domains.indexOf(domain) === index;
+		});
+	}
+
+	function renderReportMetric(metric, h, highlighted) {
+		metric = metric || {};
+		const severity = ['positive', 'neutral', 'watch', 'risk'].indexOf(metric.severity) !== -1 ? metric.severity : 'neutral';
+		const unit = metric.unit ? String(metric.unit) : '';
+		const classes = [
+			'yoro-report-metric',
+			'yoro-report-severity-' + severity
+		];
+
+		if (highlighted) {
+			classes.push('yoro-report-metric-highlighted');
+		}
+
+		let html = '<div class="' + h.escapeHtml(classes.join(' ')) + '">';
+		html += '<span class="yoro-report-metric-label">' + h.escapeHtml(displayText(metric.label || metric.key || '')) + '</span>';
+		html += '<strong class="yoro-report-metric-value">' + h.escapeHtml(displayReportValue(metric.value)) + '</strong>';
+		if (unit) {
+			html += '<span class="yoro-report-metric-unit">' + h.escapeHtml(unit) + '</span>';
+		}
+		html += renderReportMetricTrend(metric, h);
+		html += '</div>';
+
+		return html;
+	}
+
+	function renderReportMetricTrend(metric, h) {
+		metric = metric || {};
+		const trend = ['up', 'down', 'flat'].indexOf(metric.trend) !== -1 ? metric.trend : '';
+		const delta = metric.delta === undefined || metric.delta === null ? '' : String(metric.delta);
+
+		if (!trend && !delta) {
+			return '';
+		}
+
+		const label = delta || trend.replace(/\b\w/g, function(chr) {
+			return chr.toUpperCase();
+		});
+
+		return '<span class="yoro-report-metric-trend yoro-report-trend-' + h.escapeHtml(trend || 'neutral') + '">' + h.escapeHtml(label) + '</span>';
+	}
+
+	function renderReportBreakdowns(breakdowns, h) {
+		if (!Array.isArray(breakdowns) || !breakdowns.length) {
+			return '';
+		}
+
+		let sections = '';
+		breakdowns
+			.slice()
+			.sort(function(a, b) {
+				return (parseInt((a || {}).priority, 10) || 50) - (parseInt((b || {}).priority, 10) || 50);
+			})
+			.slice(0, 3)
+			.forEach(function(breakdown) {
+				const items = Array.isArray(breakdown && breakdown.items) ? breakdown.items : [];
+
+				if (!items.length) {
+					return;
+				}
+
+				const domain = normalizeReportMetricDomain(breakdown.domain, breakdown.key || breakdown.label);
+				let section = '<div class="yoro-report-breakdown yoro-report-breakdown-' + h.escapeHtml(domain) + '">';
+				section += '<div class="yoro-report-breakdown-head">';
+				section += '<div>';
+				section += '<h4>' + h.escapeHtml(displayText(breakdown.label || 'Breakdown')) + '</h4>';
+				if (breakdown.description) {
+					section += '<span>' + h.escapeHtml(displayText(breakdown.description)) + '</span>';
+				}
+				section += '</div>';
+				section += renderReportDomainBadge(domain, h);
+				section += '</div>';
+				section += '<div class="yoro-report-breakdown-list">';
+				items.slice(0, 5).forEach(function(item) {
+					section += renderReportBreakdownItem(item, h);
+				});
+				section += '</div>';
+				section += '</div>';
+				sections += section;
+			});
+
+		if (!sections) {
+			return '';
+		}
+
+		return '<div class="yoro-report-breakdowns">' + sections + '</div>';
+	}
+
+	function renderReportBreakdownItem(item, h) {
+		item = item || {};
+		const value = displayReportValue(item.value);
+		const unit = item.unit ? String(item.unit) : '';
+		const subvalue = item.subvalue ? displayText(String(item.subvalue)) : '';
+		const share = item.share ? String(item.share) : '';
+		let html = '<div class="yoro-report-breakdown-item">';
+		html += '<div class="yoro-report-breakdown-main">';
+		html += '<strong>' + h.escapeHtml(displayText(item.label || '')) + '</strong>';
+		html += renderReportBreakdownMeta(item, h);
+		html += '</div>';
+		html += '<div class="yoro-report-breakdown-value">';
+		html += '<strong>' + h.escapeHtml(value) + '</strong>';
+		if (unit) {
+			html += '<span>' + h.escapeHtml(unit) + '</span>';
+		}
+		if (subvalue || share) {
+			html += '<small>' + h.escapeHtml([subvalue, share ? (share + ' share') : ''].filter(Boolean).join(' · ')) + '</small>';
+		}
+		html += '</div>';
+		html += '</div>';
+
+		return html;
+	}
+
+	function renderReportBreakdownMeta(item, h) {
+		const meta = item && item.meta && typeof item.meta === 'object' ? item.meta : {};
+		const parts = [];
+
+		if (meta.category) {
+			parts.push(String(meta.category));
+		} else if (Array.isArray(meta.categories) && meta.categories.length) {
+			parts.push(meta.categories.slice(0, 2).join(', '));
+		}
+
+		if (meta.sku) {
+			parts.push('SKU ' + meta.sku);
+		}
+
+		if (meta.product_lines) {
+			parts.push(meta.product_lines + ' product lines');
+		}
+
+		if (!parts.length) {
+			return '';
+		}
+
+		return '<span>' + h.escapeHtml(parts.join(' · ')) + '</span>';
+	}
+
+	function normalizeReportMetricDomain(domain, key) {
+		domain = String(domain || '').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+
+		if (!domain || ['sales', 'orders', 'customers', 'products', 'operations', 'inventory', 'overview'].indexOf(domain) === -1) {
+			domain = inferReportMetricDomain(key);
+		}
+
+		return ['sales', 'orders', 'customers', 'products', 'operations', 'inventory', 'overview'].indexOf(domain) !== -1 ? domain : 'overview';
+	}
+
+	function inferReportMetricDomain(key) {
+		key = String(key || '').toLowerCase();
+
+		if (/(sales|revenue|average_order_value|gross|net|completed_sales|refund|discount|tax|shipping)/.test(key)) {
+			return 'sales';
+		}
+
+		if (/(customer|customers|buyer|follow-up|email|reply|support)/.test(key)) {
+			return 'customers';
+		}
+
+		if (/(inventory|stock|backorder)/.test(key)) {
+			return 'inventory';
+		}
+
+		if (/(backlog|attention|queue|pressure|fulfillment|pending|processing|on_hold)/.test(key)) {
+			return 'operations';
+		}
+
+		if (/(product|products|item|items)/.test(key)) {
+			return 'products';
+		}
+
+		if (/(order|orders)/.test(key)) {
+			return 'orders';
+		}
+
+		return 'overview';
+	}
+
+	function reportMetricDomainLabel(domain) {
+		switch (domain) {
+			case 'sales':
+				return 'Sales';
+			case 'orders':
+				return 'Orders';
+			case 'customers':
+				return 'Customers';
+			case 'products':
+				return 'Products';
+			case 'operations':
+				return 'Operations';
+			case 'inventory':
+				return 'Inventory';
+			default:
+				return 'Overview';
+		}
+	}
+
+	function reportMetricDomainPriority(domain) {
+		switch (domain) {
+			case 'sales':
+				return 10;
+			case 'orders':
+				return 20;
+			case 'customers':
+				return 30;
+			case 'products':
+				return 40;
+			case 'operations':
+				return 50;
+			case 'inventory':
+				return 60;
+			default:
+				return 90;
+		}
+	}
+
+	function renderReportInsightList(title, items, h, className) {
+		if (!Array.isArray(items) || !items.length) {
+			return '';
+		}
+
+		let html = '<div class="yoro-report-section ' + h.escapeHtml(className || '') + '">';
+		html += '<h4>' + h.escapeHtml(title) + '</h4>';
+		html += '<div class="yoro-report-list">';
+		sortReportItems(items).slice(0, 4).forEach(function(item) {
+			const severity = item && ['positive', 'neutral', 'watch', 'risk'].indexOf(item.severity) !== -1 ? item.severity : 'neutral';
+			const domain = normalizeReportMetricDomain(item && item.domain, item && item.topic);
+			html += '<div class="yoro-report-list-item yoro-report-severity-' + h.escapeHtml(severity) + '">';
+			html += '<div class="yoro-report-list-item-head">';
+			if (item && item.title) {
+				html += '<strong>' + h.escapeHtml(item.title) + '</strong>';
+			}
+			html += renderReportDomainBadge(domain, h);
+			html += '</div>';
+			if (item && item.message) {
+				html += '<p>' + h.escapeHtml(item.message) + '</p>';
+			}
+			html += '</div>';
+		});
+		html += '</div>';
+		html += '</div>';
+
+		return html;
+	}
+
+	function renderReportProfileFollowups(items, h) {
+		if (!Array.isArray(items) || !items.length) {
+			return '';
+		}
+
+		let html = '<div class="yoro-report-section yoro-report-profile-followups">';
+		html += '<h4>Store profile</h4>';
+		html += '<div class="yoro-report-profile-followup-list">';
+		items.slice(0, 3).forEach(function(item) {
+			if (!item || !item.question) {
+				return;
+			}
+
+			const domain = normalizeReportMetricDomain(item.domain, item.key || '');
+			html += '<div class="yoro-report-profile-followup">';
+			html += '<div class="yoro-report-list-item-head">';
+			html += '<strong>' + h.escapeHtml(item.question) + '</strong>';
+			html += renderReportDomainBadge(domain, h);
+			html += '</div>';
+			if (item.reason) {
+				html += '<p>' + h.escapeHtml(item.reason) + '</p>';
+			}
+			html += '</div>';
+		});
+		html += '</div>';
+		html += '</div>';
+
+		return html;
+	}
+
+	function renderReportActionGroup(title, items, h) {
+		if (!Array.isArray(items) || !items.length) {
+			return '';
+		}
+
+		let cards = '';
+		sortReportItems(items).slice(0, 4).forEach(function(item) {
+			cards += renderReportActionCard(item, h);
+		});
+
+		if (!cards) {
+			return '';
+		}
+
+		let html = '<div class="yoro-report-section yoro-report-actions">';
+		html += '<h4>' + h.escapeHtml(title) + '</h4>';
+		html += '<div class="yoro-report-action-grid">' + cards + '</div>';
+		html += '</div>';
+
+		return html;
+	}
+
+	function renderReportActionCard(item, h) {
+		if (!item || !item.command) {
+			return '';
+		}
+
+		const button = renderDirectActionButton(reportActionButtonLabel(item), item, h);
+
+		if (!button) {
+			return '';
+		}
+
+		const domain = normalizeReportMetricDomain(item.domain, item.label || item.command);
+		let html = '<div class="yoro-report-action-card">';
+		html += '<div class="yoro-report-action-copy">';
+		html += '<div class="yoro-report-action-head">';
+		html += '<strong>' + h.escapeHtml(item.label || item.command) + '</strong>';
+		html += renderReportDomainBadge(domain, h);
+		html += '</div>';
+		if (item.reason) {
+			html += '<p>' + h.escapeHtml(item.reason) + '</p>';
+		}
+		html += '</div>';
+		html += '<div class="yoro-report-action-button">' + button + '</div>';
+		html += '</div>';
+
+		return html;
+	}
+
+	function reportActionButtonLabel(item) {
+		const kind = String(item && item.kind ? item.kind : '').toLowerCase();
+		const command = normalizeActionCommandText(item && item.command);
+
+		if (kind === 'preview' || /^preview\b/i.test(command)) {
+			return 'Preview';
+		}
+
+		if (kind === 'draft' || /^draft\b/i.test(command)) {
+			return 'Draft';
+		}
+
+		if (kind === 'send' || /^send\b/i.test(command)) {
+			return 'Send';
+		}
+
+		if (kind === 'execute' || /^run\b/i.test(command)) {
+			return 'Run';
+		}
+
+		if (/^(show|open|review|check)\b/i.test(command)) {
+			return 'Open';
+		}
+
+		return 'Run';
+	}
+
+	function renderReportDomainBadge(domain, h) {
+		domain = normalizeReportMetricDomain(domain, '');
+
+		return '<span class="yoro-report-domain-badge yoro-report-domain-' + h.escapeHtml(domain) + '">' + h.escapeHtml(reportMetricDomainLabel(domain)) + '</span>';
+	}
+
+	function sortReportItems(items) {
+		return (items || []).slice().sort(function(a, b) {
+			const priorityCompare = (parseInt((a || {}).priority, 10) || 50) - (parseInt((b || {}).priority, 10) || 50);
+
+			if (priorityCompare !== 0) {
+				return priorityCompare;
+			}
+
+			return reportSeverityWeight((a || {}).severity) - reportSeverityWeight((b || {}).severity);
+		});
+	}
+
+	function reportSeverityWeight(severity) {
+		switch (String(severity || 'neutral')) {
+			case 'risk':
+				return 10;
+			case 'watch':
+				return 20;
+			case 'positive':
+				return 30;
+			default:
+				return 40;
+		}
+	}
+
+	function filterDuplicateReportActions(items, existingItems) {
+		const seen = {};
+		(existingItems || []).forEach(function(item) {
+			if (item && item.command) {
+				seen[normalizeActionCommandText(item.command).toLowerCase()] = true;
+			}
+		});
+
+		return (items || []).filter(function(item) {
+			const key = item && item.command ? normalizeActionCommandText(item.command).toLowerCase() : '';
+			if (!key || seen[key]) {
+				return false;
+			}
+			seen[key] = true;
+			return true;
+		});
+	}
+
+	function reportTypeMeta(type) {
+		switch (String(type || '')) {
+			case 'operations':
+				return {
+					key: 'operations',
+					surface: 'Store report',
+					scope: 'Operations',
+					description: 'Order flow, backlog, and execution pressure'
+				};
+			case 'business':
+				return {
+					key: 'business',
+					surface: 'Store report',
+					scope: 'Sales',
+					description: 'Revenue, orders, customers, and product demand'
+				};
+			case 'store_overview':
+				return {
+					key: 'store_overview',
+					surface: 'Store report',
+					scope: 'Overview',
+					description: 'The broad store picture for this window'
+				};
+			case 'store_insights':
+				return {
+					key: 'store_insights',
+					surface: 'Store report',
+					scope: 'Signals',
+					description: 'Patterns across orders, customers, products, and inventory'
+				};
+			default:
+				return {
+					key: 'overview',
+					surface: 'Store report',
+					scope: 'Overview',
+					description: ''
+				};
+		}
+	}
+
+	function reportHealthLabel(health) {
+		switch (String(health || '')) {
+			case 'good':
+				return 'Good';
+			case 'risk':
+				return 'Risk';
+			case 'watch':
+			default:
+				return 'Watch';
+		}
+	}
+
+	function renderReportResult(data, h) {
+		const locale = getResultLocale(data);
+
+		return renderUnifiedReportResult(data, h, locale)
+			|| renderReportContractFallback(data, h, locale, 'Store report');
+	}
+
+	function renderQueueWorkbenchIntro(config, h) {
 		let html = '';
 		const cardClassName = config && config.cardClassName ? String(config.cardClassName) : '';
 
@@ -2830,7 +2582,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				return;
 			}
 
-			html += '<div><span>' + h.escapeHtml(metric.label || '') + '</span><strong>' + h.escapeHtml(metric.value || 0) + '</strong></div>';
+			html += '<div><span>' + h.escapeHtml(displayText(metric.label || '')) + '</span><strong>' + h.escapeHtml(displayReportValue(metric.value || 0)) + '</strong></div>';
 		});
 
 		html += '</div>';
@@ -2864,8 +2616,8 @@ function renderQueueWorkbenchIntro(config, h) {
 			html += '</div>';
 			html += '<p>' + h.escapeHtml(item.reason || '') + '</p>';
 			if (showActions && item.command) {
-				html += '<div class="yoro-suggestion-list">';
-				html += renderDirectActionButton(item.label || item.command, item.command, h);
+				html += '<div class="yoro-action-list">';
+				html += renderDirectActionButton(item.label || item.command, item, h);
 				html += '</div>';
 			}
 			html += '</div>';
@@ -2881,16 +2633,16 @@ function renderQueueWorkbenchIntro(config, h) {
 			return '';
 		}
 
-		let html = '<div class="yoro-suggestions yoro-briefing-suggestions">';
+		let html = '<div class="yoro-action-strip yoro-briefing-actions">';
 		html += '<strong>' + h.escapeHtml(title || 'Next actions') + '</strong>';
-		html += '<div class="yoro-suggestion-list">';
+		html += '<div class="yoro-action-list">';
 
 		items.slice(0, 4).forEach(function (item) {
 			if (!item || !item.command) {
 				return;
 			}
 
-			html += renderDirectActionButton(item.label || item.command, item.command, h);
+			html += renderDirectActionButton(item.label || item.command, item, h);
 		});
 
 		html += '</div>';
@@ -2933,7 +2685,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			html += '<p class="yoro-result-subtle">' + h.escapeHtml(item.reason) + '</p>';
 		}
 		html += '</div>';
-	html += '<div class="yoro-suggestion-list">';
+	html += '<div class="yoro-action-list">';
 	visibleActions.slice(0, 3).forEach(function (action, index) {
 		if (!action || (!action.command && !action.href)) {
 			return;
@@ -2945,7 +2697,7 @@ function renderQueueWorkbenchIntro(config, h) {
 		} else {
 			html += renderDirectActionButton(
 				action.label || action.command,
-				action.command,
+				action,
 				h,
 				'button ' + (index === 0 ? 'button-primary' : 'button-small')
 			);
@@ -2970,14 +2722,14 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += '<p>' + h.escapeHtml(worklist.message) + '</p>';
 		html += '<p class="yoro-result-subtle">' + h.escapeHtml(worklist.detail) + '</p>';
 		html += '</div>';
-		html += '<div class="yoro-suggestion-list">';
+		html += '<div class="yoro-action-list">';
 		worklist.actions.forEach(function (action, index) {
 			if (!action || !action.command) {
 				return;
 			}
 			html += renderDirectActionButton(
 				action.label || action.command,
-				action.command,
+				action,
 				h,
 				'button ' + (index === 0 ? 'button-primary' : 'button-small')
 			);
@@ -3006,32 +2758,20 @@ function renderQueueWorkbenchIntro(config, h) {
 		}
 
 		const refreshCommand = getWorklistRefreshCommand(result && result.result_type ? result.result_type : '');
-		const actions = [
-			{
-				label: 'Continue plan',
-				command: 'Continue the plan'
-			}
-		];
-
-		if (sequence.length > 1) {
-			actions.push({
-				label: 'Next step',
-				command: 'Do the next recommendation'
-			});
-		}
-
-		if (refreshCommand) {
-			actions.push({
-				label: 'Refresh queue',
-				command: refreshCommand
-			});
+		if (!refreshCommand) {
+			return null;
 		}
 
 		return {
-			title: 'Continue from where YoRo left off',
-			message: 'YoRo can keep advancing the current follow-up path without making you re-open each queue manually.',
+			title: 'Refresh this work surface',
+			message: 'Open the latest direct view for this queue before taking the next action.',
 			detail: 'Step ' + (Math.max(0, normalizedCursor) + 1) + ' of ' + sequence.length + ' in the current recommendation path.',
-			actions: actions
+			actions: [
+				{
+					label: 'Refresh queue',
+					command: refreshCommand
+				}
+			]
 		};
 	}
 
@@ -3059,9 +2799,9 @@ function renderQueueWorkbenchIntro(config, h) {
 		switch (String(resultType || '')) {
 			case 'morning_briefing':
 			case 'daily_briefing':
-				return 'Show daily briefing for today';
+				return 'Show store report for the last 7 days';
 			case 'business_summary':
-				return 'Show business summary for this week';
+				return 'Show sales report for the last 7 days';
 			case 'operations_attention_queue':
 				return 'Show operations attention queue';
 			case 'customer_service_queue':
@@ -3112,7 +2852,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				return;
 			}
 
-			html += '<div><span>' + h.escapeHtml(metric.label || '') + '</span><strong>' + h.escapeHtml(metric.value || 0) + '</strong></div>';
+			html += '<div><span>' + h.escapeHtml(displayText(metric.label || '')) + '</span><strong>' + h.escapeHtml(displayReportValue(metric.value || 0)) + '</strong></div>';
 		});
 
 		html += '</div>';
@@ -3154,7 +2894,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				html += '<p>' + h.escapeHtml(item.message) + '</p>';
 			}
 			if (Array.isArray(item.actions) && item.actions.length) {
-				html += '<div class="yoro-suggestion-list">';
+				html += '<div class="yoro-action-list">';
 				item.actions.slice(0, 3).forEach(function (action) {
 					if (!action || (!action.command && !action.href)) {
 						return;
@@ -3164,7 +2904,7 @@ function renderQueueWorkbenchIntro(config, h) {
 						html += h.escapeHtml(action.label || action.href);
 						html += '</a>';
 					} else {
-						html += renderDirectActionButton(action.label || action.command, action.command, h);
+						html += renderDirectActionButton(action.label || action.command, action, h);
 					}
 				});
 				html += '</div>';
@@ -3191,39 +2931,74 @@ function renderQueueWorkbenchIntro(config, h) {
 		}, h);
 	}
 
+	function getQueueMatchCount(result) {
+		return parseInt(result && Object.prototype.hasOwnProperty.call(result, 'queue_item_count') ? result.queue_item_count : (result && result.count ? result.count : 0), 10) || 0;
+	}
+
+	function getQueueVisibleCaseCount(result, itemKey) {
+		const explicit = result && Object.prototype.hasOwnProperty.call(result, 'visible_case_count') ? result.visible_case_count : null;
+		const keyed = result && itemKey && Object.prototype.hasOwnProperty.call(result, itemKey) && Array.isArray(result[itemKey])
+			? result[itemKey].length
+			: null;
+
+		return parseInt(null !== explicit && undefined !== explicit ? explicit : (null !== keyed && undefined !== keyed ? keyed : 0), 10) || 0;
+	}
+
+	function renderQueueSectionHeading(queue, itemLabel, h) {
+		queue = queue && typeof queue === 'object' ? queue : {};
+		const count = parseInt(queue && queue.count ? queue.count : 0, 10) || 0;
+		let html = '<div class="yoro-queue-section-head">';
+		html += '<div>';
+		html += '<h4>' + h.escapeHtml(displayText(queue.label || queue.key || 'Queue')) + '</h4>';
+		if (queue.description) {
+			html += '<p class="yoro-result-subtle">' + h.escapeHtml(displayText(queue.description)) + '</p>';
+		}
+		html += '</div>';
+		html += '<span class="yoro-queue-count">' + h.escapeHtml(count) + ' ' + h.escapeHtml(itemLabel || 'matches') + '</span>';
+		html += '</div>';
+		return html;
+	}
+
+	function renderQueueTable(columns, rowsHtml, h, className) {
+		const tableClass = className ? String(className) : 'yoro-queue-table-orders';
+		let html = '<div class="yoro-queue-table-scroll">';
+		html += '<table class="yoro-orders-table yoro-queue-table ' + h.escapeHtml(tableClass) + '">';
+		html += '<thead><tr>';
+		(columns || []).forEach(function (column) {
+			html += '<th>' + h.escapeHtml(column.label || '') + '</th>';
+		});
+		html += '</tr></thead><tbody>';
+		html += rowsHtml || '';
+		html += '</tbody></table>';
+		html += '</div>';
+		return html;
+	}
+
 	function renderOrderQueueSections(queues, tableConfig, h) {
 		let html = '';
 		const config = tableConfig && typeof tableConfig === 'object' ? tableConfig : {};
 		const maxRows = typeof config.maxRows === 'number' ? config.maxRows : 0;
+		const columns = Array.isArray(config.columns) ? config.columns : [];
+		const tableClassName = config.tableClassName || 'yoro-queue-table-orders';
 
 		(queues || []).forEach(function (queue) {
 			const orders = Array.isArray(queue.orders) ? queue.orders : [];
 			const visibleOrders = maxRows > 0 ? orders.slice(0, maxRows) : orders;
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>' + h.escapeHtml(queue.label || queue.key || 'Queue') + ' <span class="yoro-result-subtle">(' + h.escapeHtml(queue.count || 0) + ')</span></h4>';
-
-			if (queue.description) {
-				html += '<p class="yoro-result-subtle">' + h.escapeHtml(queue.description) + '</p>';
-			}
+			let rowsHtml = '';
+			html += '<div class="yoro-order-detail-section yoro-queue-section">';
+			html += renderQueueSectionHeading(queue, 'matches', h);
 
 			if (!orders.length) {
-				html += '<p class="yoro-result-subtle">' + h.escapeHtml(tableConfig.emptyMessage || 'No matching orders in this queue.') + '</p>';
+				html += '<p class="yoro-result-subtle yoro-queue-empty">' + h.escapeHtml(config.emptyMessage || 'No matching orders in this queue.') + '</p>';
 				html += '</div>';
 				return;
 			}
 
-			html += '<table class="yoro-orders-table">';
-			html += '<thead><tr>';
-			(config.columns || []).forEach(function (column) {
-				html += '<th>' + h.escapeHtml(column.label || '') + '</th>';
-			});
-			html += '</tr></thead><tbody>';
-
 			visibleOrders.forEach(function (order) {
-				html += config.renderRow(order, queue, h);
+				rowsHtml += config.renderRow(order, queue, h);
 			});
 
-			html += '</tbody></table>';
+			html += renderQueueTable(columns, rowsHtml, h, tableClassName);
 			if (maxRows > 0 && orders.length > visibleOrders.length) {
 				html += '<p class="yoro-result-subtle">Showing the top ' + h.escapeHtml(visibleOrders.length) + ' cases in this queue.</p>';
 			}
@@ -3238,42 +3013,43 @@ function renderQueueWorkbenchIntro(config, h) {
 
 		(queues || []).forEach(function (queue) {
 			const products = Array.isArray(queue.products) ? queue.products : [];
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>' + h.escapeHtml(queue.label || queue.key || 'Queue') + ' <span class="yoro-result-subtle">(' + h.escapeHtml(queue.count || 0) + ')</span></h4>';
-
-			if (queue.description) {
-				html += '<p class="yoro-result-subtle">' + h.escapeHtml(queue.description) + '</p>';
-			}
+			let rowsHtml = '';
+			html += '<div class="yoro-order-detail-section yoro-queue-section">';
+			html += renderQueueSectionHeading(queue, 'matches', h);
 
 			if (!products.length) {
-				html += '<p class="yoro-result-subtle">No matching products in this queue.</p>';
+				html += '<p class="yoro-result-subtle yoro-queue-empty">No matching products in this queue.</p>';
 				html += '</div>';
 				return;
 			}
-
-			html += '<table class="yoro-orders-table">';
-			html += '<thead><tr><th>Product</th><th>SKU</th><th>Stock</th><th>Status</th><th>Backorders</th><th>Actions</th></tr></thead><tbody>';
 
 			products.forEach(function (product) {
 				const stock = product.stock_quantity === '' || product.stock_quantity === null
 					? '—'
 					: product.stock_quantity;
 
-				html += '<tr>';
-				html += '<td><strong>' + h.escapeHtml(product.name || ('#' + product.id)) + '</strong></td>';
-				html += '<td>' + h.escapeHtml(product.sku || '—') + '</td>';
-				html += '<td>' + h.escapeHtml(stock) + ' <span class="yoro-result-subtle">/ low ' + h.escapeHtml(product.low_stock_threshold || 0) + '</span></td>';
-				html += '<td><span class="yoro-status-badge">' + h.escapeHtml(product.stock_status || '') + '</span></td>';
-				html += '<td>' + h.escapeHtml(product.backorders_allowed ? 'Allowed' : 'No') + '</td>';
-				html += '<td class="yoro-row-actions">';
+				rowsHtml += '<tr>';
+				rowsHtml += '<td><strong>' + h.escapeHtml(product.name || ('#' + product.id)) + '</strong></td>';
+				rowsHtml += '<td>' + h.escapeHtml(product.sku || '—') + '</td>';
+				rowsHtml += '<td>' + h.escapeHtml(stock) + ' <span class="yoro-result-subtle">/ low ' + h.escapeHtml(product.low_stock_threshold || 0) + '</span></td>';
+				rowsHtml += '<td><span class="yoro-status-badge">' + h.escapeHtml(productStockStatusLabel(product)) + '</span></td>';
+				rowsHtml += '<td>' + h.escapeHtml(product.backorders_allowed ? 'Allowed' : 'No') + '</td>';
+				rowsHtml += '<td class="yoro-row-actions">';
 				if (product.edit_url) {
-					html += '<a class="button button-small" href="' + h.escapeHtml(product.edit_url) + '" target="_blank" rel="noopener noreferrer">Open</a>';
+					rowsHtml += '<a class="button button-small" href="' + h.escapeHtml(product.edit_url) + '" target="_blank" rel="noopener noreferrer">Open</a>';
 				}
-				html += '</td>';
-				html += '</tr>';
+				rowsHtml += '</td>';
+				rowsHtml += '</tr>';
 			});
 
-			html += '</tbody></table>';
+			html += renderQueueTable([
+				{ label: 'Product' },
+				{ label: 'SKU' },
+				{ label: 'Stock' },
+				{ label: 'Status' },
+				{ label: 'Backorders' },
+				{ label: 'Actions' }
+			], rowsHtml, h, 'yoro-queue-table-products');
 			html += '</div>';
 		});
 
@@ -3290,47 +3066,47 @@ function renderQueueWorkbenchIntro(config, h) {
 		(queues || []).forEach(function (queue) {
 			const products = Array.isArray(queue.products) ? queue.products : [];
 			const visibleProducts = maxRows > 0 ? products.slice(0, maxRows) : products;
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>' + h.escapeHtml(queue.label || queue.key || 'Queue') + ' <span class="yoro-result-subtle">(' + h.escapeHtml(queue.count || 0) + ')</span></h4>';
-
-			if (queue.description) {
-				html += '<p class="yoro-result-subtle">' + h.escapeHtml(queue.description) + '</p>';
-			}
+			let rowsHtml = '';
+			html += '<div class="yoro-order-detail-section yoro-queue-section">';
+			html += renderQueueSectionHeading(queue, 'matches', h);
 
 			if (!products.length) {
-				html += '<p class="yoro-result-subtle">No matching products in this queue.</p>';
+				html += '<p class="yoro-result-subtle yoro-queue-empty">No matching products in this queue.</p>';
 				html += '</div>';
 				return;
 			}
 
-			html += '<table class="yoro-orders-table">';
-			html += '<thead><tr><th>Product</th><th>Case</th><th>Stock</th><th>Next action</th></tr></thead><tbody>';
-
 			visibleProducts.forEach(function (product) {
 				const queueKey = String(queue && queue.key ? queue.key : '');
-				const productMeta = [product.sku || '', product.stock_status || ''].filter(Boolean).join(' · ');
+				const stockStatusLabel = productStockStatusLabel(product);
+				const productMeta = [product.sku || '', stockStatusLabel].filter(Boolean).join(' · ');
 				const caseTitle = [
 					humanizeInventoryTopic(queueKey || ''),
-					product.stock_status || ''
+					stockStatusLabel
 				].filter(Boolean).join(' · ');
 
-				html += '<tr>';
-				html += '<td><strong>' + h.escapeHtml(product.name || ('#' + product.id)) + '</strong>';
+				rowsHtml += '<tr>';
+				rowsHtml += '<td><strong>' + h.escapeHtml(product.name || ('#' + product.id)) + '</strong>';
 				if (productMeta) {
-					html += '<div class="yoro-result-subtle">' + h.escapeHtml(productMeta) + '</div>';
+					rowsHtml += '<div class="yoro-result-subtle">' + h.escapeHtml(productMeta) + '</div>';
 				}
-				html += '</td>';
-				html += '<td><strong>' + h.escapeHtml(caseTitle || 'Inventory case') + '</strong><div class="yoro-result-subtle">' + h.escapeHtml(buildInventoryRowCaseMessage(queueKey, queue.description || '', product)) + '</div></td>';
-				html += '<td>' + h.escapeHtml(formatInventoryRowStock(product, stockManagementEnabled, inventoryMode)) + '</td>';
-				html += '<td class="yoro-row-actions">';
+				rowsHtml += '</td>';
+				rowsHtml += '<td><strong>' + h.escapeHtml(caseTitle || 'Inventory case') + '</strong><div class="yoro-result-subtle">' + h.escapeHtml(displayText(buildInventoryRowCaseMessage(queueKey, queue.description || '', product))) + '</div></td>';
+				rowsHtml += '<td>' + h.escapeHtml(formatInventoryRowStock(product, stockManagementEnabled, inventoryMode)) + '</td>';
+				rowsHtml += '<td class="yoro-row-actions">';
 				if (product.edit_url) {
-					html += '<a class="button button-small" href="' + h.escapeHtml(product.edit_url) + '" target="_blank" rel="noopener noreferrer">Open product</a>';
+					rowsHtml += '<a class="button button-small" href="' + h.escapeHtml(product.edit_url) + '" target="_blank" rel="noopener noreferrer">Open product</a>';
 				}
-				html += '</td>';
-				html += '</tr>';
+				rowsHtml += '</td>';
+				rowsHtml += '</tr>';
 			});
 
-			html += '</tbody></table>';
+			html += renderQueueTable([
+				{ label: 'Product' },
+				{ label: 'Case' },
+				{ label: 'Stock' },
+				{ label: 'Next action' }
+			], rowsHtml, h, 'yoro-queue-table-inventory');
 			if (maxRows > 0 && products.length > visibleProducts.length) {
 				html += '<p class="yoro-result-subtle">Showing the top ' + h.escapeHtml(visibleProducts.length) + ' products in this queue.</p>';
 			}
@@ -3351,6 +3127,8 @@ function renderQueueWorkbenchIntro(config, h) {
 		const batchDraftCandidates = Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
 		const topPriority = buildOperationsAttentionHeroItem(attentionContext, priorityItems, result);
 		const supportingPriorityItems = filterOperationsAttentionSupportingPriorities(priorityItems, attentionContext);
+		const queueMatches = getQueueMatchCount(result);
+		const visibleCases = getQueueVisibleCaseCount(result, 'orders');
 
 		let html = renderQueueWorkbenchIntro({
 			result: result,
@@ -3361,10 +3139,10 @@ function renderQueueWorkbenchIntro(config, h) {
 				parserRule: parsed.parser_rule,
 				title: 'Operations attention cases',
 				contextLine: 'Top cases from each active queue.',
-				badge: (result.count || 0) + ' items'
+				badge: queueMatches + ' matches'
 			}, h);
 		html += renderQueueWorkbenchHero(topPriority, [
-			{ label: 'Attention items', value: attentionContext.total_items || result.count || 0 },
+			{ label: 'Queue matches', value: queueMatches },
 			{ label: 'Pending payment', value: attentionContext.pending_count || 0 },
 			{ label: 'Aging processing', value: attentionContext.processing_count || 0 },
 			{ label: 'High-value open', value: attentionContext.high_value_count || 0 }
@@ -3385,12 +3163,12 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
 		html += renderQueueMetaMetrics([
 			{ label: 'Queues', value: queues.length },
-			{ label: 'Total items', value: result.count || 0 },
+			{ label: 'Shown cases', value: visibleCases },
 			{ label: 'High-value threshold', value: result.high_value_threshold || 0 }
 		], h);
 		html += renderOrderQueueSections(queues, {
 			emptyMessage: 'No matching orders in this queue.',
-			maxRows: 3,
+			maxRows: 5,
 			columns: [
 				{ label: 'Order' },
 				{ label: 'Case' },
@@ -3402,7 +3180,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				const customerMeta = order.customer_name || order.billing_email || '';
 				const caseMeta = [
 					humanizeAttentionTopic(queueKey || ''),
-					order.status || '',
+					orderDisplayStatus(order) || '',
 					order.total ? ((order.total || '') + ' ' + (order.currency || '')) : ''
 				].filter(Boolean).join(' · ');
 				const primaryCommand = getOperationsAttentionRowCommand(queueKey, order);
@@ -3410,7 +3188,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				const detailsCommand = 'Show order ' + order.id + ' details';
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
-				row += '<td><strong>' + h2.escapeHtml(caseMeta || (order.status || 'Case')) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(customerMeta || queue.description || '') + '</div></td>';
+				row += '<td><strong>' + h2.escapeHtml(displayText(caseMeta || (orderDisplayStatus(order) || 'Case'))) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(displayText(customerMeta || queue.description || '')) + '</div></td>';
 				row += '<td>' + h2.escapeHtml(formatAgeHours(order.age_hours)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(primaryLabel, primaryCommand, h2) + ' ';
@@ -3424,7 +3202,7 @@ function renderQueueWorkbenchIntro(config, h) {
 		}, h);
 		html += renderQueueActionStrip([
 			{ label: 'Refresh queue', command: 'Show operations attention queue' },
-			{ label: 'Operations summary', command: 'Show operations summary for today' },
+			{ label: 'Operations report', command: 'Show operations report for today' },
 			{ label: 'Customer service', command: 'Show customer service queue' }
 		], h, 'Other views');
 		html += '</div>';
@@ -3442,8 +3220,23 @@ function renderQueueWorkbenchIntro(config, h) {
 		const recommendedSequence = Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
 		const nextRecommendedCase = result.next_recommended_case || null;
 		const batchDraftCandidates = Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
+		if (fulfillmentContext && fulfillmentContext.applicable === false) {
+			return renderQueueWorkbenchIntro({
+				result: result,
+				showAssistantIntro: true,
+				showBoundary: true,
+				summary: result.summary || 'Fulfillment queue is not currently applicable.',
+				subtle: 'Shipping-related fulfillment signals are hidden while shipping is disabled for this store.',
+				parserRule: parsed.parser_rule,
+				title: 'Fulfillment candidates',
+				contextLine: 'Shipping is disabled for this store.',
+				badge: 'Not applicable'
+			}, h);
+		}
 		const topPriority = buildFulfillmentHeroItem(fulfillmentContext, priorityItems, result);
 		const supportingPriorityItems = filterFulfillmentSupportingPriorities(priorityItems, fulfillmentContext);
+		const queueMatches = getQueueMatchCount(result);
+		const visibleCases = getQueueVisibleCaseCount(result, 'orders');
 
 		let html = renderQueueWorkbenchIntro({
 			result: result,
@@ -3454,10 +3247,10 @@ function renderQueueWorkbenchIntro(config, h) {
 				parserRule: parsed.parser_rule,
 				title: 'Fulfillment candidates',
 				contextLine: 'Top fulfillment cases from each queue.',
-				badge: (result.count || 0) + ' fulfillment items'
+				badge: queueMatches + ' matches'
 			}, h);
 		html += renderQueueWorkbenchHero(topPriority, [
-			{ label: 'Queue items', value: fulfillmentContext.total_items || result.count || 0 },
+			{ label: 'Queue matches', value: queueMatches },
 			{ label: 'Missing tracking', value: fulfillmentContext.tracking_count || 0 },
 			{ label: 'Aging orders', value: fulfillmentContext.aging_count || 0 },
 			{ label: 'Tracked ready', value: fulfillmentContext.ready_count || 0 }
@@ -3478,12 +3271,12 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
 		html += renderQueueMetaMetrics([
 			{ label: 'Queues', value: queues.length },
-			{ label: 'Total items', value: result.count || 0 },
+			{ label: 'Shown cases', value: visibleCases },
 			{ label: 'Store changes', value: 'No' }
 		], h);
 		html += renderOrderQueueSections(queues, {
 			emptyMessage: 'No matching orders in this queue.',
-			maxRows: 3,
+			maxRows: 5,
 			columns: [
 				{ label: 'Order' },
 				{ label: 'Case' },
@@ -3502,7 +3295,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				].filter(Boolean).join(' · ');
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
-				row += '<td><strong>' + h2.escapeHtml(caseMeta || (order.status || 'Case')) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(order.fulfillment_reason || queue.description || '') + '</div></td>';
+				row += '<td><strong>' + h2.escapeHtml(displayText(caseMeta || (orderDisplayStatus(order) || 'Case'))) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(displayText(order.fulfillment_reason || queue.description || '')) + '</div></td>';
 				row += '<td>' + h2.escapeHtml(formatAgeHours(order.age_hours)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(primaryLabel, primaryCommand, h2) + ' ';
@@ -3535,12 +3328,14 @@ function renderQueueWorkbenchIntro(config, h) {
 		const topPriority = buildInventoryHeroItem(inventoryContext, priorityItems, result);
 		const supportingPriorityItems = filterInventorySupportingPriorities(priorityItems, inventoryContext);
 		const stockManagementEnabled = !!inventoryContext.stock_management_enabled;
+		const queueMatches = getQueueMatchCount(result);
+		const visibleCases = getQueueVisibleCaseCount(result, 'products');
 			const inventoryMode = String(inventoryContext.inventory_mode || result.inventory_mode || '');
 			const inventorySubtle = stockManagementEnabled
 				? 'Products that may need stock attention.'
 				: 'Stock status view. Quantity tracking is not enabled for these products.';
 		const heroMetrics = [
-			{ label: 'Queue items', value: inventoryContext.total_items || result.count || 0 },
+			{ label: 'Queue matches', value: queueMatches },
 			{ label: 'Out of stock', value: inventoryContext.out_of_stock_count || 0 },
 			{ label: 'Backorders', value: inventoryContext.backorder_count || 0 },
 			{ label: stockManagementEnabled ? 'Low stock' : 'Mode', value: stockManagementEnabled ? (inventoryContext.low_stock_count || 0) : 'Status only' }
@@ -3557,7 +3352,7 @@ function renderQueueWorkbenchIntro(config, h) {
 				contextLine: inventoryMode === 'status_only'
 					? 'Top stock-status exceptions.'
 					: 'Top products from each inventory queue.',
-				badge: (result.count || 0) + ' items'
+				badge: queueMatches + ' matches'
 			}, h);
 		html += renderQueueWorkbenchHero(topPriority, heroMetrics, h);
 		html += renderWorklistModeCard(result, h);
@@ -3574,211 +3369,23 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
 		html += renderQueueMetaMetrics([
 			{ label: 'Queues', value: queues.length },
-			{ label: 'Total items', value: result.count || 0 },
+			{ label: 'Shown products', value: visibleCases },
 			{ label: 'Stock tracking', value: stockManagementEnabled ? 'Enabled' : 'Off' }
 		], h);
 		html += renderInventoryProductQueueSections(queues, h, {
-			maxRows: 3,
+			maxRows: 5,
 			stockManagementEnabled: stockManagementEnabled,
 			inventoryMode: inventoryMode
 		});
 		html += renderQueueActionStrip([
 			{ label: 'Refresh queue', command: 'Show inventory queue' },
-			{ label: stockManagementEnabled ? 'Fulfillment' : 'Store summary', command: stockManagementEnabled ? 'Show fulfillment queue' : 'Show business summary for this week' },
+			{ label: stockManagementEnabled ? 'Fulfillment' : 'Sales report', command: stockManagementEnabled ? 'Show fulfillment queue' : 'Show sales report for the last 7 days' },
 			{ label: 'Operations', command: 'Show operations attention queue' }
 		], h, 'Other views');
 		html += '</div>';
 		html += h.renderDebugJson(data);
 
 		return html;
-	}
-
-	function renderStoreInsightsResult(data, h) {
-		const result = data.result || {};
-		const parsed = data.parsed || {};
-		const windowInfo = result.window || {};
-		const insights = Array.isArray(result.insights) ? result.insights : [];
-		const ordersSection = insights.find(function(section) { return section && section.key === 'orders'; }) || {};
-		const customersSection = insights.find(function(section) { return section && section.key === 'customers'; }) || {};
-		const productsSection = insights.find(function(section) { return section && section.key === 'products'; }) || {};
-		const productMetrics = productsSection.metrics || {};
-		const inventoryRiskCount = (parseInt(productMetrics.out_of_stock || 0, 10) || 0)
-			+ (parseInt(productMetrics.low_stock || 0, 10) || 0)
-			+ (parseInt(productMetrics.on_backorder || 0, 10) || 0);
-		const topMetrics = [
-			{
-				label: 'Orders',
-				value: ((ordersSection.metrics || {}).order_count || 0) + '',
-				subtle: windowInfo.label || ''
-			},
-			{
-				label: 'Gross sales',
-				value: ((ordersSection.metrics || {}).gross_sales || '0') + ' ' + ((result.meta || {}).currency || ''),
-				subtle: 'Across this window'
-			},
-			{
-				label: 'Customers',
-				value: ((customersSection.metrics || {}).unique_customers || 0) + '',
-				subtle: 'Unique buyers'
-			},
-			{
-				label: 'Inventory risk',
-				value: inventoryRiskCount + '',
-				subtle: 'Out of stock, low stock, and backorders'
-			}
-		];
-
-		let html = renderAssistantIntro(result, h);
-		html += '<div class="yoro-result-summary">';
-		html += '<strong>' + h.escapeHtml(result.summary || 'Grouped store snapshot') + '</strong>';
-		html += '<span class="yoro-result-subtle">Use this grouped snapshot when you want a deeper read across orders, customers, and products.</span>';
-
-		if (shouldShowDecisionRoute(h) && parsed.parser_rule) {
-			html += '<span class="yoro-result-subtle">Decision route: ' + h.escapeHtml(parsed.parser_rule) + '</span>';
-		}
-
-		if (windowInfo.label) {
-			html += '<span class="yoro-result-subtle">Window: ' + h.escapeHtml(windowInfo.label) + '</span>';
-		}
-
-		html += '</div>';
-
-		html += '<div class="yoro-order-detail-card">';
-		html += '<div class="yoro-order-detail-header">';
-		html += '<div>';
-		html += '<strong class="yoro-order-detail-title">Grouped store snapshot</strong>';
-		html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatWindowRange(windowInfo, h)) + '</div>';
-		html += '</div>';
-		html += '<span class="yoro-current-order-badge">' + h.escapeHtml(windowInfo.label || (insights.length + ' groups')) + '</span>';
-		html += '</div>';
-
-		html += '<div class="yoro-order-detail-metrics yoro-order-detail-metrics-compact">';
-		topMetrics.forEach(function(metric) {
-			html += '<div>';
-			html += '<span>' + h.escapeHtml(metric.label || '') + '</span>';
-			html += '<strong>' + h.escapeHtml(metric.value || '') + '</strong>';
-			if (metric.subtle) {
-				html += '<small class="yoro-result-subtle">' + h.escapeHtml(metric.subtle) + '</small>';
-			}
-			html += '</div>';
-		});
-		html += '</div>';
-
-		insights.forEach(function(section) {
-			const metrics = section.metrics || {};
-			const items = Array.isArray(section.items) ? section.items : [];
-			const sectionMeta = getStoreInsightsSectionMeta(section.key);
-
-			html += '<div class="yoro-order-detail-section">';
-			html += '<h4>' + h.escapeHtml(sectionMeta.title || section.label || section.key || 'Insights') + '</h4>';
-			if (sectionMeta.summary) {
-				html += '<p class="yoro-result-subtle">' + h.escapeHtml(sectionMeta.summary) + '</p>';
-			}
-
-			html += '<div class="yoro-order-detail-metrics">';
-			Object.keys(metrics).forEach(function(key) {
-				html += '<div><span>' + h.escapeHtml(humanizeStoreInsightsMetricLabel(key)) + '</span><strong>' + h.escapeHtml(metrics[key]) + '</strong></div>';
-			});
-			html += '</div>';
-
-			if (!items.length) {
-				html += '<p class="yoro-result-subtle">Nothing notable in this group for the selected window.</p>';
-				html += '</div>';
-				return;
-			}
-
-			html += '<table class="yoro-orders-table">';
-
-			if (section.key === 'customers') {
-				html += '<thead><tr><th>Customer</th><th>Email</th><th>Orders</th><th>Total spent</th></tr></thead><tbody>';
-				items.forEach(function(item) {
-					html += '<tr>';
-					html += '<td>' + h.escapeHtml(item.name || '—') + '</td>';
-					html += '<td>' + h.escapeHtml(item.email || '') + '</td>';
-					html += '<td>' + h.escapeHtml(item.order_count || 0) + '</td>';
-					html += '<td>' + h.escapeHtml(item.total_spent || 0) + '</td>';
-					html += '</tr>';
-				});
-			} else if (section.key === 'products') {
-				html += '<thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Total</th></tr></thead><tbody>';
-				items.forEach(function(item) {
-					html += '<tr>';
-					html += '<td>' + h.escapeHtml(item.name || ('#' + item.id)) + '</td>';
-					html += '<td>' + h.escapeHtml(item.sku || '—') + '</td>';
-					html += '<td>' + h.escapeHtml(item.quantity || 0) + '</td>';
-					html += '<td>' + h.escapeHtml(item.total || 0) + '</td>';
-					html += '</tr>';
-				});
-			} else {
-				html += '<thead><tr><th>Item</th><th>Count</th></tr></thead><tbody>';
-				items.forEach(function(item) {
-					html += '<tr>';
-					html += '<td>' + h.escapeHtml(item.label || item.key || '') + '</td>';
-					html += '<td>' + h.escapeHtml(item.count || 0) + '</td>';
-					html += '</tr>';
-				});
-			}
-
-			html += '</tbody></table>';
-			html += '</div>';
-		});
-
-		html += renderQueueActionStrip([
-			{ label: 'Business summary', command: 'Show business summary for this week' },
-			{ label: 'Operations', command: 'Show operations summary for today' },
-			{ label: 'Inventory', command: 'Show inventory queue' }
-		], h, 'Other views');
-
-		html += '</div>';
-		html += h.renderDebugJson(data);
-
-		return html;
-	}
-
-	function getStoreInsightsSectionMeta(key) {
-		switch (String(key || '')) {
-			case 'orders':
-				return {
-					title: 'Order mix',
-					summary: 'Use this group to see how order volume and status mix are behaving in the selected window.'
-				};
-			case 'customers':
-				return {
-					title: 'Top customers',
-					summary: 'This group highlights who spent the most and how concentrated customer value looks right now.'
-				};
-			case 'products':
-				return {
-					title: 'Product demand and inventory pressure',
-					summary: 'This group combines top-selling items with the current stock signals that may affect fulfillment.'
-				};
-			default:
-				return {
-					title: 'Insights group',
-					summary: ''
-				};
-		}
-	}
-
-	function humanizeStoreInsightsMetricLabel(key) {
-		switch (String(key || '')) {
-			case 'order_count':
-				return 'Orders';
-			case 'gross_sales':
-				return 'Gross sales';
-			case 'average_order_value':
-				return 'Average order value';
-			case 'unique_customers':
-				return 'Unique customers';
-			case 'out_of_stock':
-				return 'Out of stock';
-			case 'low_stock':
-				return 'Low stock';
-			case 'on_backorder':
-				return 'On backorder';
-			default:
-				return String(key || '').replace(/_/g, ' ');
-		}
 	}
 
 	function renderCustomerServiceQueueResult(data, h) {
@@ -3792,6 +3399,8 @@ function renderQueueWorkbenchIntro(config, h) {
 		const batchDraftCandidates = Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
 		const topPriority = buildCustomerServiceHeroItem(serviceContext, priorityItems, result);
 		const supportingPriorityItems = filterCustomerServiceSupportingPriorities(priorityItems, serviceContext);
+		const queueMatches = getQueueMatchCount(result);
+		const visibleCases = getQueueVisibleCaseCount(result, 'orders');
 
 		let html = renderQueueWorkbenchIntro({
 			result: result,
@@ -3802,12 +3411,12 @@ function renderQueueWorkbenchIntro(config, h) {
 				parserRule: parsed.parser_rule,
 				title: 'Customer follow-up candidates',
 				contextLine: 'Top customer cases from each queue.',
-				badge: (result.count || 0) + ' follow-ups',
+				badge: queueMatches + ' matches',
 				cardClassName: 'yoro-queue-workbench-card-customer-service'
 			}, h);
 		html += renderQueueWorkbenchHero(topPriority, [
-			{ label: 'Follow-up items', value: serviceContext.total_items || result.count || 0 },
-			{ label: 'On-hold', value: serviceContext.on_hold_count || 0 },
+			{ label: 'Queue matches', value: queueMatches },
+			{ label: 'On hold', value: serviceContext.on_hold_count || 0 },
 			{ label: 'Pending payment', value: serviceContext.payment_count || 0 },
 			{ label: 'Saved drafts', value: serviceContext.draft_count || 0 }
 		], h, {
@@ -3829,12 +3438,12 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
 		html += renderQueueMetaMetrics([
 			{ label: 'Queues', value: queues.length },
-			{ label: 'Total items', value: result.count || 0 },
+			{ label: 'Shown cases', value: visibleCases },
 			{ label: 'Auto-send', value: 'No' }
 		], h);
 		html += renderOrderQueueSections(queues, {
 			emptyMessage: 'No matching orders in this queue.',
-			maxRows: 3,
+			maxRows: 5,
 			columns: [
 				{ label: 'Order' },
 				{ label: 'Case' },
@@ -3848,11 +3457,11 @@ function renderQueueWorkbenchIntro(config, h) {
 				const caseMeta = [
 					order.customer_name || order.billing_email || 'Customer',
 					humanizeServiceTopic(queueKey || ''),
-					order.status || ''
+					orderDisplayStatus(order) || ''
 				].filter(Boolean).join(' · ');
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
-				row += '<td><strong>' + h2.escapeHtml(caseMeta) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(order.followup_reason || '') + '</div></td>';
+				row += '<td><strong>' + h2.escapeHtml(displayText(caseMeta)) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(displayText(order.followup_reason || '')) + '</div></td>';
 				row += '<td>' + h2.escapeHtml(formatAgeHours(order.age_hours)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(rowActionLabel, rowActionCommand, h2) + ' ';
@@ -3876,7 +3485,7 @@ function renderQueueWorkbenchIntro(config, h) {
 	function humanizeServiceTopic(topic) {
 		switch (String(topic || '')) {
 			case 'on_hold_followup':
-				return 'On-hold follow-up';
+				return 'On hold follow-up';
 			case 'pending_payment_followup':
 				return 'Pending payment';
 			case 'saved_email_drafts':
@@ -3884,7 +3493,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			case 'failed_checkout_followup':
 				return 'Failed checkout';
 			default:
-				return String(topic || 'queue').replace(/_/g, ' ');
+				return displayLabel(topic || 'queue');
 		}
 	}
 
@@ -3899,8 +3508,8 @@ function renderQueueWorkbenchIntro(config, h) {
 		let message = 'Use Start here for the fastest next case, then work through the shortlist below.';
 
 		if (topTopic === 'on_hold_followup') {
-			title = 'Most customer reply pressure is sitting in on-hold orders.';
-			message = 'There are ' + onHold + ' on-hold follow-ups carrying most of the live backlog, plus ' + drafts + ' saved drafts you can finish quickly.';
+			title = 'Most customer reply pressure is sitting in On hold orders.';
+			message = 'There are ' + onHold + ' On hold follow-ups carrying most of the live backlog, plus ' + drafts + ' saved drafts you can finish quickly.';
 		} else if (topTopic === 'saved_email_drafts') {
 			title = 'Saved drafts give you the fastest route to completed replies.';
 			message = 'There are ' + drafts + ' saved drafts ready now, while the wider queue still holds ' + totalItems + ' customer follow-up items.';
@@ -3934,7 +3543,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			case 'pending_payment_followup':
 				return 'Draft payment follow-up';
 			case 'on_hold_followup':
-				return 'Draft on-hold reply';
+				return 'Draft On hold reply';
 			case 'failed_checkout_followup':
 				return 'Draft support reply';
 			default:
@@ -3959,13 +3568,13 @@ function renderQueueWorkbenchIntro(config, h) {
 			case 'processing_older_than_72h':
 				return 'Aging processing';
 			case 'on_hold_older_than_48h':
-				return 'On-hold';
+				return 'On hold';
 			case 'recent_failed_orders':
 				return 'Failed orders';
 			case 'high_value_open_orders':
 				return 'High-value open';
 			default:
-				return String(topic || 'queue').replace(/_/g, ' ');
+				return displayLabel(topic || 'queue');
 		}
 	}
 
@@ -3976,7 +3585,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			case 'processing_older_than_72h':
 				return 'Preview delay email';
 			case 'on_hold_older_than_48h':
-				return 'Draft on-hold reply';
+				return 'Draft On hold reply';
 			case 'recent_failed_orders':
 				return 'Draft support reply';
 			case 'high_value_open_orders':
@@ -4025,8 +3634,8 @@ function renderQueueWorkbenchIntro(config, h) {
 			title = 'Aging processing orders now need the next manual check.';
 			message = 'There are ' + processing + ' older processing orders to review, plus ' + pending + ' payment-delay cases still waiting.';
 		} else if (topTopic === 'on_hold_older_than_48h') {
-			title = 'On-hold orders are waiting for a clear decision.';
-			message = 'There are ' + onHold + ' older on-hold orders still sitting in backlog, with ' + pending + ' payment-delay cases also active.';
+			title = 'On hold orders are waiting for a clear decision.';
+			message = 'There are ' + onHold + ' older orders in On hold status still sitting in backlog, with ' + pending + ' payment-delay cases also active.';
 		} else if (topTopic === 'high_value_open_orders') {
 			title = 'High-value open orders deserve the next direct check.';
 			message = 'There are ' + highValue + ' higher-value open orders still unresolved, alongside ' + processing + ' aging processing cases.';
@@ -4069,7 +3678,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			case 'sales_gap':
 				return 'Sales gap';
 			default:
-				return String(topic || 'overview').replace(/_/g, ' ');
+				return displayLabel(topic || 'overview');
 		}
 	}
 
@@ -4084,7 +3693,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			case 'recent_ready_to_fulfill':
 				return 'Tracked ready order';
 			default:
-				return String(topic || 'queue').replace(/_/g, ' ');
+				return displayLabel(topic || 'queue');
 		}
 	}
 
@@ -4158,7 +3767,7 @@ function renderQueueWorkbenchIntro(config, h) {
 			case 'low_stock_in_processing_orders':
 				return 'Processing demand';
 			default:
-				return String(topic || 'queue').replace(/_/g, ' ');
+				return displayLabel(topic || 'queue');
 		}
 	}
 
@@ -4215,10 +3824,11 @@ function renderQueueWorkbenchIntro(config, h) {
 		const quantity = product && Object.prototype.hasOwnProperty.call(product, 'stock_quantity') ? product.stock_quantity : '';
 		const threshold = product && product.low_stock_threshold ? product.low_stock_threshold : 0;
 		const stockStatus = String(product && product.stock_status ? product.stock_status : '');
+		const stockStatusLabel = productStockStatusLabel(product);
 
 		if (quantity === '' || quantity === null) {
 			return inventoryMode === 'status_only'
-				? stockStatus.replace(/_/g, ' ')
+				? stockStatusLabel
 				: 'Quantity not tracked';
 		}
 
@@ -4253,6 +3863,7 @@ function renderQueueWorkbenchIntro(config, h) {
 	function renderRefundPreviewResult(data, h) {
 		const result = data.result || {};
 		const order = result.order || {};
+		const locale = getResultLocale(data);
 
 		const totals = result.totals || {};
 		const items = Array.isArray(result.items) ? result.items : [];
@@ -4270,7 +3881,7 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += '<strong class="yoro-order-detail-title">Order #' + h.escapeHtml(order.number || order.id || '') + '</strong>';
 		html += '<div class="yoro-result-subtle">' + h.escapeHtml(formatDateTime(order.date_created, order.date_created_ts, h)) + '</div>';
 		html += '</div>';
-		html += '<span class="yoro-status-badge">' + h.escapeHtml(order.status || '') + '</span>';
+		html += '<span class="yoro-status-badge">' + h.escapeHtml(orderDisplayStatus(order, locale)) + '</span>';
 		html += '</div>';
 
 		html += '<div class="yoro-order-detail-metrics">';
@@ -4292,7 +3903,7 @@ function renderQueueWorkbenchIntro(config, h) {
 		html += '<tbody>';
 		Object.keys(totals).forEach(function(key) {
 			html += '<tr>';
-			html += '<th>' + h.escapeHtml(key.replace(/_/g, ' ')) + '</th>';
+			html += '<th>' + h.escapeHtml(displayKeyLabel(key)) + '</th>';
 			html += '<td>' + h.escapeHtml(totals[key]) + ' ' + h.escapeHtml(order.currency || '') + '</td>';
 			html += '</tr>';
 		});
@@ -4377,13 +3988,35 @@ function renderQueueWorkbenchIntro(config, h) {
 				'.yoro-bulk-details,' +
 				'.yoro-bulk-add-note,' +
 				'.yoro-bulk-update-status,' +
-				'.yoro-bulk-status-note,' +
-				'.yoro-row-action-menu,' +
+					'.yoro-row-action-menu,' +
+				'.yoro-direct-action,' +
 				'.yoro-modal-action'
 			);
 
 		if (!target) {
 			return false;
+		}
+
+		if (target.classList.contains('yoro-direct-action')) {
+			event.preventDefault();
+
+			const action = target.getAttribute('data-direct-action') || '';
+			const paramsRaw = target.getAttribute('data-direct-params') || '{}';
+			const preview = target.getAttribute('data-direct-preview') === '1';
+			let params = {};
+
+			if (!action) {
+				return true;
+			}
+
+			try {
+				params = JSON.parse(paramsRaw) || {};
+			} catch (error) {
+				params = {};
+			}
+
+			executeOrderUiAction(h, action, params, preview);
+			return true;
 		}
 
 		if (target.classList.contains('yoro-select-all')) {
@@ -4407,8 +4040,9 @@ function renderQueueWorkbenchIntro(config, h) {
 				return true;
 			}
 
-			executeOrderUiAction(h, 'orders.hold', {
-				order_ids: ids
+			executeOrderUiAction(h, 'orders.update_status', {
+				order_ids: ids,
+				status: 'on-hold'
 			}, false);
 			return true;
 		}
@@ -4417,9 +4051,10 @@ function renderQueueWorkbenchIntro(config, h) {
 			const orderId = target.getAttribute('data-order-id');
 
 			if (orderId) {
-				executeOrderUiAction(h, 'orders.hold', {
+				executeOrderUiAction(h, 'orders.update_status', {
 					order_id: parseInt(orderId, 10),
-					order_ids: [parseInt(orderId, 10)]
+					order_ids: [parseInt(orderId, 10)],
+					status: 'on-hold'
 				}, true);
 			}
 
@@ -4430,9 +4065,10 @@ function renderQueueWorkbenchIntro(config, h) {
 			const orderId = target.getAttribute('data-order-id');
 
 			if (orderId) {
-				executeOrderUiAction(h, 'orders.hold', {
+				executeOrderUiAction(h, 'orders.update_status', {
 					order_id: parseInt(orderId, 10),
-					order_ids: [parseInt(orderId, 10)]
+					order_ids: [parseInt(orderId, 10)],
+					status: 'on-hold'
 				}, false);
 			}
 
@@ -4562,25 +4198,6 @@ function renderQueueWorkbenchIntro(config, h) {
 			return true;
 		}
 
-		if (target.classList.contains('yoro-bulk-status-note')) {
-			const ids = h.getSelectedOrderIds();
-
-			if (!ids.length) {
-				alertMissingOrderSelection();
-				return true;
-			}
-
-			h.openStatusNoteModal(function(status, note) {
-				executeOrderUiAction(h, 'orders.bulk_update_status_with_note', {
-					order_ids: ids,
-					status: status,
-					note: note
-				}, false);
-			});
-
-			return true;
-		}
-
 		if (target.classList.contains('yoro-row-action-menu')) {
 			const orderId = target.getAttribute('data-order-id');
 			const actionScope = target.getAttribute('data-action-scope') || 'row';
@@ -4644,9 +4261,10 @@ function renderQueueWorkbenchIntro(config, h) {
 					}
 
 					if (action === 'hold') {
-						executeOrderUiAction(h, 'orders.hold', {
+						executeOrderUiAction(h, 'orders.update_status', {
 							order_id: parseInt(orderId, 10),
-							order_ids: [parseInt(orderId, 10)]
+							order_ids: [parseInt(orderId, 10)],
+							status: 'on-hold'
 						}, false);
 					}
 

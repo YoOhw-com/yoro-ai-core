@@ -14,6 +14,7 @@ class YoRo_Order_Presenter {
 			'id'             => $order->get_id(),
 			'number'         => $order->get_order_number(),
 			'status'         => $order->get_status(),
+			'status_label'   => YoRo_Order_Helper::get_order_status_label( $order->get_status() ),
 			'total'          => $order->get_total(),
 			'currency'       => $order->get_currency(),
 			'payment_method' => $order->get_payment_method(),

@@ -8,16 +8,61 @@ class YoRo_Store_Fulfillment_Service {
 
 	public static function get_fulfillment_queue( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
 		}
 
 		$limit = isset( $params['limit'] ) ? absint( $params['limit'] ) : 5;
 		$limit = min( max( $limit, 1 ), 20 );
 
+		if ( self::shipping_disabled_for_store() ) {
+			$message = __( 'Fulfillment queue is not currently applicable because shipping is disabled for this store.', 'yoro-ai-core' );
+
+			return [
+				'success'              => true,
+				'action'               => 'operations.get_fulfillment_queue',
+				'summary'              => $message,
+				'message'              => $message,
+				'count'                => 0,
+				'queue_item_count'     => 0,
+				'queue_count'          => 0,
+				'visible_case_count'   => 0,
+				'visible_order_count'  => 0,
+				'visible_unique_order_count' => 0,
+				'read_only'            => true,
+				'undoable'             => false,
+				'undo_plan'            => [],
+				'data'                 => [],
+				'meta'                 => [
+					'limit_per_queue' => $limit,
+					'applicable'      => false,
+					'applicability_reason' => 'shipping_locations_disabled',
+					'changes_store'   => false,
+				],
+				'processed'            => [],
+				'skipped'              => [],
+				'errors'               => [],
+				'queues'               => [],
+				'orders'               => [],
+				'limit_per_queue'      => $limit,
+				'fulfillment_context'  => [
+					'applicable' => false,
+					'reason'     => 'shipping_locations_disabled',
+				],
+				'priority_items'       => [],
+				'case_rankings'        => [],
+				'recommended_sequence' => [],
+				'next_recommended_case'=> [],
+				'batch_draft_candidates' => [],
+				'result_type'          => 'fulfillment_queue',
+				'display_type'         => 'fulfillment_queue',
+			];
+		}
+
 		return YoRo_Action_Cache::remember(
 			'fulfillment_queue',
 			[
-				'limit' => $limit,
+				'limit'          => $limit,
+				'schema_version' => 2,
 			],
 			function() use ( $limit ) {
 				$candidates = YoRo_Orders_Read_Service::fulfillment_get_processing_candidates( 50 );
@@ -100,21 +145,32 @@ class YoRo_Store_Fulfillment_Service {
 				$recommended_sequence = self::build_fulfillment_recommended_sequence( $case_rankings, $fulfillment_context );
 				$next_case            = self::build_fulfillment_next_recommended_case( $case_rankings );
 				$batch_candidates     = self::build_fulfillment_batch_draft_candidates( $case_rankings );
+				$queue_count          = count( $queues );
+				$visible_case_count   = 0;
+
+				foreach ( $queues as $queue ) {
+					$visible_case_count += count( is_array( $queue['orders'] ?? null ) ? $queue['orders'] : [] );
+				}
+
+				$visible_unique_order_count = count( $orders );
+				$queue_summary        = sprintf(
+					/* translators: 1: queue match count, 2: queue count */
+					__( 'Fulfillment queue: %1$d queue matches across %2$d queues.', 'yoro-ai-core' ),
+					$total_items,
+					$queue_count
+				);
 
 				return [
 					'success'              => true,
 					'action'               => 'operations.get_fulfillment_queue',
-					'summary'              => sprintf(
-						'Fulfillment queue: %d items across %d queues.',
-						$total_items,
-						count( $queues )
-					),
-					'message'              => sprintf(
-						'Fulfillment queue: %d items across %d queues.',
-						$total_items,
-						count( $queues )
-					),
+					'summary'              => $queue_summary,
+					'message'              => $queue_summary,
 					'count'                => $total_items,
+					'queue_item_count'     => $total_items,
+					'queue_count'          => $queue_count,
+					'visible_case_count'   => $visible_case_count,
+					'visible_order_count'  => $visible_case_count,
+					'visible_unique_order_count' => $visible_unique_order_count,
 					'read_only'            => true,
 					'undoable'             => false,
 					'undo_plan'            => [],
@@ -141,6 +197,10 @@ class YoRo_Store_Fulfillment_Service {
 				];
 			}
 		);
+	}
+
+	private static function shipping_disabled_for_store() {
+		return 'disabled' === sanitize_key( (string) get_option( 'woocommerce_ship_to_countries', '' ) );
 	}
 
 	private static function build_fulfillment_orchestrator_context( $queues ) {

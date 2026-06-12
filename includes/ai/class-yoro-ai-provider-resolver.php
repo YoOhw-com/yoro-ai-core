@@ -4,10 +4,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-if ( ! defined( 'YORO_AI_PROVIDER_YORO_AI_API' ) ) {
-	define( 'YORO_AI_PROVIDER_YORO_AI_API', 'yoro_ai_api' );
-}
-
 class YoRo_AI_Provider_Resolver {
 
 	public static function resolve_provider() {
@@ -30,13 +26,9 @@ class YoRo_AI_Provider_Resolver {
 			return false;
 		}
 
-		if (
-			! in_array(
-				$capability,
-				[ 'parse', 'intent', 'workflow_plan', 'suggestions', 'email_compose' ],
-				true
-			)
-		) {
+		$supported_capabilities = [ 'conversation', 'email_compose' ];
+
+		if ( ! in_array( $capability, $supported_capabilities, true ) ) {
 			return false;
 		}
 

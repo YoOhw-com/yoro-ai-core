@@ -57,7 +57,7 @@ class YoRo_Plan_Semantic_Validator {
 					'yoro_invalid_action_plan_step',
 					sprintf(
 						/* translators: 1: step label, 2: action name */
-						__( 'The workflow step "%1$s" uses an action YoRo does not support yet: %2$s.', 'yoro-ai-core' ),
+						__( 'The plan step "%1$s" uses an action YoRo does not support yet: %2$s.', 'yoro-ai-core' ),
 						$step_label,
 						$action
 					),
@@ -235,7 +235,7 @@ class YoRo_Plan_Semantic_Validator {
 
 		return new WP_Error(
 			'yoro_invalid_action_plan_entity',
-			__( 'This customer-email workflow targets orders with different recipient emails. Split the workflow by customer before composing, drafting, or sending emails.', 'yoro-ai-core' ),
+			__( 'This customer-email plan targets orders with different recipient emails. Split the plan by customer before composing, drafting, or sending emails.', 'yoro-ai-core' ),
 			[
 				'step_id'        => $first_email_step['id'] ?? 'step_1',
 				'step_index'     => $first_email_step['index'] ?? 0,
@@ -307,6 +307,8 @@ class YoRo_Plan_Semantic_Validator {
 		$allowed_local_alias = [
 			'order_id',
 			'product_id',
+			'product_sku',
+			'global_unique_id',
 			'status',
 		];
 
@@ -417,7 +419,6 @@ class YoRo_Plan_Semantic_Validator {
 	private static function validate_email_content_semantics( $step, $index, $steps, $order_facts ) {
 		$step       = is_array( $step ) ? $step : [];
 		$action     = sanitize_text_field( $step['action'] ?? '' );
-		$params     = isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [];
 		$warnings   = [];
 
 		if ( ! in_array( $action, [ 'orders.compose_customer_email', 'orders.send_customer_email', 'orders.save_customer_email_draft' ], true ) ) {
@@ -426,22 +427,10 @@ class YoRo_Plan_Semantic_Validator {
 			];
 		}
 
-		$email_text = trim(
-			implode(
-				' ',
-				array_filter(
-					[
-						sanitize_text_field( $params['instruction'] ?? '' ),
-						sanitize_text_field( $params['subject'] ?? '' ),
-						sanitize_textarea_field( $params['body'] ?? '' ),
-					]
-				)
-			)
-		);
-
-		$is_shipping_messaging = self::looks_like_shipping_customer_messaging( $email_text );
-		$is_payment_messaging  = self::looks_like_payment_customer_messaging( $email_text );
-		$is_refund_messaging   = self::looks_like_refund_customer_messaging( $email_text );
+		$goal_families          = self::structured_goal_families_for_step( $step );
+		$is_shipping_messaging = in_array( 'fulfillment', $goal_families, true );
+		$is_payment_messaging  = in_array( 'payment_review', $goal_families, true );
+		$is_refund_messaging   = in_array( 'refund', $goal_families, true );
 
 		if ( ! $is_shipping_messaging && ! $is_payment_messaging && ! $is_refund_messaging ) {
 			return [
@@ -484,7 +473,7 @@ class YoRo_Plan_Semantic_Validator {
 					'yoro_invalid_action_plan_contradiction',
 					sprintf(
 						/* translators: 1: step id, 2: status */
-						__( 'Plan step "%1$s" uses shipping or delivery messaging even though the workflow status intent is "%2$s". Align the email with the order state first.', 'yoro-ai-core' ),
+						__( 'Plan step "%1$s" uses shipping or delivery messaging even though the target status intent is "%2$s". Align the email with the order state first.', 'yoro-ai-core' ),
 						sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
 						$effective_status
 					),
@@ -707,7 +696,7 @@ class YoRo_Plan_Semantic_Validator {
 			'yoro_invalid_action_plan_contradiction',
 			sprintf(
 				/* translators: 1: previous status, 2: new status, 3: current step id, 4: previous step id */
-				__( 'Step "%3$s" changes the same order scope from "%1$s" to "%2$s" after "%4$s". Choose one target status before running this workflow.', 'yoro-ai-core' ),
+				__( 'Step "%3$s" changes the same order scope from "%1$s" to "%2$s" after "%4$s". Choose one target status before running this plan.', 'yoro-ai-core' ),
 				$previous['status'],
 				$status,
 				sanitize_key( $step['id'] ?? 'step_' . ( $index + 1 ) ),
@@ -749,7 +738,7 @@ class YoRo_Plan_Semantic_Validator {
 				'code'    => 'reopening_terminal_order',
 				'message' => sprintf(
 					/* translators: 1: order id, 2: current status, 3: next status */
-					__( 'Order #%1$d is currently "%2$s" but this workflow changes it to "%3$s". Review whether reopening a terminal order is intentional.', 'yoro-ai-core' ),
+					__( 'Order #%1$d is currently "%2$s" but this plan changes it to "%3$s". Review whether reopening a terminal order is intentional.', 'yoro-ai-core' ),
 					$order_id,
 					$current_status,
 					$next_status
@@ -762,9 +751,11 @@ class YoRo_Plan_Semantic_Validator {
 	}
 
 	private static function validate_order_entity_preconditions( $step, $index, $order_facts ) {
-		$step      = is_array( $step ) ? $step : [];
-		$action    = sanitize_text_field( $step['action'] ?? '' );
-		$warnings  = [];
+		$step                = is_array( $step ) ? $step : [];
+		$action              = sanitize_text_field( $step['action'] ?? '' );
+		$warnings            = [];
+		$goal_families       = self::structured_goal_families_for_step( $step );
+		$is_fulfillment_goal = in_array( 'fulfillment', $goal_families, true );
 
 		foreach ( self::get_step_order_ids( $step ) as $order_id ) {
 			$facts = isset( $order_facts[ $order_id ] ) && is_array( $order_facts[ $order_id ] )
@@ -784,7 +775,7 @@ class YoRo_Plan_Semantic_Validator {
 
 			if (
 				false === $requires_shipping &&
-				self::is_shipping_like_action( $action )
+				$is_fulfillment_goal
 			) {
 				return new WP_Error(
 					'yoro_invalid_action_plan_entity',
@@ -804,7 +795,7 @@ class YoRo_Plan_Semantic_Validator {
 			}
 
 			if (
-				self::is_shipping_like_action( $action ) &&
+				$is_fulfillment_goal &&
 				in_array( $current_status, [ 'cancelled', 'refunded', 'failed' ], true )
 			) {
 				return new WP_Error(
@@ -826,7 +817,7 @@ class YoRo_Plan_Semantic_Validator {
 				);
 			}
 
-			if ( self::is_shipping_like_action( $action ) && true === $requires_shipping && false === $shipping_complete ) {
+			if ( $is_fulfillment_goal && true === $requires_shipping && false === $shipping_complete ) {
 				$warnings[] = [
 					'code'    => 'fulfillment_with_incomplete_shipping_address',
 					'message' => sprintf(
@@ -838,7 +829,7 @@ class YoRo_Plan_Semantic_Validator {
 				];
 			}
 
-			if ( self::is_shipping_like_action( $action ) && true === $requires_shipping && false === $ready_to_fulfill ) {
+			if ( $is_fulfillment_goal && true === $requires_shipping && false === $ready_to_fulfill ) {
 				$warnings[] = [
 					'code'    => 'fulfillment_on_not_ready_order',
 					'message' => sprintf(
@@ -860,7 +851,7 @@ class YoRo_Plan_Semantic_Validator {
 		$step   = is_array( $step ) ? $step : [];
 		$action = sanitize_text_field( $step['action'] ?? '' );
 
-		if ( ! in_array( $action, [ 'orders.update_status', 'orders.bulk_update_status_with_note', 'orders.hold' ], true ) ) {
+		if ( 'orders.update_status' !== $action ) {
 			return '';
 		}
 
@@ -884,11 +875,7 @@ class YoRo_Plan_Semantic_Validator {
 		$action = sanitize_text_field( $step['action'] ?? '' );
 		$params = isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [];
 
-		if ( 'orders.hold' === $action ) {
-			return 'on-hold';
-		}
-
-		if ( in_array( $action, [ 'orders.update_status', 'orders.bulk_update_status_with_note' ], true ) ) {
+		if ( 'orders.update_status' === $action ) {
 			return sanitize_key( $params['status'] ?? '' );
 		}
 
@@ -1078,67 +1065,7 @@ class YoRo_Plan_Semantic_Validator {
 			$current_status = sanitize_key( $facts['status'] ?? '' );
 			$requires_shipping = array_key_exists( 'requires_shipping', $facts ) ? ! empty( $facts['requires_shipping'] ) : null;
 
-			if ( in_array( $action, [ 'workflow.fulfillment_followup_preview', 'workflow.verify_customer_before_fulfillment' ], true ) ) {
-				if ( false === $requires_shipping ) {
-					return new WP_Error(
-						'yoro_invalid_action_plan_entity',
-						sprintf(
-							/* translators: 1: action name, 2: order id */
-							__( 'Action "%1$s" expects a shippable order, but order #%2$d does not require shipping.', 'yoro-ai-core' ),
-							$action,
-							$order_id
-						),
-						[
-							'action'   => $action,
-							'order_id' => $order_id,
-						]
-					);
-				}
-
-				if ( in_array( $current_status, [ 'completed', 'cancelled', 'refunded', 'failed' ], true ) ) {
-					return new WP_Error(
-						'yoro_invalid_action_plan_contradiction',
-						sprintf(
-							/* translators: 1: action name, 2: order id, 3: status */
-							__( 'Action "%1$s" assumes fulfillment is still in progress, but order #%2$d is already "%3$s".', 'yoro-ai-core' ),
-							$action,
-							$order_id,
-							$current_status
-						),
-						[
-							'action'   => $action,
-							'order_id' => $order_id,
-							'status'   => $current_status,
-						]
-					);
-				}
-
-				if ( true === $requires_shipping && '' === trim( (string) ( $facts['shipping_method'] ?? '' ) ) ) {
-					$warnings[] = [
-						'code'    => 'fulfillment_without_shipping_method',
-						'message' => sprintf(
-							/* translators: 1: order id */
-							__( 'Order #%1$d still has no shipping method, so fulfillment follow-up may need a shipping-method check first.', 'yoro-ai-core' ),
-							$order_id
-						),
-						'step_id' => 'single_action',
-					];
-				}
-
-				if ( true === $requires_shipping && array_key_exists( 'shipping_complete', $facts ) && false === $facts['shipping_complete'] ) {
-					$warnings[] = [
-						'code'    => 'fulfillment_with_incomplete_shipping_address',
-						'message' => sprintf(
-							/* translators: 1: order id */
-							__( 'Order #%1$d still has an incomplete shipping address, so fulfillment work may block until the address is confirmed.', 'yoro-ai-core' ),
-							$order_id
-						),
-						'step_id' => 'single_action',
-					];
-				}
-			}
-
-			if ( in_array( $action, [ 'workflow.refund_review', 'orders.refund_preview' ], true ) ) {
+			if ( 'orders.refund_preview' === $action ) {
 				if ( empty( $facts['is_paid'] ) && in_array( $current_status, [ 'pending', 'failed' ], true ) ) {
 					$warnings[] = [
 						'code'    => 'refund_review_on_unpaid_order',
@@ -1184,53 +1111,49 @@ class YoRo_Plan_Semantic_Validator {
 		return array_values( array_filter( array_unique( $order_ids ) ) );
 	}
 
-	private static function is_shipping_like_action( $action ) {
-		$action = sanitize_text_field( $action );
+	private static function structured_goal_families_for_step( $step ) {
+		$step   = is_array( $step ) ? $step : [];
+		$action = sanitize_text_field( $step['action'] ?? '' );
+		$params = isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [];
+		$values = [];
 
-		if ( '' === $action ) {
-			return false;
+		foreach ( [ 'email_intent', 'message_intent', 'communication_intent', 'goal_family', 'intent_family' ] as $key ) {
+			if ( ! array_key_exists( $key, $params ) ) {
+				continue;
+			}
+
+			foreach ( (array) $params[ $key ] as $value ) {
+				if ( is_scalar( $value ) ) {
+					$values[] = sanitize_key( (string) $value );
+				}
+			}
 		}
 
-		return false !== strpos( $action, 'shipping' ) || false !== strpos( $action, 'shipment' );
-	}
-
-	private static function looks_like_shipping_customer_messaging( $text ) {
-		$text = strtolower( trim( (string) $text ) );
-
-		if ( '' === $text ) {
-			return false;
+		if ( ! empty( $params['template'] ) ) {
+			$values[] = sanitize_key( $params['template'] );
 		}
 
-		return (bool) preg_match(
-			'/\b(?:shipping|shipment|delivery|delivered soon|on the way|tracking|in transit|package ships?)\b/i',
-			$text
-		);
-	}
+		$families = [];
 
-	private static function looks_like_payment_customer_messaging( $text ) {
-		$text = strtolower( trim( (string) $text ) );
-
-		if ( '' === $text ) {
-			return false;
+		if ( 'orders.refund_preview' === $action ) {
+			$families[] = 'refund';
 		}
 
-		return (bool) preg_match(
-			'/\b(?:payment mismatch|payment verification|verify (?:your )?payment|billing verification|card verification|payment details|payment information|confirm(?:ation)? of your order details)\b/i',
-			$text
-		);
-	}
+		foreach ( array_filter( $values ) as $value ) {
+			if ( in_array( $value, [ 'refund', 'refund_notice', 'refund_update', 'refund_review' ], true ) ) {
+				$families[] = 'refund';
+			}
 
-	private static function looks_like_refund_customer_messaging( $text ) {
-		$text = strtolower( trim( (string) $text ) );
+			if ( in_array( $value, [ 'shipping_update', 'fulfillment_update', 'delivery_update', 'tracking_update' ], true ) ) {
+				$families[] = 'fulfillment';
+			}
 
-		if ( '' === $text ) {
-			return false;
+			if ( in_array( $value, [ 'payment_review', 'payment_confirmation', 'payment_mismatch', 'payment_verification' ], true ) ) {
+				$families[] = 'payment_review';
+			}
 		}
 
-		return (bool) preg_match(
-			'/\b(?:refund|refunded|reimbursement|money back|credit back)\b/i',
-			$text
-		);
+		return array_values( array_unique( $families ) );
 	}
 
 	private static function get_effective_order_status( $facts, $status_intent = '' ) {
@@ -1277,7 +1200,7 @@ class YoRo_Plan_Semantic_Validator {
 					'yoro_invalid_action_plan_contradiction',
 					sprintf(
 						/* translators: 1: order id */
-						__( 'This workflow mixes refund-oriented and fulfillment-oriented steps for order #%1$d. Split those goals before running it.', 'yoro-ai-core' ),
+						__( 'This plan mixes refund-oriented and fulfillment-oriented steps for order #%1$d. Split those goals before running it.', 'yoro-ai-core' ),
 						$order_id
 					),
 					[
@@ -1293,7 +1216,7 @@ class YoRo_Plan_Semantic_Validator {
 					'code'    => 'payment_review_mixed_with_fulfillment_goal',
 					'message' => sprintf(
 						/* translators: 1: order id */
-						__( 'Order #%1$d mixes payment-review and fulfillment-oriented goals in one workflow. Confirm the workflow order and customer messaging carefully.', 'yoro-ai-core' ),
+						__( 'Order #%1$d mixes payment-review and fulfillment-oriented goals in one plan. Confirm the step order and customer messaging carefully.', 'yoro-ai-core' ),
 						$order_id
 					),
 					'step_id' => $families['payment_review']['step_id'],
@@ -1307,41 +1230,7 @@ class YoRo_Plan_Semantic_Validator {
 	}
 
 	private static function infer_goal_families_for_step( $step ) {
-		$step    = is_array( $step ) ? $step : [];
-		$action  = sanitize_text_field( $step['action'] ?? '' );
-		$params  = isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [];
-		$text    = trim(
-			implode(
-				' ',
-				array_filter(
-					[
-						sanitize_text_field( $params['instruction'] ?? '' ),
-						sanitize_text_field( $params['subject'] ?? '' ),
-						sanitize_textarea_field( $params['body'] ?? '' ),
-						sanitize_text_field( $params['template'] ?? '' ),
-					]
-				)
-			)
-		);
-		$families = [];
-
-		if ( in_array( $action, [ 'orders.refund_preview', 'workflow.refund_review' ], true ) || self::looks_like_refund_customer_messaging( $text ) ) {
-			$families[] = 'refund';
-		}
-
-		if (
-			in_array( $action, [ 'workflow.fulfillment_followup_preview', 'workflow.verify_customer_before_fulfillment' ], true ) ||
-			self::is_shipping_like_action( $action ) ||
-			self::looks_like_shipping_customer_messaging( $text )
-		) {
-			$families[] = 'fulfillment';
-		}
-
-		if ( self::looks_like_payment_customer_messaging( $text ) || 'payment_mismatch' === sanitize_key( $params['template'] ?? '' ) ) {
-			$families[] = 'payment_review';
-		}
-
-		return array_values( array_unique( $families ) );
+		return self::structured_goal_families_for_step( $step );
 	}
 
 	private static function infer_latest_status_intent_before_step( $steps, $index, $fallback_step = [] ) {

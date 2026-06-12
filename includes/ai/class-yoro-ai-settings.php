@@ -4,16 +4,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-if ( ! defined( 'YORO_AI_PROVIDER_YORO_AI_API' ) ) {
-	define( 'YORO_AI_PROVIDER_YORO_AI_API', 'yoro_ai_api' );
-}
-
 class YoRo_AI_Settings {
 
 	const OPTION_AI_API_URL = 'yoro_ai_api_url';
 	const OPTION_AI_API_SITE_KEY = 'yoro_ai_api_site_key';
 	const OPTION_AI_API_ENABLED = 'yoro_ai_api_enabled';
 	const OPTION_AI_API_STATUS = 'yoro_ai_api_status';
+	const DEFAULT_AI_API_URL = 'http://127.0.0.1:8010/api/v1';
 
 	public static function get_ai_api_site_key_source() {
 		if ( defined( 'YORO_AI_API_SITE_KEY' ) && YORO_AI_API_SITE_KEY ) {
@@ -33,24 +30,64 @@ class YoRo_AI_Settings {
 		return YORO_AI_PROVIDER_YORO_AI_API;
 	}
 
-	public static function get_ai_confidence_threshold() {
-		return max( 0, min( (float) get_option( 'yoro_ai_confidence_threshold', 0.75 ), 1 ) );
-	}
-
-	public static function get_ai_read_only_confidence_threshold() {
-		return max( 0, min( (float) get_option( 'yoro_ai_read_only_confidence_threshold', 0.6 ), 1 ) );
-	}
-
-	public static function get_ai_preview_threshold() {
-		return max( 0, min( (float) get_option( 'yoro_ai_preview_threshold', 0.8 ), 1 ) );
-	}
-
 	public static function get_ai_api_url() {
 		if ( defined( 'YORO_AI_API_URL' ) && YORO_AI_API_URL ) {
 			return esc_url_raw( YORO_AI_API_URL );
 		}
 
-		return esc_url_raw( (string) get_option( self::OPTION_AI_API_URL, '' ) );
+		return esc_url_raw( (string) get_option( self::OPTION_AI_API_URL, self::DEFAULT_AI_API_URL ) );
+	}
+
+	public static function get_ai_api_dashboard_url() {
+		$api_url = untrailingslashit( self::get_ai_api_url() );
+
+		if ( '' === $api_url ) {
+			return '';
+		}
+
+		$base_url = preg_replace( '#/api/v[0-9]+(?:/.*)?$#', '', $api_url );
+
+		if ( $base_url === $api_url ) {
+			$base_url = preg_replace(
+				'#/(?:sites/handshake|conversations(?:/message|/[^/]+)?|actions/(?:execute|confirm|cancel))$#',
+				'',
+				$api_url
+			);
+		}
+
+		$base_url = untrailingslashit( (string) $base_url );
+
+		if ( '' === $base_url ) {
+			return '';
+		}
+
+		return esc_url_raw( $base_url . '/dashboard' );
+	}
+
+	public static function get_ai_api_conversation_dashboard_base_url() {
+		$dashboard_url = untrailingslashit( self::get_ai_api_dashboard_url() );
+
+		if ( '' === $dashboard_url ) {
+			return '';
+		}
+
+		return esc_url_raw( $dashboard_url . '/conversations/by-uuid' );
+	}
+
+	public static function get_ai_api_conversation_dashboard_url( $conversation_id ) {
+		$conversation_id = sanitize_text_field( (string) $conversation_id );
+
+		if ( '' === $conversation_id ) {
+			return '';
+		}
+
+		$base_url = self::get_ai_api_conversation_dashboard_base_url();
+
+		if ( '' === $base_url ) {
+			return '';
+		}
+
+		return esc_url_raw( untrailingslashit( $base_url ) . '/' . rawurlencode( $conversation_id ) );
 	}
 
 	public static function get_ai_api_site_key() {
@@ -62,13 +99,13 @@ class YoRo_AI_Settings {
 	}
 
 	public static function is_ai_api_enabled() {
-		return 'yes' === get_option( self::OPTION_AI_API_ENABLED, 'no' );
+		return 'yes' === get_option( self::OPTION_AI_API_ENABLED, 'yes' );
 	}
 
 	public static function get_ai_api_status() {
 		$status = get_option( self::OPTION_AI_API_STATUS, [] );
 
-		return is_array( $status ) ? $status : [];
+		return is_array( $status ) ? self::normalize_ai_api_status( $status ) : [];
 	}
 
 	public static function get_ai_api_entitlements() {
@@ -98,15 +135,7 @@ class YoRo_AI_Settings {
 			return true;
 		}
 
-		if ( array_key_exists( $feature, $entitlements ) ) {
-			return ! empty( $entitlements[ $feature ] );
-		}
-
-		if ( 'command_router' === $feature && array_key_exists( 'ai_router', $entitlements ) ) {
-			return ! empty( $entitlements['ai_router'] );
-		}
-
-		return false;
+		return array_key_exists( $feature, $entitlements ) && ! empty( $entitlements[ $feature ] );
 	}
 
 	public static function ai_api_has_quota_remaining() {
@@ -120,7 +149,7 @@ class YoRo_AI_Settings {
 	}
 
 	public static function update_ai_api_status( array $status ) {
-		update_option( self::OPTION_AI_API_STATUS, self::sanitize_ai_api_status_value( $status ), false );
+		update_option( self::OPTION_AI_API_STATUS, self::normalize_ai_api_status( $status ), false );
 	}
 
 	public static function clear_ai_api_status() {
@@ -153,32 +182,23 @@ class YoRo_AI_Settings {
 
 	public static function get_all() {
 		return [
-			'provider'                 => self::get_provider_preference(),
-			'ai_confidence_threshold'  => self::get_ai_confidence_threshold(),
-			'ai_read_only_confidence_threshold' => self::get_ai_read_only_confidence_threshold(),
-			'ai_preview_threshold'     => self::get_ai_preview_threshold(),
-			'ai_suggestions_enabled'   => get_option( 'yoro_ai_suggestions_enabled', 'no' ),
-			'ai_email_compose_enabled' => get_option( 'yoro_ai_email_compose_enabled', 'yes' ),
-			'ai_command_router_enabled' => get_option( 'yoro_ai_command_router_enabled', 'yes' ),
-			'ai_action_decomposition_enabled' => 'no',
-			'ai_dynamic_workflows_enabled' => get_option( 'yoro_ai_dynamic_workflows_enabled', 'no' ),
-			'memory_enabled'           => get_option( 'yoro_memory_enabled', 'yes' ),
-			'suggestions_enabled'      => get_option( 'yoro_enable_suggestions', 'yes' ),
-			'ai_max_suggestions'       => absint( get_option( 'yoro_ai_max_suggestions', 4 ) ),
-			'workflow_ttl'             => absint( get_option( 'yoro_workflow_ttl', 1800 ) ),
-			'rate_limit_count'         => absint( get_option( 'yoro_rate_limit_count', 10 ) ),
-			'rate_limit_window'        => absint( get_option( 'yoro_rate_limit_window', 60 ) ),
-			'undo_ttl'                 => absint( get_option( 'yoro_undo_ttl', 60 ) ),
-			'max_result_limit'         => absint( get_option( 'yoro_ai_max_result_limit', 20 ) ),
-			'ai_api_url'               => self::get_ai_api_url(),
-			'ai_api_url_locked'        => self::is_ai_api_url_locked(),
-			'ai_api_url_constant'      => self::get_ai_api_url_constant_name(),
+			'provider'                   => self::get_provider_preference(),
+			'ai_email_compose_enabled'   => get_option( 'yoro_ai_email_compose_enabled', 'yes' ),
+			'rate_limit_count'           => absint( get_option( 'yoro_rate_limit_count', 10 ) ),
+			'rate_limit_window'          => absint( get_option( 'yoro_rate_limit_window', 60 ) ),
+			'undo_ttl'                   => absint( get_option( 'yoro_undo_ttl', 60 ) ),
+			'max_result_limit'           => absint( get_option( 'yoro_ai_max_result_limit', 20 ) ),
+			'ai_api_url'                 => self::get_ai_api_url(),
+			'ai_api_url_locked'          => self::is_ai_api_url_locked(),
+			'ai_api_url_constant'        => self::get_ai_api_url_constant_name(),
 			'ai_api_site_key_configured' => '' !== self::get_ai_api_site_key(),
-			'ai_api_site_key_source'   => self::get_ai_api_site_key_source(),
-			'ai_api_site_key_locked'   => self::is_ai_api_site_key_locked(),
-			'ai_api_site_key_constant' => self::get_ai_api_site_key_constant_name(),
-			'ai_api_enabled'           => self::is_ai_api_enabled() ? 'yes' : 'no',
-			'ai_api_status'            => self::get_ai_api_status(),
+			'ai_api_site_key_source'     => self::get_ai_api_site_key_source(),
+			'ai_api_site_key_locked'     => self::is_ai_api_site_key_locked(),
+			'ai_api_site_key_constant'   => self::get_ai_api_site_key_constant_name(),
+			'ai_api_enabled'             => self::is_ai_api_enabled() ? 'yes' : 'no',
+			'ai_api_status'              => self::get_ai_api_status(),
+			'ai_api_dashboard_url'       => self::get_ai_api_dashboard_url(),
+			'ai_api_conversation_dashboard_base_url' => self::get_ai_api_conversation_dashboard_base_url(),
 		];
 	}
 
@@ -196,15 +216,6 @@ class YoRo_AI_Settings {
 			'ai_api_connection_changed'     => false,
 		];
 
-		$confidence = isset( $post['yoro_ai_confidence_threshold'] )
-			? (float) wp_unslash( $post['yoro_ai_confidence_threshold'] )
-			: 0.75;
-		$read_only_confidence = isset( $post['yoro_ai_read_only_confidence_threshold'] )
-			? (float) wp_unslash( $post['yoro_ai_read_only_confidence_threshold'] )
-			: 0.6;
-		$preview_threshold = isset( $post['yoro_ai_preview_threshold'] )
-			? (float) wp_unslash( $post['yoro_ai_preview_threshold'] )
-			: 0.8;
 		$rate_limit_count = isset( $post['yoro_rate_limit_count'] )
 			? absint( $post['yoro_rate_limit_count'] )
 			: 10;
@@ -217,16 +228,13 @@ class YoRo_AI_Settings {
 		$max_result_limit = isset( $post['yoro_ai_max_result_limit'] )
 			? absint( $post['yoro_ai_max_result_limit'] )
 			: 20;
-		$workflow_ttl = isset( $post['yoro_workflow_ttl'] )
-			? absint( $post['yoro_workflow_ttl'] )
-			: 1800;
-		$ai_max_suggestions = isset( $post['yoro_ai_max_suggestions'] )
-			? absint( $post['yoro_ai_max_suggestions'] )
-			: 4;
 		$posted_ai_api_url = isset( $post['yoro_ai_api_url'] )
 			? wp_unslash( $post['yoro_ai_api_url'] )
-			: '';
+			: self::DEFAULT_AI_API_URL;
 		$posted_ai_api_url = esc_url_raw( $posted_ai_api_url );
+		if ( '' === $posted_ai_api_url ) {
+			$posted_ai_api_url = self::DEFAULT_AI_API_URL;
+		}
 		$ai_api_site_key_clear = ! $ai_api_site_key_locked && ! empty( $post['yoro_ai_api_site_key_clear'] );
 		$new_ai_api_site_key = '';
 
@@ -273,23 +281,18 @@ class YoRo_AI_Settings {
 			}
 		}
 
-		update_option( 'yoro_ai_parser_provider', YORO_AI_PROVIDER_YORO_AI_API );
-		update_option( 'yoro_ai_confidence_threshold', max( 0, min( $confidence, 1 ) ) );
-		update_option( 'yoro_ai_read_only_confidence_threshold', max( 0, min( $read_only_confidence, 1 ) ) );
-		update_option( 'yoro_ai_preview_threshold', max( 0, min( $preview_threshold, 1 ) ) );
-		update_option( 'yoro_ai_suggestions_enabled', isset( $post['yoro_ai_suggestions_enabled'] ) ? 'yes' : 'no' );
-		update_option( 'yoro_enable_suggestions', isset( $post['yoro_enable_suggestions'] ) ? 'yes' : 'no' );
-		update_option( 'yoro_ai_max_suggestions', min( max( $ai_max_suggestions, 1 ), 10 ) );
 		update_option( 'yoro_ai_email_compose_enabled', isset( $post['yoro_ai_email_compose_enabled'] ) ? 'yes' : 'no' );
-		update_option( 'yoro_ai_command_router_enabled', isset( $post['yoro_ai_command_router_enabled'] ) ? 'yes' : 'no' );
-		update_option( 'yoro_ai_action_decomposition_enabled', 'no' );
-		update_option( 'yoro_ai_dynamic_workflows_enabled', isset( $post['yoro_ai_dynamic_workflows_enabled'] ) ? 'yes' : 'no' );
-		update_option( 'yoro_memory_enabled', isset( $post['yoro_memory_enabled'] ) ? 'yes' : 'no' );
+		delete_option( 'yoro_ai_parser_provider' );
+		delete_option( 'yoro_ai_confidence_threshold' );
+		delete_option( 'yoro_ai_read_only_confidence_threshold' );
+		delete_option( 'yoro_ai_preview_threshold' );
+		delete_option( 'yoro_ai_command_router_enabled' );
+		delete_option( 'yoro_memory_enabled' );
 		update_option( 'yoro_rate_limit_count', max( 1, $rate_limit_count ) );
 		update_option( 'yoro_rate_limit_window', max( 10, $rate_limit_window ) );
 		update_option( 'yoro_undo_ttl', $undo_ttl );
 		update_option( 'yoro_ai_max_result_limit', min( max( $max_result_limit, 1 ), 100 ) );
-		update_option( 'yoro_workflow_ttl', max( $workflow_ttl, 30 ) );
+		delete_option( 'yoro_workflow_ttl' );
 		if ( ! $ai_api_url_locked && $ai_api_connection_can_save ) {
 			update_option( self::OPTION_AI_API_URL, $target_ai_api_url );
 		}
@@ -321,18 +324,7 @@ class YoRo_AI_Settings {
 	}
 
 	private static function test_ai_api_credentials( $api_url, $site_key ) {
-		if ( ! class_exists( 'YoRo_AI_API_Client' ) ) {
-			return new WP_Error(
-				'yoro_ai_api_client_missing',
-				__( 'YoRo AI API client is not available.', 'yoro-ai-core' )
-			);
-		}
-
 		return ( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $site_key, false );
-	}
-
-	private static function normalize_provider_preference( $provider ) {
-		return YORO_AI_PROVIDER_YORO_AI_API;
 	}
 
 	private static function sanitize_ai_api_status_value( $value ) {
@@ -353,19 +345,35 @@ class YoRo_AI_Settings {
 		return sanitize_text_field( (string) $value );
 	}
 
+	private static function normalize_ai_api_status( array $status ) {
+		$status = self::sanitize_ai_api_status_value( $status );
+
+		if ( empty( $status['entitlements'] ) || ! is_array( $status['entitlements'] ) ) {
+			return $status;
+		}
+
+		$entitlements = $status['entitlements'];
+
+		if (
+			empty( $entitlements['conversation'] ) &&
+			( ! empty( $entitlements['command_router'] ) || ! empty( $entitlements['ai_router'] ) )
+		) {
+			$entitlements['conversation'] = true;
+		}
+
+		unset( $entitlements['command_router'], $entitlements['ai_router'], $entitlements['workflows'] );
+
+		$status['entitlements'] = $entitlements;
+
+		return $status;
+	}
+
 	private static function normalize_ai_api_feature( $feature ) {
 		$feature = sanitize_key( (string) $feature );
 
 		switch ( $feature ) {
-			case 'parse':
-			case 'intent':
-			case 'ai_router':
-				return 'command_router';
-			case 'workflow':
-			case 'workflow_plan':
-			case 'action_decomposition':
-			case 'dynamic_workflows':
-				return 'workflows';
+			case 'conversation':
+				return 'conversation';
 			case 'email':
 			case 'email_compose':
 				return 'email_composer';

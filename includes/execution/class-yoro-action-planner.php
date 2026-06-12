@@ -37,16 +37,14 @@ class YoRo_Action_Planner {
 			return $plan;
 		}
 
-		if ( class_exists( 'YoRo_Plan_Semantic_Validator' ) ) {
-			$validation = YoRo_Plan_Semantic_Validator::validate( $plan, $parsed );
+		$validation = YoRo_Plan_Semantic_Validator::validate( $plan, $parsed );
 
-			if ( is_wp_error( $validation ) ) {
-				return $validation;
-			}
+		if ( is_wp_error( $validation ) ) {
+			return $validation;
+		}
 
-			if ( is_array( $validation ) && ! empty( $validation ) ) {
-				$plan['validation'] = $validation;
-			}
+		if ( is_array( $validation ) && ! empty( $validation ) ) {
+			$plan['validation'] = $validation;
 		}
 
 		return $plan;
@@ -79,7 +77,7 @@ class YoRo_Action_Planner {
 
 				$step_action = sanitize_text_field( $step['action'] );
 
-				if ( class_exists( 'YoRo_Action_Registry' ) && empty( YoRo_Action_Registry::get( $step_action ) ) ) {
+				if ( empty( YoRo_Action_Registry::get( $step_action ) ) ) {
 					return new WP_Error(
 						'yoro_unknown_action_plan_step',
 						__( 'The AI action plan included an action YoRo does not support.', 'yoro-ai-core' )
@@ -102,9 +100,7 @@ class YoRo_Action_Planner {
 				$plan_params   = $action_plan['params'];
 				$merged_params = array_merge( $parsed_params, $plan_params );
 
-				if ( class_exists( 'YoRo_Order_Helper' ) ) {
-					$merged_params = YoRo_Order_Helper::apply_order_ids_to_params( $merged_params );
-				}
+				$merged_params = YoRo_Order_Helper::apply_order_ids_to_params( $merged_params );
 
 				$parsed['params'] = $merged_params;
 				$parsed['action_plan']['params'] = $merged_params;
@@ -151,9 +147,6 @@ class YoRo_Action_Planner {
 			'action'        => sanitize_text_field( $parsed['action'] ),
 			'steps'         => $steps,
 			'params'        => isset( $parsed['params'] ) && is_array( $parsed['params'] ) ? $parsed['params'] : [],
-			'workflow'      => ! empty( $parsed['current_workflow'] ) && is_array( $parsed['current_workflow'] )
-				? $parsed['current_workflow']
-				: ( $parsed['workflow'] ?? [] ),
 			'intent'        => $parsed['intent'] ?? [],
 			'entities'      => $parsed['entities'] ?? [],
 			'parsed'        => $parsed,
@@ -165,6 +158,7 @@ class YoRo_Action_Planner {
 
 	private static function normalize_sequence_step( $step, $index = 0 ) {
 		$action = sanitize_text_field( $step['action'] ?? '' );
+		$meta = isset( $step['meta'] ) && is_array( $step['meta'] ) ? $step['meta'] : [];
 
 		return [
 			'id'       => ! empty( $step['id'] )
@@ -184,9 +178,55 @@ class YoRo_Action_Planner {
 				]
 				: [
 					'max_attempts' => 1,
-				],
+			],
 			'rollback' => isset( $step['rollback'] ) && is_array( $step['rollback'] ) ? $step['rollback'] : [],
-			'meta'     => isset( $step['meta'] ) && is_array( $step['meta'] ) ? $step['meta'] : [],
+			'meta'     => $meta,
+			'user_content_slots' => self::normalize_user_content_slots( $step['user_content_slots'] ?? ( $meta['user_content_slots'] ?? [] ) ),
 		];
+	}
+
+	private static function normalize_user_content_slots( $slots ) {
+		if ( empty( $slots ) || ! is_array( $slots ) ) {
+			return [];
+		}
+
+		$normalized = [];
+
+		foreach ( array_values( $slots ) as $slot ) {
+			if ( ! is_array( $slot ) ) {
+				continue;
+			}
+
+			$value = array_key_exists( 'value', $slot ) && null !== $slot['value']
+				? sanitize_textarea_field( (string) $slot['value'] )
+				: null;
+			$field = sanitize_key( $slot['field'] ?? '' );
+
+			if ( '' === $field && null === $value ) {
+				continue;
+			}
+
+			$item = [
+				'operation_id' => sanitize_key( $slot['operation_id'] ?? '' ),
+				'operation_key' => sanitize_key( $slot['operation_key'] ?? '' ),
+				'action' => sanitize_text_field( $slot['action'] ?? '' ),
+				'field' => $field,
+				'value' => $value,
+				'content_scope' => sanitize_key( $slot['content_scope'] ?? '' ),
+				'provenance' => sanitize_key( $slot['provenance'] ?? '' ),
+				'source_text_from_latest_user_message' => sanitize_textarea_field( $slot['source_text_from_latest_user_message'] ?? '' ),
+				'source_text' => sanitize_textarea_field( $slot['source_text'] ?? '' ),
+				'confidence' => isset( $slot['confidence'] ) ? max( 0, min( 1, (float) $slot['confidence'] ) ) : null,
+			];
+
+			$normalized[] = array_filter(
+				$item,
+				static function ( $value ) {
+					return null !== $value && '' !== $value && [] !== $value;
+				}
+			);
+		}
+
+		return $normalized;
 	}
 }

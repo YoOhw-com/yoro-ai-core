@@ -8,7 +8,7 @@ class YoRo_Store_Customer_Service {
 
 	public static function get_customer_service_queue( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'WooCommerce is not active.', 'yoro-ai-core' ) );
+			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
 		}
 
 		$limit = isset( $params['limit'] ) ? absint( $params['limit'] ) : 5;
@@ -76,21 +76,32 @@ class YoRo_Store_Customer_Service {
 		$recommended_sequence = self::build_customer_service_recommended_sequence( $case_rankings, $service_context );
 		$next_case            = self::build_customer_service_next_recommended_case( $case_rankings );
 		$batch_candidates     = self::build_customer_service_batch_draft_candidates( $case_rankings );
+		$queue_count          = count( $queues );
+		$visible_case_count   = 0;
+
+		foreach ( $queues as $queue ) {
+			$visible_case_count += count( is_array( $queue['orders'] ?? null ) ? $queue['orders'] : [] );
+		}
+
+		$visible_unique_order_count = count( $orders );
+		$queue_summary        = sprintf(
+			/* translators: 1: queue match count, 2: queue count */
+			__( 'Customer service queue: %1$d queue matches across %2$d queues.', 'yoro-ai-core' ),
+			$total_items,
+			$queue_count
+		);
 
 		return [
 			'success'              => true,
 			'action'               => 'customers.get_service_queue',
-			'summary'              => sprintf(
-				'Customer service queue: %d items across %d queues.',
-				$total_items,
-				count( $queues )
-			),
-			'message'              => sprintf(
-				'Customer service queue: %d items across %d queues.',
-				$total_items,
-				count( $queues )
-			),
+			'summary'              => $queue_summary,
+			'message'              => $queue_summary,
 			'count'                => $total_items,
+			'queue_item_count'     => $total_items,
+			'queue_count'          => $queue_count,
+			'visible_case_count'   => $visible_case_count,
+			'visible_order_count'  => $visible_case_count,
+			'visible_unique_order_count' => $visible_unique_order_count,
 			'read_only'            => true,
 			'undoable'             => false,
 			'undo_plan'            => [],
