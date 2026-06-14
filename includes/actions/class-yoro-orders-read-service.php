@@ -482,6 +482,12 @@ class YoRo_Orders_Read_Service {
 				);
 			}
 
+		$focused_response = self::focused_order_details_response( $params, $data );
+
+		if ( ! empty( $focused_response ) ) {
+			return $focused_response;
+		}
+
 		return [
 			'success'      => true,
 			'action'       => 'orders.get_details',
@@ -495,6 +501,73 @@ class YoRo_Orders_Read_Service {
 			'skipped'      => [],
 			'errors'       => [],
 		];
+	}
+
+	private static function focused_order_details_response( $params, array $orders ) {
+		$response_focus = sanitize_key( $params['response_focus'] ?? '' );
+
+		if ( 'order_status' !== $response_focus || 1 !== count( $orders ) ) {
+			return [];
+		}
+
+		$order = reset( $orders );
+
+		if ( ! is_array( $order ) ) {
+			return [];
+		}
+
+		$order_id = absint( $order['id'] ?? ( $params['order_id'] ?? 0 ) );
+		$status   = sanitize_text_field( $order['status_label'] ?? '' );
+
+		if ( '' === $status ) {
+			$status = self::humanize_status_key( $order['status'] ?? '' );
+		}
+
+		if ( ! $order_id || '' === $status ) {
+			return [];
+		}
+
+		$message = self::focused_order_status_message(
+			$order_id,
+			$status,
+			sanitize_key( $params['response_language'] ?? '' )
+		);
+
+		return [
+			'success'          => true,
+			'action'           => 'orders.get_details',
+			'summary'          => $message,
+			'message'          => $message,
+			'count'            => 1,
+			'read_only'        => true,
+			'order'            => $order,
+			'orders'           => $orders,
+			'response_focus'   => 'order_status',
+			'requested_fields' => is_array( $params['requested_fields'] ?? null )
+				? array_values( array_map( 'sanitize_key', $params['requested_fields'] ) )
+				: [ 'status', 'status_label' ],
+			'result_type'      => 'assistant_message',
+			'display_type'     => 'assistant_message',
+			'processed'        => [],
+			'skipped'          => [],
+			'errors'           => [],
+		];
+	}
+
+	private static function focused_order_status_message( $order_id, $status, $language ) {
+		if ( 0 === strpos( strtolower( (string) $language ), 'vi' ) ) {
+			return sprintf( 'Đơn #%d đang ở trạng thái %s.', $order_id, $status );
+		}
+
+		return sprintf( 'Order #%d is currently %s.', $order_id, $status );
+	}
+
+	private static function humanize_status_key( $status ) {
+		$status = sanitize_key( $status );
+		$status = preg_replace( '/^wc-/', '', $status );
+		$status = str_replace( [ '-', '_' ], ' ', $status );
+
+		return ucwords( trim( $status ) );
 	}
 
 	public static function get_operations_summary( $params ) {

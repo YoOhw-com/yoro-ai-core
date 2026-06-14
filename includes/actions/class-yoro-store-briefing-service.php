@@ -222,7 +222,13 @@ class YoRo_Store_Briefing_Service {
 			'excluded_order_total' => wc_format_decimal( $excluded_order_total, 2 ),
 			'revenue_statuses'    => YoRo_Orders_Read_Service::briefing_get_revenue_order_status_slugs(),
 		];
-		$previous_window           = YoRo_Date_Helper::build_previous_window( $window );
+		$answer_shape              = self::normalize_answer_shape( $params );
+		$previous_window           = self::comparison_window_from_params( $params );
+
+		if ( empty( $previous_window ) ) {
+			$previous_window = YoRo_Date_Helper::build_previous_window( $window );
+		}
+
 		$previous_business_metrics = self::summarize_business_window( $previous_window );
 		$comparison                = self::build_business_comparison( $business_metrics, $previous_business_metrics, $previous_window );
 
@@ -231,7 +237,6 @@ class YoRo_Store_Briefing_Service {
 			count( $customer_map )
 		);
 
-		$gross_sales_label = wc_format_decimal( $order_total, 2 ) . ' ' . get_woocommerce_currency();
 		$narrative_context = self::build_business_summary_narrative_context(
 			$window,
 			$business_metrics,
@@ -277,26 +282,16 @@ class YoRo_Store_Briefing_Service {
 			$business_actions,
 			$top_products,
 			$top_categories,
-			$comparison
+			$comparison,
+			$answer_shape
 		);
+		$summary              = self::build_business_summary_message( $window, $business_metrics, $comparison, $answer_shape, $customer_count_label );
 
 		return [
 			'success'      => true,
 			'action'       => 'store.get_business_summary',
-			'summary'      => sprintf(
-				'Sales report for %1$s: %2$d orders, %3$s gross sales, %4$s.',
-				$window['label'],
-				$order_count,
-				$gross_sales_label,
-				$customer_count_label
-			),
-			'message'      => sprintf(
-				'Sales report for %1$s: %2$d orders, %3$s gross sales, %4$s.',
-				$window['label'],
-				$order_count,
-				$gross_sales_label,
-				$customer_count_label
-			),
+			'summary'      => $summary,
+			'message'      => $summary,
 			'count'        => $order_count,
 			'read_only'    => true,
 			'undoable'     => false,
@@ -310,7 +305,8 @@ class YoRo_Store_Briefing_Service {
 			'processed'    => [],
 			'skipped'      => [],
 			'errors'       => [],
-			'window'       => YoRo_Date_Helper::build_window_payload( $window ),
+			'window'               => YoRo_Date_Helper::build_window_payload( $window ),
+			'answer_shape'         => $answer_shape,
 			'focus'                => $focus,
 			'business_metrics'     => $business_metrics,
 			'order_status_counts'  => $order_status_counts,
@@ -454,7 +450,278 @@ class YoRo_Store_Briefing_Service {
 			: [];
 	}
 
-	private static function build_business_report( $window, $business_metrics, $order_status_counts, $backlog_total, $attention_total, $headline_insights, $business_actions, $top_products, $top_categories, $comparison = [] ) {
+	private static function normalize_answer_shape( $params ) {
+		$params = is_array( $params ) ? $params : [];
+		$candidates = [
+			$params['answer_shape'] ?? '',
+			$params['reporting_contract']['answer_shape'] ?? '',
+			$params['semantic_slots']['answer_shape'] ?? '',
+		];
+
+		foreach ( $candidates as $candidate ) {
+			$answer_shape = sanitize_key( (string) $candidate );
+
+			if ( '' !== $answer_shape ) {
+				return $answer_shape;
+			}
+		}
+
+		return '';
+	}
+
+	private static function comparison_window_from_params( $params ) {
+		if ( ! is_array( $params ) || empty( $params['time_window'] ) || ! is_array( $params['time_window'] ) ) {
+			return [];
+		}
+
+		$comparison = $params['time_window']['comparison'] ?? [];
+
+		if ( empty( $comparison ) || ! is_array( $comparison ) ) {
+			return [];
+		}
+
+		$timezone = self::comparison_window_timezone( $comparison );
+		$start    = self::comparison_window_datetime( $comparison['start'] ?? ( $comparison['start_date'] ?? '' ), '00:00:00', $timezone );
+		$end      = self::comparison_window_datetime( $comparison['end'] ?? ( $comparison['end_date'] ?? '' ), '23:59:59', $timezone );
+
+		if ( ! $start || ! $end || $end < $start ) {
+			return [];
+		}
+
+		$key = sanitize_key( $comparison['canonical_key'] ?? ( $comparison['kind'] ?? 'previous_period' ) );
+
+		return [
+			'key'            => '' !== $key ? $key : 'previous_period',
+			'label'          => __( 'Previous period', 'yoro-ai-core' ),
+			'date_from'      => $start->format( 'Y-m-d' ),
+			'date_to'        => $end->format( 'Y-m-d' ),
+			'start'          => $start->format( 'Y-m-d H:i:s' ),
+			'end'            => $end->format( 'Y-m-d H:i:s' ),
+			'start_ts'       => $start->getTimestamp(),
+			'end_ts'         => $end->getTimestamp(),
+			'query'          => $start->format( 'Y-m-d H:i:s' ) . '...' . $end->format( 'Y-m-d H:i:s' ),
+			'timezone'       => $timezone->getName(),
+			'week_starts_on' => absint( get_option( 'start_of_week', 1 ) ),
+		];
+	}
+
+	private static function comparison_window_timezone( $comparison ) {
+		$timezone_name = sanitize_text_field( $comparison['timezone'] ?? '' );
+
+		if ( '' !== $timezone_name ) {
+			try {
+				return new DateTimeZone( $timezone_name );
+			} catch ( Exception $exception ) {
+				return wp_timezone();
+			}
+		}
+
+		return wp_timezone();
+	}
+
+	private static function comparison_window_datetime( $value, $default_time, $timezone ) {
+		$value = trim( (string) $value );
+
+		if ( '' === $value ) {
+			return null;
+		}
+
+		if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $value ) ) {
+			$value .= ' ' . $default_time;
+		}
+
+		try {
+			return new DateTimeImmutable( $value, $timezone );
+		} catch ( Exception $exception ) {
+			return null;
+		}
+	}
+
+	private static function build_business_summary_message( $window, $business_metrics, $comparison, $answer_shape, $customer_count_label ) {
+		if ( 'metric_comparison' === sanitize_key( $answer_shape ) ) {
+			$comparison_summary = self::build_business_comparison_summary( $window, $business_metrics, $comparison );
+
+			if ( '' !== $comparison_summary ) {
+				return $comparison_summary;
+			}
+		}
+
+		$window_label = sanitize_text_field( $window['label'] ?? __( 'this period', 'yoro-ai-core' ) );
+		$order_count  = absint( $business_metrics['order_count'] ?? 0 );
+		$gross_sales  = self::format_metric_value( $business_metrics['gross_sales'] ?? '0', get_woocommerce_currency() );
+
+		return sprintf(
+			'Sales report for %1$s: %2$d orders, %3$s gross sales, %4$s.',
+			$window_label,
+			$order_count,
+			$gross_sales,
+			$customer_count_label
+		);
+	}
+
+	private static function build_business_comparison_summary( $window, $business_metrics, $comparison ) {
+		if ( empty( $comparison['metrics'] ) || ! is_array( $comparison['metrics'] ) ) {
+			return '';
+		}
+
+		$window_label     = sanitize_text_field( $window['label'] ?? __( 'this period', 'yoro-ai-core' ) );
+		$comparison_label = self::comparison_window_label( $comparison );
+		$currency         = get_woocommerce_currency();
+		$gross_clause     = self::comparison_metric_clause(
+			__( 'gross sales', 'yoro-ai-core' ),
+			self::format_metric_value( $business_metrics['gross_sales'] ?? '0', $currency ),
+			self::comparison_for_metric( $comparison, 'gross_sales' ),
+			$currency
+		);
+		$order_clause     = self::comparison_metric_clause(
+			__( 'orders', 'yoro-ai-core' ),
+			absint( $business_metrics['order_count'] ?? 0 ),
+			self::comparison_for_metric( $comparison, 'order_count' )
+		);
+		$customer_clause  = self::comparison_metric_clause(
+			__( 'active customers', 'yoro-ai-core' ),
+			absint( $business_metrics['unique_customers'] ?? 0 ),
+			self::comparison_for_metric( $comparison, 'unique_customers' )
+		);
+
+		if ( '' === $gross_clause || '' === $order_clause || '' === $customer_clause ) {
+			return '';
+		}
+
+		return sprintf(
+			__( 'Sales comparison for %1$s vs %2$s: %3$s; %4$s; and %5$s.', 'yoro-ai-core' ),
+			$window_label,
+			$comparison_label,
+			$gross_clause,
+			$order_clause,
+			$customer_clause
+		);
+	}
+
+	private static function build_business_comparison_headline( $window, $business_metrics, $comparison ) {
+		if ( empty( $comparison['metrics'] ) || ! is_array( $comparison['metrics'] ) ) {
+			return '';
+		}
+
+		$window_label = sanitize_text_field( $window['label'] ?? __( 'this period', 'yoro-ai-core' ) );
+		$currency     = get_woocommerce_currency();
+		$gross_trend  = self::comparison_trend_phrase( self::comparison_for_metric( $comparison, 'gross_sales' ) );
+		$order_trend  = self::comparison_trend_phrase( self::comparison_for_metric( $comparison, 'order_count' ) );
+
+		if ( '' === $gross_trend || '' === $order_trend ) {
+			return '';
+		}
+
+		return sprintf(
+			__( 'Sales comparison for %1$s: gross sales %2$s (%3$s), orders %4$d (%5$s).', 'yoro-ai-core' ),
+			$window_label,
+			self::format_metric_value( $business_metrics['gross_sales'] ?? '0', $currency ),
+			$gross_trend,
+			absint( $business_metrics['order_count'] ?? 0 ),
+			$order_trend
+		);
+	}
+
+	private static function comparison_metric_clause( $label, $current_value, $metric, $previous_unit = '' ) {
+		if ( empty( $metric ) || ! is_array( $metric ) ) {
+			return '';
+		}
+
+		$trend_phrase = self::comparison_trend_phrase( $metric );
+
+		if ( '' === $trend_phrase ) {
+			return '';
+		}
+
+		$previous = self::format_metric_value( $metric['previous'] ?? '0', $previous_unit );
+
+		return sprintf(
+			__( '%1$s were %2$s (%3$s; previous %4$s)', 'yoro-ai-core' ),
+			sanitize_text_field( $label ),
+			sanitize_text_field( (string) $current_value ),
+			$trend_phrase,
+			$previous
+		);
+	}
+
+	private static function comparison_trend_phrase( $metric ) {
+		if ( empty( $metric ) || ! is_array( $metric ) ) {
+			return '';
+		}
+
+		$trend = sanitize_key( $metric['trend'] ?? '' );
+		$delta = self::clean_comparison_delta( $metric['delta'] ?? '' );
+
+		if ( '' === $delta ) {
+			return self::comparison_trend_label( $trend );
+		}
+
+		if ( 'new' === strtolower( $delta ) || 'new vs previous' === strtolower( $delta ) ) {
+			return __( 'new vs previous', 'yoro-ai-core' );
+		}
+
+		$trend_label = self::comparison_trend_label( $trend );
+
+		return '' !== $trend_label
+			? trim( $trend_label . ' ' . $delta )
+			: $delta;
+	}
+
+	private static function clean_comparison_delta( $delta ) {
+		$delta = sanitize_text_field( (string) $delta );
+
+		if ( '' === $delta ) {
+			return '';
+		}
+
+		if ( 'new vs previous' === strtolower( $delta ) ) {
+			return 'new';
+		}
+
+		$cleaned = preg_replace( '/\s+vs previous$/i', '', $delta );
+
+		return is_string( $cleaned ) ? $cleaned : $delta;
+	}
+
+	private static function comparison_trend_label( $trend ) {
+		switch ( sanitize_key( $trend ) ) {
+			case 'up':
+				return __( 'up', 'yoro-ai-core' );
+			case 'down':
+				return __( 'down', 'yoro-ai-core' );
+			case 'flat':
+				return __( 'flat', 'yoro-ai-core' );
+		}
+
+		return '';
+	}
+
+	private static function comparison_window_label( $comparison ) {
+		$window = isset( $comparison['window'] ) && is_array( $comparison['window'] ) ? $comparison['window'] : [];
+		$label  = sanitize_text_field( $window['label'] ?? __( 'previous period', 'yoro-ai-core' ) );
+		$from   = sanitize_text_field( $window['date_from'] ?? '' );
+		$to     = sanitize_text_field( $window['date_to'] ?? '' );
+
+		if ( '' !== $from && '' !== $to ) {
+			return sprintf(
+				__( '%1$s (%2$s to %3$s)', 'yoro-ai-core' ),
+				$label,
+				$from,
+				$to
+			);
+		}
+
+		return $label;
+	}
+
+	private static function format_metric_value( $value, $unit = '' ) {
+		$value = sanitize_text_field( (string) $value );
+		$unit  = sanitize_text_field( (string) $unit );
+
+		return '' !== $unit ? trim( $value . ' ' . $unit ) : $value;
+	}
+
+	private static function build_business_report( $window, $business_metrics, $order_status_counts, $backlog_total, $attention_total, $headline_insights, $business_actions, $top_products, $top_categories, $comparison = [], $answer_shape = '' ) {
 		$order_count = absint( $business_metrics['order_count'] ?? 0 );
 		$gross_sales = sanitize_text_field( $business_metrics['gross_sales'] ?? '0' );
 		$net_sales = sanitize_text_field( $business_metrics['net_sales'] ?? '0' );
@@ -487,9 +754,15 @@ class YoRo_Store_Briefing_Service {
 		$repeat_customer_rate_comparison = self::comparison_for_metric( $comparison, 'repeat_customer_rate' );
 		$refund_rate_comparison = self::comparison_for_metric( $comparison, 'refund_rate' );
 		$discount_rate_comparison = self::comparison_for_metric( $comparison, 'discount_rate' );
-		$headline = $order_count > 0
-			? sprintf( __( 'Sales activity for %1$s: %2$d orders, %3$s %4$s gross sales, and %5$s average order value.', 'yoro-ai-core' ), $window['label'], $order_count, $gross_sales, $currency, $average_order_value )
-			: sprintf( __( 'No order revenue is visible for %s yet.', 'yoro-ai-core' ), $window['label'] );
+		$headline = 'metric_comparison' === sanitize_key( $answer_shape )
+			? self::build_business_comparison_headline( $window, $business_metrics, $comparison )
+			: '';
+
+		if ( '' === $headline ) {
+			$headline = $order_count > 0
+				? sprintf( __( 'Sales activity for %1$s: %2$d orders, %3$s %4$s gross sales, and %5$s average order value.', 'yoro-ai-core' ), $window['label'], $order_count, $gross_sales, $currency, $average_order_value )
+				: sprintf( __( 'No order revenue is visible for %s yet.', 'yoro-ai-core' ), $window['label'] );
+		}
 
 		$metrics = [
 			YoRo_Report_Builder::metric( 'gross_sales', __( 'Gross sales', 'yoro-ai-core' ), $gross_sales, $currency, 'currency', $order_count > 0 ? 'positive' : 'watch', $gross_comparison['trend'] ?? '', $gross_comparison['delta'] ?? null ),
@@ -1142,6 +1415,7 @@ class YoRo_Store_Briefing_Service {
 			'second_score'     => $second_score,
 			'window_orders'    => $window_orders,
 			'gross_sales'      => wc_format_decimal( $gross_sales, 2 ),
+			'attention_total'  => $attention_total,
 			'active_customers'   => $active_customers,
 			'backlog_total'      => $backlog_total,
 			'fulfillment_items'  => $fulfillment_total,
