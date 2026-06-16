@@ -660,6 +660,9 @@
 			if (!match && !/^here\b/i.test(line)) {
 				match = line.match(/^(.{2,80}):$/);
 			}
+			if (match && !shouldRenderAssistantHeading(match[1])) {
+				match = null;
+			}
 
 			if (match) {
 				flushParagraph();
@@ -754,6 +757,242 @@
 		};
 	}
 
+	function normalizeAssistantClassifierText(value) {
+		let text = String(value || '');
+
+		if (typeof text.normalize === 'function') {
+			text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+		}
+
+		return text
+			.replace(/\u0111/g, 'd')
+			.replace(/\u0110/g, 'D')
+			.replace(/[_-]+/g, ' ')
+			.replace(/\s+/g, ' ')
+			.trim();
+	}
+
+	function assistantClassifierTokens(value) {
+		return normalizeAssistantClassifierText(value)
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, ' ')
+			.replace(/\s+/g, ' ')
+			.trim();
+	}
+
+	function isAssistantAllCapsLabel(label) {
+		const normalized = normalizeAssistantClassifierText(label).replace(/[^A-Za-z0-9]+/g, '');
+
+		return !!normalized && /[A-Z]/.test(normalized) && normalized === normalized.toUpperCase();
+	}
+
+	function assistantLabelWordCount(label) {
+		const normalized = assistantClassifierTokens(label);
+
+		return normalized ? normalized.split(/\s+/).length : 0;
+	}
+
+	function isAssistantKnownTextHeading(label) {
+		const normalized = assistantClassifierTokens(label);
+		const headings = [
+			'answer',
+			'context',
+			'details',
+			'key points',
+			'next step',
+			'next steps',
+			'note',
+			'notes',
+			'overview',
+			'recommendation',
+			'recommendations',
+			'result',
+			'results',
+			'summary',
+			'takeaway',
+			'takeaways',
+			'what changed',
+			'luu y',
+			'tom tat'
+		];
+
+		return headings.indexOf(normalized) !== -1;
+	}
+
+	function isAssistantOperationalFactLabel(label) {
+		const raw = String(label || '').trim();
+		const normalized = assistantClassifierTokens(raw);
+		const padded = ' ' + normalized + ' ';
+		const keywords = [
+			'action',
+			'address',
+			'admin',
+			'age',
+			'amount',
+			'average',
+			'backlog',
+			'body',
+			'category',
+			'code',
+			'coupon',
+			'count',
+			'customer',
+			'date',
+			'discount',
+			'draft',
+			'email',
+			'expires',
+			'flag',
+			'fulfillment',
+			'gross',
+			'id',
+			'inventory',
+			'item',
+			'limit',
+			'locale',
+			'margin',
+			'message',
+			'method',
+			'name',
+			'net',
+			'note',
+			'open',
+			'order',
+			'payment',
+			'phone',
+			'plan',
+			'price',
+			'product',
+			'queue',
+			'refund',
+			'revenue',
+			'sales',
+			'schema',
+			'shipping',
+			'sku',
+			'source',
+			'status',
+			'stock',
+			'subject',
+			'subtotal',
+			'tax',
+			'template',
+			'total',
+			'tracking',
+			'type',
+			'usage',
+			'window',
+			'aov',
+			'ban nhap',
+			'chu de',
+			'doanh thu',
+			'don hang',
+			'giam gia',
+			'giao hang',
+			'gia',
+			'han',
+			'hoan tien',
+			'khach hang',
+			'ma',
+			'mau',
+			'ngay',
+			'san pham',
+			'so luong',
+			'thanh toan',
+			'thue',
+			'ton kho',
+			'tong',
+			'trang thai',
+			'van chuyen'
+		];
+
+		if (!normalized) {
+			return false;
+		}
+
+		if (/[_-]/.test(raw) || /[a-z][A-Z]/.test(raw)) {
+			return true;
+		}
+
+		if (/^(ID|SKU|URL|AOV|VAT)$/i.test(raw)) {
+			return true;
+		}
+
+		return keywords.some(function(keyword) {
+			return padded.indexOf(' ' + keyword + ' ') !== -1;
+		});
+	}
+
+	function isAssistantSpeakerLabel(label) {
+		const normalized = assistantClassifierTokens(label);
+		const speakers = [
+			'barista',
+			'cashier',
+			'client',
+			'customer',
+			'employee',
+			'guest',
+			'manager',
+			'owner',
+			'seller',
+			'shopkeeper',
+			'staff',
+			'waiter',
+			'waitress',
+			'chu quan',
+			'khach',
+			'khach hang',
+			'nguoi ban',
+			'nguoi mua',
+			'nhan vien',
+			'ong chu'
+		];
+
+		if (!normalized) {
+			return false;
+		}
+
+		return speakers.some(function(speaker) {
+			return normalized === speaker ||
+				normalized.indexOf(speaker + ' ') === 0 ||
+				normalized.indexOf(' ' + speaker + ' ') !== -1;
+		});
+	}
+
+	function isAssistantQuotedSpeech(value) {
+		return /^[\s"'\u2018\u2019\u201c\u201d]+/.test(String(value || ''));
+	}
+
+	function isAssistantMetricLikeValue(value) {
+		const text = String(value || '').trim();
+
+		return /^#?\d/.test(text) ||
+			/^[+$€£¥₫]/.test(text) ||
+			/^(yes|no|true|false|enabled|disabled|none|n\/a)$/i.test(text);
+	}
+
+	function shouldRenderAssistantHeading(label) {
+		const raw = String(label || '').replace(/:$/, '').trim();
+
+		if (!raw) {
+			return false;
+		}
+
+		if (isAssistantKnownTextHeading(raw) || isAssistantOperationalFactLabel(raw)) {
+			return true;
+		}
+
+		if (isAssistantSpeakerLabel(raw)) {
+			return false;
+		}
+
+		if (isAssistantAllCapsLabel(raw)) {
+			return false;
+		}
+
+		return assistantLabelWordCount(raw) <= 7;
+	}
+
 	function parseAssistantFactLine(line) {
 		const match = String(line || '').match(/^(.{2,86}?):\s+(.+)$/);
 
@@ -769,6 +1008,24 @@
 		}
 
 		if (/^[\s.,!?;:-]+$/.test(rawLabel) || rawLabel.split(/\s+/).length > 14) {
+			return null;
+		}
+
+		if (isAssistantQuotedSpeech(value) && isAssistantSpeakerLabel(rawLabel)) {
+			return null;
+		}
+
+		if (!isAssistantOperationalFactLabel(rawLabel)) {
+			if (isAssistantSpeakerLabel(rawLabel) || isAssistantQuotedSpeech(value)) {
+				return null;
+			}
+
+			if (assistantLabelWordCount(rawLabel) > 4 || !isAssistantMetricLikeValue(value)) {
+				return null;
+			}
+		}
+
+		if (isAssistantAllCapsLabel(rawLabel) && !isAssistantOperationalFactLabel(rawLabel)) {
 			return null;
 		}
 
@@ -1652,7 +1909,7 @@
 	function renderAssistantMessageResult(data, h) {
 		const result = data.result || {};
 		const assistant = getAssistantResponse(data);
-		const summary = String(assistant.message || result.summary || '').trim();
+		const summary = String(assistant.message || result.summary || result.message || data.message || '').trim();
 		let html = '<div class="yoro-single-action-result">';
 
 		html += '<div class="yoro-assistant-message-result">';

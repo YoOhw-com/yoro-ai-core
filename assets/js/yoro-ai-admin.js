@@ -154,6 +154,7 @@
 		const contextButton = document.getElementById('yoro-ai-load-context');
 		const adminPanelsButton = document.getElementById('yoro-ai-open-admin-panels');
 		const adminPanelsSource = document.querySelector('[data-yoro-admin-panels]');
+		const chatShell = document.querySelector('.yoro-chat-shell');
 		const chatThread = document.getElementById('yoro-chat-thread');
 		const exampleButtons = document.querySelectorAll('.yoro-ai-example');
 		const quickActionsRoot = document.querySelector('[data-yoro-quick-actions]');
@@ -766,6 +767,20 @@
 		`;
 		document.body.appendChild(modal);
 
+		const adminCover = document.createElement('div');
+		adminCover.className = 'yoro-admin-cover hidden';
+		adminCover.innerHTML = `
+			<div class="yoro-admin-cover-head">
+				<h3>YoRo AI Admin</h3>
+				<button type="button" class="button yoro-admin-cover-close">Close</button>
+			</div>
+			<div class="yoro-admin-cover-body"></div>
+		`;
+
+		if (chatShell) {
+			chatShell.appendChild(adminCover);
+		}
+
 		function openModal(title, bodyHtml, onConfirm, options) {
 			const contentEl = modal.querySelector('.yoro-modal-content');
 			const titleEl = modal.querySelector('.yoro-modal-title');
@@ -807,13 +822,13 @@
 		}
 
 		function activateAdminPanel(root, panel) {
-			const modalRoot = root || null;
+			const panelRoot = root || null;
 
-			if (!modalRoot) {
+			if (!panelRoot) {
 				return;
 			}
 
-			const tabs = modalRoot.querySelectorAll('[data-yoro-admin-tab]');
+			const tabs = panelRoot.querySelectorAll('[data-yoro-admin-tab]');
 			let selectedPanel = panel || 'history';
 			let hasSelectedPanel = false;
 
@@ -834,7 +849,7 @@
 				tab.setAttribute('aria-selected', active ? 'true' : 'false');
 			});
 
-			modalRoot.querySelectorAll('[data-yoro-admin-panel]').forEach(function(section) {
+			panelRoot.querySelectorAll('[data-yoro-admin-panel]').forEach(function(section) {
 				section.classList.toggle(
 					'is-active',
 					section.getAttribute('data-yoro-admin-panel') === selectedPanel
@@ -842,39 +857,120 @@
 			});
 		}
 
-		function openAdminPanels(panel) {
-			if (!adminPanelsSource) {
+		function normalizeAdminHistoryUrl(url) {
+			let parsedUrl;
+
+			try {
+				parsedUrl = new URL(url, window.location.href);
+			} catch (error) {
+				return url;
+			}
+
+			if (
+				parsedUrl.origin !== window.location.origin ||
+				parsedUrl.searchParams.get('page') !== 'yoro-ai-core'
+			) {
+				return url;
+			}
+
+			parsedUrl.searchParams.set('yoro_admin_panel', 'history');
+
+			return parsedUrl.toString();
+		}
+
+		function prepareAdminPanelNavigation(root) {
+			const panelRoot = root || null;
+
+			if (!panelRoot) {
 				return;
 			}
 
-			openModal(
-				'YoRo AI Admin',
-				adminPanelsSource.innerHTML,
-				null,
-				{
-					hideConfirm: true,
-					cancelText: 'Close',
-					wide: true
-				}
-			);
+			panelRoot.querySelectorAll('[data-yoro-admin-panel="history"] form[method="get"]').forEach(function(form) {
+				let panelInput = form.querySelector('input[name="yoro_admin_panel"]');
 
-			activateAdminPanel(
-				modal.querySelector('[data-yoro-admin-modal]'),
-				panel || 'history'
-			);
+				if (!panelInput) {
+					panelInput = document.createElement('input');
+					panelInput.type = 'hidden';
+					panelInput.name = 'yoro_admin_panel';
+					form.appendChild(panelInput);
+				}
+
+				panelInput.value = 'history';
+			});
+
+			panelRoot.querySelectorAll('[data-yoro-admin-panel="history"] a[href]').forEach(function(link) {
+				const currentHref = link.getAttribute('href') || '';
+				const normalizedHref = normalizeAdminHistoryUrl(currentHref);
+
+				if (normalizedHref !== currentHref) {
+					link.setAttribute('href', normalizedHref);
+				}
+			});
 		}
 
-		function registerAdminPanelModal() {
+		function openAdminPanels(panel) {
+			if (!adminPanelsSource || !chatShell) {
+				return;
+			}
+
+			const body = adminCover.querySelector('.yoro-admin-cover-body');
+
+			if (!body) {
+				return;
+			}
+
+			body.innerHTML = adminPanelsSource.innerHTML;
+
+			const adminPanelRoot = adminCover.querySelector('[data-yoro-admin-modal]');
+			prepareAdminPanelNavigation(adminPanelRoot);
+			activateAdminPanel(adminPanelRoot, panel || 'history');
+			adminCover.classList.remove('hidden');
+
+			if (adminPanelsButton) {
+				adminPanelsButton.setAttribute('aria-expanded', 'true');
+			}
+		}
+
+		function closeAdminPanels() {
+			adminCover.classList.add('hidden');
+
+			if (adminPanelsButton) {
+				adminPanelsButton.setAttribute('aria-expanded', 'false');
+			}
+		}
+
+		function registerAdminPanelCover() {
 			if (adminPanelsButton && adminPanelsSource) {
+				adminPanelsButton.setAttribute('aria-expanded', 'false');
 				adminPanelsButton.addEventListener('click', function() {
 					openAdminPanels('history');
 				});
 			}
 
+			adminCover.addEventListener('click', function(event) {
+				if (event.target.closest('.yoro-admin-cover-close')) {
+					event.preventDefault();
+					closeAdminPanels();
+				}
+			});
+
 			document.addEventListener('click', function(event) {
 				const tab = event.target.closest('[data-yoro-admin-tab]');
+				const historyLink = event.target.closest('[data-yoro-admin-panel="history"] a[href]');
 
-				if (!tab || !modal.contains(tab)) {
+				if (historyLink && adminCover.contains(historyLink)) {
+					const href = historyLink.getAttribute('href') || '';
+					const normalizedHref = normalizeAdminHistoryUrl(href);
+
+					if (normalizedHref !== href) {
+						event.preventDefault();
+						window.location.href = normalizedHref;
+					}
+
+					return;
+				}
+
+				if (!tab || !adminCover.contains(tab)) {
 					return;
 				}
 
@@ -882,6 +978,12 @@
 					tab.closest('[data-yoro-admin-modal]'),
 					tab.getAttribute('data-yoro-admin-tab') || 'history'
 				);
+			});
+
+			document.addEventListener('keydown', function(event) {
+				if (event.key === 'Escape' && !adminCover.classList.contains('hidden')) {
+					closeAdminPanels();
+				}
 			});
 
 			const params = new URLSearchParams(window.location.search);
@@ -895,7 +997,7 @@
 			}
 		}
 
-		registerAdminPanelModal();
+		registerAdminPanelCover();
 
 		function getConversationStorageKey() {
 			const key = window.YoRoAIAdmin && YoRoAIAdmin.conversationStorageKey
