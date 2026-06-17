@@ -327,6 +327,41 @@ class YoRo_AI_Settings {
 		return ( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $site_key, false );
 	}
 
+	public static function save_connected_ai_api_credentials( $api_url, $site_key ) {
+		if ( self::is_ai_api_site_key_locked() ) {
+			return new WP_Error(
+				'yoro_ai_api_site_key_locked',
+				__( 'YoRo AI API site key is configured by constant and cannot be replaced from the plugin UI.', 'yoro-ai-core' )
+			);
+		}
+
+		$target_ai_api_url = self::is_ai_api_url_locked() ? self::get_ai_api_url() : esc_url_raw( (string) $api_url );
+		$target_site_key   = sanitize_text_field( (string) $site_key );
+
+		if ( '' === $target_ai_api_url || '' === $target_site_key ) {
+			return new WP_Error(
+				'yoro_ai_api_missing_connect_credentials',
+				__( 'YoRo did not return a complete connection payload.', 'yoro-ai-core' )
+			);
+		}
+
+		$connection_result = self::test_ai_api_credentials( $target_ai_api_url, $target_site_key );
+
+		if ( is_wp_error( $connection_result ) ) {
+			return $connection_result;
+		}
+
+		if ( ! self::is_ai_api_url_locked() ) {
+			update_option( self::OPTION_AI_API_URL, $target_ai_api_url );
+		}
+
+		update_option( self::OPTION_AI_API_SITE_KEY, $target_site_key, false );
+		update_option( self::OPTION_AI_API_ENABLED, 'yes' );
+		self::update_ai_api_status( $connection_result );
+
+		return $connection_result;
+	}
+
 	private static function sanitize_ai_api_status_value( $value ) {
 		if ( is_array( $value ) ) {
 			$sanitized = [];

@@ -145,6 +145,72 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		);
 	}
 
+	public function create_wordpress_connect_intent( array $payload, $api_url = '' ) {
+		$api_url = '' !== $api_url ? $api_url : YoRo_AI_Settings::get_ai_api_url();
+
+		if ( '' === $api_url ) {
+			return new WP_Error(
+				'yoro_ai_api_missing_config',
+				__( 'YoRo AI API URL is not configured yet.', 'yoro-ai-core' )
+			);
+		}
+
+		$response = wp_remote_post(
+			$this->build_wordpress_connect_intent_endpoint_url( $api_url ),
+			[
+				'timeout' => 15,
+				'headers' => [
+					'Accept'       => 'application/json',
+					'Content-Type' => 'application/json',
+				],
+				'body'    => wp_json_encode( $payload ),
+			]
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		return $this->decode_public_json_response(
+			$response,
+			'yoro_ai_api_connect_intent_error',
+			__( 'I could not start the YoRo account connection.', 'yoro-ai-core' )
+		);
+	}
+
+	public function exchange_wordpress_connect_code( array $payload, $api_url = '' ) {
+		$api_url = '' !== $api_url ? $api_url : YoRo_AI_Settings::get_ai_api_url();
+
+		if ( '' === $api_url ) {
+			return new WP_Error(
+				'yoro_ai_api_missing_config',
+				__( 'YoRo AI API URL is not configured yet.', 'yoro-ai-core' )
+			);
+		}
+
+		$response = wp_remote_post(
+			$this->build_wordpress_connect_exchange_endpoint_url( $api_url ),
+			[
+				'timeout' => 15,
+				'headers' => [
+					'Accept'       => 'application/json',
+					'Content-Type' => 'application/json',
+				],
+				'body'    => wp_json_encode( $payload ),
+			]
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		return $this->decode_public_json_response(
+			$response,
+			'yoro_ai_api_connect_exchange_error',
+			__( 'I could not finish the YoRo account connection.', 'yoro-ai-core' )
+		);
+	}
+
 	private function request_conversation_message( array $payload, $operation, $error_code, $default_message ) {
 		$api_url  = YoRo_AI_Settings::get_ai_api_url();
 		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
@@ -467,6 +533,28 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return str_ireplace( 'openai', 'YoRo AI API', $message );
 	}
 
+	private function decode_public_json_response( $response, $error_code, $default_message ) {
+		$code = wp_remote_retrieve_response_code( $response );
+		$raw  = wp_remote_retrieve_body( $response );
+		$json = json_decode( $raw, true );
+
+		if ( $code < 200 || $code >= 300 ) {
+			return new WP_Error(
+				$error_code,
+				$this->public_response_message( $json, $default_message )
+			);
+		}
+
+		if ( ! is_array( $json ) ) {
+			return new WP_Error(
+				'yoro_ai_api_invalid_response',
+				__( 'YoRo AI API returned an invalid response.', 'yoro-ai-core' )
+			);
+		}
+
+		return $json;
+	}
+
 	private function api_timeout( $operation, array $payload ) {
 		return max(
 			15,
@@ -696,6 +784,26 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return $api_url . '/ai/email/compose';
 	}
 
+	private function build_wordpress_connect_intent_endpoint_url( $api_url ) {
+		$api_url = $this->build_api_base_url( $api_url );
+
+		if ( preg_match( '#/connect/wordpress/intents$#', $api_url ) ) {
+			return $api_url;
+		}
+
+		return $api_url . '/connect/wordpress/intents';
+	}
+
+	private function build_wordpress_connect_exchange_endpoint_url( $api_url ) {
+		$api_url = $this->build_api_base_url( $api_url );
+
+		if ( preg_match( '#/connect/wordpress/exchange$#', $api_url ) ) {
+			return $api_url;
+		}
+
+		return $api_url . '/connect/wordpress/exchange';
+	}
+
 	private function build_handshake_endpoint_url( $api_url ) {
 		$api_url = untrailingslashit( esc_url_raw( $api_url ) );
 
@@ -704,6 +812,16 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		}
 
 		return $api_url . '/sites/handshake';
+	}
+
+	private function build_api_base_url( $api_url ) {
+		$api_url = untrailingslashit( esc_url_raw( $api_url ) );
+
+		return preg_replace(
+			'#/(?:sites/handshake|conversations(?:/message|/[^/]+)?|actions/(?:execute|confirm)|ai/email/compose|connect/wordpress/(?:intents|exchange))$#',
+			'',
+			$api_url
+		);
 	}
 
 	private function normalize_conversation_response( array $response ) {

@@ -14,6 +14,7 @@ class YoRo_Admin_Page {
 		add_action( 'admin_menu', [ __CLASS__, 'add_menu_page' ] );
 		add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_assets' ] );
 		add_action( 'admin_init', [ __CLASS__, 'handle_policy_save' ] );
+		add_action( 'admin_init', [ __CLASS__, 'handle_ai_api_connect_callback' ] );
 		add_action( 'admin_init', [ __CLASS__, 'handle_settings_save' ] );
 
 		add_filter( 'admin_footer_text', [ __CLASS__, 'filter_admin_footer_text' ], 20 );
@@ -666,6 +667,7 @@ class YoRo_Admin_Page {
 		<div class="wrap yoro-ai-wrap">
 			<h1><?php esc_html_e( 'YoRo AI Settings', 'yoro-ai-core' ); ?></h1>
 			<p class="description"><?php esc_html_e( 'WordPress handles approved store actions locally. YoRo AI API handles understanding, routing, and developer diagnostics.', 'yoro-ai-core' ); ?></p>
+			<?php self::render_ai_api_connect_notice(); ?>
 
 			<form method="post" class="yoro-ai-settings-form">
 				<?php wp_nonce_field( 'yoro_ai_save_settings', 'yoro_ai_settings_nonce' ); ?>
@@ -745,6 +747,18 @@ class YoRo_Admin_Page {
 											<?php esc_html_e( 'Clear saved site key', 'yoro-ai-core' ); ?>
 										</label>
 									</p>
+								<?php endif; ?>
+							</td>
+						</tr>
+
+						<tr>
+							<th scope="row"><?php esc_html_e( 'YoRo account', 'yoro-ai-core' ); ?></th>
+							<td>
+								<?php if ( 'constant' === $ai_api_site_key_source ) : ?>
+									<p class="description"><?php esc_html_e( 'Hosted connect is disabled because the site key is locked by a constant.', 'yoro-ai-core' ); ?></p>
+								<?php else : ?>
+									<?php submit_button( __( 'Connect YoRo Account', 'yoro-ai-core' ), 'secondary', 'yoro_ai_api_connect', false ); ?>
+									<p class="description"><?php esc_html_e( 'Opens YoRo to create or link an account, generate a site key, and return it to WordPress securely.', 'yoro-ai-core' ); ?></p>
 								<?php endif; ?>
 							</td>
 						</tr>
@@ -967,6 +981,182 @@ class YoRo_Admin_Page {
 		exit;
 	}
 
+	public static function handle_ai_api_connect_callback() {
+		if ( empty( $_GET['page'] ) || self::MENU_SLUG !== sanitize_key( wp_unslash( $_GET['page'] ) ) ) {
+			return;
+		}
+
+		if ( empty( $_GET['yoro_connect_callback'] ) ) {
+			return;
+		}
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission to connect YoRo.', 'yoro-ai-core' ) );
+		}
+
+		$code    = isset( $_GET['code'] ) ? sanitize_text_field( wp_unslash( $_GET['code'] ) ) : '';
+		$state   = isset( $_GET['state'] ) ? sanitize_text_field( wp_unslash( $_GET['state'] ) ) : '';
+		$session = get_transient( self::ai_api_connect_state_key() );
+
+		if ( '' === $code || '' === $state || ! is_array( $session ) || empty( $session['state'] ) || ! hash_equals( (string) $session['state'], $state ) ) {
+			delete_transient( self::ai_api_connect_state_key() );
+			self::redirect_to_settings_with_connect_notice(
+				'error',
+				__( 'YoRo connection could not be verified. Please start the connection again from WordPress.', 'yoro-ai-core' )
+			);
+		}
+
+		$api_url = esc_url_raw( $session['api_url'] ?? YoRo_AI_Settings::get_ai_api_url() );
+		$result  = ( new YoRo_AI_API_Client() )->exchange_wordpress_connect_code(
+			[
+				'code'           => $code,
+				'state'          => $state,
+				'site_url'       => home_url(),
+				'plugin_version' => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+			],
+			$api_url
+		);
+
+		delete_transient( self::ai_api_connect_state_key() );
+
+		if ( is_wp_error( $result ) ) {
+			self::redirect_to_settings_with_connect_notice( 'error', $result->get_error_message() );
+		}
+
+		$connected_api_url = esc_url_raw( $result['api_url'] ?? $api_url );
+		$site_key          = sanitize_text_field( $result['site_key'] ?? '' );
+		$save_result       = YoRo_AI_Settings::save_connected_ai_api_credentials( $connected_api_url, $site_key );
+
+		if ( is_wp_error( $save_result ) ) {
+			self::redirect_to_settings_with_connect_notice( 'error', $save_result->get_error_message() );
+		}
+
+		self::redirect_to_settings_with_connect_notice(
+			'success',
+			__( 'YoRo account connected. The new site key was verified and saved.', 'yoro-ai-core' )
+		);
+	}
+
+	private static function start_ai_api_connect() {
+		if ( YoRo_AI_Settings::is_ai_api_site_key_locked() ) {
+			self::redirect_to_settings_with_connect_notice(
+				'error',
+				__( 'Hosted connect is disabled because the YoRo site key is configured by constant.', 'yoro-ai-core' )
+			);
+		}
+
+		$api_url = YoRo_AI_Settings::is_ai_api_url_locked()
+			? YoRo_AI_Settings::get_ai_api_url()
+			: ( isset( $_POST['yoro_ai_api_url'] ) ? esc_url_raw( wp_unslash( $_POST['yoro_ai_api_url'] ) ) : YoRo_AI_Settings::get_ai_api_url() );
+
+		if ( '' === $api_url ) {
+			$api_url = YoRo_AI_Settings::DEFAULT_AI_API_URL;
+		}
+
+		$state = wp_generate_password( 32, false, false );
+		set_transient(
+			self::ai_api_connect_state_key(),
+			[
+				'state'   => $state,
+				'api_url' => $api_url,
+			],
+			15 * MINUTE_IN_SECONDS
+		);
+
+		$result = ( new YoRo_AI_API_Client() )->create_wordpress_connect_intent(
+			[
+				'site_name'        => get_bloginfo( 'name' ),
+				'site_url'         => home_url(),
+				'return_url'       => self::settings_url(
+					[
+						'yoro_connect_callback' => '1',
+					]
+				),
+				'state'            => $state,
+				'plugin_version'   => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+				'language_context' => [
+					'site_locale'        => get_locale(),
+					'user_locale'        => get_user_locale(),
+					'timezone'           => wp_timezone_string(),
+					'preferred_language' => substr( get_user_locale(), 0, 2 ),
+				],
+			],
+			$api_url
+		);
+
+		if ( is_wp_error( $result ) ) {
+			delete_transient( self::ai_api_connect_state_key() );
+			self::redirect_to_settings_with_connect_notice( 'error', $result->get_error_message() );
+		}
+
+		$connect_url = esc_url_raw( $result['connect_url'] ?? '' );
+
+		if ( '' === $connect_url ) {
+			delete_transient( self::ai_api_connect_state_key() );
+			self::redirect_to_settings_with_connect_notice(
+				'error',
+				__( 'YoRo did not return a connection URL. Please try again.', 'yoro-ai-core' )
+			);
+		}
+
+		wp_redirect( $connect_url );
+		exit;
+	}
+
+	private static function render_ai_api_connect_notice() {
+		$notice = get_transient( self::ai_api_connect_notice_key() );
+
+		if ( ! is_array( $notice ) ) {
+			return;
+		}
+
+		delete_transient( self::ai_api_connect_notice_key() );
+
+		$type    = 'success' === ( $notice['type'] ?? '' ) ? 'success' : 'error';
+		$message = sanitize_text_field( $notice['message'] ?? '' );
+
+		if ( '' === $message ) {
+			return;
+		}
+
+		echo '<div class="notice notice-' . esc_attr( $type ) . ' is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
+	}
+
+	private static function redirect_to_settings_with_connect_notice( $type, $message ) {
+		set_transient(
+			self::ai_api_connect_notice_key(),
+			[
+				'type'    => sanitize_key( $type ),
+				'message' => sanitize_text_field( $message ),
+			],
+			5 * MINUTE_IN_SECONDS
+		);
+
+		wp_safe_redirect( self::settings_url() );
+		exit;
+	}
+
+	private static function settings_url( array $args = [] ) {
+		return add_query_arg(
+			array_merge(
+				[
+					'page'             => self::MENU_SLUG,
+					'yoro_admin_panel' => 'settings',
+				],
+				$args
+			),
+			admin_url( 'admin.php' )
+		);
+	}
+
+	private static function ai_api_connect_state_key() {
+		return 'yoro_ai_connect_state_' . get_current_user_id();
+	}
+
+	private static function ai_api_connect_notice_key() {
+		return 'yoro_ai_connect_notice_' . get_current_user_id();
+	}
+
 	public static function handle_settings_save() {
 		if ( empty( $_POST['yoro_ai_settings_nonce'] ) ) {
 			return;
@@ -978,6 +1168,10 @@ class YoRo_Admin_Page {
 
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
+		}
+
+		if ( ! empty( $_POST['yoro_ai_api_connect'] ) ) {
+			self::start_ai_api_connect();
 		}
 
 		$settings_result = YoRo_AI_Settings::save_admin_settings( $_POST );
