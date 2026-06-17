@@ -64,6 +64,30 @@ class YoRo_AI_Settings {
 		return esc_url_raw( $base_url . '/dashboard' );
 	}
 
+	public static function get_ai_api_account_url() {
+		$status = self::get_ai_api_status();
+
+		if ( ! empty( $status['account_url'] ) ) {
+			return esc_url_raw( $status['account_url'] );
+		}
+
+		$base_url = self::get_ai_api_base_url();
+
+		return '' !== $base_url ? esc_url_raw( $base_url . '/account' ) : '';
+	}
+
+	public static function get_ai_api_billing_url() {
+		$status = self::get_ai_api_status();
+
+		if ( ! empty( $status['billing_url'] ) ) {
+			return esc_url_raw( $status['billing_url'] );
+		}
+
+		$base_url = self::get_ai_api_base_url();
+
+		return '' !== $base_url ? esc_url_raw( $base_url . '/account/billing' ) : '';
+	}
+
 	public static function get_ai_api_conversation_dashboard_base_url() {
 		$dashboard_url = untrailingslashit( self::get_ai_api_dashboard_url() );
 
@@ -88,6 +112,28 @@ class YoRo_AI_Settings {
 		}
 
 		return esc_url_raw( untrailingslashit( $base_url ) . '/' . rawurlencode( $conversation_id ) );
+	}
+
+	private static function get_ai_api_base_url() {
+		$api_url = untrailingslashit( self::get_ai_api_url() );
+
+		if ( '' === $api_url ) {
+			return '';
+		}
+
+		$base_url = preg_replace( '#/api/v[0-9]+(?:/.*)?$#', '', $api_url );
+
+		if ( $base_url === $api_url ) {
+			$base_url = preg_replace(
+				'#/(?:sites/handshake|conversations(?:/message|/[^/]+)?|actions/(?:execute|confirm|cancel)|connect/wordpress/(?:intents|exchange))$#',
+				'',
+				$api_url
+			);
+		}
+
+		$base_url = untrailingslashit( (string) $base_url );
+
+		return '' !== $base_url ? esc_url_raw( $base_url ) : '';
 	}
 
 	public static function get_ai_api_site_key() {
@@ -197,6 +243,8 @@ class YoRo_AI_Settings {
 			'ai_api_site_key_constant'   => self::get_ai_api_site_key_constant_name(),
 			'ai_api_enabled'             => self::is_ai_api_enabled() ? 'yes' : 'no',
 			'ai_api_status'              => self::get_ai_api_status(),
+			'ai_api_account_url'         => self::get_ai_api_account_url(),
+			'ai_api_billing_url'         => self::get_ai_api_billing_url(),
 			'ai_api_dashboard_url'       => self::get_ai_api_dashboard_url(),
 			'ai_api_conversation_dashboard_base_url' => self::get_ai_api_conversation_dashboard_base_url(),
 		];

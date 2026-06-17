@@ -1252,6 +1252,8 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return [
 			'connected'    => ! empty( $response['success'] ),
 			'checked_at'   => current_time( 'mysql' ),
+			'account_url'  => esc_url_raw( $response['account_url'] ?? '' ),
+			'billing_url'  => esc_url_raw( $response['billing_url'] ?? '' ),
 			'site'         => [
 				'id'     => absint( $site['id'] ?? 0 ),
 				'name'   => sanitize_text_field( $site['name'] ?? '' ),

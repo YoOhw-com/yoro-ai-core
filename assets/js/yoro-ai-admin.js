@@ -585,6 +585,8 @@
 			const hasQuota = remaining === null || remaining === undefined || Number(remaining) > 0;
 			const stateClass = connected && hasQuota ? 'is-connected' : (connected ? 'is-warning' : 'is-error');
 			const provider = data && data.resolved_provider ? data.resolved_provider : '';
+			const accountUrl = (data && data.account_url) || YoRoAIAdmin.aiApiAccountUrl || '';
+			const billingUrl = (data && data.billing_url) || YoRoAIAdmin.aiApiBillingUrl || '';
 			const dashboardUrl = (data && data.dashboard_url) || YoRoAIAdmin.aiApiDashboardUrl || '';
 			const conversationDashboardUrl = getConversationDashboardUrl(conversationState.conversation_id, data);
 
@@ -611,8 +613,16 @@
 			html += renderAiApiFeatureBadge('Email compose', capabilities.email_compose, entitlements.email_composer);
 			html += '</div>';
 
+			if (accountUrl) {
+				html += '<p class="yoro-ai-api-status-note"><a class="button button-small" href="' + escapeHtml(accountUrl) + '" target="_blank" rel="noopener noreferrer">Open YoRo account</a></p>';
+			}
+
+			if (billingUrl) {
+				html += '<p class="yoro-ai-api-status-note"><a class="button button-small" href="' + escapeHtml(billingUrl) + '" target="_blank" rel="noopener noreferrer">Billing / Upgrade</a></p>';
+			}
+
 			if (dashboardUrl) {
-			html += '<p class="yoro-ai-api-status-note"><a class="button button-small" href="' + escapeHtml(dashboardUrl) + '" target="_blank" rel="noopener noreferrer">Open YoRo dashboard</a></p>';
+				html += '<p class="yoro-ai-api-status-note"><a class="button button-small" href="' + escapeHtml(dashboardUrl) + '" target="_blank" rel="noopener noreferrer">Open YoRo diagnostics</a></p>';
 			}
 
 			if (conversationDashboardUrl) {

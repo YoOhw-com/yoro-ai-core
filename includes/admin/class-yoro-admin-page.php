@@ -154,6 +154,8 @@ class YoRo_Admin_Page {
 				'undoUrl'                               => esc_url_raw( rest_url( 'yoro-ai-core/v1/undo' ) ),
 				'aiApiStatusUrl'                        => esc_url_raw( rest_url( 'yoro-ai-core/v1/ai-api/status' ) ),
 				'aiApiHandshakeUrl'                     => esc_url_raw( rest_url( 'yoro-ai-core/v1/ai-api/handshake' ) ),
+				'aiApiAccountUrl'                       => esc_url_raw( YoRo_AI_Settings::get_ai_api_account_url() ),
+				'aiApiBillingUrl'                       => esc_url_raw( YoRo_AI_Settings::get_ai_api_billing_url() ),
 				'aiApiDashboardUrl'                     => esc_url_raw( YoRo_AI_Settings::get_ai_api_dashboard_url() ),
 				'aiApiConversationDashboardBaseUrl'     => esc_url_raw( YoRo_AI_Settings::get_ai_api_conversation_dashboard_base_url() ),
 				'conversationStorageKey'                => $conversation_storage_key,

@@ -192,6 +192,8 @@ class YoRo_REST_API {
 			'service'             => 'yoro-ai-api',
 			'provider_preference' => YoRo_AI_Settings::get_provider_preference(),
 			'resolved_provider'   => YoRo_AI_Provider_Resolver::resolve_provider(),
+			'account_url'         => YoRo_AI_Settings::get_ai_api_account_url(),
+			'billing_url'         => YoRo_AI_Settings::get_ai_api_billing_url(),
 			'dashboard_url'       => YoRo_AI_Settings::get_ai_api_dashboard_url(),
 			'conversation_dashboard_base_url' => YoRo_AI_Settings::get_ai_api_conversation_dashboard_base_url(),
 			'configured'          => [
