@@ -187,12 +187,12 @@ class YoRo_Admin_Page {
 				<div class="yoro-ai-api-status" data-yoro-ai-api-status>
 					<button type="button" class="yoro-ai-api-status-toggle is-loading" data-yoro-ai-api-status-toggle aria-expanded="false" aria-controls="yoro-ai-api-status-panel">
 						<span class="yoro-ai-api-status-dot" aria-hidden="true"></span>
-						<span data-yoro-ai-api-status-label><?php esc_html_e( 'YoRo AI API', 'yoro-ai-core' ); ?></span>
+						<span data-yoro-ai-api-status-label><?php esc_html_e( 'YoRo AI', 'yoro-ai-core' ); ?></span>
 					</button>
 
 					<div class="yoro-ai-api-status-panel" id="yoro-ai-api-status-panel" data-yoro-ai-api-status-panel hidden>
 						<div class="yoro-ai-api-status-panel-head">
-							<strong><?php esc_html_e( 'YoRo AI API', 'yoro-ai-core' ); ?></strong>
+							<strong><?php esc_html_e( 'YoRo AI', 'yoro-ai-core' ); ?></strong>
 							<button type="button" class="button button-small" data-yoro-ai-api-status-refresh><?php esc_html_e( 'Refresh', 'yoro-ai-core' ); ?></button>
 						</div>
 						<div class="yoro-ai-api-status-panel-body" data-yoro-ai-api-status-body>

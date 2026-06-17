@@ -563,7 +563,7 @@
 				aiApiStatusLabel.textContent = label || 'Checking...';
 			}
 
-			aiApiStatusBody.innerHTML = '<p>Checking YoRo AI API status...</p>';
+			aiApiStatusBody.innerHTML = '<p>Checking YoRo AI status...</p>';
 		}
 
 		function renderAiApiStatus(data) {
@@ -589,20 +589,21 @@
 			const billingUrl = (data && data.billing_url) || YoRoAIAdmin.aiApiBillingUrl || '';
 			const dashboardUrl = (data && data.dashboard_url) || YoRoAIAdmin.aiApiDashboardUrl || '';
 			const conversationDashboardUrl = getConversationDashboardUrl(conversationState.conversation_id, data);
+			const actionLinks = [];
 
 			aiApiStatusToggle.classList.remove('is-loading', 'is-connected', 'is-warning', 'is-error');
 			aiApiStatusToggle.classList.add(stateClass);
 
 			if (aiApiStatusLabel) {
 				aiApiStatusLabel.textContent = connected
-					? ('YoRo AI API' + (plan ? ' · ' + plan : ''))
-					: 'YoRo AI API · offline';
+					? ('YoRo AI' + (plan ? ' · ' + plan : ''))
+					: 'YoRo AI · offline';
 			}
 
 			let html = '';
 			html += '<dl class="yoro-ai-api-status-grid">';
 			html += renderAiApiStatusRow('Connection', connected ? 'Connected' : (connection.message || 'Not connected'));
-			html += renderAiApiStatusRow('Provider', provider || 'unknown');
+			html += renderAiApiStatusRow('Service', formatAiApiProviderName(provider));
 			html += renderAiApiStatusRow('Plan', plan || 'unknown');
 			html += renderAiApiStatusRow('Subscription', entitlements.subscription_status || 'unknown');
 			html += renderAiApiStatusRow('Usage', renderAiApiUsageText(usage));
@@ -614,23 +615,27 @@
 			html += '</div>';
 
 			if (accountUrl) {
-				html += '<p class="yoro-ai-api-status-note"><a class="button button-small" href="' + escapeHtml(accountUrl) + '" target="_blank" rel="noopener noreferrer">Open YoRo account</a></p>';
+				actionLinks.push(renderAiApiStatusAction(accountUrl, 'Open account'));
 			}
 
 			if (billingUrl) {
-				html += '<p class="yoro-ai-api-status-note"><a class="button button-small" href="' + escapeHtml(billingUrl) + '" target="_blank" rel="noopener noreferrer">Billing / Upgrade</a></p>';
+				actionLinks.push(renderAiApiStatusAction(billingUrl, 'Billing / Upgrade'));
 			}
 
 			if (dashboardUrl) {
-				html += '<p class="yoro-ai-api-status-note"><a class="button button-small" href="' + escapeHtml(dashboardUrl) + '" target="_blank" rel="noopener noreferrer">Open YoRo diagnostics</a></p>';
+				actionLinks.push(renderAiApiStatusAction(dashboardUrl, 'Diagnostics'));
 			}
 
 			if (conversationDashboardUrl) {
-				html += '<p class="yoro-ai-api-status-note"><a class="button button-small" href="' + escapeHtml(conversationDashboardUrl) + '" target="_blank" rel="noopener noreferrer">Open current conversation</a></p>';
+				actionLinks.push(renderAiApiStatusAction(conversationDashboardUrl, 'Current conversation'));
+			}
+
+			if (actionLinks.length) {
+				html += '<div class="yoro-ai-api-status-actions">' + actionLinks.join('') + '</div>';
 			}
 
 			if (!configured.enabled) {
-				html += '<p class="yoro-ai-api-status-note">YoRo AI API is configured but disabled in plugin settings.</p>';
+				html += '<p class="yoro-ai-api-status-note">YoRo AI is configured but disabled in plugin settings.</p>';
 			}
 
 			aiApiStatusBody.innerHTML = html;
@@ -663,10 +668,10 @@
 			renderAiApiStatus(aiApiStatusData);
 		}
 
-			function renderAiApiStatusError(error) {
-				const message = (error && error.message)
-					|| (error && error.data && error.data.message)
-					|| 'I could not check the YoRo AI API connection right now.';
+		function renderAiApiStatusError(error) {
+			const message = (error && error.message)
+				|| (error && error.data && error.data.message)
+				|| 'I could not check the YoRo AI connection right now.';
 
 			if (aiApiStatusToggle) {
 				aiApiStatusToggle.classList.remove('is-loading', 'is-connected', 'is-warning');
@@ -674,7 +679,7 @@
 			}
 
 			if (aiApiStatusLabel) {
-				aiApiStatusLabel.textContent = 'YoRo AI API · error';
+				aiApiStatusLabel.textContent = 'YoRo AI · error';
 			}
 
 			if (aiApiStatusBody) {
@@ -684,6 +689,14 @@
 
 		function renderAiApiStatusRow(label, value) {
 			return '<div><dt>' + escapeHtml(label) + '</dt><dd>' + escapeHtml(value) + '</dd></div>';
+		}
+
+		function renderAiApiStatusAction(url, label) {
+			return '<a class="button button-small yoro-ai-api-status-action" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(label) + '</a>';
+		}
+
+		function formatAiApiProviderName(provider) {
+			return String(provider || '').trim() === 'yoro_ai_api' ? 'YoRo AI' : (provider || 'unknown');
 		}
 
 		function renderAiApiUsageText(usage) {

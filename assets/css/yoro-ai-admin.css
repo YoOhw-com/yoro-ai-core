@@ -83,7 +83,7 @@ body.toplevel_page_yoro-ai-core {
 	top: 18px;
 	left: 18px;
 	z-index: 22;
-	max-width: min(420px, calc(100vw - 36px));
+	max-width: min(460px, calc(100vw - 36px));
 }
 
 .yoro-ai-api-status-toggle {
@@ -103,6 +103,15 @@ body.toplevel_page_yoro-ai-core {
 
 .yoro-ai-api-status-toggle:hover {
 	border-color: var(--yoro-accent-border);
+}
+
+.yoro-ai-api-status-toggle:focus {
+	outline: none;
+}
+
+.yoro-ai-api-status-toggle:focus-visible {
+	border-color: var(--yoro-accent-border);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--yoro-accent) 20%, transparent), 0 12px 24px rgba(15, 23, 42, 0.08);
 }
 
 .yoro-ai-api-status-dot {
@@ -137,10 +146,10 @@ body.toplevel_page_yoro-ai-core {
 	position: absolute;
 	top: calc(100% + 10px);
 	left: 0;
-	width: min(420px, calc(100vw - 36px));
-	padding: 14px;
+	width: min(460px, calc(100vw - 36px));
+	padding: 16px;
 	border: 1px solid rgba(29, 35, 39, 0.12);
-	border-radius: 14px;
+	border-radius: 12px;
 	background: rgba(255, 255, 255, 0.98);
 	box-shadow: 0 22px 42px rgba(15, 23, 42, 0.13);
 }
@@ -153,6 +162,20 @@ body.toplevel_page_yoro-ai-core {
 	margin-bottom: 12px;
 }
 
+.yoro-ai-api-status-panel-head strong {
+	font-size: 15px;
+	font-weight: 700;
+	color: #1d2327;
+}
+
+.yoro-ai-api-status-panel-head .button {
+	min-height: 30px;
+	padding: 0 10px;
+	border-color: var(--yoro-accent-border);
+	border-radius: 6px;
+	color: var(--yoro-accent-text);
+}
+
 .yoro-ai-api-status-panel-body p {
 	margin: 0;
 	color: #50575e;
@@ -161,15 +184,15 @@ body.toplevel_page_yoro-ai-core {
 .yoro-ai-api-status-grid {
 	display: grid;
 	grid-template-columns: 1fr;
-	gap: 9px;
 	margin: 0;
 }
 
 .yoro-ai-api-status-grid div {
-	display: flex;
-	justify-content: space-between;
-	gap: 14px;
-	padding-bottom: 8px;
+	display: grid;
+	grid-template-columns: minmax(120px, 0.85fr) minmax(0, 1.15fr);
+	align-items: baseline;
+	gap: 16px;
+	padding: 9px 0;
 	border-bottom: 1px solid #edf0f2;
 }
 
@@ -186,6 +209,7 @@ body.toplevel_page_yoro-ai-core {
 	color: #1d2327;
 	font-weight: 600;
 	text-align: right;
+	word-break: break-word;
 }
 
 .yoro-ai-api-status-features {
@@ -226,6 +250,28 @@ body.toplevel_page_yoro-ai-core {
 .yoro-ai-api-feature.is-off {
 	background: #f6f7f7;
 	color: #646970;
+}
+
+.yoro-ai-api-status-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 14px;
+	padding-top: 14px;
+	border-top: 1px solid #edf0f2;
+}
+
+.yoro-ai-api-status-action.button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 32px;
+	padding: 0 11px;
+	border-color: var(--yoro-accent-border);
+	border-radius: 6px;
+	background: #fff;
+	color: var(--yoro-accent-text);
+	font-weight: 600;
 }
 
 .yoro-ai-api-status-note,
@@ -535,6 +581,19 @@ body.toplevel_page_yoro-ai-core {
 
 	.yoro-ai-api-status-panel {
 		width: 100%;
+	}
+
+	.yoro-ai-api-status-grid div {
+		grid-template-columns: 1fr;
+		gap: 3px;
+	}
+
+	.yoro-ai-api-status-grid dd {
+		text-align: left;
+	}
+
+	.yoro-ai-api-status-action.button {
+		flex: 1 1 150px;
 	}
 
 	.yoro-chat-quick-actions {
