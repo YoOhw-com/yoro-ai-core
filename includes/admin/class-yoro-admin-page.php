@@ -664,6 +664,13 @@ class YoRo_Admin_Page {
 		$ai_api_site_key_constant = $settings['ai_api_site_key_constant'] ?? '';
 		$ai_api_enabled = $settings['ai_api_enabled'] ?? 'no';
 		$ai_api_status = isset( $settings['ai_api_status'] ) && is_array( $settings['ai_api_status'] ) ? $settings['ai_api_status'] : [];
+		$ai_api_account_url = $settings['ai_api_account_url'] ?? YoRo_AI_Settings::get_ai_api_account_url();
+		$ai_api_billing_url = $settings['ai_api_billing_url'] ?? YoRo_AI_Settings::get_ai_api_billing_url();
+		$ai_api_site = isset( $ai_api_status['site'] ) && is_array( $ai_api_status['site'] ) ? $ai_api_status['site'] : [];
+		$ai_api_entitlements = isset( $ai_api_status['entitlements'] ) && is_array( $ai_api_status['entitlements'] ) ? $ai_api_status['entitlements'] : [];
+		$ai_api_usage = isset( $ai_api_status['usage'] ) && is_array( $ai_api_status['usage'] ) ? $ai_api_status['usage'] : [];
+		$ai_api_plan_label = $ai_api_entitlements['plan_label'] ?? ( $ai_api_entitlements['usage_plan'] ?? ( $ai_api_site['plan'] ?? '' ) );
+		$ai_api_subscription_status = $ai_api_entitlements['subscription_status'] ?? '';
 
 		?>
 		<div class="wrap yoro-ai-wrap">
@@ -759,7 +766,10 @@ class YoRo_Admin_Page {
 								<?php if ( 'constant' === $ai_api_site_key_source ) : ?>
 									<p class="description"><?php esc_html_e( 'Hosted connect is disabled because the site key is locked by a constant.', 'yoro-ai-core' ); ?></p>
 								<?php else : ?>
-									<?php submit_button( __( 'Connect YoRo Account', 'yoro-ai-core' ), 'secondary', 'yoro_ai_api_connect', false ); ?>
+									<?php submit_button( 'option' === $ai_api_site_key_source ? __( 'Reconnect YoRo Account', 'yoro-ai-core' ) : __( 'Connect YoRo Account', 'yoro-ai-core' ), 'secondary', 'yoro_ai_api_connect', false ); ?>
+									<?php if ( 'option' === $ai_api_site_key_source ) : ?>
+										<?php submit_button( __( 'Disconnect', 'yoro-ai-core' ), 'secondary', 'yoro_ai_api_disconnect', false, [ 'onclick' => "return window.confirm('" . esc_js( __( 'Disconnect YoRo from this WordPress site? The saved site key will be removed.', 'yoro-ai-core' ) ) . "');" ] ); ?>
+									<?php endif; ?>
 									<p class="description"><?php esc_html_e( 'Opens YoRo to create or link an account, generate a site key, and return it to WordPress securely.', 'yoro-ai-core' ); ?></p>
 								<?php endif; ?>
 							</td>
@@ -781,6 +791,52 @@ class YoRo_Admin_Page {
 								<p style="margin-top:12px;">
 									<?php submit_button( __( 'Test connection', 'yoro-ai-core' ), 'secondary', 'yoro_ai_api_test_connection', false ); ?>
 								</p>
+
+								<?php if ( ! empty( $ai_api_status['connected'] ) ) : ?>
+									<div style="margin-top:14px;display:grid;gap:10px;max-width:680px;">
+										<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
+											<div style="border:1px solid #dcdcde;border-radius:6px;padding:10px;background:#fff;">
+												<strong><?php esc_html_e( 'Store', 'yoro-ai-core' ); ?></strong><br>
+												<span><?php echo esc_html( $ai_api_site['name'] ?? get_bloginfo( 'name' ) ); ?></span><br>
+												<span class="description"><?php echo esc_html( $ai_api_site['url'] ?? home_url() ); ?></span>
+											</div>
+											<div style="border:1px solid #dcdcde;border-radius:6px;padding:10px;background:#fff;">
+												<strong><?php esc_html_e( 'Plan', 'yoro-ai-core' ); ?></strong><br>
+												<span><?php echo esc_html( '' !== (string) $ai_api_plan_label ? $ai_api_plan_label : __( 'Unknown', 'yoro-ai-core' ) ); ?></span><br>
+												<?php if ( '' !== (string) $ai_api_subscription_status ) : ?>
+													<span class="description"><?php echo esc_html( $ai_api_subscription_status ); ?></span>
+												<?php endif; ?>
+											</div>
+											<div style="border:1px solid #dcdcde;border-radius:6px;padding:10px;background:#fff;">
+												<strong><?php esc_html_e( 'Usage', 'yoro-ai-core' ); ?></strong><br>
+												<?php if ( array_key_exists( 'limit', $ai_api_usage ) && null !== $ai_api_usage['limit'] ) : ?>
+													<span><?php echo esc_html( number_format_i18n( absint( $ai_api_usage['used'] ?? 0 ) ) ); ?> / <?php echo esc_html( number_format_i18n( absint( $ai_api_usage['limit'] ) ) ); ?></span><br>
+													<span class="description">
+														<?php
+														printf(
+															/* translators: %s: remaining usage */
+															esc_html__( '%s remaining', 'yoro-ai-core' ),
+															esc_html( number_format_i18n( absint( $ai_api_usage['remaining'] ?? 0 ) ) )
+														);
+														?>
+													</span>
+												<?php else : ?>
+													<span><?php echo esc_html( number_format_i18n( absint( $ai_api_usage['used'] ?? 0 ) ) ); ?></span><br>
+													<span class="description"><?php esc_html_e( 'Unlimited or not reported', 'yoro-ai-core' ); ?></span>
+												<?php endif; ?>
+											</div>
+										</div>
+
+										<p style="margin:0;display:flex;gap:8px;flex-wrap:wrap;">
+											<?php if ( '' !== $ai_api_account_url ) : ?>
+												<a class="button button-secondary" href="<?php echo esc_url( $ai_api_account_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Manage YoRo Account', 'yoro-ai-core' ); ?></a>
+											<?php endif; ?>
+											<?php if ( '' !== $ai_api_billing_url ) : ?>
+												<a class="button button-secondary" href="<?php echo esc_url( $ai_api_billing_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Billing / Upgrade', 'yoro-ai-core' ); ?></a>
+											<?php endif; ?>
+										</p>
+									</div>
+								<?php endif; ?>
 							</td>
 						</tr>
 					</table>
@@ -1174,6 +1230,19 @@ class YoRo_Admin_Page {
 
 		if ( ! empty( $_POST['yoro_ai_api_connect'] ) ) {
 			self::start_ai_api_connect();
+		}
+
+		if ( ! empty( $_POST['yoro_ai_api_disconnect'] ) ) {
+			$disconnect_result = YoRo_AI_Settings::disconnect_ai_api();
+
+			if ( is_wp_error( $disconnect_result ) ) {
+				self::redirect_to_settings_with_connect_notice( 'error', $disconnect_result->get_error_message() );
+			}
+
+			self::redirect_to_settings_with_connect_notice(
+				'success',
+				__( 'YoRo account disconnected from this WordPress site.', 'yoro-ai-core' )
+			);
 		}
 
 		$settings_result = YoRo_AI_Settings::save_admin_settings( $_POST );

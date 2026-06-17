@@ -410,6 +410,21 @@ class YoRo_AI_Settings {
 		return $connection_result;
 	}
 
+	public static function disconnect_ai_api() {
+		if ( self::is_ai_api_site_key_locked() ) {
+			return new WP_Error(
+				'yoro_ai_api_site_key_locked',
+				__( 'YoRo AI API site key is configured by constant and cannot be disconnected from the plugin UI.', 'yoro-ai-core' )
+			);
+		}
+
+		update_option( self::OPTION_AI_API_SITE_KEY, '', false );
+		update_option( self::OPTION_AI_API_ENABLED, 'no' );
+		self::clear_ai_api_status();
+
+		return true;
+	}
+
 	private static function sanitize_ai_api_status_value( $value ) {
 		if ( is_array( $value ) ) {
 			$sanitized = [];
