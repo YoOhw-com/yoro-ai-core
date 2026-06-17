@@ -54,11 +54,27 @@ class YoRo_Context_Provider {
 			'active'           => true,
 			'version'          => defined( 'WC_VERSION' ) ? WC_VERSION : '',
 			'currency'         => get_woocommerce_currency(),
-			'currency_symbol'  => get_woocommerce_currency_symbol(),
+			'currency_symbol'  => self::currency_symbol(),
 			'order_statuses'   => self::get_order_statuses(),
 			'payment_gateways' => self::get_payment_gateways(),
 			'hpos_enabled'     => self::is_hpos_enabled(),
 		];
+	}
+
+	private static function currency_symbol( $currency = '' ) {
+		if ( ! function_exists( 'get_woocommerce_currency_symbol' ) ) {
+			return '';
+		}
+
+		$symbol = '' !== $currency
+			? get_woocommerce_currency_symbol( $currency )
+			: get_woocommerce_currency_symbol();
+
+		return sanitize_text_field(
+			wp_strip_all_tags(
+				html_entity_decode( (string) $symbol, ENT_QUOTES | ENT_HTML5, 'UTF-8' )
+			)
+		);
 	}
 
 	public static function get_current_order_id() {

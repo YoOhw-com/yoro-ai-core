@@ -156,7 +156,7 @@
 		const adminPanelsSource = document.querySelector('[data-yoro-admin-panels]');
 		const chatShell = document.querySelector('.yoro-chat-shell');
 		const chatThread = document.getElementById('yoro-chat-thread');
-		const exampleButtons = document.querySelectorAll('.yoro-ai-example');
+		const workflowButtons = document.querySelectorAll('[data-yoro-workflow-action]');
 		const quickActionsRoot = document.querySelector('[data-yoro-quick-actions]');
 		const quickActionsPanel = quickActionsRoot ? quickActionsRoot.querySelector('[data-yoro-quick-panel]') : null;
 		const quickActionsToggle = quickActionsRoot ? quickActionsRoot.querySelector('[data-yoro-quick-toggle]') : null;
@@ -427,17 +427,22 @@
 		}
 
 		function runQuickAction(action, params, options) {
-			if (!action) {
+			if (!action || isSending) {
 				return;
 			}
 
+			isSending = true;
 			setQuickActionsOpen(false);
 			options = options && typeof options === 'object' ? options : {};
+
+			if (options.userMessage) {
+				addUserMessage(String(options.userMessage));
+			}
 
 			const loading = addLoadingMessage();
 			setLoading(true);
 
-			executeActionDirect(action, params || {}, false, false, 'quick-actions')
+			executeActionDirect(action, params || {}, false, false, options.surface || 'quick-actions')
 				.then(function(data) {
 					const errorCode = getResponseErrorCode(data);
 					const secondaryAction = options.secondaryAction || '';
@@ -477,6 +482,7 @@
 					});
 				})
 				.finally(function() {
+					isSending = false;
 					setLoading(false);
 				});
 		}
@@ -606,7 +612,7 @@
 			html += '</div>';
 
 			if (dashboardUrl) {
-				html += '<p class="yoro-ai-api-status-note"><a class="button button-small" href="' + escapeHtml(dashboardUrl) + '" target="_blank" rel="noopener noreferrer">Open Laravel dashboard</a></p>';
+			html += '<p class="yoro-ai-api-status-note"><a class="button button-small" href="' + escapeHtml(dashboardUrl) + '" target="_blank" rel="noopener noreferrer">Open YoRo dashboard</a></p>';
 			}
 
 			if (conversationDashboardUrl) {
@@ -1042,7 +1048,7 @@
 			try {
 				window.localStorage.setItem(storageKey, storedConversationId);
 			} catch (error) {
-				// Ignore private browsing or blocked storage; Laravel remains the source of truth.
+				// Ignore private browsing or blocked storage; YoRo remains the source of truth.
 			}
 		}
 
@@ -1498,7 +1504,11 @@
 				adminPanelsButton.disabled = isLoading;
 			}
 
-			runButton.textContent = isLoading ? YoRoAIAdmin.i18n.running : (YoRoAIAdmin.i18n.askYoRo || 'Ask YoRo');
+			workflowButtons.forEach(function(button) {
+				button.disabled = isLoading;
+			});
+
+			runButton.textContent = isLoading ? YoRoAIAdmin.i18n.running : (YoRoAIAdmin.i18n.askYoRo || 'Send');
 		}
 
 		function requestJson(url, options) {
@@ -1531,7 +1541,7 @@
 		}
 
 		function loadContext() {
-			const command = 'Load store context';
+			const command = 'Context';
 			addUserMessage(command);
 			const loading = addLoadingMessage();
 			const finishProtectedWork = beginProtectedWork();
@@ -2188,7 +2198,7 @@
 				chatThread.innerHTML = '';
 				addMessage(
 					'assistant',
-					'<p>Chat cleared. How can I help manage your store?</p>'
+					'<p>New conversation started. What should YoRo handle next?</p>'
 				);
 				commandField.value = '';
 				syncRunButtonState();
@@ -2505,15 +2515,7 @@
 			});
 
 		document.addEventListener('click', function(event) {
-			const quickPreset = event.target.closest('.yoro-chat-quick-preset');
 			const quickSearchRun = event.target.closest('[data-yoro-quick-run="1"]');
-
-			if (quickPreset) {
-				const action = quickPreset.getAttribute('data-yoro-quick-action') || '';
-				const params = parseQuickActionParams(quickPreset.getAttribute('data-yoro-quick-params') || '');
-				runQuickAction(action, params);
-				return;
-			}
 
 			if (quickSearchRun) {
 				const action = quickSearchRun.getAttribute('data-action') || '';
@@ -2541,18 +2543,16 @@
 			}
 		});
 
-			exampleButtons.forEach(function (button) {
-				button.addEventListener('click', function () {
-					const command = button.getAttribute('data-command') || '';
-					commandField.value = command;
-					setNextActionCatalogScope(
-						command,
-						button.getAttribute('data-action-catalog-scope') || '',
-						button.getAttribute('data-report-topic') || ''
-					);
-					syncRunButtonState();
-					syncBeforeUnloadGuard();
-					commandField.focus();
+		workflowButtons.forEach(function (button) {
+			button.addEventListener('click', function () {
+				const action = button.getAttribute('data-yoro-workflow-action') || '';
+				const params = parseQuickActionParams(button.getAttribute('data-yoro-workflow-params') || '');
+				const label = button.textContent ? button.textContent.trim() : action;
+
+				runQuickAction(action, params, {
+					surface: 'workflow-chip',
+					userMessage: label
+				});
 			});
 		});
 

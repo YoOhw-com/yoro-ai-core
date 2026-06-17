@@ -1850,58 +1850,304 @@
 		return html;
 	}
 
+	function contextDecodeEntities(value) {
+		return String(value || '')
+			.replace(/&#(\d+);/g, function(match, code) {
+				try {
+					return String.fromCodePoint(parseInt(code, 10));
+				} catch (error) {
+					return match;
+				}
+			})
+			.replace(/&#x([0-9a-f]+);/gi, function(match, code) {
+				try {
+					return String.fromCodePoint(parseInt(code, 16));
+				} catch (error) {
+					return match;
+				}
+			})
+			.replace(/&amp;/g, '&')
+			.replace(/&lt;/g, '<')
+			.replace(/&gt;/g, '>')
+			.replace(/&quot;/g, '"')
+			.replace(/&#039;/g, "'")
+			.replace(/&apos;/g, "'");
+	}
+
+	function contextValue(value, fallback) {
+		if (value === true) {
+			return 'Yes';
+		}
+
+		if (value === false) {
+			return 'No';
+		}
+
+		if (value === null || typeof value === 'undefined' || value === '') {
+			return fallback || 'Not set';
+		}
+
+		return contextDecodeEntities(value);
+	}
+
+	function contextFirstValue() {
+		for (let index = 0; index < arguments.length; index++) {
+			const value = arguments[index];
+
+			if (value !== null && typeof value !== 'undefined' && value !== '') {
+				return value;
+			}
+		}
+
+		return '';
+	}
+
+	function contextNumber(value) {
+		const number = Number(value || 0);
+
+		if (!Number.isFinite(number)) {
+			return '0';
+		}
+
+		return number.toLocaleString();
+	}
+
+	function contextHumanKey(key) {
+		return String(key || '')
+			.replace(/_/g, ' ')
+			.replace(/-/g, ' ')
+			.replace(/\b\w/g, function(chr) {
+				return chr.toUpperCase();
+			});
+	}
+
+	function contextLine(h, label, value) {
+		return '<div class="yoro-context-line"><span>' + h.escapeHtml(label) + '</span><strong>' + h.escapeHtml(contextValue(value)) + '</strong></div>';
+	}
+
+	function contextMetric(h, label, value, subtle) {
+		let html = '<div class="yoro-context-metric">';
+		html += '<span>' + h.escapeHtml(label) + '</span>';
+		html += '<strong>' + h.escapeHtml(contextNumber(value)) + '</strong>';
+
+		if (subtle) {
+			html += '<small>' + h.escapeHtml(subtle) + '</small>';
+		}
+
+		html += '</div>';
+
+		return html;
+	}
+
+	function contextPills(h, items, limit) {
+		items = Array.isArray(items) ? items : [];
+		limit = parseInt(limit || 8, 10) || 8;
+		items = items.filter(Boolean).slice(0, limit);
+
+		if (!items.length) {
+			return '<span class="yoro-context-empty">None detected</span>';
+		}
+
+		return '<div class="yoro-context-pills">' + items.map(function(item) {
+			return '<span>' + h.escapeHtml(String(item)) + '</span>';
+		}).join('') + '</div>';
+	}
+
+	function contextEnabledMethodLabels(methods) {
+		methods = Array.isArray(methods) ? methods : [];
+
+		return methods.filter(function(method) {
+			const enabled = method && typeof method === 'object' ? method.enabled : '';
+
+			return enabled === true || enabled === 'yes' || enabled === 'enabled' || enabled === '1' || enabled === 1;
+		}).map(function(method) {
+			return method.title || method.label || method.name || method.method_title || method.id || '';
+		}).filter(Boolean);
+	}
+
+	function contextMethodLabels(methods) {
+		methods = Array.isArray(methods) ? methods : [];
+
+		return methods.map(function(method) {
+			return method.title || method.label || method.name || method.method_title || method.id || '';
+		}).filter(Boolean);
+	}
+
+	function contextStatusPills(h, counts, labels) {
+		counts = counts && typeof counts === 'object' ? counts : {};
+		labels = labels && typeof labels === 'object' ? labels : {};
+
+		const items = Object.keys(counts).map(function(key) {
+			return {
+				key: key,
+				label: labels[key] || contextHumanKey(key),
+				count: Number(counts[key] || 0)
+			};
+		}).filter(function(item) {
+			return item.count > 0;
+		}).sort(function(a, b) {
+			return b.count - a.count;
+		}).slice(0, 8);
+
+		if (!items.length) {
+			return '<span class="yoro-context-empty">No active status counts in this snapshot.</span>';
+		}
+
+		return '<div class="yoro-context-statuses">' + items.map(function(item) {
+			return '<span><strong>' + h.escapeHtml(contextNumber(item.count)) + '</strong>' + h.escapeHtml(item.label) + '</span>';
+		}).join('') + '</div>';
+	}
+
+	function contextKnownIntegrationLabels(known) {
+		known = known && typeof known === 'object' ? known : {};
+
+		return Object.keys(known).map(function(key) {
+			const item = known[key] || {};
+			const label = item.label || contextHumanKey(key);
+			const level = item.yoro_adapter
+				? 'integrated'
+				: (item.active ? 'presence only' : '');
+
+			return level ? (label + ' (' + level + ')') : label;
+		}).filter(Boolean);
+	}
+
+	function contextCapabilityAreaLabels(categories) {
+		categories = categories && typeof categories === 'object' ? categories : {};
+
+		const labels = {
+			assistant: 'YoRo assistance',
+			coupons: 'Coupons',
+			custom: 'Extensions',
+			customers: 'Customers',
+			email_templates: 'Email templates',
+			operations: 'Operations',
+			orders: 'Orders',
+			products: 'Products',
+			store: 'Store reports'
+		};
+
+		return Object.keys(categories).map(function(key) {
+			return labels[key] || contextHumanKey(key);
+		}).filter(Boolean).sort();
+	}
+
 	function renderContext(data, h) {
 		const context = data.context || {};
-		let html = '<div class="yoro-result-summary">';
-		html += '<strong>I can see your store context.</strong>';
+		const knowledge = context.store_knowledge || {};
+		const facts = knowledge.facts || {};
+		const profiles = knowledge.profiles || {};
+		const snapshot = knowledge.live_snapshot || {};
+		const commerce = facts.commerce_model || {};
+		const locale = facts.locale || {};
+		const payments = facts.payments || {};
+		const shipping = facts.shipping || {};
+		const settings = facts.settings || {};
+		const generalSettings = settings.general || {};
+		const operations = profiles.operations || {};
+		const inventory = profiles.inventory || {};
+		const capabilities = knowledge.capabilities || {};
+		const capabilitySummary = capabilities.summary || {};
+		const integrations = facts.integrations || {};
+		const generatedAt = knowledge.generated_at || context.generated_at || '';
+		const activePaymentMethods = contextEnabledMethodLabels(payments.methods || (settings.payments && settings.payments.methods) || (context.woocommerce && context.woocommerce.payment_gateways) || []);
+		const shippingMethods = contextMethodLabels(shipping.methods || []);
+
+		let html = '<div class="yoro-context-panel">';
+
+		html += '<div class="yoro-result-summary yoro-context-summary">';
+		html += '<strong>Store context snapshot</strong>';
+		html += '<span class="yoro-result-subtle">Used by YoRo to understand store settings, live queues, and executable capabilities.</span>';
+		html += '</div>';
+
+		html += '<div class="yoro-context-metrics">';
+		html += contextMetric(h, 'Open orders', snapshot.open_order_count || 0, 'pending, processing, on-hold');
+		html += contextMetric(h, 'Older than 48h', snapshot.attention_older_48h || 0, 'open order attention');
+		html += contextMetric(h, 'Out of stock', (snapshot.inventory_counts && snapshot.inventory_counts.out_of_stock) || 0, 'products');
+		html += contextMetric(h, 'Backorders', (snapshot.inventory_counts && snapshot.inventory_counts.on_backorder) || 0, 'products');
 		html += '</div>';
 
 		html += '<div class="yoro-context-grid">';
 
-		if (context.store) {
-			html += '<div class="yoro-context-card">';
-			html += '<h3>Store</h3>';
-			html += '<p><strong>Name:</strong> ' + h.escapeHtml(context.store.name || '') + '</p>';
-			html += '<p><strong>URL:</strong> ' + h.escapeHtml(context.store.home_url || '') + '</p>';
-			html += '<p><strong>Locale:</strong> ' + h.escapeHtml(context.store.locale || '') + '</p>';
-			html += '</div>';
-		}
+		html += '<div class="yoro-context-card">';
+		html += '<h3>Store Profile</h3>';
+		html += contextLine(h, 'Name', (context.store && context.store.name) || (facts.identity && facts.identity.name) || '');
+		html += contextLine(h, 'URL', (context.store && context.store.home_url) || (facts.identity && facts.identity.home_url) || '');
+		html += contextLine(h, 'Locale', locale.user_locale || locale.site_locale || (context.store && context.store.locale) || '');
+		html += contextLine(h, 'Timezone', locale.timezone || (context.store && context.store.timezone) || '');
+		html += contextLine(h, 'Currency', [locale.currency, locale.currency_symbol].filter(Boolean).join(' '));
+		html += '</div>';
 
-		if (context.woocommerce) {
-			html += '<div class="yoro-context-card">';
-			html += '<h3>Commerce</h3>';
-			html += '<p><strong>Active:</strong> ' + h.escapeHtml(context.woocommerce.active ? 'Yes' : 'No') + '</p>';
-			html += '<p><strong>Currency:</strong> ' + h.escapeHtml(context.woocommerce.currency || '') + '</p>';
-			if (h.shouldShowDebugJson && h.shouldShowDebugJson()) {
-				html += '<p><strong>Version:</strong> ' + h.escapeHtml(context.woocommerce.version || '') + '</p>';
-			}
-			html += '</div>';
-		}
+		html += '<div class="yoro-context-card">';
+		html += '<h3>Commerce Settings</h3>';
+		html += contextLine(h, 'WooCommerce', contextFirstValue(commerce.woocommerce_active, context.woocommerce && context.woocommerce.active));
+		html += contextLine(h, 'Version', commerce.woocommerce_version || (context.woocommerce && context.woocommerce.version) || '');
+		html += contextLine(h, 'HPOS', contextFirstValue(commerce.hpos_enabled, context.woocommerce && context.woocommerce.hpos_enabled));
+		html += contextLine(h, 'Taxes', contextFirstValue(commerce.tax_enabled, generalSettings.taxes_enabled));
+		html += contextLine(h, 'Coupons', contextFirstValue(commerce.coupons_enabled, generalSettings.coupons_enabled));
+		html += contextLine(h, 'Stock management', commerce.stock_management_enabled);
+		html += contextLine(h, 'Low stock threshold', commerce.low_stock_threshold);
+		html += '</div>';
 
-		if (context.store_knowledge) {
-			const knowledge = context.store_knowledge || {};
-			const snapshot = knowledge.live_snapshot || {};
-			const capabilities = (knowledge.capabilities && knowledge.capabilities.summary) || {};
-			html += '<div class="yoro-context-card">';
-			html += '<h3>AI Knowledge</h3>';
-			html += '<p><strong>Schema:</strong> v' + h.escapeHtml(knowledge.schema_version || 1) + '</p>';
-			html += '<p><strong>Open orders:</strong> ' + h.escapeHtml(snapshot.open_order_count || 0) + '</p>';
-			html += '<p><strong>Actions:</strong> ' + h.escapeHtml(capabilities.total || 0) + '</p>';
+		html += '<div class="yoro-context-card yoro-context-card-wide">';
+		html += '<h3>Live Order Snapshot</h3>';
+		html += contextStatusPills(h, snapshot.order_status_counts || {}, snapshot.order_status_count_labels || {});
+		if (operations.age_buckets) {
+			html += '<div class="yoro-context-lines yoro-context-lines-compact">';
+			html += contextLine(h, 'Pending >24h', operations.age_buckets.pending_older_24h || 0);
+			html += contextLine(h, 'Processing >24h', operations.age_buckets.processing_older_24h || 0);
+			html += contextLine(h, 'Processing >72h', operations.age_buckets.processing_older_72h || 0);
+			html += contextLine(h, 'On hold >48h', operations.age_buckets.on_hold_older_48h || 0);
 			html += '</div>';
 		}
+		html += '</div>';
 
-		if (context.actions && h.shouldShowDebugJson && h.shouldShowDebugJson()) {
-			html += '<div class="yoro-context-card">';
-			html += '<h3>Actions</h3>';
-			html += '<p><strong>Total:</strong> ' + h.escapeHtml(context.actions.total || 0) + '</p>';
-			html += '<p><strong>Read:</strong> ' + h.escapeHtml(context.actions.read || 0) + '</p>';
-			html += '<p><strong>Write:</strong> ' + h.escapeHtml(context.actions.write || 0) + '</p>';
-			html += '</div>';
-		}
+		html += '<div class="yoro-context-card">';
+		html += '<h3>Inventory</h3>';
+		html += contextLine(h, 'Stock management', contextFirstValue(inventory.stock_management_enabled, commerce.stock_management_enabled));
+		html += contextLine(h, 'Low stock threshold', contextFirstValue(inventory.low_stock_threshold, commerce.low_stock_threshold));
+		html += contextLine(h, 'Out of stock', (inventory.counts && inventory.counts.out_of_stock) || (snapshot.inventory_counts && snapshot.inventory_counts.out_of_stock) || 0);
+		html += contextLine(h, 'On backorder', (inventory.counts && inventory.counts.on_backorder) || (snapshot.inventory_counts && snapshot.inventory_counts.on_backorder) || 0);
+		html += contextLine(h, 'Low stock sample', (inventory.counts && inventory.counts.low_stock_in_sample) || 0);
+		html += '</div>';
+
+		html += '<div class="yoro-context-card">';
+		html += '<h3>Payments & Shipping</h3>';
+		html += '<p class="yoro-context-section-label">Enabled payments</p>';
+		html += contextPills(h, activePaymentMethods, 8);
+		html += '<p class="yoro-context-section-label">Shipping methods</p>';
+		html += contextPills(h, shippingMethods, 8);
+		html += contextLine(h, 'Shipping zones', Array.isArray(shipping.zones) ? shipping.zones.length : 0);
+		html += '</div>';
+
+		html += '<div class="yoro-context-card yoro-context-card-wide">';
+		html += '<h3>YoRo Capabilities</h3>';
+		html += '<div class="yoro-context-mini-metrics">';
+		html += contextMetric(h, 'Available', capabilitySummary.total || (context.actions && context.actions.total) || 0, 'store actions');
+		html += contextMetric(h, 'Read-only', capabilitySummary.read || (context.actions && context.actions.read) || 0, 'can run directly');
+		html += contextMetric(h, 'Approval', capabilitySummary.write || (context.actions && context.actions.write) || 0, 'changes need confirm');
+		html += '</div>';
+		html += '<p class="yoro-context-section-label">Available areas</p>';
+		html += contextPills(h, contextCapabilityAreaLabels(capabilitySummary.categories || {}), 10);
+		html += '<p class="yoro-context-boundary-note">YoRo plans the work, checks what this store can do, and runs approved WooCommerce actions through the local store connection. Changes require confirmation before anything is modified.</p>';
+		html += '</div>';
+
+		html += '<div class="yoro-context-card yoro-context-card-full">';
+		html += '<h3>Integrations</h3>';
+		html += '<p class="yoro-context-section-label">Known adapters and detected integrations</p>';
+		html += contextPills(h, contextKnownIntegrationLabels(integrations.known || {}), 12);
+		html += '<div class="yoro-context-lines yoro-context-lines-compact">';
+		html += contextLine(h, 'Integrated adapters', Array.isArray(integrations.integrated_adapters) ? integrations.integrated_adapters.join(', ') : '');
+		html += contextLine(h, 'Active plugins sampled', Array.isArray(integrations.active_plugins) ? integrations.active_plugins.length : 0);
+		html += contextLine(h, 'Generated', generatedAt);
+		html += contextLine(h, 'Schema', knowledge.schema_version ? ('v' + knowledge.schema_version) : 'v1');
+		html += '</div>';
+		html += '</div>';
 
 		html += '</div>';
 
 		html += renderDebugJson(data, h);
+		html += '</div>';
 
 		return html;
 	}

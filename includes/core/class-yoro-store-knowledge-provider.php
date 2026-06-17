@@ -87,7 +87,7 @@ class YoRo_Store_Knowledge_Provider {
 			'user_locale'     => function_exists( 'get_user_locale' ) ? sanitize_text_field( get_user_locale() ) : sanitize_text_field( get_locale() ),
 			'business_country' => $country,
 			'currency'        => sanitize_text_field( $currency ),
-			'currency_symbol' => function_exists( 'get_woocommerce_currency_symbol' ) ? wp_strip_all_tags( get_woocommerce_currency_symbol( $currency ) ) : '',
+			'currency_symbol' => self::currency_symbol( $currency ),
 			'price_decimals'  => function_exists( 'wc_get_price_decimals' ) ? absint( wc_get_price_decimals() ) : 2,
 		];
 	}
@@ -240,7 +240,7 @@ class YoRo_Store_Knowledge_Provider {
 			'woocommerce_version' => defined( 'WC_VERSION' ) ? sanitize_text_field( WC_VERSION ) : '',
 			'hpos_enabled'        => self::is_hpos_enabled(),
 			'currency'            => $currency,
-			'currency_symbol'     => function_exists( 'get_woocommerce_currency_symbol' ) ? wp_strip_all_tags( get_woocommerce_currency_symbol( $currency ) ) : '',
+			'currency_symbol'     => self::currency_symbol( $currency ),
 			'price_decimals'      => function_exists( 'wc_get_price_decimals' ) ? absint( wc_get_price_decimals() ) : 2,
 			'coupons_enabled'     => function_exists( 'wc_coupons_enabled' ) ? (bool) wc_coupons_enabled() : null,
 			'coupon_discounts_sequential' => 'yes' === get_option( 'woocommerce_calc_discounts_sequentially', 'no' ),
@@ -366,7 +366,7 @@ class YoRo_Store_Knowledge_Provider {
 			'coupons_enabled'           => 'yes' === get_option( 'woocommerce_enable_coupons', 'yes' ),
 			'coupon_discounts_sequential' => 'yes' === get_option( 'woocommerce_calc_discounts_sequentially', 'no' ),
 			'currency'                  => $currency,
-			'currency_symbol'           => function_exists( 'get_woocommerce_currency_symbol' ) ? wp_strip_all_tags( get_woocommerce_currency_symbol( $currency ) ) : '',
+			'currency_symbol'           => self::currency_symbol( $currency ),
 			'currency_position'         => sanitize_key( get_option( 'woocommerce_currency_pos', 'left' ) ),
 			'price_thousand_separator'  => sanitize_text_field( get_option( 'woocommerce_price_thousand_sep', ',' ) ),
 			'price_decimal_separator'   => sanitize_text_field( get_option( 'woocommerce_price_decimal_sep', '.' ) ),
@@ -1937,6 +1937,22 @@ class YoRo_Store_Knowledge_Provider {
 		}
 
 		return gmdate( 'Y-m-d H:i:s', strtotime( $modifier ) );
+	}
+
+	private static function currency_symbol( $currency = '' ) {
+		if ( ! function_exists( 'get_woocommerce_currency_symbol' ) ) {
+			return '';
+		}
+
+		$symbol = '' !== $currency
+			? get_woocommerce_currency_symbol( $currency )
+			: get_woocommerce_currency_symbol();
+
+		return sanitize_text_field(
+			wp_strip_all_tags(
+				html_entity_decode( (string) $symbol, ENT_QUOTES | ENT_HTML5, 'UTF-8' )
+			)
+		);
 	}
 
 	private static function is_hpos_enabled() {

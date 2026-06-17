@@ -163,7 +163,7 @@ class YoRo_Admin_Page {
 				'i18n'                                  => [
 					'emptyCommand'         => __( 'Please enter a request.', 'yoro-ai-core' ),
 					'running'              => __( 'Thinking...', 'yoro-ai-core' ),
-					'askYoRo'              => __( 'Ask YoRo', 'yoro-ai-core' ),
+					'askYoRo'              => __( 'Send', 'yoro-ai-core' ),
 					'error'                => __( 'I could not finish that request.', 'yoro-ai-core' ),
 				],
 			]
@@ -215,61 +215,10 @@ class YoRo_Admin_Page {
 						<div class="yoro-chat-quick-search-results" data-yoro-quick-results>
 							<p class="yoro-chat-quick-hint"><?php esc_html_e( 'Search by order number, customer email, or phone number.', 'yoro-ai-core' ); ?></p>
 						</div>
-
-						<div class="yoro-chat-quick-presets">
-							<div class="yoro-chat-quick-presets-label"><?php esc_html_e( 'Open fast', 'yoro-ai-core' ); ?></div>
-							<div class="yoro-chat-quick-presets-grid">
-								<button
-									type="button"
-									class="yoro-chat-quick-preset"
-									data-yoro-quick-action="store.get_daily_briefing"
-									data-yoro-quick-params="<?php echo esc_attr( wp_json_encode( [ 'window' => 'last_7_days', 'limit' => 1 ] ) ); ?>"
-								>
-									<span class="yoro-chat-quick-preset-title"><?php esc_html_e( 'Store report', 'yoro-ai-core' ); ?></span>
-									<span class="yoro-chat-quick-preset-meta"><?php esc_html_e( 'Last 7 days across sales and operations', 'yoro-ai-core' ); ?></span>
-								</button>
-								<button
-									type="button"
-									class="yoro-chat-quick-preset"
-									data-yoro-quick-action="store.get_business_summary"
-									data-yoro-quick-params="<?php echo esc_attr( wp_json_encode( [ 'window' => 'last_7_days' ] ) ); ?>"
-								>
-									<span class="yoro-chat-quick-preset-title"><?php esc_html_e( 'Sales report', 'yoro-ai-core' ); ?></span>
-									<span class="yoro-chat-quick-preset-meta"><?php esc_html_e( 'Revenue, orders, customers, and products', 'yoro-ai-core' ); ?></span>
-								</button>
-								<button
-									type="button"
-									class="yoro-chat-quick-preset"
-									data-yoro-quick-action="customers.get_service_queue"
-									data-yoro-quick-params="<?php echo esc_attr( wp_json_encode( [ 'limit' => 8 ] ) ); ?>"
-								>
-									<span class="yoro-chat-quick-preset-title"><?php esc_html_e( 'Customer service', 'yoro-ai-core' ); ?></span>
-									<span class="yoro-chat-quick-preset-meta"><?php esc_html_e( 'Orders needing follow-up', 'yoro-ai-core' ); ?></span>
-								</button>
-								<button
-									type="button"
-									class="yoro-chat-quick-preset"
-									data-yoro-quick-action="operations.get_attention_queue"
-									data-yoro-quick-params="<?php echo esc_attr( wp_json_encode( [ 'limit' => 8 ] ) ); ?>"
-								>
-									<span class="yoro-chat-quick-preset-title"><?php esc_html_e( 'Attention queue', 'yoro-ai-core' ); ?></span>
-									<span class="yoro-chat-quick-preset-meta"><?php esc_html_e( 'Priority operational issues', 'yoro-ai-core' ); ?></span>
-								</button>
-								<button
-									type="button"
-									class="yoro-chat-quick-preset"
-									data-yoro-quick-action="operations.get_fulfillment_queue"
-									data-yoro-quick-params="<?php echo esc_attr( wp_json_encode( [ 'limit' => 8 ] ) ); ?>"
-								>
-									<span class="yoro-chat-quick-preset-title"><?php esc_html_e( 'Fulfillment', 'yoro-ai-core' ); ?></span>
-									<span class="yoro-chat-quick-preset-meta"><?php esc_html_e( 'What needs shipping next', 'yoro-ai-core' ); ?></span>
-								</button>
-							</div>
-						</div>
 					</div>
 					<button type="button" class="yoro-chat-quick-bubble" data-yoro-quick-toggle aria-expanded="false" aria-controls="yoro-chat-quick-panel">
 						<span class="yoro-chat-quick-bubble-icon">+</span>
-						<span class="yoro-chat-quick-bubble-label"><?php esc_html_e( 'Quick actions', 'yoro-ai-core' ); ?></span>
+						<span class="yoro-chat-quick-bubble-label"><?php esc_html_e( 'Lookup', 'yoro-ai-core' ); ?></span>
 					</button>
 				</div>
 			</div>
@@ -293,15 +242,15 @@ class YoRo_Admin_Page {
 
 				<div class="yoro-chat-actions">
 					<button type="button" class="button button-primary" id="yoro-ai-run">
-						<?php esc_html_e( 'Ask YoRo', 'yoro-ai-core' ); ?>
+						<?php esc_html_e( 'Send', 'yoro-ai-core' ); ?>
 					</button>
 
 					<button type="button" class="button" id="yoro-ai-clear">
-						<?php esc_html_e( 'Clear Chat', 'yoro-ai-core' ); ?>
+						<?php esc_html_e( 'New Conversation', 'yoro-ai-core' ); ?>
 					</button>
 
 					<button type="button" class="button" id="yoro-ai-load-context">
-						<?php esc_html_e( 'Store Context', 'yoro-ai-core' ); ?>
+						<?php esc_html_e( 'Context', 'yoro-ai-core' ); ?>
 					</button>
 
 					<span class="yoro-chat-actions-spacer" aria-hidden="true"></span>
@@ -311,19 +260,24 @@ class YoRo_Admin_Page {
 					</button>
 				</div>
 
-				<div class="yoro-ai-examples">
-					<strong><?php esc_html_e( 'Try:', 'yoro-ai-core' ); ?></strong>
-					<button type="button" class="button-link yoro-ai-example" data-command="Show me the latest 5 orders">
-						<?php esc_html_e( 'Show latest 5 orders', 'yoro-ai-core' ); ?>
+				<div class="yoro-chat-workflows" aria-label="<?php esc_attr_e( 'Store operations workflows', 'yoro-ai-core' ); ?>">
+					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="store.get_daily_briefing" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'window' => 'today', 'limit' => 1 ] ) ); ?>">
+						<?php esc_html_e( 'Briefing', 'yoro-ai-core' ); ?>
 					</button>
-					<button type="button" class="button-link yoro-ai-example" data-command="How is the store doing over the last 7 days?" data-action-catalog-scope="report_provider_catalog" data-report-topic="overview">
-						<?php esc_html_e( 'Store performance last 7 days', 'yoro-ai-core' ); ?>
+					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="operations.get_attention_queue" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'limit' => 8 ] ) ); ?>">
+						<?php esc_html_e( 'Attention', 'yoro-ai-core' ); ?>
 					</button>
-					<button type="button" class="button-link yoro-ai-example" data-command="Show store report for the last 3 days" data-action-catalog-scope="report_provider_catalog" data-report-topic="overview">
-						<?php esc_html_e( 'Store report for 3 days', 'yoro-ai-core' ); ?>
+					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="operations.get_fulfillment_queue" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'limit' => 8 ] ) ); ?>">
+						<?php esc_html_e( 'Fulfillment', 'yoro-ai-core' ); ?>
 					</button>
-					<button type="button" class="button-link yoro-ai-example" data-command="Show customer service queue">
-						<?php esc_html_e( 'Open customer service queue', 'yoro-ai-core' ); ?>
+					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="customers.get_service_queue" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'limit' => 8 ] ) ); ?>">
+						<?php esc_html_e( 'Customers', 'yoro-ai-core' ); ?>
+					</button>
+					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="products.get_inventory_queue" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'limit' => 8, 'focus' => 'attention' ] ) ); ?>">
+						<?php esc_html_e( 'Inventory', 'yoro-ai-core' ); ?>
+					</button>
+					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="store.get_business_summary" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'window' => 'this_month', 'focus' => 'overview' ] ) ); ?>">
+						<?php esc_html_e( 'Reports', 'yoro-ai-core' ); ?>
 					</button>
 				</div>
 			</div>
@@ -389,9 +343,9 @@ class YoRo_Admin_Page {
 			<div class="wrap yoro-ai-wrap">
 				<h1><?php esc_html_e( 'YoRo AI Action History', 'yoro-ai-core' ); ?></h1>
 				<p class="description">
-					<?php esc_html_e( 'A simple timeline of store action events. Chat transcripts and debug traces live in the Laravel dashboard.', 'yoro-ai-core' ); ?>
+					<?php esc_html_e( 'A simple timeline of store action events. Chat transcripts and debug traces live in the YoRo dashboard.', 'yoro-ai-core' ); ?>
 					<?php if ( '' !== $dashboard_url ) : ?>
-						<a href="<?php echo esc_url( $dashboard_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Open Laravel dashboard', 'yoro-ai-core' ); ?></a>
+						<a href="<?php echo esc_url( $dashboard_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Open YoRo dashboard', 'yoro-ai-core' ); ?></a>
 					<?php endif; ?>
 				</p>
 
