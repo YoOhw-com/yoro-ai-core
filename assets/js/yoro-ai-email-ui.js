@@ -12,6 +12,7 @@
 				resolveOrderId: helpers.resolveOrderId,
 			setCurrentOrderId: helpers.setCurrentOrderId,
 			executeActionDirect: helpers.executeActionDirect,
+			sendMailboxPreviewReply: helpers.sendMailboxPreviewReply,
 			addAssistantMessage: helpers.addAssistantMessage,
 			addLoadingMessage: helpers.addLoadingMessage,
 			updateConversationState: helpers.updateConversationState,
@@ -252,7 +253,203 @@
 		return '<div class="yoro-email-preview yoro-email-preview-editable">' + doc.body.innerHTML + '</div>';
 	}
 
+	function normalizeMailboxReplyPreview(data) {
+		const result = data && data.result ? data.result : {};
+		const parsed = data && data.parsed ? data.parsed : {};
+		const actionPlan = data && data.action_plan
+			? data.action_plan
+			: (parsed.action_plan || result.action_plan || {});
+		const preview = result.email_preview || data.email_preview || parsed.email_preview || actionPlan.email_preview || {};
+		const resultSendPayload = result.send_payload && Object.keys(result.send_payload).length ? result.send_payload : null;
+		const previewSendPayload = preview.send_payload && Object.keys(preview.send_payload).length ? preview.send_payload : null;
+		const sendPayload = resultSendPayload || previewSendPayload || {};
+		const action = result.action || (data && data.action) || parsed.action || preview.action || sendPayload.action || '';
+		const sendAction = preview.send_action || sendPayload.action || '';
+		const hasPreview = !!preview && Object.keys(preview).length > 0;
+
+		if (!hasPreview || (preview.kind !== 'mailbox_reply' && result.kind !== 'mailbox_reply' && action !== 'email.reply.send' && sendAction !== 'email.reply.send')) {
+			return null;
+		}
+
+		return {
+			threadId: String(sendPayload.thread_id || preview.thread_id || result.thread_id || ''),
+			providerThreadId: String(sendPayload.provider_thread_id || preview.provider_thread_id || result.provider_thread_id || ''),
+			pendingOperationToken: String(sendPayload.pending_operation_token || (data && data.pending_operation_token) || (data && data.meta && data.meta.pending_operation_token) || ''),
+			to: normalizeRecipientList(sendPayload.to || preview.to || []),
+			cc: normalizeRecipientList(sendPayload.cc || preview.cc || []),
+			from: normalizeRecipient(preview.from || {}),
+			subject: String(sendPayload.subject || preview.subject || (result.email && result.email.subject) || ''),
+			body: String(sendPayload.body || preview.body || preview.body_text || (result.email && result.email.body) || ''),
+			htmlBody: String(sendPayload.html_body || preview.html_body || (preview.email && preview.email.html_body) || (result.email && result.email.html_body) || ''),
+			canSend: sendPayload.can_send !== false && preview.can_send !== false,
+			canEdit: preview.can_edit !== false
+		};
+	}
+
+	function normalizeRecipientList(value) {
+		if (typeof value === 'string') {
+			value = value.split(',').map(function(part) {
+				return part.trim();
+			}).filter(Boolean);
+		}
+
+		if (!Array.isArray(value)) {
+			return [];
+		}
+
+		return value.map(normalizeRecipient).filter(function(recipient) {
+			return !!recipient.email;
+		});
+	}
+
+	function normalizeRecipient(value) {
+		if (!value) {
+			return {};
+		}
+
+		if (typeof value === 'string') {
+			const match = value.match(/<([^>]+)>/);
+
+			if (match) {
+				return {
+					name: value.replace(/<[^>]+>/, '').trim(),
+					email: match[1].trim()
+				};
+			}
+
+			return {
+				email: value.trim()
+			};
+		}
+
+		return {
+			name: String(value.name || '').trim(),
+			email: String(value.email || value.address || '').trim()
+		};
+	}
+
+	function recipientLabel(recipient, h) {
+		recipient = normalizeRecipient(recipient);
+
+		if (!recipient.email) {
+			return '';
+		}
+
+		return recipient.name
+			? recipient.name + ' <' + recipient.email + '>'
+			: recipient.email;
+	}
+
+	function recipientListLabel(recipients, h) {
+		const labels = normalizeRecipientList(recipients).map(function(recipient) {
+			return recipientLabel(recipient, h);
+		}).filter(Boolean);
+
+		return labels.join(', ');
+	}
+
+	function jsonDataAttr(value, h) {
+		return h.escapeHtml(JSON.stringify(value || []));
+	}
+
+	function readJsonDataAttr(target, name) {
+		const raw = target.getAttribute(name) || '';
+
+		if (!raw) {
+			return [];
+		}
+
+		try {
+			const parsed = JSON.parse(raw);
+
+			return Array.isArray(parsed) ? parsed : [];
+		} catch (error) {
+			return [];
+		}
+	}
+
+	function renderMailboxReplyPreviewResult(data, h, preview) {
+		const toLabel = recipientListLabel(preview.to, h) || '—';
+		const ccLabel = recipientListLabel(preview.cc, h);
+		const fromLabel = recipientLabel(preview.from, h) || 'Connected shop mailbox';
+		const threadLabel = preview.threadId ? ('#' + preview.threadId) : '';
+
+		let html = '<div class="yoro-result-summary">';
+		html += '<strong>Email reply preview</strong>';
+		html += '<span class="yoro-result-subtle">Editable preview</span>';
+		html += '</div>';
+
+		html += '<div class="yoro-order-detail-card yoro-mailbox-reply-preview-card"';
+		html += ' data-mailbox-thread-id="' + h.escapeHtml(preview.threadId) + '"';
+		html += ' data-provider-thread-id="' + h.escapeHtml(preview.providerThreadId) + '"';
+		html += ' data-pending-operation-token="' + h.escapeHtml(preview.pendingOperationToken) + '">';
+
+		html += '<div class="yoro-order-detail-header">';
+		html += '<div>';
+		html += '<strong class="yoro-order-detail-title">Reply to shop inbox thread ' + h.escapeHtml(threadLabel) + '</strong>';
+		html += '<span class="yoro-current-order-badge">Shop inbox</span>';
+		html += '<div class="yoro-result-subtle">Review and edit before sending from the connected mailbox.</div>';
+		html += '</div>';
+		html += '<span class="yoro-status-badge">Draft</span>';
+		html += '</div>';
+
+		html += '<div class="yoro-order-detail-section">';
+		html += '<h4>Recipient</h4>';
+		html += '<p><strong>To:</strong> ' + h.escapeHtml(toLabel) + '</p>';
+		if (ccLabel) {
+			html += '<p><strong>Cc:</strong> ' + h.escapeHtml(ccLabel) + '</p>';
+		}
+		html += '<p><strong>From:</strong> ' + h.escapeHtml(fromLabel) + '</p>';
+		html += '</div>';
+
+		html += '<div class="yoro-order-detail-section">';
+		html += '<h4>Store email preview</h4>';
+		html += '<div class="yoro-email-live-preview">';
+		html += '<div class="yoro-email-live-preview-meta">';
+		html += '<span>To: ' + h.escapeHtml(toLabel) + '</span>';
+		html += '<span>Source: Shop inbox</span>';
+		html += '</div>';
+		html += buildEditableWooEmailPreview({
+			subject: preview.subject,
+			body: preview.body,
+			html_body: preview.htmlBody
+		}, h);
+		html += '<p class="yoro-result-subtle">Edit the subject and body directly inside this email preview, then send.</p>';
+		html += '</div>';
+		html += '</div>';
+
+		html += '<div class="yoro-email-action-bar">';
+		html += '<div class="yoro-email-draft-actions"></div>';
+		html += '<div class="yoro-email-send-actions yoro-confirm-actions">';
+		html += '<button type="button" class="button yoro-confirm-cancel" data-pending-operation-token="' + h.escapeHtml(preview.pendingOperationToken) + '">Cancel</button>';
+
+		if (preview.canSend) {
+			html += '<button type="button" class="button button-primary yoro-send-mailbox-composed-reply"';
+			html += ' data-thread-id="' + h.escapeHtml(preview.threadId) + '"';
+			html += ' data-provider-thread-id="' + h.escapeHtml(preview.providerThreadId) + '"';
+			html += ' data-pending-operation-token="' + h.escapeHtml(preview.pendingOperationToken) + '"';
+			html += ' data-to="' + jsonDataAttr(preview.to, h) + '"';
+			html += ' data-cc="' + jsonDataAttr(preview.cc, h) + '">';
+			html += 'Send reply';
+			html += '</button>';
+		}
+
+		html += '</div>';
+		html += '</div>';
+		html += '</div>';
+
+		html += h.renderDebugJson(data);
+
+		return html;
+	}
+
 	function renderCustomerEmailPreviewResult(data, h) {
+		const mailboxPreview = normalizeMailboxReplyPreview(data);
+
+		if (mailboxPreview) {
+			return renderMailboxReplyPreviewResult(data, h, mailboxPreview);
+		}
+
 		const result = data.result || {};
 		const email = result.email || {};
 		const order = result.order || {};
@@ -523,11 +720,12 @@
 				'.yoro-template-toggle,' +
 				'.yoro-draft-toggle,' +
 				'.yoro-save-email-draft,' +
-				'.yoro-load-email-drafts,' +
+					'.yoro-load-email-drafts,' +
 				'.yoro-use-email-draft,' +
 					'.yoro-update-email-draft,' +
 					'.yoro-delete-email-draft,' +
-					'.yoro-send-composed-email'
+					'.yoro-send-composed-email,' +
+					'.yoro-send-mailbox-composed-reply'
 				);
 
 		if (!target) {
@@ -1029,6 +1227,73 @@
 
 							h.addAssistantMessage(data);
 							h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || ''));
+						})
+						.catch(function(error) {
+							loading.remove();
+
+							h.addAssistantMessage({
+								success: false,
+								error: error
+							});
+						});
+				}
+			);
+
+			return;
+		}
+
+		if (target.classList.contains('yoro-send-mailbox-composed-reply')) {
+			const card = target.closest('.yoro-mailbox-reply-preview-card');
+			const threadId = target.getAttribute('data-thread-id') || (card ? card.getAttribute('data-mailbox-thread-id') : '');
+			const providerThreadId = target.getAttribute('data-provider-thread-id') || (card ? card.getAttribute('data-provider-thread-id') : '');
+			const pendingOperationToken = target.getAttribute('data-pending-operation-token') || (card ? card.getAttribute('data-pending-operation-token') : '');
+			const subjectInput = card ? card.querySelector('.yoro-email-subject-input') : null;
+			const bodyInput = card ? card.querySelector('.yoro-email-body-input') : null;
+			const subject = readEmailEditableValue(subjectInput);
+			const body = readEmailEditableValue(bodyInput);
+			const to = readJsonDataAttr(target, 'data-to');
+			const cc = readJsonDataAttr(target, 'data-cc');
+			const sendMailboxPreviewReply = typeof h.sendMailboxPreviewReply === 'function'
+				? h.sendMailboxPreviewReply
+				: null;
+
+			if (!threadId || !subject || !body) {
+				h.addAssistantMessage({
+					success: false,
+					message: missingEmailContentMessage()
+				});
+				return;
+			}
+
+			if (!sendMailboxPreviewReply) {
+				h.addAssistantMessage({
+					success: false,
+					message: 'I cannot send this connected mailbox reply from the current screen.'
+				});
+				return;
+			}
+
+			h.openModal(
+				'Send this reply?',
+				'<p>This will send the reviewed reply from the connected shop mailbox.</p>' +
+				'<p><strong>Subject:</strong> ' + h.escapeHtml(subject) + '</p>',
+				function () {
+					const loading = h.addLoadingMessage();
+
+					sendMailboxPreviewReply({
+						thread_id: parseInt(threadId, 10),
+						provider_thread_id: providerThreadId,
+						pending_operation_token: pendingOperationToken,
+						to: to,
+						cc: cc,
+						subject: subject,
+						body: body
+					})
+						.then(function(data) {
+							loading.remove();
+
+							h.addAssistantMessage(data);
+							h.updateConversationState(data, 'direct:' + ((data.parsed && data.parsed.action) || 'email.reply.send'));
 						})
 						.catch(function(error) {
 							loading.remove();

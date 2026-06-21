@@ -45,9 +45,78 @@ const instance = typeof resultRenderers.init === 'function'
 		shouldShowDebugJson: () => false
 	})
 	: {};
+const mailboxPreviewInstance = typeof resultRenderers.init === 'function'
+	? resultRenderers.init({
+		escapeHtml,
+		shouldShowDebugJson: () => false,
+		renderCustomerEmailPreviewResult: () => '<div class="mailbox-reply-preview-rendered">MAILBOX_REPLY_PREVIEW_RENDERED</div>'
+	})
+	: {};
 
 assert(typeof resultRenderers.init === 'function', 'Result renderer init must be exported.');
 assert(typeof instance.renderResult === 'function', 'Result renderer must expose renderResult.');
+
+if (typeof mailboxPreviewInstance.renderResult === 'function') {
+	const mailboxPreviewHtml = mailboxPreviewInstance.renderResult({
+		success: true,
+		stage: 'confirm',
+		confirm_required: true,
+		requires_confirmation: true,
+		pending_operation_active: true,
+		pending_operation_token: 'pending-mailbox-reply',
+		parsed: {
+			action: 'email.reply.send'
+		},
+		email_preview: {
+			kind: 'mailbox_reply',
+			action: 'email.reply.send',
+			send_action: 'email.reply.send',
+			thread_id: 28,
+			subject: 'Shipping Status Inquiry',
+			body: 'Thanks for reaching out.'
+		},
+		result: {
+			display_type: 'confirmation',
+			action: 'email.reply.send',
+			requires_confirmation: true
+		}
+	});
+
+	assert(mailboxPreviewHtml.includes('MAILBOX_REPLY_PREVIEW_RENDERED'), 'Mailbox reply confirmation must render the email preview renderer.');
+	assert(!mailboxPreviewHtml.includes('Please approve this change'), 'Mailbox reply confirmation must not render generic approval copy.');
+	assert(!mailboxPreviewHtml.includes('Approve change'), 'Mailbox reply confirmation must not render generic approval button.');
+
+	const terminalMailboxReplyHtml = mailboxPreviewInstance.renderResult({
+		success: true,
+		stage: 'done',
+		pending_operation_active: false,
+		pending_operation_status: 'executed',
+		parsed: {
+			action: 'email.reply.send',
+			action_plan: {
+				email_preview: {
+					kind: 'mailbox_reply',
+					action: 'email.reply.send',
+					send_action: 'email.reply.send',
+					thread_id: 28,
+					subject: 'Shipping Status Inquiry',
+					body: 'Thanks for reaching out.'
+				}
+			}
+		},
+		result: {
+			success: true,
+			message: 'Email reply sent.',
+			summary: 'Email reply sent.',
+			display_type: 'assistant_message',
+			result_type: 'assistant_message',
+			internal_execution: true
+		}
+	});
+
+	assert(terminalMailboxReplyHtml.includes('Email reply sent.'), 'Terminal mailbox reply response must render the sent confirmation.');
+	assert(!terminalMailboxReplyHtml.includes('MAILBOX_REPLY_PREVIEW_RENDERED'), 'Terminal mailbox reply response must not re-render the email preview.');
+}
 
 if (typeof instance.renderResult === 'function') {
 	const blockedHtml = instance.renderResult({

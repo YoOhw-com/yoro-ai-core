@@ -1339,6 +1339,13 @@ class YoRo_Orders_Email_Service {
 		];
 	}
 
+	public static function render_with_woocommerce_email_template( $heading, $body ) {
+		return self::wrap_customer_email_with_woocommerce_template(
+			sanitize_text_field( (string) $heading ),
+			sanitize_textarea_field( (string) $body )
+		);
+	}
+
 	private static function wrap_customer_email_with_woocommerce_template( $heading, $body ) {
 		if ( ! function_exists( 'WC' ) || ! WC()->mailer() ) {
 			return nl2br( esc_html( $body ) );

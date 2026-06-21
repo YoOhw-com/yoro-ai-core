@@ -25,6 +25,8 @@ class YoRo_REST_Execute_Handler {
 			$params = [];
 		}
 
+		$request_params = $params;
+
 		$user_id  = get_current_user_id();
 		$trace_id = 'yoro_' . wp_generate_uuid4();
 
@@ -107,9 +109,14 @@ class YoRo_REST_Execute_Handler {
 		);
 
 		if ( $confirm && self::is_laravel_internal_action( $action ) && '' !== $pending_operation_token ) {
+			if ( 'email.reply.send' === $action ) {
+				$request_params = self::with_mailbox_reply_woocommerce_html( $request_params );
+			}
+
 			$confirmation = YoRo_REST_Conversation_Action_Coordinator::confirm_pending_operation(
 				$parsed,
-				$pending_operation_token
+				$pending_operation_token,
+				$request_params
 			);
 
 			if ( is_wp_error( $confirmation ) ) {
@@ -201,7 +208,8 @@ class YoRo_REST_Execute_Handler {
 		if ( $confirm ) {
 			$confirmation = YoRo_REST_Conversation_Action_Coordinator::confirm_pending_operation(
 				$parsed,
-				$pending_operation_token
+				$pending_operation_token,
+				$request_params
 			);
 
 			if ( is_wp_error( $confirmation ) ) {
@@ -367,7 +375,35 @@ class YoRo_REST_Execute_Handler {
 	private static function is_laravel_internal_action( $action ) {
 		$action = sanitize_text_field( (string) $action );
 
-		return 0 === strpos( $action, 'store_preferences.' );
+		return 0 === strpos( $action, 'store_preferences.' )
+			|| 'email.reply.send' === $action;
+	}
+
+	public static function with_mailbox_reply_woocommerce_html( $params ) {
+		if ( ! is_array( $params ) ) {
+			$params = [];
+		}
+
+		$body = sanitize_textarea_field( (string) ( $params['body'] ?? '' ) );
+
+		if ( '' === trim( $body ) ) {
+			return $params;
+		}
+
+		$subject   = sanitize_text_field( (string) ( $params['subject'] ?? '' ) );
+		$html_body = class_exists( 'YoRo_Orders_Email_Service' )
+			? YoRo_Orders_Email_Service::render_with_woocommerce_email_template( $subject, $body )
+			: wpautop( esc_html( $body ) );
+
+		$params['body']             = $body;
+		$params['html_body']        = $html_body;
+		$params['html_body_source'] = 'wordpress_woocommerce_mailer';
+
+		if ( '' !== $subject ) {
+			$params['subject'] = $subject;
+		}
+
+		return $params;
 	}
 
 	private static function build_laravel_internal_action_response( $trace_id, $parsed, $plan, $confirmation ) {
@@ -378,10 +414,11 @@ class YoRo_REST_Execute_Handler {
 			$result['message']
 				?? ( $confirmation['message'] ?? __( 'I saved that store preference.', 'yoro-ai-core' ) )
 		);
+		$result_succeeded = ! isset( $result['success'] ) || ! empty( $result['success'] );
 
-		if ( empty( $confirmation['success'] ) || empty( $confirmation['internal_execution'] ) ) {
+		if ( empty( $confirmation['success'] ) || empty( $confirmation['internal_execution'] ) || ! $result_succeeded ) {
 			$message = sanitize_text_field(
-				$confirmation['message'] ?? __( 'I could not complete that internal store-memory action.', 'yoro-ai-core' )
+				$result['message'] ?? ( $confirmation['message'] ?? __( 'I could not complete that internal action.', 'yoro-ai-core' ) )
 			);
 
 			return [
@@ -408,13 +445,22 @@ class YoRo_REST_Execute_Handler {
 		$result['read_only']    = true;
 		$result['result_type']  = $result['result_type'] ?? 'assistant_message';
 		$result['display_type'] = $result['display_type'] ?? 'assistant_message';
+		$pending_status         = sanitize_key( $confirmation['pending_operation_status'] ?? ( $confirmation['stage'] ?? '' ) );
+		$is_terminal            = in_array( $pending_status, [ 'executed', 'failed', 'cancelled' ], true );
+		$parsed                 = $is_terminal ? self::strip_terminal_pending_preview_artifacts( $parsed, $pending_status ) : $parsed;
+		$result['pending_operation_active'] = false;
+
+		if ( '' !== $pending_status ) {
+			$result['pending_operation_status'] = $pending_status;
+		}
 
 		return [
 			'success'                  => true,
 			'stage'                    => 'done',
 			'trace_id'                 => sanitize_text_field( (string) $trace_id ),
 			'conversation_id'          => sanitize_text_field( (string) ( $confirmation['conversation_id'] ?? '' ) ),
-			'pending_operation_token'  => sanitize_text_field( (string) ( $confirmation['pending_operation_token'] ?? '' ) ),
+			'pending_operation_token'  => $is_terminal ? '' : sanitize_text_field( (string) ( $confirmation['pending_operation_token'] ?? '' ) ),
+			'pending_operation_status' => $pending_status,
 			'pending_operation_active' => false,
 			'parsed'                   => is_array( $parsed ) ? $parsed : [],
 			'plan'                     => is_array( $plan ) ? $plan : [],
@@ -422,6 +468,41 @@ class YoRo_REST_Execute_Handler {
 			'message'                  => $message,
 			'internal_execution'       => true,
 		];
+	}
+
+	private static function strip_terminal_pending_preview_artifacts( $parsed, $pending_status ) {
+		if ( ! is_array( $parsed ) ) {
+			return [];
+		}
+
+		unset( $parsed['email_preview'] );
+
+		if ( isset( $parsed['action_plan'] ) && is_array( $parsed['action_plan'] ) ) {
+			unset( $parsed['action_plan']['email_preview'] );
+
+			if ( isset( $parsed['action_plan']['steps'] ) && is_array( $parsed['action_plan']['steps'] ) ) {
+				foreach ( $parsed['action_plan']['steps'] as $index => $step ) {
+					if ( ! is_array( $step ) ) {
+						continue;
+					}
+
+					if ( isset( $step['meta'] ) && is_array( $step['meta'] ) ) {
+						unset( $step['meta']['email_preview'] );
+					}
+
+					$parsed['action_plan']['steps'][ $index ] = $step;
+				}
+			}
+		}
+
+		$parsed['meta'] = isset( $parsed['meta'] ) && is_array( $parsed['meta'] )
+			? $parsed['meta']
+			: [];
+		$parsed['meta']['pending_operation_token'] = '';
+		$parsed['meta']['pending_operation_active'] = false;
+		$parsed['meta']['pending_operation_status'] = sanitize_key( (string) $pending_status );
+
+		return $parsed;
 	}
 
 	private static function build_stale_action_confirmation_response( $trace_id ) {

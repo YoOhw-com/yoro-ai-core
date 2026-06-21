@@ -49,7 +49,7 @@ class YoRo_AI_Settings {
 
 		if ( $base_url === $api_url ) {
 			$base_url = preg_replace(
-				'#/(?:sites/handshake|conversations(?:/message|/[^/]+)?|actions/(?:execute|confirm|cancel))$#',
+				'#/(?:sites/handshake|conversations(?:/message|/[^/]+)?|actions/(?:execute|confirm|cancel)|email/(?:gmail/(?:connect-intents|disconnect)|inbox(?:/sync)?|threads/[^/]+(?:/reply)?))$#',
 				'',
 				$api_url
 			);
@@ -125,7 +125,7 @@ class YoRo_AI_Settings {
 
 		if ( $base_url === $api_url ) {
 			$base_url = preg_replace(
-				'#/(?:sites/handshake|conversations(?:/message|/[^/]+)?|actions/(?:execute|confirm|cancel)|connect/wordpress/(?:intents|exchange))$#',
+				'#/(?:sites/handshake|conversations(?:/message|/[^/]+)?|actions/(?:execute|confirm|cancel)|connect/wordpress/(?:intents|exchange)|email/(?:gmail/(?:connect-intents|disconnect)|inbox(?:/sync)?|threads/[^/]+(?:/reply)?))$#',
 				'',
 				$api_url
 			);

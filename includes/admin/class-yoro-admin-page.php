@@ -60,6 +60,45 @@ class YoRo_Admin_Page {
 		);
 	}
 
+	private static function asset_version( $relative_path ) {
+		$path = YORO_AI_CORE_PATH . ltrim( $relative_path, '/' );
+
+		return is_readable( $path ) ? (string) filemtime( $path ) : YORO_AI_CORE_VERSION;
+	}
+
+	private static function get_woocommerce_email_from_address() {
+		return sanitize_email( get_option( 'woocommerce_email_from_address', get_option( 'admin_email', '' ) ) );
+	}
+
+	private static function get_woocommerce_email_from_name() {
+		return sanitize_text_field( get_option( 'woocommerce_email_from_name', get_bloginfo( 'name' ) ) );
+	}
+
+	private static function get_mailbox_assignee_options() {
+		$users = get_users(
+			[
+				'role__in' => [ 'administrator', 'shop_manager' ],
+				'number'   => 50,
+				'orderby'  => 'display_name',
+				'order'    => 'ASC',
+			]
+		);
+
+		return array_values(
+			array_map(
+				static function ( $user ) {
+					return [
+						'id'    => (string) absint( $user->ID ),
+						'name'  => sanitize_text_field( $user->display_name ),
+						'email' => sanitize_email( $user->user_email ),
+						'role'  => sanitize_key( (string) ( $user->roles[0] ?? 'staff' ) ),
+					];
+				},
+				is_array( $users ) ? $users : []
+			)
+		);
+	}
+
 	public static function enqueue_assets( $hook ) {
 		if ( ! in_array( $hook, self::get_admin_screen_ids(), true ) ) {
 			return;
@@ -69,14 +108,14 @@ class YoRo_Admin_Page {
 			'yoro-ai-admin',
 			YORO_AI_CORE_URL . 'assets/css/yoro-ai-admin.css',
 			[],
-			YORO_AI_CORE_VERSION
+			self::asset_version( 'assets/css/yoro-ai-admin.css' )
 		);
 
 		wp_enqueue_script(
 			'yoro-ai-display-labels',
 			YORO_AI_CORE_URL . 'assets/js/yoro-ai-display-labels.js',
 			[],
-			YORO_AI_CORE_VERSION,
+			self::asset_version( 'assets/js/yoro-ai-display-labels.js' ),
 			true
 		);
 
@@ -84,7 +123,7 @@ class YoRo_Admin_Page {
 			'yoro-ai-workflow-renderers',
 			YORO_AI_CORE_URL . 'assets/js/yoro-ai-workflow-renderers.js',
 			[ 'yoro-ai-display-labels' ],
-			YORO_AI_CORE_VERSION,
+			self::asset_version( 'assets/js/yoro-ai-workflow-renderers.js' ),
 			true
 		);
 
@@ -92,7 +131,7 @@ class YoRo_Admin_Page {
 			'yoro-ai-email-ui',
 			YORO_AI_CORE_URL . 'assets/js/yoro-ai-email-ui.js',
 			[ 'yoro-ai-display-labels' ],
-			YORO_AI_CORE_VERSION,
+			self::asset_version( 'assets/js/yoro-ai-email-ui.js' ),
 			true
 		);
 
@@ -100,7 +139,7 @@ class YoRo_Admin_Page {
 			'yoro-ai-order-ui',
 			YORO_AI_CORE_URL . 'assets/js/yoro-ai-order-ui.js',
 			[ 'yoro-ai-display-labels' ],
-			YORO_AI_CORE_VERSION,
+			self::asset_version( 'assets/js/yoro-ai-order-ui.js' ),
 			true
 		);
 
@@ -108,7 +147,7 @@ class YoRo_Admin_Page {
 			'yoro-ai-result-renderers',
 			YORO_AI_CORE_URL . 'assets/js/yoro-ai-result-renderers.js',
 			[ 'yoro-ai-display-labels' ],
-			YORO_AI_CORE_VERSION,
+			self::asset_version( 'assets/js/yoro-ai-result-renderers.js' ),
 			true
 		);
 
@@ -122,7 +161,7 @@ class YoRo_Admin_Page {
 				'yoro-ai-order-ui',
 				'yoro-ai-result-renderers',
 			],
-			YORO_AI_CORE_VERSION,
+			self::asset_version( 'assets/js/yoro-ai-admin.js' ),
 			true
 		);
 
@@ -139,6 +178,15 @@ class YoRo_Admin_Page {
 		$conversation_storage_key = 'yoro_ai_conversation_id_' . md5(
 			untrailingslashit( home_url() ) . '|' . get_current_user_id()
 		);
+		$current_user             = wp_get_current_user();
+		$current_user_payload     = $current_user instanceof WP_User && $current_user->ID
+			? [
+				'id'    => (string) absint( $current_user->ID ),
+				'name'  => sanitize_text_field( $current_user->display_name ),
+				'email' => sanitize_email( $current_user->user_email ),
+				'role'  => sanitize_key( (string) ( $current_user->roles[0] ?? 'admin' ) ),
+			]
+			: [];
 
 		wp_localize_script(
 			'yoro-ai-admin',
@@ -154,6 +202,17 @@ class YoRo_Admin_Page {
 				'undoUrl'                               => esc_url_raw( rest_url( 'yoro-ai-core/v1/undo' ) ),
 				'aiApiStatusUrl'                        => esc_url_raw( rest_url( 'yoro-ai-core/v1/ai-api/status' ) ),
 				'aiApiHandshakeUrl'                     => esc_url_raw( rest_url( 'yoro-ai-core/v1/ai-api/handshake' ) ),
+				'emailInboxUrl'                         => esc_url_raw( rest_url( 'yoro-ai-core/v1/email/inbox' ) ),
+				'emailInboxSyncUrl'                     => esc_url_raw( rest_url( 'yoro-ai-core/v1/email/inbox/sync' ) ),
+				'emailThreadBaseUrl'                    => esc_url_raw( rest_url( 'yoro-ai-core/v1/email/threads' ) ),
+				'emailGmailConnectIntentUrl'            => esc_url_raw( rest_url( 'yoro-ai-core/v1/email/gmail/connect-intents' ) ),
+				'emailGmailDisconnectUrl'               => esc_url_raw( rest_url( 'yoro-ai-core/v1/email/gmail/disconnect' ) ),
+				'emailMicrosoftConnectIntentUrl'        => esc_url_raw( rest_url( 'yoro-ai-core/v1/email/microsoft/connect-intents' ) ),
+				'emailImapConnectUrl'                   => esc_url_raw( rest_url( 'yoro-ai-core/v1/email/imap/connect' ) ),
+				'emailMailboxDisconnectUrl'             => esc_url_raw( rest_url( 'yoro-ai-core/v1/email/disconnect' ) ),
+				'woocommerceEmailFromAddress'           => self::get_woocommerce_email_from_address(),
+				'woocommerceEmailFromName'              => self::get_woocommerce_email_from_name(),
+				'mailboxAssignees'                      => self::get_mailbox_assignee_options(),
 				'aiApiAccountUrl'                       => esc_url_raw( YoRo_AI_Settings::get_ai_api_account_url() ),
 				'aiApiBillingUrl'                       => esc_url_raw( YoRo_AI_Settings::get_ai_api_billing_url() ),
 				'aiApiDashboardUrl'                     => esc_url_raw( YoRo_AI_Settings::get_ai_api_dashboard_url() ),
@@ -161,6 +220,7 @@ class YoRo_Admin_Page {
 				'conversationStorageKey'                => $conversation_storage_key,
 				'nonce'                                 => wp_create_nonce( 'wp_rest' ),
 				'orderStatuses'                         => $order_statuses,
+				'currentUser'                           => $current_user_payload,
 				'dateFormat'                            => get_option( 'date_format', 'Y-m-d' ),
 				'timeFormat'                            => get_option( 'time_format', 'H:i' ),
 				'i18n'                                  => [
@@ -218,10 +278,32 @@ class YoRo_Admin_Page {
 						<div class="yoro-chat-quick-search-results" data-yoro-quick-results>
 							<p class="yoro-chat-quick-hint"><?php esc_html_e( 'Search by order number, customer email, or phone number.', 'yoro-ai-core' ); ?></p>
 						</div>
+
+						<div class="yoro-chat-quick-inbox" data-yoro-quick-inbox>
+							<div class="yoro-chat-quick-inbox-head">
+								<div>
+									<strong><?php esc_html_e( 'Inbox', 'yoro-ai-core' ); ?></strong>
+									<span><?php esc_html_e( 'Recent shop emails', 'yoro-ai-core' ); ?></span>
+								</div>
+								<div class="yoro-chat-quick-inbox-actions">
+									<button type="button" class="button button-small yoro-quick-inbox-refresh">
+										<span class="dashicons dashicons-update" aria-hidden="true"></span>
+										<span><?php esc_html_e( 'Refresh', 'yoro-ai-core' ); ?></span>
+									</button>
+									<button type="button" class="button button-small yoro-quick-inbox-sync">
+										<span class="dashicons dashicons-update-alt" aria-hidden="true"></span>
+										<span><?php esc_html_e( 'Sync', 'yoro-ai-core' ); ?></span>
+									</button>
+								</div>
+							</div>
+							<div class="yoro-chat-quick-inbox-body" data-yoro-quick-inbox-body>
+								<p class="yoro-chat-quick-hint"><?php esc_html_e( 'Open Shop desk to load recent inbox threads.', 'yoro-ai-core' ); ?></p>
+							</div>
+						</div>
 					</div>
 					<button type="button" class="yoro-chat-quick-bubble" data-yoro-quick-toggle aria-expanded="false" aria-controls="yoro-chat-quick-panel">
-						<span class="yoro-chat-quick-bubble-icon">+</span>
-						<span class="yoro-chat-quick-bubble-label"><?php esc_html_e( 'Lookup', 'yoro-ai-core' ); ?></span>
+						<span class="dashicons dashicons-store yoro-chat-quick-bubble-icon" aria-hidden="true"></span>
+						<span class="yoro-chat-quick-bubble-label"><?php esc_html_e( 'Shop desk', 'yoro-ai-core' ); ?></span>
 					</button>
 				</div>
 			</div>
@@ -245,42 +327,52 @@ class YoRo_Admin_Page {
 
 				<div class="yoro-chat-actions">
 					<button type="button" class="button button-primary" id="yoro-ai-run">
-						<?php esc_html_e( 'Send', 'yoro-ai-core' ); ?>
+						<span class="dashicons dashicons-arrow-right-alt2" aria-hidden="true"></span>
+						<span><?php esc_html_e( 'Send', 'yoro-ai-core' ); ?></span>
 					</button>
 
 					<button type="button" class="button" id="yoro-ai-clear">
-						<?php esc_html_e( 'New Conversation', 'yoro-ai-core' ); ?>
+						<span class="dashicons dashicons-plus-alt2" aria-hidden="true"></span>
+						<span><?php esc_html_e( 'New Conversation', 'yoro-ai-core' ); ?></span>
 					</button>
 
 					<button type="button" class="button" id="yoro-ai-load-context">
-						<?php esc_html_e( 'Context', 'yoro-ai-core' ); ?>
+						<span class="dashicons dashicons-database" aria-hidden="true"></span>
+						<span><?php esc_html_e( 'Context', 'yoro-ai-core' ); ?></span>
 					</button>
 
 					<span class="yoro-chat-actions-spacer" aria-hidden="true"></span>
 
 					<button type="button" class="button yoro-chat-admin-button" id="yoro-ai-open-admin-panels">
-						<?php esc_html_e( 'Admin', 'yoro-ai-core' ); ?>
+						<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
+						<span><?php esc_html_e( 'Admin', 'yoro-ai-core' ); ?></span>
 					</button>
 				</div>
 
 				<div class="yoro-chat-workflows" aria-label="<?php esc_attr_e( 'Store operations workflows', 'yoro-ai-core' ); ?>">
 					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="store.get_daily_briefing" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'window' => 'today', 'limit' => 1 ] ) ); ?>">
-						<?php esc_html_e( 'Briefing', 'yoro-ai-core' ); ?>
+						<span class="dashicons dashicons-clipboard" aria-hidden="true"></span>
+						<span><?php esc_html_e( 'Briefing', 'yoro-ai-core' ); ?></span>
 					</button>
 					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="operations.get_attention_queue" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'limit' => 8 ] ) ); ?>">
-						<?php esc_html_e( 'Attention', 'yoro-ai-core' ); ?>
+						<span class="dashicons dashicons-warning" aria-hidden="true"></span>
+						<span><?php esc_html_e( 'Attention', 'yoro-ai-core' ); ?></span>
 					</button>
 					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="operations.get_fulfillment_queue" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'limit' => 8 ] ) ); ?>">
-						<?php esc_html_e( 'Fulfillment', 'yoro-ai-core' ); ?>
+						<span class="dashicons dashicons-archive" aria-hidden="true"></span>
+						<span><?php esc_html_e( 'Fulfillment', 'yoro-ai-core' ); ?></span>
 					</button>
 					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="customers.get_service_queue" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'limit' => 8 ] ) ); ?>">
-						<?php esc_html_e( 'Customers', 'yoro-ai-core' ); ?>
+						<span class="dashicons dashicons-groups" aria-hidden="true"></span>
+						<span><?php esc_html_e( 'Customers', 'yoro-ai-core' ); ?></span>
 					</button>
 					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="products.get_inventory_queue" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'limit' => 8, 'focus' => 'attention' ] ) ); ?>">
-						<?php esc_html_e( 'Inventory', 'yoro-ai-core' ); ?>
+						<span class="dashicons dashicons-products" aria-hidden="true"></span>
+						<span><?php esc_html_e( 'Inventory', 'yoro-ai-core' ); ?></span>
 					</button>
 					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="store.get_business_summary" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'window' => 'this_month', 'focus' => 'overview' ] ) ); ?>">
-						<?php esc_html_e( 'Reports', 'yoro-ai-core' ); ?>
+						<span class="dashicons dashicons-chart-bar" aria-hidden="true"></span>
+						<span><?php esc_html_e( 'Reports', 'yoro-ai-core' ); ?></span>
 					</button>
 				</div>
 			</div>
@@ -293,39 +385,79 @@ class YoRo_Admin_Page {
 		$initial_panel = isset( $_REQUEST['yoro_admin_panel'] )
 			? sanitize_key( wp_unslash( $_REQUEST['yoro_admin_panel'] ) )
 			: '';
+		$can_manage_options = current_user_can( 'manage_options' );
 
 		if ( ! in_array( $initial_panel, [ 'history', 'safety', 'settings' ], true ) ) {
 			$initial_panel = '';
 		}
+
+		if ( ! $can_manage_options && 'history' !== $initial_panel ) {
+			$initial_panel = '';
+		}
+
+		$active_panel = '' !== $initial_panel ? $initial_panel : 'history';
+		$history_active = 'history' === $active_panel;
+		$safety_active = 'safety' === $active_panel;
+		$settings_active = 'settings' === $active_panel;
 		?>
 		<div class="yoro-admin-panel-source" data-yoro-admin-panels data-yoro-admin-initial-panel="<?php echo esc_attr( $initial_panel ); ?>" hidden>
 			<div class="yoro-admin-panel-modal" data-yoro-admin-modal>
 				<div class="yoro-admin-panel-tabs" role="tablist" aria-label="<?php esc_attr_e( 'YoRo AI admin panels', 'yoro-ai-core' ); ?>">
-					<button type="button" class="button yoro-admin-panel-tab is-active" data-yoro-admin-tab="history" role="tab" aria-selected="true">
+					<button
+						type="button"
+						class="button yoro-admin-panel-tab<?php echo $history_active ? ' is-active' : ''; ?>"
+						data-yoro-admin-tab="history"
+						role="tab"
+						aria-selected="<?php echo $history_active ? 'true' : 'false'; ?>"
+					>
 						<?php esc_html_e( 'History', 'yoro-ai-core' ); ?>
 					</button>
 
-					<?php if ( current_user_can( 'manage_options' ) ) : ?>
-						<button type="button" class="button yoro-admin-panel-tab" data-yoro-admin-tab="safety" role="tab" aria-selected="false">
+					<?php if ( $can_manage_options ) : ?>
+						<button
+							type="button"
+							class="button yoro-admin-panel-tab<?php echo $safety_active ? ' is-active' : ''; ?>"
+							data-yoro-admin-tab="safety"
+							role="tab"
+							aria-selected="<?php echo $safety_active ? 'true' : 'false'; ?>"
+						>
 							<?php esc_html_e( 'Safety', 'yoro-ai-core' ); ?>
 						</button>
 
-						<button type="button" class="button yoro-admin-panel-tab" data-yoro-admin-tab="settings" role="tab" aria-selected="false">
+						<button
+							type="button"
+							class="button yoro-admin-panel-tab<?php echo $settings_active ? ' is-active' : ''; ?>"
+							data-yoro-admin-tab="settings"
+							role="tab"
+							aria-selected="<?php echo $settings_active ? 'true' : 'false'; ?>"
+						>
 							<?php esc_html_e( 'Settings', 'yoro-ai-core' ); ?>
 						</button>
 					<?php endif; ?>
 				</div>
 
-				<div class="yoro-admin-panel-section is-active" data-yoro-admin-panel="history" role="tabpanel">
+				<div
+					class="yoro-admin-panel-section<?php echo $history_active ? ' is-active' : ''; ?>"
+					data-yoro-admin-panel="history"
+					role="tabpanel"
+				>
 					<?php self::render_history_page(); ?>
 				</div>
 
-				<?php if ( current_user_can( 'manage_options' ) ) : ?>
-					<div class="yoro-admin-panel-section" data-yoro-admin-panel="safety" role="tabpanel">
+				<?php if ( $can_manage_options ) : ?>
+					<div
+						class="yoro-admin-panel-section<?php echo $safety_active ? ' is-active' : ''; ?>"
+						data-yoro-admin-panel="safety"
+						role="tabpanel"
+					>
 						<?php self::render_policies_page(); ?>
 					</div>
 
-					<div class="yoro-admin-panel-section" data-yoro-admin-panel="settings" role="tabpanel">
+					<div
+						class="yoro-admin-panel-section<?php echo $settings_active ? ' is-active' : ''; ?>"
+						data-yoro-admin-panel="settings"
+						role="tabpanel"
+					>
 						<?php self::render_settings_page(); ?>
 					</div>
 				<?php endif; ?>
@@ -397,11 +529,11 @@ class YoRo_Admin_Page {
 
 			<?php if ( isset( $_GET['policy_saved'] ) ) : ?>
 				<?php if ( '1' === sanitize_text_field( wp_unslash( $_GET['policy_saved'] ) ) ) : ?>
-					<div class="notice notice-success is-dismissible">
+					<div class="notice notice-success is-dismissible" data-yoro-admin-notice-panel="safety">
 						<p><?php esc_html_e( 'Safety mode saved.', 'yoro-ai-core' ); ?></p>
 					</div>
 				<?php else : ?>
-					<div class="notice notice-error is-dismissible">
+					<div class="notice notice-error is-dismissible" data-yoro-admin-notice-panel="safety">
 						<p><?php esc_html_e( 'Safety mode could not be saved.', 'yoro-ai-core' ); ?></p>
 					</div>
 				<?php endif; ?>
@@ -842,6 +974,19 @@ class YoRo_Admin_Page {
 					</table>
 				</div>
 
+				<div class="yoro-ai-card yoro-email-connection-card" data-yoro-mailbox-settings>
+					<h2><?php esc_html_e( 'Email Inbox', 'yoro-ai-core' ); ?></h2>
+					<div class="yoro-email-connection-panel" data-yoro-mailbox-settings-body>
+						<div class="yoro-email-connection-summary is-loading">
+							<span class="dashicons dashicons-update" aria-hidden="true"></span>
+							<div>
+								<strong><?php esc_html_e( 'Checking email connection...', 'yoro-ai-core' ); ?></strong>
+								<p><?php esc_html_e( 'YoRo is checking the connected shop inbox.', 'yoro-ai-core' ); ?></p>
+							</div>
+						</div>
+					</div>
+				</div>
+
 				<div class="yoro-ai-card">
 					<h2><?php esc_html_e( 'Local Store Controls', 'yoro-ai-core' ); ?></h2>
 					<table class="form-table" role="presentation">
@@ -1177,7 +1322,7 @@ class YoRo_Admin_Page {
 			return;
 		}
 
-		echo '<div class="notice notice-' . esc_attr( $type ) . ' is-dismissible"><p>' . esc_html( $message ) . '</p></div>';
+		echo '<div class="notice notice-' . esc_attr( $type ) . ' is-dismissible" data-yoro-admin-notice-panel="settings"><p>' . esc_html( $message ) . '</p></div>';
 	}
 
 	private static function redirect_to_settings_with_connect_notice( $type, $message ) {
@@ -1263,47 +1408,33 @@ class YoRo_Admin_Page {
 			$connection_result = ( new YoRo_AI_API_Client() )->handshake();
 		}
 
-		add_action(
-			'admin_notices',
-			function() use ( $connection_result, $connection_error, $settings_result, $credentials_verified ) {
-				if ( is_wp_error( $connection_error ) ) {
-					echo '<div class="notice notice-error is-dismissible"><p>' .
-						esc_html(
-							sprintf(
-								/* translators: %s: connection error message */
-								__( 'YoRo settings saved, but the new YoRo AI API credentials were not saved: %s', 'yoro-ai-core' ),
-								$connection_error->get_error_message()
-							)
-						) .
-						'</p></div>';
+		if ( is_wp_error( $connection_error ) ) {
+			self::redirect_to_settings_with_connect_notice(
+				'error',
+				sprintf(
+					/* translators: %s: connection error message */
+					__( 'YoRo settings saved, but the new YoRo AI API credentials were not saved: %s', 'yoro-ai-core' ),
+					$connection_error->get_error_message()
+				)
+			);
+		}
 
-					return;
-				}
+		if ( is_wp_error( $connection_result ) ) {
+			self::redirect_to_settings_with_connect_notice( 'error', $connection_result->get_error_message() );
+		}
 
-				if ( is_wp_error( $connection_result ) ) {
-					echo '<div class="notice notice-error is-dismissible"><p>' .
-						esc_html( $connection_result->get_error_message() ) .
-						'</p></div>';
+		if ( is_array( $connection_result ) ) {
+			self::redirect_to_settings_with_connect_notice(
+				'success',
+				$credentials_verified
+					? __( 'YoRo settings saved. New YoRo AI API credentials verified and saved.', 'yoro-ai-core' )
+					: __( 'YoRo settings saved. YoRo AI API connection verified.', 'yoro-ai-core' )
+			);
+		}
 
-					return;
-				}
-
-				if ( is_array( $connection_result ) ) {
-					$message = $credentials_verified
-						? __( 'YoRo settings saved. New YoRo AI API credentials verified and saved.', 'yoro-ai-core' )
-						: __( 'YoRo settings saved. YoRo AI API connection verified.', 'yoro-ai-core' );
-
-					echo '<div class="notice notice-success is-dismissible"><p>' .
-						esc_html( $message ) .
-						'</p></div>';
-
-					return;
-				}
-
-				echo '<div class="notice notice-success is-dismissible"><p>' .
-					esc_html__( 'YoRo settings saved.', 'yoro-ai-core' ) .
-					'</p></div>';
-			}
+		self::redirect_to_settings_with_connect_notice(
+			'success',
+			__( 'YoRo settings saved.', 'yoro-ai-core' )
 		);
 	}
 

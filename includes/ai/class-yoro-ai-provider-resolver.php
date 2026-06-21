@@ -26,10 +26,18 @@ class YoRo_AI_Provider_Resolver {
 			return false;
 		}
 
-		$supported_capabilities = [ 'conversation', 'email_compose' ];
+		$supported_capabilities = [ 'conversation', 'email_compose', 'email_inbox' ];
 
 		if ( ! in_array( $capability, $supported_capabilities, true ) ) {
 			return false;
+		}
+
+		if ( 'email_inbox' === $capability ) {
+			$entitlements = YoRo_AI_Settings::get_ai_api_entitlements();
+
+			if ( ! array_key_exists( 'email_inbox', $entitlements ) ) {
+				return YoRo_AI_Settings::ai_api_has_quota_remaining();
+			}
 		}
 
 		return YoRo_AI_Settings::ai_api_allows_feature( $capability ) &&

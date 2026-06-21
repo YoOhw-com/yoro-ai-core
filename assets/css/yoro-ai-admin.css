@@ -22,6 +22,18 @@ body.toplevel_page_yoro-ai-core {
 	--yoro-accent-border: color-mix(in srgb, var(--yoro-accent) 34%, #fff);
 	--yoro-accent-shadow: color-mix(in srgb, var(--yoro-accent) 24%, transparent);
 	--yoro-accent-text: color-mix(in srgb, var(--yoro-accent-dark) 82%, #1d2327);
+	--yoro-type-chat: 15px;
+	--yoro-type-body: 14px;
+	--yoro-type-compact: 13px;
+	--yoro-type-small: 12px;
+	--yoro-type-label: 11px;
+	--yoro-type-title: 16px;
+	--yoro-type-section-title: 14px;
+	--yoro-type-metric: 20px;
+	--yoro-type-metric-compact: 18px;
+	--yoro-leading-body: 1.55;
+	--yoro-leading-compact: 1.45;
+	--yoro-leading-tight: 1.3;
 }
 
 .yoro-ai-header {
@@ -302,7 +314,9 @@ body.toplevel_page_yoro-ai-core {
 }
 
 .yoro-chat-quick-panel {
-	width: min(540px, calc(100vw - 72px));
+	width: min(680px, calc(100vw - 72px));
+	max-height: min(720px, calc(100vh - 112px));
+	overflow-y: auto;
 	padding: 14px;
 	border: 1px solid rgba(29, 35, 39, 0.12);
 	border-radius: 20px;
@@ -354,13 +368,14 @@ body.toplevel_page_yoro-ai-core {
 
 .yoro-chat-quick-bubble-icon {
 	display: inline-flex;
-	width: 22px;
-	height: 22px;
 	align-items: center;
 	justify-content: center;
+	width: 22px;
+	height: 22px;
+	margin: 0;
 	border-radius: 999px;
 	background: rgba(255, 255, 255, 0.18);
-	font-size: 16px;
+	font-size: 17px;
 	line-height: 1;
 }
 
@@ -424,12 +439,1225 @@ body.toplevel_page_yoro-ai-core {
 	white-space: nowrap;
 }
 
+.yoro-chat-quick-inbox {
+	display: grid;
+	gap: 10px;
+	margin-top: 12px;
+	padding: 13px;
+	border: 1px solid #e2e8f0;
+	border-radius: 16px;
+	background: #ffffff;
+}
+
+.yoro-chat-quick-inbox-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.yoro-chat-quick-inbox-head > div:first-child {
+	display: grid;
+	gap: 2px;
+	min-width: 0;
+}
+
+.yoro-chat-quick-inbox-head strong {
+	color: #1d2327;
+	font-size: 14px;
+	line-height: 1.3;
+}
+
+.yoro-chat-quick-inbox-head span {
+	color: #64748b;
+	font-size: 12px;
+	line-height: 1.35;
+}
+
+.yoro-chat-quick-inbox-actions {
+	display: flex;
+	gap: 6px;
+	flex: 0 0 auto;
+}
+
+.yoro-chat-quick-inbox-actions .button,
+.yoro-quick-inbox-thread-head .button,
+.yoro-quick-inbox-reply-box .button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 5px;
+	line-height: 1;
+}
+
+.yoro-chat-quick-inbox-actions .dashicons,
+.yoro-quick-inbox-thread-head .dashicons,
+.yoro-quick-inbox-reply-box .dashicons {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 15px;
+	height: 15px;
+	margin: 0;
+	font-size: 15px;
+	line-height: 1;
+	vertical-align: middle;
+}
+
+.yoro-chat-quick-inbox-body {
+	display: grid;
+	gap: 9px;
+	min-width: 0;
+}
+
+.yoro-quick-inbox-state {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 42px;
+	padding: 10px;
+	border: 1px dashed #cbd5e1;
+	border-radius: 12px;
+	color: #64748b;
+}
+
+.yoro-quick-inbox-state p {
+	margin: 0;
+	font-size: 13px;
+	line-height: 1.45;
+}
+
+.yoro-quick-inbox-state.is-loading .dashicons {
+	animation: yoro-spin 1s linear infinite;
+}
+
+.yoro-quick-inbox-state.is-error {
+	border-color: #fecaca;
+	background: #fef2f2;
+	color: #991b1b;
+}
+
+.yoro-quick-inbox-connect-card {
+	display: grid;
+	gap: 10px;
+}
+
+.yoro-quick-inbox-connect-actions {
+	display: flex;
+	justify-content: flex-start;
+}
+
+.yoro-quick-inbox-connect-actions .button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	line-height: 1;
+}
+
+.yoro-quick-inbox-connect-actions .dashicons {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	font-size: 16px;
+	line-height: 1;
+}
+
+.yoro-quick-inbox-summary {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 4px 10px;
+	padding: 10px;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	background: #f8fafc;
+}
+
+.yoro-quick-inbox-summary span,
+.yoro-quick-inbox-summary small {
+	overflow: hidden;
+	color: #64748b;
+	font-size: 12px;
+	line-height: 1.35;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-quick-inbox-summary strong {
+	color: #1d2327;
+	font-size: 13px;
+	line-height: 1.35;
+	white-space: nowrap;
+}
+
+.yoro-quick-inbox-recommendation,
+.yoro-quick-inbox-warning {
+	display: grid;
+	gap: 4px;
+	padding: 10px;
+	border: 1px solid #bfdbfe;
+	border-radius: 12px;
+	background: #eff6ff;
+}
+
+.yoro-quick-inbox-warning {
+	border-color: #fde68a;
+	background: #fffbeb;
+}
+
+.yoro-quick-inbox-recommendation span,
+.yoro-quick-inbox-warning strong,
+.yoro-quick-inbox-recommendation strong,
+.yoro-quick-inbox-recommendation p,
+.yoro-quick-inbox-warning p {
+	margin: 0;
+}
+
+.yoro-quick-inbox-recommendation span {
+	color: #1d4ed8;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0;
+	text-transform: uppercase;
+}
+
+.yoro-quick-inbox-recommendation strong,
+.yoro-quick-inbox-warning strong {
+	overflow: hidden;
+	color: #1d2327;
+	font-size: 13px;
+	line-height: 1.35;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-quick-inbox-recommendation p,
+.yoro-quick-inbox-warning p {
+	color: #475569;
+	font-size: 12px;
+	line-height: 1.45;
+}
+
+.yoro-quick-inbox-providers,
+.yoro-mailbox-provider-options {
+	display: grid;
+	gap: 8px;
+}
+
+.yoro-mailbox-provider-option {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 10px;
+	padding: 10px;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	background: #ffffff;
+}
+
+.yoro-mailbox-provider-option.is-disabled {
+	background: #f8fafc;
+	opacity: 0.78;
+}
+
+.yoro-mailbox-provider-option > .dashicons {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--yoro-accent) 10%, #ffffff);
+	color: var(--yoro-accent-text);
+	font-size: 16px;
+	line-height: 1;
+}
+
+.yoro-mailbox-provider-option > div {
+	display: grid;
+	gap: 3px;
+	min-width: 0;
+}
+
+.yoro-mailbox-provider-option strong,
+.yoro-mailbox-provider-option p,
+.yoro-mailbox-provider-option em {
+	margin: 0;
+}
+
+.yoro-mailbox-provider-option strong,
+.yoro-mailbox-provider-option p {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-mailbox-provider-option strong {
+	color: #1d2327;
+	font-size: 13px;
+	line-height: 1.35;
+}
+
+.yoro-mailbox-provider-option p {
+	color: #64748b;
+	font-size: 12px;
+	line-height: 1.35;
+}
+
+.yoro-mailbox-provider-option em {
+	justify-self: end;
+	padding: 3px 7px;
+	border-radius: 999px;
+	background: #f1f5f9;
+	color: #475569;
+	font-size: 11px;
+	font-style: normal;
+	font-weight: 700;
+	line-height: 1.2;
+	white-space: nowrap;
+}
+
+.yoro-mailbox-provider-option.is-enabled em {
+	background: #dcfce7;
+	color: #166534;
+}
+
+.yoro-mailbox-provider-option .button {
+	grid-column: 1 / -1;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	justify-self: start;
+	gap: 6px;
+	min-height: 32px;
+	line-height: 1;
+}
+
+.yoro-mailbox-provider-option .button .dashicons {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	font-size: 16px;
+	line-height: 1;
+}
+
+.yoro-mailbox-provider-option .button > span:not(.dashicons) {
+	display: inline-flex;
+	align-items: center;
+	line-height: 1;
+}
+
+.yoro-mailbox-imap-form {
+	grid-column: 1 / -1;
+	display: grid;
+	gap: 10px;
+	padding: 10px;
+	border: 1px solid #e2e8f0;
+	border-radius: 7px;
+	background: #f8fafc;
+}
+
+.yoro-mailbox-imap-form[hidden] {
+	display: none;
+}
+
+.yoro-mailbox-imap-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px;
+}
+
+.yoro-mailbox-imap-grid label {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+	margin: 0;
+}
+
+.yoro-mailbox-imap-grid label span {
+	color: #475569;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0;
+	text-transform: uppercase;
+}
+
+.yoro-mailbox-imap-grid input,
+.yoro-mailbox-imap-grid select {
+	width: 100%;
+	min-height: 32px;
+	margin: 0;
+	border-radius: 6px;
+}
+
+.yoro-mailbox-imap-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.yoro-mailbox-imap-actions .button {
+	grid-column: auto;
+}
+
+.yoro-mailbox-imap-actions p {
+	margin: 0;
+	color: #64748b;
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.yoro-quick-inbox-summary small {
+	grid-column: 1 / -1;
+}
+
+.yoro-quick-inbox-list {
+	display: grid;
+	gap: 7px;
+}
+
+.yoro-quick-inbox-thread {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 10px;
+	width: 100%;
+	padding: 10px;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	background: #ffffff;
+	text-align: left;
+	cursor: pointer;
+}
+
+.yoro-quick-inbox-thread:hover,
+.yoro-quick-inbox-thread:focus {
+	border-color: var(--yoro-accent-border);
+	background: color-mix(in srgb, var(--yoro-accent) 5%, #ffffff);
+	outline: none;
+}
+
+.yoro-quick-inbox-thread.is-unread {
+	border-left: 4px solid var(--yoro-accent);
+}
+
+.yoro-quick-inbox-thread > span {
+	display: grid;
+	gap: 3px;
+	min-width: 0;
+}
+
+.yoro-quick-inbox-thread strong,
+.yoro-quick-inbox-thread em,
+.yoro-quick-inbox-thread small {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-quick-inbox-thread strong {
+	color: #1d2327;
+	font-size: 13px;
+	line-height: 1.3;
+}
+
+.yoro-quick-inbox-thread em,
+.yoro-quick-inbox-thread small,
+.yoro-quick-inbox-thread time {
+	color: #64748b;
+	font-size: 12px;
+	font-style: normal;
+	line-height: 1.35;
+}
+
+.yoro-quick-inbox-thread time {
+	white-space: nowrap;
+}
+
+.yoro-quick-inbox-thread-view {
+	display: grid;
+	gap: 10px;
+}
+
+.yoro-quick-inbox-thread-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+}
+
+.yoro-quick-inbox-thread-head > div {
+	display: grid;
+	gap: 3px;
+	min-width: 0;
+}
+
+.yoro-quick-inbox-thread-head strong,
+.yoro-quick-inbox-thread-head span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-quick-inbox-thread-head strong {
+	color: #1d2327;
+	font-size: 13px;
+	line-height: 1.35;
+}
+
+.yoro-quick-inbox-thread-head span {
+	color: #64748b;
+	font-size: 12px;
+	line-height: 1.35;
+}
+
+.yoro-quick-inbox-messages {
+	display: grid;
+	gap: 7px;
+	max-height: 260px;
+	overflow-y: auto;
+	padding-right: 2px;
+}
+
+.yoro-quick-inbox-message {
+	display: grid;
+	gap: 5px;
+	padding: 9px;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	background: #f8fafc;
+}
+
+.yoro-quick-inbox-message.is-outbound {
+	background: color-mix(in srgb, var(--yoro-accent) 7%, #ffffff);
+}
+
+.yoro-quick-inbox-message > div {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.yoro-quick-inbox-message strong,
+.yoro-quick-inbox-message time {
+	font-size: 12px;
+	line-height: 1.35;
+}
+
+.yoro-quick-inbox-message strong {
+	color: #1d2327;
+}
+
+.yoro-quick-inbox-message time {
+	color: #64748b;
+	white-space: nowrap;
+}
+
+.yoro-quick-inbox-message-body {
+	margin: 0;
+	color: #334155;
+	font-size: 13px;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.yoro-quick-inbox-reply-box {
+	display: grid;
+	gap: 8px;
+}
+
+.yoro-quick-inbox-reply-input {
+	width: 100%;
+	min-height: 82px;
+	border-radius: 10px;
+	resize: vertical;
+}
+
+.yoro-quick-inbox-reply-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.yoro-quick-inbox-reply-box .button {
+	justify-self: end;
+}
+
+.yoro-quick-inbox-reply,
+.yoro-quick-inbox-draft-reply,
+.yoro-mailbox-draft-reply,
+.yoro-mailbox-send-reply {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+.yoro-quick-inbox-reply .dashicons,
+.yoro-quick-inbox-draft-reply .dashicons,
+.yoro-mailbox-draft-reply .dashicons,
+.yoro-mailbox-send-reply .dashicons {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	font-size: 16px;
+	line-height: 1;
+	vertical-align: middle;
+}
+
+.yoro-quick-inbox-reply > span:not(.dashicons),
+.yoro-quick-inbox-draft-reply > span:not(.dashicons),
+.yoro-mailbox-draft-reply > span:not(.dashicons),
+.yoro-mailbox-send-reply > span:not(.dashicons) {
+	display: inline-flex;
+	align-items: center;
+	line-height: 1;
+}
+
+.yoro-mailbox-thread-badges {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px;
+	margin-top: 2px;
+	min-width: 0;
+}
+
+.yoro-mailbox-thread-badges em {
+	display: inline-flex;
+	align-items: center;
+	max-width: 100%;
+	min-height: 20px;
+	padding: 0 7px;
+	border-radius: 999px;
+	background: #eef2ff;
+	color: #3730a3;
+	font-size: 11px;
+	font-style: normal;
+	font-weight: 700;
+	line-height: 1.2;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-mailbox-workflow {
+	display: grid;
+	gap: 12px;
+	min-width: 0;
+	width: 100%;
+	overflow: hidden;
+	padding: 14px;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	box-sizing: border-box;
+	background: #ffffff;
+}
+
+.yoro-mailbox-workflow-card,
+.yoro-mailbox-thread-section {
+	display: grid;
+	align-content: start;
+	align-items: start;
+	gap: 8px;
+	min-width: 0;
+	padding: 10px;
+	border: 1px solid #e2e8f0;
+	border-radius: 12px;
+	background: #f8fafc;
+}
+
+.yoro-mailbox-workflow-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(180px, 1fr));
+	align-items: end;
+	gap: 10px;
+	min-width: 0;
+}
+
+.yoro-mailbox-management-layout {
+	display: grid;
+	grid-template-columns: minmax(190px, 0.9fr) minmax(260px, 1.2fr) minmax(210px, 0.9fr);
+	align-items: stretch;
+	gap: 10px;
+	min-width: 0;
+	width: 100%;
+}
+
+.yoro-mailbox-management-control {
+	display: grid;
+	align-content: start;
+	gap: 8px;
+	min-width: 0;
+	max-width: 100%;
+	padding: 10px;
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	box-sizing: border-box;
+	background: #f8fafc;
+}
+
+.yoro-mailbox-management-control-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	min-width: 0;
+}
+
+.yoro-mailbox-management-control-head span {
+	color: #475569;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0;
+	line-height: 1.25;
+	text-transform: uppercase;
+}
+
+.yoro-mailbox-management-control-head em {
+	overflow: hidden;
+	max-width: 58%;
+	padding: 2px 7px;
+	border-radius: 999px;
+	background: #eef2ff;
+	color: #3730a3;
+	font-size: 11px;
+	font-style: normal;
+	font-weight: 700;
+	line-height: 1.25;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-mailbox-management-inline-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.yoro-mailbox-management-control > .button,
+.yoro-mailbox-management-inline-actions .button {
+	flex: 0 1 auto;
+	max-width: 100%;
+}
+
+.yoro-mailbox-management-control > .button {
+	justify-self: start;
+}
+
+.yoro-mailbox-workflow-field,
+.yoro-mailbox-select-field {
+	display: grid;
+	gap: 5px;
+	min-width: 0;
+}
+
+.yoro-mailbox-workflow-field label,
+.yoro-mailbox-select-field {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+	width: 100%;
+	margin: 0;
+}
+
+.yoro-mailbox-workflow-card label {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+	width: 100%;
+	margin: 0;
+}
+
+.yoro-mailbox-workflow-card label span,
+.yoro-mailbox-workflow-field label span,
+.yoro-mailbox-workflow-label,
+.yoro-mailbox-management-action-group > span,
+.yoro-mailbox-thread-section-head strong {
+	color: #475569;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0;
+	line-height: 1.25;
+	text-transform: uppercase;
+}
+
+.yoro-mailbox-workflow-card input,
+.yoro-mailbox-workflow-card select,
+.yoro-mailbox-workflow-field select,
+.yoro-mailbox-control-select,
+.yoro-mailbox-follow-up-picker {
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	height: 34px;
+	min-height: 34px;
+	margin: 0;
+	padding: 0 28px 0 10px;
+	border: 1px solid #8c8f94;
+	border-radius: 6px;
+	box-sizing: border-box;
+	background-color: #ffffff;
+	color: #1d2327;
+	font-size: 13px;
+	line-height: 32px;
+	vertical-align: middle;
+}
+
+.yoro-mailbox-workflow-card select,
+.yoro-mailbox-workflow-field select,
+.yoro-mailbox-control-select,
+.yoro-mailbox-follow-up-picker {
+	padding-right: 32px;
+}
+
+.wp-core-ui .yoro-mailbox-workflow select.yoro-mailbox-control-select,
+.wp-core-ui .yoro-mailbox-thread-section select.yoro-mailbox-control-select {
+	width: 100%;
+	max-width: 100%;
+	height: 34px;
+	min-height: 34px;
+	padding-top: 0;
+	padding-bottom: 0;
+	box-sizing: border-box;
+	font-size: 13px;
+	line-height: 32px;
+}
+
+.yoro-mailbox-workflow-actions,
+.yoro-mailbox-thread-section .button,
+.yoro-mailbox-reply-history-item .button {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+
+.yoro-mailbox-workflow .button,
+.yoro-mailbox-thread-section .button,
+.yoro-mailbox-reply-history-item .button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 5px;
+	min-height: 31px;
+	padding: 0 10px;
+	font-size: 12px;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+.yoro-mailbox-workflow .dashicons,
+.yoro-mailbox-thread-section .dashicons,
+.yoro-mailbox-reply-history-item .dashicons {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 15px;
+	height: 15px;
+	margin: 0;
+	font-size: 15px;
+	line-height: 1;
+	vertical-align: middle;
+}
+
+.yoro-mailbox-workflow small {
+	color: #64748b;
+	font-size: 11px;
+	line-height: 1.35;
+}
+
+.yoro-mailbox-workflow-card.is-actions .yoro-mailbox-workflow-actions {
+	align-content: start;
+	align-items: flex-start;
+}
+
+.yoro-mailbox-management-actions {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 8px;
+	min-width: 0;
+	padding-top: 2px;
+}
+
+.yoro-mailbox-management-action-group {
+	display: grid;
+	align-content: start;
+	gap: 6px;
+	min-width: 0;
+}
+
+.yoro-mailbox-management-action-group .yoro-mailbox-workflow-actions {
+	gap: 6px;
+}
+
+.yoro-mailbox-management-action-group .button {
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+.yoro-mailbox-management-meta {
+	display: block;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-mailbox-thread-error {
+	display: grid;
+	gap: 2px;
+	padding: 9px 11px;
+	border: 1px solid #fecaca;
+	border-radius: 10px;
+	background: #fef2f2;
+	color: #991b1b;
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+.yoro-mailbox-thread-error strong {
+	color: #7f1d1d;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0;
+	text-transform: uppercase;
+}
+
+.yoro-mailbox-thread-error span {
+	overflow-wrap: anywhere;
+}
+
+.yoro-mailbox-intelligence {
+	background: #ffffff;
+}
+
+.yoro-mailbox-thread-section-tags {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 5px;
+	min-width: 0;
+}
+
+.yoro-mailbox-thread-section-tags em {
+	display: inline-flex;
+	align-items: center;
+	min-height: 20px;
+	padding: 0 7px;
+	border-radius: 999px;
+	background: #eef2ff;
+	color: #3730a3;
+	font-size: 11px;
+	font-style: normal;
+	font-weight: 700;
+	line-height: 1.2;
+	white-space: nowrap;
+}
+
+.yoro-mailbox-intelligence-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1.2fr) minmax(270px, 0.8fr);
+	gap: 14px;
+	align-items: start;
+	min-width: 0;
+}
+
+.yoro-mailbox-intelligence-main,
+.yoro-mailbox-intelligence-aside {
+	display: grid;
+	min-width: 0;
+}
+
+.yoro-mailbox-intelligence-aside {
+	gap: 10px;
+}
+
+.yoro-mailbox-context-list {
+	display: grid;
+	gap: 0;
+	margin: 0;
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	background: #ffffff;
+	overflow: hidden;
+}
+
+.yoro-mailbox-context-list > div {
+	display: grid;
+	grid-template-columns: minmax(78px, 108px) minmax(0, 1fr);
+	gap: 10px;
+	min-width: 0;
+	padding: 9px 12px;
+	border-bottom: 1px solid #e2e8f0;
+}
+
+.yoro-mailbox-context-list > div:last-child {
+	border-bottom: 0;
+}
+
+.yoro-mailbox-context-list dt,
+.yoro-mailbox-context-list dd {
+	margin: 0;
+	min-width: 0;
+	font-size: 12px;
+	line-height: 1.35;
+}
+
+.yoro-mailbox-context-list dt {
+	color: #64748b;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0;
+	text-transform: uppercase;
+}
+
+.yoro-mailbox-context-list dd {
+	color: #334155;
+	overflow-wrap: anywhere;
+}
+
+.yoro-mailbox-suggestions,
+.yoro-mailbox-follow-up {
+	display: grid;
+	gap: 7px;
+	min-width: 0;
+	padding: 10px;
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	background: #ffffff;
+}
+
+.yoro-mailbox-suggestions > div {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+
+.yoro-mailbox-follow-up-actions {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.yoro-mailbox-follow-up-actions .yoro-mailbox-control-select {
+	width: 100%;
+	max-width: 100%;
+}
+
+.yoro-mailbox-follow-up small {
+	color: #64748b;
+	font-size: 11px;
+	line-height: 1.35;
+}
+
+@media (max-width: 980px) {
+	.yoro-mailbox-intelligence-layout {
+		grid-template-columns: 1fr;
+	}
+
+	.yoro-mailbox-management-layout {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.yoro-mailbox-management-control.is-actions {
+		grid-column: 1 / -1;
+	}
+}
+
+@media (max-width: 782px) {
+	.yoro-mailbox-workflow-grid,
+	.yoro-mailbox-management-layout,
+	.yoro-mailbox-management-actions,
+	.yoro-mailbox-intelligence-layout {
+		grid-template-columns: 1fr;
+	}
+
+	.yoro-mailbox-thread-section-head {
+		align-items: flex-start;
+	}
+
+	.yoro-mailbox-context-list > div {
+		grid-template-columns: 1fr;
+		gap: 3px;
+	}
+}
+
+.yoro-mailbox-workflow small.is-error,
+.yoro-mailbox-reply-history-item small {
+	color: #b91c1c;
+}
+
+.yoro-mailbox-thread-section-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 8px;
+	min-width: 0;
+}
+
+.yoro-mailbox-thread-section-head span,
+.yoro-mailbox-empty-inline {
+	margin: 0;
+	color: #64748b;
+	font-size: 12px;
+	line-height: 1.35;
+}
+
+@media (max-width: 782px) {
+	.yoro-mailbox-thread-section-head {
+		align-items: flex-start;
+	}
+}
+
+.yoro-mailbox-note-list,
+.yoro-mailbox-reply-history-list {
+	display: grid;
+	gap: 7px;
+}
+
+.yoro-mailbox-note,
+.yoro-mailbox-reply-history-item {
+	display: grid;
+	gap: 5px;
+	padding: 8px;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	background: #ffffff;
+}
+
+.yoro-mailbox-note > div,
+.yoro-mailbox-reply-history-meta {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	min-width: 0;
+}
+
+.yoro-mailbox-note strong,
+.yoro-mailbox-note time,
+.yoro-mailbox-reply-history-meta strong,
+.yoro-mailbox-reply-history-meta span {
+	font-size: 12px;
+	line-height: 1.35;
+}
+
+.yoro-mailbox-note strong,
+.yoro-mailbox-reply-history-meta strong {
+	color: #1d2327;
+}
+
+.yoro-mailbox-note time,
+.yoro-mailbox-reply-history-meta span {
+	overflow: hidden;
+	color: #64748b;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-mailbox-note p,
+.yoro-mailbox-reply-history-item p {
+	margin: 0;
+	color: #334155;
+	font-size: 12px;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.yoro-mailbox-note-input,
+.yoro-mailbox-reply-input {
+	width: 100%;
+	border-radius: 10px;
+	resize: vertical;
+}
+
+.yoro-mailbox-reply-input {
+	min-height: 82px;
+}
+
+.yoro-mailbox-reply-history-item.is-failed {
+	border-color: #fecaca;
+	background: #fef2f2;
+}
+
+.yoro-mailbox-reply-history-item.is-sent {
+	border-color: #bbf7d0;
+	background: #f0fdf4;
+}
+
 .yoro-chat-thread {
 	flex: 1;
 	height: auto;
 	min-height: 0;
 	overflow-y: auto;
+	overflow-anchor: none;
 	padding: 82px 16px 16px;
+}
+
+.yoro-chat-jump-latest {
+	position: absolute;
+	left: 50%;
+	bottom: var(--yoro-chat-jump-bottom, 112px);
+	z-index: 18;
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	min-height: 34px;
+	padding: 0 13px;
+	border: 1px solid var(--yoro-accent-border);
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.96);
+	color: var(--yoro-accent-dark);
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 1;
+	box-shadow: 0 12px 26px rgba(15, 23, 42, 0.14);
+	cursor: pointer;
+	opacity: 0;
+	pointer-events: none;
+	transform: translate(-50%, 8px);
+	transition: opacity 140ms ease, transform 140ms ease, border-color 140ms ease;
+}
+
+.yoro-chat-jump-latest.is-visible {
+	opacity: 1;
+	pointer-events: auto;
+	transform: translate(-50%, 0);
+}
+
+.yoro-chat-jump-latest .dashicons {
+	width: 15px;
+	height: 15px;
+	font-size: 15px;
+	line-height: 1;
+}
+
+.yoro-chat-jump-latest:hover,
+.yoro-chat-jump-latest:focus {
+	border-color: var(--yoro-accent);
+	outline: none;
 }
 
 .yoro-chat-message {
@@ -511,9 +1739,21 @@ body.toplevel_page_yoro-ai-core {
 }
 
 .yoro-chat-actions .button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
 	min-height: 36px;
 	padding: 0 16px;
 	border-radius: 7px;
+}
+
+.yoro-chat-actions .button .dashicons {
+	flex: 0 0 auto;
+	width: 16px;
+	height: 16px;
+	font-size: 16px;
+	line-height: 1;
 }
 
 .yoro-chat-actions-spacer {
@@ -536,6 +1776,7 @@ body.toplevel_page_yoro-ai-core {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	gap: 5px;
 	min-height: 28px;
 	padding: 4px 10px;
 	border: 1px solid transparent;
@@ -547,6 +1788,14 @@ body.toplevel_page_yoro-ai-core {
 	line-height: 1.3;
 	box-shadow: none;
 	cursor: pointer;
+}
+
+.yoro-chat-workflow-chip .dashicons {
+	flex: 0 0 auto;
+	width: 14px;
+	height: 14px;
+	font-size: 14px;
+	line-height: 1;
 }
 
 .yoro-chat-workflow-chip:hover,
@@ -604,6 +1853,7 @@ body.toplevel_page_yoro-ai-core {
 
 	.yoro-chat-quick-panel {
 		width: 100%;
+		max-height: calc(100vh - 128px);
 	}
 
 	.yoro-chat-quick-tray {
@@ -613,6 +1863,43 @@ body.toplevel_page_yoro-ai-core {
 
 	.yoro-chat-quick-bubble {
 		justify-content: center;
+	}
+
+	.yoro-chat-quick-inbox-head,
+	.yoro-quick-inbox-thread-head {
+		flex-direction: column;
+	}
+
+	.yoro-chat-quick-inbox-actions {
+		width: 100%;
+	}
+
+	.yoro-chat-quick-inbox-actions .button {
+		flex: 1 1 0;
+	}
+
+	.yoro-quick-inbox-thread,
+	.yoro-quick-inbox-summary,
+	.yoro-mailbox-provider-option {
+		grid-template-columns: 1fr;
+	}
+
+	.yoro-mailbox-provider-option > .dashicons,
+	.yoro-mailbox-provider-option em,
+	.yoro-mailbox-provider-option .button {
+		justify-self: stretch;
+	}
+
+	.yoro-mailbox-imap-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.yoro-quick-inbox-thread time {
+		white-space: normal;
+	}
+
+	.yoro-quick-inbox-reply-box .button {
+		justify-self: stretch;
 	}
 
 	.yoro-chat-thread {
@@ -649,9 +1936,9 @@ body.toplevel_page_yoro-ai-core {
 }
 
 .yoro-typing {
-	display: flex;
 	gap: 5px;
 	align-items: center;
+	display: flex;
 	height: 18px;
 }
 
@@ -680,6 +1967,37 @@ body.toplevel_page_yoro-ai-core {
 	40% {
 		transform: scale(1);
 		opacity: 1;
+	}
+}
+
+.yoro-chat-bubble.is-typing-response,
+.yoro-assistant-natural-response.is-typing-response {
+	position: relative;
+}
+
+.yoro-typing-caret {
+	display: inline-block;
+	width: 2px;
+	height: 1em;
+	margin-left: 3px;
+	vertical-align: -0.12em;
+	border-radius: 999px;
+	background: currentColor;
+	animation: yoroTypingCaret 0.9s steps(2, start) infinite;
+}
+
+@keyframes yoroTypingCaret {
+	0%, 45% {
+		opacity: 1;
+	}
+	46%, 100% {
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.yoro-typing-caret {
+		animation: none;
 	}
 }
 
@@ -1214,6 +2532,51 @@ body.toplevel_page_yoro-ai-core {
 
 .yoro-assistant-message-result {
 	margin-bottom: 12px;
+}
+
+.yoro-chat-message-assistant.has-rich-result .yoro-rich-result-intro {
+	color: #5b6672;
+	font-weight: 400;
+}
+
+.yoro-chat-message-assistant.has-rich-result .yoro-rich-result-intro strong {
+	color: #30363d;
+	font-weight: 700;
+}
+
+.yoro-chat-message-assistant.has-rich-result .yoro-rich-result-intro .yoro-result-subtle {
+	color: #69737f;
+}
+
+.yoro-chat-message-assistant.is-awaiting-previous-typing {
+	display: none;
+}
+
+.yoro-chat-message-assistant.is-rich-result-entering .yoro-rich-result-surface {
+	animation: yoroRichResultEnter 150ms ease-out both;
+	will-change: opacity, transform;
+}
+
+@keyframes yoroRichResultEnter {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.yoro-chat-message-assistant.is-rich-result-entering .yoro-rich-result-surface {
+		animation: none;
+	}
+}
+
+.yoro-chat-bubble > .yoro-assistant-message-result:last-child,
+.yoro-single-action-result > .yoro-assistant-message-result:last-child {
+	margin-bottom: 0;
 }
 
 .yoro-assistant-natural-response {
@@ -3226,6 +4589,25 @@ body.toplevel_page_yoro-ai-core {
 	gap: 12px;
 }
 
+.yoro-mailbox-reply-preview-card {
+	box-sizing: border-box;
+	max-width: 1040px;
+	width: 100%;
+}
+
+.yoro-mailbox-reply-preview-card .yoro-email-live-preview {
+	box-sizing: border-box;
+	max-width: 900px;
+	width: 100%;
+}
+
+.yoro-mailbox-reply-preview-card .yoro-email-preview {
+	box-sizing: border-box;
+	margin-inline: auto;
+	max-width: 840px;
+	width: 100%;
+}
+
 .yoro-email-live-preview-meta {
 	display: flex;
 	flex-wrap: wrap;
@@ -4139,6 +5521,769 @@ body.toplevel_page_yoro-ai-core {
 	font-style: italic;
 }
 
+.yoro-email-connection-card {
+	display: grid;
+	gap: 12px;
+}
+
+.yoro-email-connection-panel {
+	display: grid;
+	gap: 14px;
+	max-width: 760px;
+}
+
+.yoro-email-connection-summary {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 13px 14px;
+	border: 1px solid #d9e1e8;
+	border-radius: 8px;
+	background: #ffffff;
+}
+
+.yoro-email-connection-summary .dashicons {
+	width: 22px;
+	height: 22px;
+	margin-top: 1px;
+	font-size: 22px;
+	line-height: 1;
+}
+
+.yoro-email-connection-summary strong {
+	display: block;
+	color: #1d2327;
+	font-size: 14px;
+	line-height: 1.35;
+}
+
+.yoro-email-connection-summary p {
+	margin: 3px 0 0;
+	color: #64748b;
+	font-size: 13px;
+	line-height: 1.45;
+}
+
+.yoro-email-connection-summary.is-connected {
+	border-color: #bbf7d0;
+	background: #f0fdf4;
+}
+
+.yoro-email-connection-summary.is-connected .dashicons {
+	color: #15803d;
+}
+
+.yoro-email-connection-summary.is-disconnected,
+.yoro-email-connection-summary.is-loading {
+	border-color: #dbeafe;
+	background: #eff6ff;
+}
+
+.yoro-email-connection-summary.is-disconnected .dashicons,
+.yoro-email-connection-summary.is-loading .dashicons {
+	color: #2563eb;
+}
+
+.yoro-email-connection-summary.is-loading .dashicons {
+	animation: yoro-spin 1s linear infinite;
+}
+
+.yoro-email-connection-summary.is-error,
+.yoro-email-connection-error {
+	border-color: #fecaca;
+	background: #fef2f2;
+}
+
+.yoro-email-connection-summary.is-error .dashicons {
+	color: #b91c1c;
+}
+
+.yoro-email-connection-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 8px;
+}
+
+.yoro-email-connection-grid div {
+	display: grid;
+	gap: 3px;
+	min-width: 0;
+	padding: 10px 11px;
+	border: 1px solid #e2e8f0;
+	border-radius: 7px;
+	background: #f8fafc;
+}
+
+.yoro-email-connection-grid span {
+	color: #64748b;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0;
+	text-transform: uppercase;
+}
+
+.yoro-email-connection-grid strong {
+	overflow: hidden;
+	color: #1f2937;
+	font-size: 13px;
+	line-height: 1.35;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-email-connection-error {
+	padding: 11px 12px;
+	border: 1px solid #fecaca;
+	border-radius: 7px;
+}
+
+.yoro-email-connection-error strong {
+	display: block;
+	color: #991b1b;
+	font-size: 13px;
+	line-height: 1.35;
+}
+
+.yoro-email-connection-error p {
+	margin: 4px 0 0;
+	color: #7f1d1d;
+	font-size: 13px;
+	line-height: 1.45;
+}
+
+.yoro-email-connection-recommendation,
+.yoro-email-connection-warning {
+	display: grid;
+	gap: 4px;
+	padding: 11px 12px;
+	border: 1px solid #bfdbfe;
+	border-radius: 7px;
+	background: #eff6ff;
+}
+
+.yoro-email-connection-warning {
+	border-color: #fde68a;
+	background: #fffbeb;
+}
+
+.yoro-email-connection-recommendation span {
+	color: #1d4ed8;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0;
+	text-transform: uppercase;
+}
+
+.yoro-email-connection-recommendation strong,
+.yoro-email-connection-warning strong {
+	overflow: hidden;
+	color: #1d2327;
+	font-size: 13px;
+	line-height: 1.35;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-email-connection-recommendation p,
+.yoro-email-connection-warning p {
+	margin: 0;
+	color: #475569;
+	font-size: 13px;
+	line-height: 1.45;
+}
+
+.yoro-email-connection-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.yoro-email-connection-actions .button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-height: 32px;
+	line-height: 1;
+}
+
+.yoro-email-connection-actions .dashicons {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	font-size: 16px;
+	line-height: 1;
+	vertical-align: middle;
+}
+
+.yoro-email-connection-actions .button > span:not(.dashicons) {
+	display: inline-flex;
+	align-items: center;
+	line-height: 1;
+}
+
+.yoro-email-connection-actions .yoro-mailbox-settings-disconnect {
+	border-color: #dc2626;
+	color: #b91c1c;
+}
+
+.yoro-email-connection-actions .yoro-mailbox-settings-disconnect:hover,
+.yoro-email-connection-actions .yoro-mailbox-settings-disconnect:focus {
+	border-color: #b91c1c;
+	background: #fef2f2;
+	color: #991b1b;
+}
+
+.yoro-mailbox-panel {
+	display: grid;
+	gap: 14px;
+	width: min(980px, 100%);
+	padding: 16px;
+	border: 1px solid #d9e1e8;
+	border-radius: 8px;
+	background: #ffffff;
+	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
+}
+
+.yoro-mailbox-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.yoro-mailbox-head > div {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+}
+
+.yoro-mailbox-head strong {
+	color: #1d2327;
+	font-size: 16px;
+	line-height: 1.3;
+}
+
+.yoro-mailbox-head span,
+.yoro-mailbox-thread-main span,
+.yoro-mailbox-thread-main small,
+.yoro-mailbox-message-meta span {
+	color: #64748b;
+	font-size: 12px;
+	line-height: 1.35;
+}
+
+.yoro-mailbox-head .button,
+.yoro-mailbox-reply-actions .button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+.yoro-mailbox-head .dashicons,
+.yoro-mailbox-reply-actions .dashicons {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+	margin: 0;
+	font-size: 16px;
+	line-height: 1;
+	vertical-align: middle;
+}
+
+.yoro-mailbox-head .button > span:not(.dashicons),
+.yoro-mailbox-reply-actions .button > span:not(.dashicons) {
+	display: inline-flex;
+	align-items: center;
+	line-height: 1;
+}
+
+.yoro-mailbox-metrics {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 8px;
+}
+
+.yoro-mailbox-metrics div {
+	display: grid;
+	gap: 3px;
+	min-width: 0;
+	padding: 10px;
+	border: 1px solid #e2e8f0;
+	border-radius: 7px;
+	background: #f8fafc;
+}
+
+.yoro-mailbox-metrics span {
+	color: #64748b;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0;
+	text-transform: uppercase;
+}
+
+.yoro-mailbox-metrics strong {
+	overflow: hidden;
+	color: #1f2937;
+	font-size: 14px;
+	line-height: 1.35;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-mailbox-thread-list,
+.yoro-mailbox-message-list {
+	display: grid;
+	gap: 8px;
+}
+
+.yoro-mailbox-thread-open {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 12px;
+	width: 100%;
+	padding: 12px;
+	border: 1px solid #e2e8f0;
+	border-radius: 7px;
+	background: #ffffff;
+	text-align: left;
+	cursor: pointer;
+	transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.yoro-mailbox-thread-open:hover,
+.yoro-mailbox-thread-open:focus {
+	border-color: var(--yoro-accent-border);
+	background: color-mix(in srgb, var(--yoro-accent) 5%, #ffffff);
+	box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+	outline: none;
+}
+
+.yoro-mailbox-thread-open.is-unread {
+	border-left: 4px solid var(--yoro-accent);
+}
+
+.yoro-mailbox-settings-panel .yoro-mailbox-thread-open {
+	cursor: pointer;
+}
+
+.yoro-mailbox-settings-panel .yoro-mailbox-thread-open:hover,
+.yoro-mailbox-settings-panel .yoro-mailbox-thread-open:focus {
+	border-color: var(--yoro-accent-border);
+	background: color-mix(in srgb, var(--yoro-accent) 5%, #ffffff);
+	box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.yoro-mailbox-thread-main {
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+}
+
+.yoro-mailbox-thread-main strong,
+.yoro-mailbox-thread-main span,
+.yoro-mailbox-thread-main small {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.yoro-mailbox-thread-main strong {
+	color: #1d2327;
+	font-size: 14px;
+	line-height: 1.35;
+}
+
+.yoro-mailbox-thread-meta {
+	display: grid;
+	align-content: start;
+	justify-items: end;
+	gap: 6px;
+	color: #64748b;
+	font-size: 12px;
+	line-height: 1.35;
+}
+
+.yoro-mailbox-thread-meta em {
+	display: inline-flex;
+	align-items: center;
+	min-height: 20px;
+	padding: 0 7px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--yoro-accent) 14%, #ffffff);
+	color: var(--yoro-accent-text);
+	font-size: 11px;
+	font-style: normal;
+	font-weight: 700;
+}
+
+.yoro-mailbox-empty {
+	padding: 16px;
+	border: 1px dashed #cbd5e1;
+	border-radius: 7px;
+	color: #64748b;
+	text-align: center;
+}
+
+.yoro-mailbox-disconnected p {
+	margin: 0;
+	color: #475569;
+}
+
+.yoro-mailbox-message {
+	display: grid;
+	gap: 7px;
+	max-width: 82%;
+	padding: 12px;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	background: #f8fafc;
+}
+
+.yoro-mailbox-message.is-outbound {
+	justify-self: end;
+	background: color-mix(in srgb, var(--yoro-accent) 8%, #ffffff);
+}
+
+.yoro-mailbox-message-meta {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.yoro-mailbox-message-meta strong {
+	color: #1d2327;
+	font-size: 13px;
+	line-height: 1.3;
+}
+
+.yoro-mailbox-message-body {
+	margin: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+	color: #334155;
+	font-family: inherit;
+	font-size: 14px;
+	line-height: 1.5;
+}
+
+.yoro-mailbox-reply-box {
+	display: grid;
+	gap: 10px;
+	padding-top: 4px;
+}
+
+.yoro-mailbox-reply-input {
+	width: 100%;
+	min-height: 130px;
+	border-radius: 7px;
+	resize: vertical;
+}
+
+.yoro-mailbox-reply-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+/*
+ * Response typography system.
+ * Keep chat, result cards, tables, labels, and metrics visually consistent across renderers.
+ */
+body.toplevel_page_yoro-ai-core .yoro-chat-bubble {
+	font-size: var(--yoro-type-chat);
+	line-height: var(--yoro-leading-body);
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-chat-message-assistant,
+	.yoro-chat-message-user
+) .yoro-chat-bubble {
+	font-size: var(--yoro-type-chat);
+	line-height: var(--yoro-leading-body);
+}
+
+body.toplevel_page_yoro-ai-core .yoro-chat-bubble p,
+body.toplevel_page_yoro-ai-core .yoro-chat-bubble li {
+	font-size: inherit;
+	line-height: inherit;
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-assistant-message-result,
+	.yoro-result-notice,
+	.yoro-guided-result-section,
+	.yoro-order-detail-card,
+	.yoro-report-card,
+	.yoro-workflow-card,
+	.yoro-workflow-step,
+	.yoro-plan-state-card,
+	.yoro-plan-state-panel,
+	.yoro-workflow-timeline-step,
+	.yoro-workflow-step-trace,
+	.yoro-workflow-rollback-trace,
+	.yoro-friendly-action-card,
+	.yoro-context-card,
+	.yoro-history-summary,
+	.yoro-telemetry-summary
+) {
+	font-size: var(--yoro-type-body);
+	line-height: var(--yoro-leading-body);
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-assistant-message-result,
+	.yoro-result-notice,
+	.yoro-guided-result-section,
+	.yoro-order-detail-card,
+	.yoro-report-card,
+	.yoro-workflow-card,
+	.yoro-workflow-step,
+	.yoro-plan-state-card,
+	.yoro-plan-state-panel,
+	.yoro-workflow-timeline-step,
+	.yoro-workflow-step-trace,
+	.yoro-workflow-rollback-trace,
+	.yoro-friendly-action-card,
+	.yoro-context-card,
+	.yoro-history-summary,
+	.yoro-telemetry-summary
+) :is(p, li, dd, td) {
+	font-size: inherit;
+	line-height: inherit;
+}
+
+body.toplevel_page_yoro-ai-core .yoro-assistant-natural-response,
+body.toplevel_page_yoro-ai-core .yoro-assistant-natural-response :is(p, li) {
+	font-size: var(--yoro-type-chat);
+	line-height: var(--yoro-leading-body);
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-assistant-fact-card,
+	.yoro-report-highlight,
+	.yoro-report-metric,
+	.yoro-report-breakdown,
+	.yoro-report-list-item,
+	.yoro-report-profile-followup,
+	.yoro-report-action-card,
+	.yoro-order-detail-surface,
+	.yoro-order-detail-metrics div,
+	.yoro-customer-profile-snapshot,
+	.yoro-customer-profile-field,
+	.yoro-briefing-section-card,
+	.yoro-workflow-step-trace,
+	.yoro-queue-empty,
+	.yoro-telemetry-metric,
+	.yoro-telemetry-list
+) {
+	font-size: var(--yoro-type-compact);
+	line-height: var(--yoro-leading-compact);
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-result-summary strong,
+	.yoro-order-detail-title,
+	.yoro-report-headline,
+	.yoro-workflow-title,
+	.yoro-control-home-primary-copy strong,
+	.yoro-briefing-hero-copy strong,
+	.yoro-briefing-section-head strong
+) {
+	font-size: var(--yoro-type-title);
+	line-height: var(--yoro-leading-tight);
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-assistant-rich-heading,
+	.yoro-guided-case-card strong,
+	.yoro-queue-section-head h4,
+	.yoro-report-metric-group-head h4,
+	.yoro-report-breakdown-head h4,
+	.yoro-report-section h4,
+	.yoro-order-detail-section h4,
+	.yoro-context-card h3,
+	.yoro-friendly-action-copy strong,
+	.yoro-plan-state-heading strong,
+	.yoro-workflow-rollback-trace > strong
+) {
+	font-size: var(--yoro-type-section-title);
+	line-height: var(--yoro-leading-tight);
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-result-subtle,
+	.yoro-result-meta,
+	.yoro-report-scope-line,
+	.yoro-report-window-line,
+	.yoro-report-breakdown-head > div > span,
+	.yoro-report-action-copy p,
+	.yoro-plan-state-heading p,
+	.yoro-plan-state-meta,
+	.yoro-workflow-timeline-step-status,
+	.yoro-workflow-timeline-step-meta,
+	.yoro-workflow-step-trace-meta,
+	.yoro-command-ghost-hint
+) {
+	font-size: var(--yoro-type-small);
+	line-height: var(--yoro-leading-compact);
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-assistant-fact-label,
+	.yoro-control-home-kicker,
+	.yoro-report-kicker,
+	.yoro-report-highlight-label,
+	.yoro-report-highlight-unit,
+	.yoro-report-metric-label,
+	.yoro-report-metric-unit,
+	.yoro-report-breakdown-main span,
+	.yoro-report-breakdown-value span,
+	.yoro-report-breakdown-value small,
+	.yoro-order-detail-metrics span,
+	.yoro-order-detail-kv span,
+	.yoro-customer-profile-field span,
+	.yoro-friendly-action-kicker,
+	.yoro-briefing-metrics span,
+	.yoro-telemetry-metric span,
+	.yoro-telemetry-list > span
+) {
+	font-size: var(--yoro-type-label);
+	line-height: var(--yoro-leading-tight);
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-assistant-fact-chip,
+	.yoro-report-scope-badge,
+	.yoro-report-health-badge,
+	.yoro-report-metric-trend,
+	.yoro-report-domain-badge,
+	.yoro-status-badge,
+	.yoro-queue-count,
+	.yoro-customer-profile-chip,
+	.yoro-order-detail-flag,
+	.yoro-plan-state-badge,
+	.yoro-plan-state-action,
+	.yoro-workflow-step-status,
+	.yoro-briefing-section-head span,
+	.yoro-current-order-badge
+) {
+	font-size: var(--yoro-type-small);
+	line-height: var(--yoro-leading-tight);
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-orders-table,
+	.yoro-queue-table,
+	.yoro-history-table,
+	.wp-list-table
+) {
+	font-size: var(--yoro-type-compact);
+	line-height: var(--yoro-leading-compact);
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-orders-table,
+	.yoro-queue-table,
+	.yoro-history-table,
+	.wp-list-table
+) :is(th, td) {
+	font-size: inherit;
+	line-height: inherit;
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-orders-table,
+	.yoro-queue-table,
+	.yoro-history-table,
+	.wp-list-table
+) th {
+	font-size: var(--yoro-type-small);
+	line-height: var(--yoro-leading-tight);
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-report-highlight-value,
+	.yoro-context-metric strong,
+	.yoro-telemetry-metric strong,
+	.yoro-briefing-metrics strong
+) {
+	font-size: var(--yoro-type-metric);
+	line-height: 1.15;
+}
+
+body.toplevel_page_yoro-ai-core :is(
+	.yoro-report-metric-value,
+	.yoro-report-breakdown-value strong,
+	.yoro-order-detail-metrics strong,
+	.yoro-order-detail-kv strong,
+	.yoro-customer-profile-field strong,
+	.yoro-assistant-fact-value
+) {
+	font-size: var(--yoro-type-compact);
+	line-height: var(--yoro-leading-compact);
+}
+
+body.toplevel_page_yoro-ai-core .yoro-report-metric-value {
+	font-size: var(--yoro-type-metric-compact);
+	line-height: 1.2;
+}
+
+body.toplevel_page_yoro-ai-core .yoro-workflow-timeline-step-label {
+	font-size: var(--yoro-type-compact);
+	line-height: var(--yoro-leading-tight);
+}
+
+body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant .yoro-chat-bubble > :is(
+	.yoro-assistant-message-result
+),
+body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant .yoro-chat-bubble .yoro-single-action-result > :is(
+	.yoro-assistant-message-result,
+	.yoro-assistant-narrative-result
+) {
+	font-size: var(--yoro-type-chat);
+	line-height: var(--yoro-leading-body);
+}
+
+body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant .yoro-chat-bubble > :is(
+	.yoro-assistant-message-result
+) :is(p, li),
+body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant .yoro-chat-bubble .yoro-single-action-result > :is(
+	.yoro-assistant-message-result,
+	.yoro-assistant-narrative-result
+) :is(p, li) {
+	font-size: inherit;
+	line-height: inherit;
+}
+
+body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant .yoro-assistant-natural-response .yoro-result-subtle {
+	font-size: var(--yoro-type-chat);
+	line-height: var(--yoro-leading-body);
+}
+
+body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant :is(
+	.yoro-order-detail-card,
+	.yoro-report-card,
+	.yoro-workflow-card,
+	.yoro-friendly-action-card,
+	.yoro-context-card,
+	.yoro-telemetry-summary,
+	.yoro-guided-result-section
+) :is(p, li, dd, td) {
+	font-size: inherit;
+	line-height: inherit;
+}
+
 @media (max-width: 782px) {
 	.yoro-ai-wrap {
 		max-width: 100%;
@@ -4189,6 +6334,15 @@ body.toplevel_page_yoro-ai-core {
 
 	.yoro-email-action-bar {
 		grid-template-columns: 1fr;
+	}
+
+	.yoro-email-connection-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.yoro-email-connection-actions .button {
+		justify-content: center;
+		width: 100%;
 	}
 
 	.yoro-email-send-actions {

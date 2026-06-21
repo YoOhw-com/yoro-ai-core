@@ -99,6 +99,7 @@
 			'orders.restore_statuses': 'Restore order status',
 			'email_templates.save': 'Save email template',
 			'email_templates.delete': 'Delete email template',
+			'email.reply.send': 'Send email reply',
 			'coupons.lookup': 'Look up coupon',
 			'coupons.create': 'Create coupon',
 			'store_preferences.save': 'Save store preference',
@@ -350,6 +351,10 @@
 
 		if (!data) {
 			return '';
+		}
+
+		if (isMailboxEmailPreviewResult(data) && typeof h.renderCustomerEmailPreviewResult === 'function') {
+			return finish(h.renderCustomerEmailPreviewResult(data));
 		}
 
 		if (data.stage === 'confirm' && data.confirm_required) {
@@ -1064,6 +1069,52 @@
 		const displayType = result.display_type || (data ? data.display_type : '') || '';
 
 		return (data && data.stage === 'confirm') || displayType === 'confirmation' || isBlockedResult(data);
+	}
+
+	function mailboxEmailPreviewPayload(data) {
+		const result = data && data.result ? data.result : {};
+		const parsed = data && data.parsed ? data.parsed : {};
+		const actionPlan = data && data.action_plan
+			? data.action_plan
+			: (parsed.action_plan || result.action_plan || {});
+
+		return result.email_preview || data.email_preview || parsed.email_preview || actionPlan.email_preview || {};
+	}
+
+	function isTerminalPendingResponse(data) {
+		const result = data && data.result ? data.result : {};
+		const parsed = data && data.parsed ? data.parsed : {};
+		const meta = parsed.meta || result.meta || (data && data.meta) || {};
+		const stage = String((data && data.stage) || result.stage || '').toLowerCase();
+		const pendingStatus = String(
+			(data && data.pending_operation_status)
+			|| result.pending_operation_status
+			|| meta.pending_operation_status
+			|| ''
+		).toLowerCase();
+
+		return (data && data.pending_operation_active === false)
+			|| result.pending_operation_active === false
+			|| ['done', 'executed', 'cancelled', 'failed', 'error'].indexOf(stage) !== -1
+			|| ['executed', 'cancelled', 'failed'].indexOf(pendingStatus) !== -1;
+	}
+
+	function isMailboxEmailPreviewResult(data) {
+		if (isTerminalPendingResponse(data)) {
+			return false;
+		}
+
+		const result = data && data.result ? data.result : {};
+		const preview = mailboxEmailPreviewPayload(data);
+		const action = result.action || (data && data.action) || (data && data.parsed && data.parsed.action) || preview.action || '';
+		const sendAction = preview.send_action || result.send_action || '';
+		const hasPreview = !!preview && Object.keys(preview).length > 0;
+
+		return hasPreview
+			&& (preview.kind === 'mailbox_reply'
+				|| result.kind === 'mailbox_reply'
+				|| action === 'email.reply.send'
+				|| sendAction === 'email.reply.send');
 	}
 
 	function renderAssistantFactValue(value, h) {

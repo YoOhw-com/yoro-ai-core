@@ -25,7 +25,7 @@ class YoRo_REST_Conversation_Action_Coordinator {
 		return $parsed;
 	}
 
-	public static function confirm_pending_operation( $parsed, $fallback_pending_operation_token = '' ) {
+	public static function confirm_pending_operation( $parsed, $fallback_pending_operation_token = '', $params_override = [] ) {
 		$conversation_id = self::conversation_id_from_parsed( $parsed );
 		$pending_operation_token = self::pending_operation_token_from_parsed(
 			$parsed,
@@ -37,13 +37,16 @@ class YoRo_REST_Conversation_Action_Coordinator {
 		}
 
 		$client = YoRo_AI_Provider_Resolver::get_client();
+		$payload = [
+			'conversation_id'         => $conversation_id,
+			'pending_operation_token' => $pending_operation_token,
+		];
 
-		$response = $client->confirm_action(
-			[
-				'conversation_id'         => $conversation_id,
-				'pending_operation_token' => $pending_operation_token,
-			]
-		);
+		if ( is_array( $params_override ) && [] !== $params_override ) {
+			$payload['params'] = $params_override;
+		}
+
+		$response = $client->confirm_action( $payload );
 
 		if ( is_wp_error( $response ) ) {
 			return $response;

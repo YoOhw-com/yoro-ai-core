@@ -211,6 +211,243 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		);
 	}
 
+	public function create_gmail_mailbox_connect_intent( array $payload ) {
+		return $this->request_mailbox_api(
+			'POST',
+			'/email/gmail/connect-intents',
+			[
+				'return_url'               => esc_url_raw( $payload['return_url'] ?? '' ),
+				'plugin_version'           => sanitize_text_field( $payload['plugin_version'] ?? ( defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '' ) ),
+				'suggested_mailbox_email' => sanitize_email( $payload['suggested_mailbox_email'] ?? '' ),
+			],
+			'gmail_mailbox_connect_intent',
+			'yoro_ai_api_gmail_connect_error',
+			__( 'I could not start the Gmail inbox connection.', 'yoro-ai-core' ),
+			false
+		);
+	}
+
+	public function create_microsoft_mailbox_connect_intent( array $payload ) {
+		return $this->request_mailbox_api(
+			'POST',
+			'/email/microsoft/connect-intents',
+			[
+				'return_url'               => esc_url_raw( $payload['return_url'] ?? '' ),
+				'plugin_version'           => sanitize_text_field( $payload['plugin_version'] ?? ( defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '' ) ),
+				'suggested_mailbox_email' => sanitize_email( $payload['suggested_mailbox_email'] ?? '' ),
+			],
+			'microsoft_mailbox_connect_intent',
+			'yoro_ai_api_microsoft_connect_error',
+			__( 'I could not start the Microsoft inbox connection.', 'yoro-ai-core' ),
+			false
+		);
+	}
+
+	public function connect_imap_mailbox( array $payload ) {
+		return $this->request_mailbox_api(
+			'POST',
+			'/email/imap/connect',
+			[
+				'mailbox_email'             => sanitize_email( $payload['mailbox_email'] ?? '' ),
+				'display_name'              => sanitize_text_field( $payload['display_name'] ?? '' ),
+				'imap_host'                 => sanitize_text_field( $payload['imap_host'] ?? '' ),
+				'imap_port'                 => absint( $payload['imap_port'] ?? 993 ),
+				'imap_encryption'           => sanitize_key( $payload['imap_encryption'] ?? 'ssl' ),
+				'imap_username'             => sanitize_text_field( $payload['imap_username'] ?? '' ),
+				'imap_password'             => (string) ( $payload['imap_password'] ?? '' ),
+				'smtp_host'                 => sanitize_text_field( $payload['smtp_host'] ?? '' ),
+				'smtp_port'                 => absint( $payload['smtp_port'] ?? 587 ),
+				'smtp_encryption'           => sanitize_key( $payload['smtp_encryption'] ?? 'tls' ),
+				'smtp_username'             => sanitize_text_field( $payload['smtp_username'] ?? '' ),
+				'smtp_password'             => (string) ( $payload['smtp_password'] ?? '' ),
+				'plugin_version'            => sanitize_text_field( $payload['plugin_version'] ?? ( defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '' ) ),
+				'suggested_mailbox_email'   => sanitize_email( $payload['suggested_mailbox_email'] ?? '' ),
+			],
+			'imap_mailbox_connect',
+			'yoro_ai_api_imap_connect_error',
+			__( 'I could not connect the IMAP inbox.', 'yoro-ai-core' ),
+			false
+		);
+	}
+
+	public function disconnect_gmail_mailbox() {
+		return $this->request_mailbox_api(
+			'POST',
+			'/email/gmail/disconnect',
+			[],
+			'gmail_mailbox_disconnect',
+			'yoro_ai_api_gmail_disconnect_error',
+			__( 'I could not disconnect the Gmail inbox.', 'yoro-ai-core' ),
+			false
+		);
+	}
+
+	public function disconnect_mailbox() {
+		return $this->request_mailbox_api(
+			'POST',
+			'/email/disconnect',
+			[],
+			'mailbox_disconnect',
+			'yoro_ai_api_mailbox_disconnect_error',
+			__( 'I could not disconnect the shop inbox.', 'yoro-ai-core' ),
+			false
+		);
+	}
+
+	public function get_mailbox_inbox( array $filters = [] ) {
+		return $this->request_mailbox_api(
+			'GET',
+			'/email/inbox',
+			[
+				'limit'  => max( 1, min( 50, absint( $filters['limit'] ?? 25 ) ) ),
+				'status' => sanitize_key( $filters['status'] ?? 'open' ),
+				'unread' => ! empty( $filters['unread'] ) ? '1' : '0',
+			],
+			'mailbox_inbox',
+			'yoro_ai_api_mailbox_inbox_error',
+			__( 'I could not load the shop inbox.', 'yoro-ai-core' )
+		);
+	}
+
+	public function sync_mailbox_inbox( array $options = [] ) {
+		return $this->request_mailbox_api(
+			'POST',
+			'/email/inbox/sync',
+			[
+				'limit' => max( 1, min( 50, absint( $options['limit'] ?? 10 ) ) ),
+			],
+			'mailbox_inbox_sync',
+			'yoro_ai_api_mailbox_sync_error',
+			__( 'I could not sync the shop inbox.', 'yoro-ai-core' )
+		);
+	}
+
+	public function get_mailbox_thread( $thread_id, array $payload = [] ) {
+		$request_payload = [];
+
+		if ( array_key_exists( 'allow_ai', $payload ) ) {
+			$request_payload['allow_ai'] = ! empty( $payload['allow_ai'] ) ? '1' : '0';
+		}
+
+		if ( isset( $payload['store_context'] ) && is_array( $payload['store_context'] ) ) {
+			$request_payload['store_context'] = $payload['store_context'];
+		}
+
+		return $this->request_mailbox_api(
+			isset( $request_payload['store_context'] ) ? 'POST' : 'GET',
+			'/email/threads/' . rawurlencode( (string) absint( $thread_id ) ),
+			$request_payload,
+			'mailbox_thread',
+			'yoro_ai_api_mailbox_thread_error',
+			__( 'I could not load that email thread.', 'yoro-ai-core' )
+		);
+	}
+
+	public function update_mailbox_thread( $thread_id, array $payload ) {
+		$request_payload = [];
+
+		if ( array_key_exists( 'status', $payload ) ) {
+			$request_payload['status'] = sanitize_key( (string) $payload['status'] );
+		}
+
+		if ( array_key_exists( 'unread', $payload ) ) {
+			$request_payload['unread'] = ! empty( $payload['unread'] );
+		}
+
+		if ( array_key_exists( 'assignee', $payload ) ) {
+			$request_payload['assignee'] = $this->sanitize_person_payload( $payload['assignee'] );
+		}
+
+		if ( array_key_exists( 'follow_up_reminder', $payload ) ) {
+			$request_payload['follow_up_reminder'] = $this->sanitize_mailbox_follow_up_reminder( $payload['follow_up_reminder'] );
+		}
+
+		$request_payload['actor'] = $this->sanitize_person_payload( $payload['actor'] ?? [] );
+
+		return $this->request_mailbox_api(
+			'PATCH',
+			'/email/threads/' . rawurlencode( (string) absint( $thread_id ) ),
+			$request_payload,
+			'mailbox_thread_update',
+			'yoro_ai_api_mailbox_thread_update_error',
+			__( 'I could not update that email thread.', 'yoro-ai-core' )
+		);
+	}
+
+	public function command_mailbox_thread( $thread_id, $command, array $payload = [] ) {
+		$command = sanitize_key( (string) $command );
+
+		return $this->request_mailbox_api(
+			'POST',
+			'/email/threads/' . rawurlencode( (string) absint( $thread_id ) ) . '/' . rawurlencode( $command ),
+			[
+				'actor' => $this->sanitize_person_payload( $payload['actor'] ?? [] ),
+			],
+			'mailbox_thread_' . $command,
+			'yoro_ai_api_mailbox_thread_command_error',
+			__( 'I could not update that email thread.', 'yoro-ai-core' )
+		);
+	}
+
+	public function add_mailbox_thread_note( $thread_id, array $payload ) {
+		return $this->request_mailbox_api(
+			'POST',
+			'/email/threads/' . rawurlencode( (string) absint( $thread_id ) ) . '/notes',
+			[
+				'body'  => sanitize_textarea_field( (string) ( $payload['body'] ?? '' ) ),
+				'actor' => $this->sanitize_person_payload( $payload['actor'] ?? [] ),
+			],
+			'mailbox_thread_note',
+			'yoro_ai_api_mailbox_thread_note_error',
+			__( 'I could not add the internal note.', 'yoro-ai-core' )
+		);
+	}
+
+	public function retry_mailbox_thread_reply( $thread_id, $message_id, array $payload = [] ) {
+		return $this->request_mailbox_api(
+			'POST',
+			'/email/threads/' . rawurlencode( (string) absint( $thread_id ) ) . '/messages/' . rawurlencode( (string) absint( $message_id ) ) . '/retry',
+			[
+				'actor' => $this->sanitize_person_payload( $payload['actor'] ?? [] ),
+			],
+			'mailbox_thread_reply_retry',
+			'yoro_ai_api_mailbox_reply_retry_error',
+			__( 'I could not retry the email reply.', 'yoro-ai-core' )
+		);
+	}
+
+	public function reply_mailbox_thread( $thread_id, array $payload ) {
+		$request_payload = [
+			'body' => sanitize_textarea_field( $payload['body'] ?? '' ),
+			'cc'   => isset( $payload['cc'] ) && is_array( $payload['cc'] )
+				? $this->sanitize_address_list( $payload['cc'] )
+				: [],
+		];
+
+		foreach ( [ 'subject', 'html_body', 'body_html', 'html_body_source', 'body_html_source' ] as $key ) {
+			if ( ! array_key_exists( $key, $payload ) ) {
+				continue;
+			}
+
+			$value = in_array( $key, [ 'html_body', 'body_html' ], true )
+				? (string) $payload[ $key ]
+				: sanitize_text_field( (string) $payload[ $key ] );
+
+			if ( '' !== trim( $value ) ) {
+				$request_payload[ $key ] = $value;
+			}
+		}
+
+		return $this->request_mailbox_api(
+			'POST',
+			'/email/threads/' . rawurlencode( (string) absint( $thread_id ) ) . '/reply',
+			$request_payload,
+			'mailbox_thread_reply',
+			'yoro_ai_api_mailbox_reply_error',
+			__( 'I could not send the email reply.', 'yoro-ai-core' )
+		);
+	}
+
 	private function request_conversation_message( array $payload, $operation, $error_code, $default_message ) {
 		$api_url  = YoRo_AI_Settings::get_ai_api_url();
 		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
@@ -525,10 +762,103 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return wp_json_encode( $this->normalize_email_compose_response( $json ) );
 	}
 
+	private function request_mailbox_api( $method, $path, array $payload, $operation, $error_code, $default_message, $requires_feature = true ) {
+		$api_url  = YoRo_AI_Settings::get_ai_api_url();
+		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
+
+		if ( '' === $api_url || '' === $site_key ) {
+			return new WP_Error(
+				'yoro_ai_api_missing_config',
+				__( 'YoRo AI API is not connected yet.', 'yoro-ai-core' )
+			);
+		}
+
+		$entitlements = YoRo_AI_Settings::get_ai_api_entitlements();
+
+		if (
+			$requires_feature &&
+			array_key_exists( 'email_inbox', $entitlements ) &&
+			empty( $entitlements['email_inbox'] )
+		) {
+			return new WP_Error(
+				'yoro_ai_api_feature_not_in_plan',
+				__( 'Shop inbox is not available on the current YoRo plan.', 'yoro-ai-core' )
+			);
+		}
+
+		$method = strtoupper( sanitize_key( $method ) );
+		$url    = $this->build_mailbox_endpoint_url( $api_url, $path );
+
+		if ( 'GET' === $method && [] !== $payload ) {
+			$url .= ( false === strpos( $url, '?' ) ? '?' : '&' ) . http_build_query( $payload, '', '&', PHP_QUERY_RFC3986 );
+		}
+
+		$args = [
+			'timeout' => $this->api_timeout( $operation, $payload ),
+			'headers' => [
+				'Authorization' => 'Bearer ' . $site_key,
+				'Accept'        => 'application/json',
+				'Content-Type'  => 'application/json',
+			],
+		];
+
+		if ( 'GET' !== $method ) {
+			$args['method'] = $method;
+			$args['body'] = wp_json_encode( $payload );
+		}
+
+		$started_at = microtime( true );
+		$response   = 'GET' === $method
+			? wp_remote_get( $url, $args )
+			: wp_remote_request( $url, $args );
+		$duration_ms = max( 0, (int) round( ( microtime( true ) - $started_at ) * 1000 ) );
+
+		if ( is_wp_error( $response ) ) {
+			$this->record_request( $operation, $duration_ms, 'error' );
+
+			return $response;
+		}
+
+		$this->record_request(
+			$operation,
+			$duration_ms,
+			( wp_remote_retrieve_response_code( $response ) >= 200 && wp_remote_retrieve_response_code( $response ) < 300 ) ? 'success' : 'error'
+		);
+
+		return $this->decode_public_json_response( $response, $error_code, $default_message );
+	}
+
+	private function sanitize_address_list( array $items ) {
+		$addresses = [];
+
+		foreach ( array_values( $items ) as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$email = sanitize_email( $item['email'] ?? '' );
+
+			if ( '' === $email ) {
+				continue;
+			}
+
+			$addresses[] = [
+				'email' => $email,
+				'name'  => sanitize_text_field( $item['name'] ?? '' ),
+			];
+		}
+
+		return $addresses;
+	}
+
 	private function public_response_message( $json, $default_message ) {
 		$message = is_array( $json ) && ! empty( $json['message'] )
 			? sanitize_text_field( $json['message'] )
 			: $default_message;
+
+		if ( false !== stripos( $message, 'insufficient authentication scopes' ) ) {
+			return __( 'The connected mailbox needs updated permissions. Reconnect Gmail or Microsoft from Settings > Email Inbox, then try this inbox action again.', 'yoro-ai-core' );
+		}
 
 		return str_ireplace( 'openai', 'YoRo AI API', $message );
 	}
@@ -611,6 +941,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return [
 			'conversation_id'         => sanitize_text_field( $payload['conversation_id'] ?? '' ),
 			'pending_operation_token' => sanitize_text_field( $payload['pending_operation_token'] ?? '' ),
+			'params'                  => isset( $payload['params'] ) && is_array( $payload['params'] ) ? $payload['params'] : [],
 		];
 	}
 
@@ -784,6 +1115,13 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return $api_url . '/ai/email/compose';
 	}
 
+	private function build_mailbox_endpoint_url( $api_url, $path ) {
+		$api_url = $this->build_api_base_url( $api_url );
+		$path    = '/' . ltrim( (string) $path, '/' );
+
+		return $api_url . $path;
+	}
+
 	private function build_wordpress_connect_intent_endpoint_url( $api_url ) {
 		$api_url = $this->build_api_base_url( $api_url );
 
@@ -818,10 +1156,51 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		$api_url = untrailingslashit( esc_url_raw( $api_url ) );
 
 		return preg_replace(
-			'#/(?:sites/handshake|conversations(?:/message|/[^/]+)?|actions/(?:execute|confirm)|ai/email/compose|connect/wordpress/(?:intents|exchange))$#',
+			'#/(?:sites/handshake|conversations(?:/message|/[^/]+)?|actions/(?:execute|confirm)|ai/email/compose|connect/wordpress/(?:intents|exchange)|email/(?:(?:gmail|microsoft)/connect-intents|gmail/disconnect|imap/connect|disconnect|inbox(?:/sync)?|threads/[^/]+(?:/(?:reply|archive|reopen|read|unread|notes|messages/[^/]+/retry))?))$#',
 			'',
 			$api_url
 		);
+	}
+
+	private function sanitize_person_payload( $person ) {
+		if ( ! is_array( $person ) ) {
+			return null;
+		}
+
+		$payload = [
+			'id'    => sanitize_text_field( (string) ( $person['id'] ?? '' ) ),
+			'name'  => sanitize_text_field( (string) ( $person['name'] ?? '' ) ),
+			'email' => sanitize_email( (string) ( $person['email'] ?? '' ) ),
+			'role'  => sanitize_key( (string) ( $person['role'] ?? '' ) ),
+		];
+
+		return '' !== implode( '', $payload ) ? $payload : null;
+	}
+
+	private function sanitize_mailbox_follow_up_reminder( $reminder ) {
+		if ( ! is_array( $reminder ) ) {
+			return null;
+		}
+
+		$payload = [];
+
+		if ( array_key_exists( 'status', $reminder ) ) {
+			$payload['status'] = sanitize_key( (string) $reminder['status'] );
+		}
+
+		if ( array_key_exists( 'after_hours', $reminder ) ) {
+			$payload['after_hours'] = absint( $reminder['after_hours'] );
+		}
+
+		if ( array_key_exists( 'due_at', $reminder ) ) {
+			$payload['due_at'] = sanitize_text_field( (string) $reminder['due_at'] );
+		}
+
+		if ( array_key_exists( 'reason', $reminder ) ) {
+			$payload['reason'] = sanitize_text_field( (string) $reminder['reason'] );
+		}
+
+		return $payload;
 	}
 
 	private function normalize_conversation_response( array $response ) {
@@ -851,6 +1230,9 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'conversation_id'       => sanitize_text_field( $response['conversation_id'] ?? ( $response_meta['conversation_id'] ?? '' ) ),
 			'stage'                 => sanitize_key( $response['stage'] ?? ( $response_meta['conversation_stage'] ?? '' ) ),
 			'pending_operation_token' => sanitize_text_field( $response['pending_operation_token'] ?? ( $response_meta['pending_operation_token'] ?? '' ) ),
+			'execution_required'      => ! empty( $response['execution_required'] ),
+			'requires_confirmation'   => ! empty( $response['requires_confirmation'] ),
+			'confirm_required'        => ! empty( $response['confirm_required'] ),
 			'mode'                   => $mode,
 			'language'               => sanitize_text_field( $response['language'] ?? 'unknown' ),
 			'intent_family'          => sanitize_key( $response['intent_family'] ?? '' ),
@@ -874,6 +1256,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'summary'                => $friendly_summary,
 			'reasoning_summary'      => sanitize_text_field( $response['reasoning_summary'] ?? '' ),
 			'action_plan'            => $action_plan,
+			'email_preview'          => isset( $response['email_preview'] ) && is_array( $response['email_preview'] ) ? $response['email_preview'] : [],
 			'assistant'              => $assistant_response,
 			'meta'                   => array_merge(
 				$response_meta,
@@ -965,6 +1348,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'action' => $plan_action,
 			'params' => $plan_params,
 			'steps'  => $steps,
+			'email_preview' => isset( $plan['email_preview'] ) && is_array( $plan['email_preview'] ) ? $plan['email_preview'] : [],
 		];
 	}
 
