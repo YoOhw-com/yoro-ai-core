@@ -1091,9 +1091,9 @@ body.toplevel_page_yoro-ai-core {
 
 .yoro-mailbox-management-layout {
 	display: grid;
-	grid-template-columns: minmax(190px, 0.9fr) minmax(260px, 1.2fr) minmax(210px, 0.9fr);
+	grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr) minmax(0, 0.85fr);
 	align-items: stretch;
-	gap: 10px;
+	gap: 8px;
 	min-width: 0;
 	width: 100%;
 }
@@ -1104,7 +1104,7 @@ body.toplevel_page_yoro-ai-core {
 	gap: 8px;
 	min-width: 0;
 	max-width: 100%;
-	padding: 10px;
+	padding: 9px;
 	border: 1px solid #e2e8f0;
 	border-radius: 10px;
 	box-sizing: border-box;
