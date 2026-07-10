@@ -29,6 +29,7 @@ class YoRo_Rate_Limiter {
 			return new WP_Error(
 				'yoro_rate_limit_exceeded',
 				sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Too many YoRo requests. Please wait %d seconds and try again.', 'yoro-ai-core' ),
 					$window
 				),

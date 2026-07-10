@@ -398,6 +398,7 @@ class YoRo_Orders_Read_Service {
 			return [
 				'title'       => __( 'Không tìm thấy đơn hàng phù hợp.', 'yoro-ai-core' ),
 				'description' => '' !== $criteria
+					/* translators: %s: Value generated from store data. */
 					? sprintf( __( 'Không có đơn hàng nào khớp với bộ lọc: %s.', 'yoro-ai-core' ), $criteria )
 					: __( 'Không có đơn hàng nào khớp với yêu cầu này.', 'yoro-ai-core' ),
 				'actions'     => [
@@ -412,6 +413,7 @@ class YoRo_Orders_Read_Service {
 		return [
 			'title'       => __( 'No matching orders found.', 'yoro-ai-core' ),
 			'description' => '' !== $criteria
+				/* translators: %s: Value generated from store data. */
 				? sprintf( __( 'No orders matched these filters: %s.', 'yoro-ai-core' ), $criteria )
 				: __( 'No orders matched this request.', 'yoro-ai-core' ),
 			'actions'     => [
@@ -950,6 +952,7 @@ class YoRo_Orders_Read_Service {
 			+ absint( $inventory_counts['on_backorder'] ?? 0 );
 		$health               = $inventory_risk_count > 0 ? 'watch' : ( $order_count > 0 ? 'good' : 'watch' );
 		$headline             = sprintf(
+			/* translators: Placeholder values are generated from store data for this message. */
 			__( 'Store signals for %1$s: %2$d orders, %3$d customers, %4$d product lines.', 'yoro-ai-core' ),
 			$window_label,
 			$order_count,
@@ -997,6 +1000,7 @@ class YoRo_Orders_Read_Service {
 		if ( $order_count > 0 ) {
 			$insights[] = YoRo_Report_Builder::insight(
 				__( 'Demand snapshot', 'yoro-ai-core' ),
+				/* translators: Placeholder values are generated from store data for this message. */
 				sprintf( __( 'The selected window contains %1$d orders with %2$s %3$s in gross sales.', 'yoro-ai-core' ), $order_count, wc_format_decimal( $order_total, 2 ), $currency ),
 				'orders',
 				'positive'
@@ -1014,6 +1018,7 @@ class YoRo_Orders_Read_Service {
 			$insights[] = YoRo_Report_Builder::insight(
 				__( 'Repeat buyer signal', 'yoro-ai-core' ),
 				sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					__( '%1$d customers ordered more than once, giving this window a %2$s%% repeat customer rate.', 'yoro-ai-core' ),
 					$repeat_customer_count,
 					wc_format_decimal( $repeat_customer_rate, 1 )
@@ -1026,6 +1031,7 @@ class YoRo_Orders_Read_Service {
 		if ( $items_per_order >= 2 ) {
 			$insights[] = YoRo_Report_Builder::insight(
 				__( 'Basket size signal', 'yoro-ai-core' ),
+				/* translators: %s: Value generated from store data. */
 				sprintf( __( 'Customers are buying %s items per order on average in this window.', 'yoro-ai-core' ), wc_format_decimal( $items_per_order, 2 ) ),
 				'orders',
 				'positive'
@@ -1040,6 +1046,7 @@ class YoRo_Orders_Read_Service {
 			}
 			$insights[] = YoRo_Report_Builder::insight(
 				__( 'Customer concentration', 'yoro-ai-core' ),
+				/* translators: Placeholder values are generated from store data for this message. */
 				sprintf( __( '%1$s is the highest-value customer in this window with %2$s %3$s tracked.', 'yoro-ai-core' ), $customer_label, $top_customer['total_spent'] ?? '0.00', $currency ),
 				'customers',
 				'neutral'
@@ -1050,6 +1057,7 @@ class YoRo_Orders_Read_Service {
 		if ( is_array( $top_product ) ) {
 			$insights[] = YoRo_Report_Builder::insight(
 				__( 'Top product signal', 'yoro-ai-core' ),
+				/* translators: Placeholder values are generated from store data for this message. */
 				sprintf( __( '%1$s is the strongest product signal with %2$s units sold.', 'yoro-ai-core' ), $top_product['name'] ?? __( 'Top product', 'yoro-ai-core' ), $top_product['quantity'] ?? 0 ),
 				'products',
 				'neutral'
@@ -1060,6 +1068,7 @@ class YoRo_Orders_Read_Service {
 		if ( is_array( $top_category ) ) {
 			$insights[] = YoRo_Report_Builder::insight(
 				__( 'Top category signal', 'yoro-ai-core' ),
+				/* translators: Placeholder values are generated from store data for this message. */
 				sprintf( __( '%1$s is the strongest category signal with %2$s units sold across %3$d product lines.', 'yoro-ai-core' ), $top_category['name'] ?? __( 'Top category', 'yoro-ai-core' ), $top_category['quantity'] ?? 0, absint( $top_category['product_lines'] ?? 0 ) ),
 				'products',
 				'neutral',
@@ -1075,6 +1084,7 @@ class YoRo_Orders_Read_Service {
 		if ( $inventory_risk_count > 0 ) {
 			$alerts[] = YoRo_Report_Builder::alert(
 				__( 'Inventory needs review', 'yoro-ai-core' ),
+				/* translators: %s: Value generated from store data. */
 				sprintf( __( '%d products are out of stock, low stock, or on backorder.', 'yoro-ai-core' ), $inventory_risk_count ),
 				'watch',
 				'inventory',
@@ -1574,6 +1584,7 @@ class YoRo_Orders_Read_Service {
 
 		$identity = self::build_order_identity( $order );
 
+		// phpcs:disable WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_exclude -- Excludes the seed order while finding related customer orders.
 		$candidates = wc_get_orders(
 			[
 				'limit'   => $limit + 20,
@@ -1583,6 +1594,7 @@ class YoRo_Orders_Read_Service {
 				'status'  => self::get_all_order_status_slugs(),
 			]
 		);
+		// phpcs:enable WordPressVIPMinimum.Performance.WPQueryParams.PostNotIn_exclude
 
 		$matches = [];
 

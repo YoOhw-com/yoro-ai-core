@@ -2703,11 +2703,6 @@
 					title: 'Coupon created',
 					message: result.summary || 'I created that coupon.'
 				};
-			case 'assistant.submit_developer_request':
-				return {
-					title: 'Request sent',
-					message: 'I sent that request for review.'
-				};
 			default:
 				return {
 					title: 'Completed',
@@ -2729,18 +2724,6 @@
 
 		html += '<div class="yoro-single-action-body">';
 		html += renderAdminCopilotBoundary(data, h);
-
-		if (action === 'assistant.submit_developer_request') {
-			const request = result.data && result.data.developer_request
-				? result.data.developer_request
-				: {};
-			if (request.request_text) {
-				changeLines.push('Requested capability: ' + request.request_text);
-			}
-			if (request.submitted_to) {
-				changeLines.push('Sent to: ' + request.submitted_to);
-			}
-		}
 
 		html += renderFriendlyActionCard({
 			state: 'success',

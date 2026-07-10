@@ -148,6 +148,7 @@ class YoRo_REST_Response_Helper {
 
 		if ( 'orders.refund_preview' === $action ) {
 			return $order_id > 0
+				/* translators: %s: Value generated from store data. */
 				? sprintf( __( 'Order #%d cannot continue with that refund request as requested.', 'yoro-ai-core' ), $order_id )
 				: __( 'That refund request cannot continue as requested.', 'yoro-ai-core' );
 		}

@@ -44,6 +44,7 @@ class YoRo_Plan_Risk_Engine {
 				$requires_confirmation = true;
 				$risk_level = self::max_risk( $risk_level, 'high' );
 				$reasons[] = sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Unknown action "%s".', 'yoro-ai-core' ),
 					$action_name
 				);
@@ -57,6 +58,7 @@ class YoRo_Plan_Risk_Engine {
 			if ( ! empty( $registered['requires_confirmation'] ) ) {
 				$requires_confirmation = true;
 				$reasons[] = sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Action "%s" requires confirmation.', 'yoro-ai-core' ),
 					$action_name
 				);
@@ -65,6 +67,7 @@ class YoRo_Plan_Risk_Engine {
 			if ( ! empty( $registered['write_action'] ) ) {
 				$requires_confirmation = true;
 				$reasons[] = sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Action "%s" changes store data.', 'yoro-ai-core' ),
 					$action_name
 				);
@@ -80,6 +83,7 @@ class YoRo_Plan_Risk_Engine {
 			if ( $is_write_action && $item_count > 1 ) {
 				$requires_confirmation = true;
 				$reasons[] = sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					__( 'Action "%1$s" affects %2$d items.', 'yoro-ai-core' ),
 					$action_name,
 					$item_count
@@ -92,11 +96,13 @@ class YoRo_Plan_Risk_Engine {
 				if ( ! empty( $registered['write_action'] ) ) {
 					$requires_confirmation = true;
 					$reasons[] = sprintf(
+						/* translators: %s: Value generated from store data. */
 						__( 'Action "%s" changes financial information.', 'yoro-ai-core' ),
 						$action_name
 					);
 				} else {
 					$reasons[] = sprintf(
+						/* translators: %s: Value generated from store data. */
 						__( 'Action "%s" reads financial information.', 'yoro-ai-core' ),
 						$action_name
 					);
@@ -107,6 +113,7 @@ class YoRo_Plan_Risk_Engine {
 				$requires_confirmation = true;
 				$risk_level = self::max_risk( $risk_level, 'high' );
 				$reasons[] = sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Action "%s" may remove or delete data.', 'yoro-ai-core' ),
 					$action_name
 				);
@@ -116,6 +123,7 @@ class YoRo_Plan_Risk_Engine {
 				$requires_confirmation = true;
 				$risk_level = self::max_risk( $risk_level, 'medium' );
 				$reasons[] = sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Action "%s" communicates with a customer.', 'yoro-ai-core' ),
 					$action_name
 				);

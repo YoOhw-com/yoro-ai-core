@@ -576,6 +576,7 @@ class YoRo_Orders_Email_Service {
 
 		$order->add_order_note(
 			sprintf(
+				/* translators: %s: Value generated from store data. */
 				__( 'YoRo AI updated a customer email draft. Subject: %s', 'yoro-ai-core' ),
 				$subject
 			)
@@ -1355,10 +1356,12 @@ class YoRo_Orders_Email_Service {
 
 		ob_start();
 
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Uses WooCommerce's core email template hook.
 		do_action( 'woocommerce_email_header', $heading, null );
 
 		echo wp_kses_post( wpautop( esc_html( $body ) ) );
 
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Uses WooCommerce's core email template hook.
 		do_action( 'woocommerce_email_footer', null );
 
 		$message = ob_get_clean();

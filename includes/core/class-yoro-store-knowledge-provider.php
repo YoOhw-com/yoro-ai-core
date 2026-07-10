@@ -491,7 +491,7 @@ class YoRo_Store_Knowledge_Provider {
 		$classes = [
 			[
 				'slug'       => 'standard',
-				'label'      => __( 'Standard rate', 'woocommerce' ),
+				'label'      => __( 'Standard rate', 'yoro-ai-core' ),
 				'rate_count' => self::tax_rate_count_for_class( '' ),
 			],
 		];

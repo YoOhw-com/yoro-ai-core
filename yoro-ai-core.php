@@ -2,11 +2,13 @@
 /**
  * Plugin Name: YoRo AI Core
  * Description: AI operations assistant runtime for online stores.
- * Version: 0.1.6
+ * Version: 0.1.7
  * Requires at least: 6.4
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
  * Author: YoOhw
+ * License: GPLv2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: yoro-ai-core
  */
 
@@ -54,7 +56,7 @@ function yoro_ai_core_missing_woocommerce_notice() {
 	?>
 	<div class="notice notice-error">
 		<p>
-			<?php esc_html_e( 'YoRo AI Core requires the store commerce plugin to be installed and active.', 'yoro-ai-core' ); ?>
+			<?php esc_html_e( 'YoRo AI Core requires WooCommerce to be installed and active.', 'yoro-ai-core' ); ?>
 		</p>
 	</div>
 	<?php

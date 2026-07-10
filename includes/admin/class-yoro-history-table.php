@@ -68,11 +68,13 @@ class YoRo_History_Table extends WP_List_Table {
 	}
 
 	private function highlight( $text ) {
-		if ( empty( $_REQUEST['s'] ) ) {
+		$search = $this->request_search();
+
+		if ( '' === $search ) {
 			return esc_html( $text );
 		}
 
-		$keywords = $this->extract_keywords( $_REQUEST['s'] );
+		$keywords = $this->extract_keywords( $search );
 
 		$text_safe = esc_html( $text );
 
@@ -109,6 +111,30 @@ class YoRo_History_Table extends WP_List_Table {
 		}
 
 		return array_values( array_unique( $keywords ) );
+	}
+
+	private function request_search() {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only list-table search parameter.
+		$search = isset( $_REQUEST['s'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['s'] ) ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		return $search;
+	}
+
+	private function request_filter_status() {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only list-table filter parameter.
+		$status = isset( $_REQUEST['filter_status'] ) ? sanitize_key( wp_unslash( $_REQUEST['filter_status'] ) ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		return in_array( $status, [ 'executed', 'success', 'error', 'failed' ], true ) ? $status : '';
+	}
+
+	private function request_filter_action() {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only list-table filter parameter.
+		$action = isset( $_REQUEST['filter_action'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['filter_action'] ) ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		return $action;
 	}
 
 	private function render_undo_column( $item ) {
@@ -213,8 +239,8 @@ class YoRo_History_Table extends WP_List_Table {
 			return;
 		}
 
-		$status = isset( $_REQUEST['filter_status'] ) ? sanitize_key( wp_unslash( $_REQUEST['filter_status'] ) ) : '';
-		$action = isset( $_REQUEST['filter_action'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['filter_action'] ) ) : '';
+		$status = $this->request_filter_status();
+		$action = $this->request_filter_action();
 
 		?>
 			<div class="alignleft actions yoro-history-filter-bar">
@@ -257,9 +283,9 @@ class YoRo_History_Table extends WP_List_Table {
 		$params = [];
 
 		// Filter status
-		if ( ! empty( $_REQUEST['filter_status'] ) ) {
-			$filter_status = sanitize_key( wp_unslash( $_REQUEST['filter_status'] ) );
+		$filter_status = $this->request_filter_status();
 
+		if ( '' !== $filter_status ) {
 			if ( 'error' === $filter_status ) {
 				$where .= " AND status IN ('error', 'failed')";
 			} else {
@@ -269,12 +295,14 @@ class YoRo_History_Table extends WP_List_Table {
 		}
 
 		// Filter action
-		if ( ! empty( $_REQUEST['filter_action'] ) ) {
+		$filter_action = $this->request_filter_action();
+
+		if ( '' !== $filter_action ) {
 			$where   .= ' AND action = %s';
-			$params[] = sanitize_text_field( wp_unslash( $_REQUEST['filter_action'] ) );
+			$params[] = $filter_action;
 		}
 
-		$search = isset( $_REQUEST['s'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['s'] ) ) : '';
+		$search = $this->request_search();
 
 		if ( $search ) {
 			$keywords = $this->extract_keywords( $search );
@@ -298,6 +326,7 @@ class YoRo_History_Table extends WP_List_Table {
 		// COUNT
 		$count_query = "SELECT COUNT(*) FROM {$this->table_name} {$where}";
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL,PluginCheck.Security.DirectDB -- Custom table name is internal, and dynamic search clauses use placeholders populated above.
 		if ( ! empty( $params ) ) {
 			$total_items = (int) $wpdb->get_var(
 				$wpdb->prepare( $count_query, $params )
@@ -315,6 +344,7 @@ class YoRo_History_Table extends WP_List_Table {
 			$wpdb->prepare( $query, $params_with_limit ),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL,PluginCheck.Security.DirectDB
 
 		$this->items = is_array( $items ) ? $items : [];
 

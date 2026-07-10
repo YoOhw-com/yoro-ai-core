@@ -209,6 +209,7 @@ class YoRo_Store_Operations_Service {
 			YoRo_Report_Builder::insight(
 				__( 'Backlog pressure', 'yoro-ai-core' ),
 				$backlog_total > 0
+					/* translators: %s: Value generated from store data. */
 					? sprintf( __( '%d open orders are still sitting in pending, processing, or on-hold queues.', 'yoro-ai-core' ), $backlog_total )
 					: __( 'No open operational backlog is visible in the main queues.', 'yoro-ai-core' ),
 				'operations',
@@ -220,7 +221,8 @@ class YoRo_Store_Operations_Service {
 			$insights[] = YoRo_Report_Builder::insight(
 				__( 'Backlog age needs attention', 'yoro-ai-core' ),
 				sprintf(
-					__( 'The oldest sampled open order has been waiting for %s days, and the sampled backlog averages %s days.', 'yoro-ai-core' ),
+					/* translators: 1: oldest open order age in days, 2: average backlog age in days. */
+					__( 'The oldest sampled open order has been waiting for %1$s days, and the sampled backlog averages %2$s days.', 'yoro-ai-core' ),
 					wc_format_decimal( $oldest_backlog_hours / 24, 1 ),
 					wc_format_decimal( $average_backlog_hours / 24, 1 )
 				),
@@ -238,6 +240,7 @@ class YoRo_Store_Operations_Service {
 		if ( $attention_total > 0 ) {
 			$alerts[] = YoRo_Report_Builder::alert(
 				__( 'Aged orders need review', 'yoro-ai-core' ),
+				/* translators: %s: Value generated from store data. */
 				sprintf( __( '%d orders are old enough to deserve a direct operations check.', 'yoro-ai-core' ), $attention_total ),
 				'risk',
 				'aged_orders',
@@ -249,6 +252,7 @@ class YoRo_Store_Operations_Service {
 		if ( $oldest_backlog_hours >= 72 ) {
 			$alerts[] = YoRo_Report_Builder::alert(
 				__( 'Oldest backlog item is stale', 'yoro-ai-core' ),
+				/* translators: %s: Value generated from store data. */
 				sprintf( __( 'At least one sampled open order is older than %s days.', 'yoro-ai-core' ), wc_format_decimal( $oldest_backlog_hours / 24, 1 ) ),
 				'risk',
 				'backlog_age',
@@ -925,6 +929,7 @@ class YoRo_Store_Operations_Service {
 		return [
 			'topic'   => $topic,
 			'title'   => sprintf(
+				/* translators: %s: Value generated from store data. */
 				__( 'Start with order #%s', 'yoro-ai-core' ),
 				sanitize_text_field( $order['number'] ?? $order['id'] ?? '' )
 			),
@@ -1039,14 +1044,18 @@ class YoRo_Store_Operations_Service {
 
 		switch ( sanitize_key( $topic ) ) {
 			case 'pending_payment_older_than_24h':
+				/* translators: %s: Value generated from store data. */
 				return sprintf( __( 'Payment is still pending after %d hours and now needs a direct review.', 'yoro-ai-core' ), $age_hours );
 			case 'processing_older_than_72h':
+				/* translators: %s: Value generated from store data. */
 				return sprintf( __( 'This processing order has been open for %d hours without clearing the operations queue.', 'yoro-ai-core' ), $age_hours );
 			case 'on_hold_older_than_48h':
+				/* translators: %s: Value generated from store data. */
 				return sprintf( __( 'This order has been sitting on hold for %d hours and may need a decision or follow-up.', 'yoro-ai-core' ), $age_hours );
 			case 'recent_failed_orders':
 				return __( 'A recent failed checkout is still visible here and may need a quick recovery pass.', 'yoro-ai-core' );
 			case 'high_value_open_orders':
+				/* translators: %s: Value generated from store data. */
 				return $total ? sprintf( __( 'This open order is worth %s and deserves a direct check while it is still unresolved.', 'yoro-ai-core' ), $total ) : __( 'This open order deserves a direct check while it is still unresolved.', 'yoro-ai-core' );
 			default:
 				return sanitize_text_field( $ranked_case['queue_description'] ?? __( 'This order still needs attention.', 'yoro-ai-core' ) );
@@ -1070,6 +1079,7 @@ class YoRo_Store_Operations_Service {
 				return __( 'Use this when you want the highest commercial exposure checked before lower-value backlog.', 'yoro-ai-core' );
 			default:
 				return $age_hours > 0
+					/* translators: %s: Value generated from store data. */
 					? sprintf( __( 'This case has been waiting for %d hours and deserves a direct review.', 'yoro-ai-core' ), $age_hours )
 					: __( 'This case deserves a direct review.', 'yoro-ai-core' );
 		}

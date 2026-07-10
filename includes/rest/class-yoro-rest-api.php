@@ -1010,6 +1010,7 @@ class YoRo_REST_API {
 				max( 1, absint( $max_items ) * 3 )
 			);
 
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL -- $sql is prepared immediately above with all dynamic values passed as placeholders.
 			$ids = array_merge( $ids, array_map( 'absint', (array) $wpdb->get_col( $sql ) ) );
 
 			foreach ( array_values( array_unique( array_filter( $ids ) ) ) as $id ) {

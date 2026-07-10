@@ -16,9 +16,7 @@ class YoRo_Admin_Page {
 		add_action( 'admin_init', [ __CLASS__, 'handle_policy_save' ] );
 		add_action( 'admin_init', [ __CLASS__, 'handle_ai_api_connect_callback' ] );
 		add_action( 'admin_init', [ __CLASS__, 'handle_settings_save' ] );
-
-		add_filter( 'admin_footer_text', [ __CLASS__, 'filter_admin_footer_text' ], 20 );
-		add_filter( 'update_footer', [ __CLASS__, 'filter_update_footer' ], 20 );
+		add_action( 'admin_head', [ __CLASS__, 'print_menu_icon_styles' ] );
 	}
 
 	public static function add_menu_page() {
@@ -36,12 +34,40 @@ class YoRo_Admin_Page {
 	}
 
 	private static function get_menu_icon() {
-		$icon_path = YORO_AI_CORE_PATH . 'assets/images/yoro-menu-icon.svg';
-		$svg       = is_readable( $icon_path ) ? file_get_contents( $icon_path ) : '';
+		return 'none';
+	}
 
-		if ( ! is_string( $svg ) || '' === trim( $svg ) ) {
-			$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="black"/><path fill="#b8d421" d="M5.8 20.8c-.5-4.2.3-8.5 2.1-11.5 2.1-3.4 5.4-5.7 10.6-5.8-4.1.8-6.7 3.3-7.6 6.1-.8 2.4 0 4.3 1.7 5.1-2.4-.8-5.3.2-6.8 6.1Z"/><path fill="#b8d421" d="M8.8 21.1c1.1-3 3.2-5.1 5.5-6.8 2.5-1.9 3.2-4.4 1.8-6 2.3 1.1 3.6 3.3 3.2 5.9-.4 3.3-3.4 6-10.5 6.9Z"/></svg>';
-		}
+	public static function print_menu_icon_styles() {
+		$icon_uri = self::get_menu_icon_mask_uri();
+		?>
+		<style id="yoro-ai-admin-menu-icon">
+			#adminmenu #toplevel_page_yoro-ai-core .wp-menu-image br {
+				display: none;
+			}
+
+			#adminmenu #toplevel_page_yoro-ai-core .wp-menu-image::before {
+				content: "";
+				display: block;
+				width: 20px;
+				height: 20px;
+				margin: 7px auto 0;
+				padding: 0;
+				background-color: currentColor;
+				-webkit-mask-image: url("<?php echo esc_attr( $icon_uri ); ?>");
+				mask-image: url("<?php echo esc_attr( $icon_uri ); ?>");
+				-webkit-mask-repeat: no-repeat;
+				mask-repeat: no-repeat;
+				-webkit-mask-position: center;
+				mask-position: center;
+				-webkit-mask-size: 20px 20px;
+				mask-size: 20px 20px;
+			}
+		</style>
+		<?php
+	}
+
+	private static function get_menu_icon_mask_uri() {
+		$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="#000" fill-rule="evenodd" d="M12 1.55c5.77 0 10.45 4.68 10.45 10.45S17.77 22.45 12 22.45 1.55 17.77 1.55 12 6.23 1.55 12 1.55Zm0 1.65a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 0 0 0-17.6Z"/><path fill="#000" d="M5.85 20.65c-.35-4.28.45-8.14 2.32-11.12 2.1-3.36 5.46-5.56 10.34-5.76-3.85.87-6.57 3.2-7.5 6.02-.83 2.5-.04 4.45 1.8 5.25-2.5-.66-5.31.36-6.96 5.61Z"/><path fill="#000" d="M8.8 21.08c1.1-3.04 3.15-5.1 5.32-6.74 2.74-2.06 3.42-4.44 1.96-6.05 2.32.95 3.6 3.18 3.28 5.71-.4 3.2-3.35 5.97-10.56 7.08Z"/></svg>';
 
 		return 'data:image/svg+xml;base64,' . base64_encode( $svg );
 	}
@@ -382,9 +408,11 @@ class YoRo_Admin_Page {
 	}
 
 	private static function render_admin_panel_modal_source() {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only admin panel selection for initial modal state.
 		$initial_panel = isset( $_REQUEST['yoro_admin_panel'] )
 			? sanitize_key( wp_unslash( $_REQUEST['yoro_admin_panel'] ) )
 			: '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 		$can_manage_options = current_user_can( 'manage_options' );
 
 		if ( ! in_array( $initial_panel, [ 'history', 'safety', 'settings' ], true ) ) {
@@ -520,6 +548,7 @@ class YoRo_Admin_Page {
 		$rows = [];
 
 		if ( $show_advanced ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL,PluginCheck.Security.DirectDB -- Reads plugin-owned custom policy rows for the advanced settings table.
 			$rows = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY action ASC" );
 		}
 
@@ -527,6 +556,7 @@ class YoRo_Admin_Page {
 		<div class="wrap yoro-ai-wrap">
 			<h1><?php esc_html_e( 'YoRo Safety', 'yoro-ai-core' ); ?></h1>
 
+			<?php // phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only redirect notice flag. ?>
 			<?php if ( isset( $_GET['policy_saved'] ) ) : ?>
 				<?php if ( '1' === sanitize_text_field( wp_unslash( $_GET['policy_saved'] ) ) ) : ?>
 					<div class="notice notice-success is-dismissible" data-yoro-admin-notice-panel="safety">
@@ -538,6 +568,7 @@ class YoRo_Admin_Page {
 					</div>
 				<?php endif; ?>
 			<?php endif; ?>
+			<?php // phpcs:enable WordPress.Security.NonceVerification.Recommended ?>
 
 			<div class="yoro-ai-card">
 				<h2><?php esc_html_e( 'Safety Mode', 'yoro-ai-core' ); ?></h2>
@@ -831,7 +862,7 @@ class YoRo_Admin_Page {
 						<tr>
 							<th scope="row"><label for="yoro_ai_api_url"><?php esc_html_e( 'API URL', 'yoro-ai-core' ); ?></label></th>
 							<td>
-								<input type="url" name="yoro_ai_api_url" id="yoro_ai_api_url" value="<?php echo esc_attr( $ai_api_url ); ?>" class="regular-text" placeholder="<?php echo esc_attr( YoRo_AI_Settings::DEFAULT_AI_API_URL ); ?>" <?php disabled( $ai_api_url_locked ); ?> />
+								<input type="url" name="yoro_ai_api_url" id="yoro_ai_api_url" value="<?php echo esc_attr( $ai_api_url ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Enter the YoRo AI API URL from your YoRo account', 'yoro-ai-core' ); ?>" <?php disabled( $ai_api_url_locked ); ?> />
 								<?php if ( '' !== $ai_api_url_constant ) : ?>
 									<p class="description">
 										<?php
@@ -843,7 +874,7 @@ class YoRo_Admin_Page {
 										?>
 									</p>
 								<?php else : ?>
-									<p class="description"><?php esc_html_e( 'Local development default: http://127.0.0.1:8010/api/v1.', 'yoro-ai-core' ); ?></p>
+									<p class="description"><?php esc_html_e( 'YoRo AI Core does not contact an external service until this URL and a site key are configured.', 'yoro-ai-core' ); ?></p>
 								<?php endif; ?>
 							</td>
 						</tr>
@@ -1139,6 +1170,7 @@ class YoRo_Admin_Page {
 			$allowed_risk_levels = [ 'low', 'medium', 'high' ];
 		}
 
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery,PluginCheck.Security.DirectDB -- Updates one plugin-owned custom policy row after nonce and capability checks.
 		$updated = $wpdb->update(
 			$table,
 			[
@@ -1185,6 +1217,7 @@ class YoRo_Admin_Page {
 	}
 
 	public static function handle_ai_api_connect_callback() {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Hosted-connect callback is verified with the transient state token below.
 		if ( empty( $_GET['page'] ) || self::MENU_SLUG !== sanitize_key( wp_unslash( $_GET['page'] ) ) ) {
 			return;
 		}
@@ -1199,6 +1232,7 @@ class YoRo_Admin_Page {
 
 		$code    = isset( $_GET['code'] ) ? sanitize_text_field( wp_unslash( $_GET['code'] ) ) : '';
 		$state   = isset( $_GET['state'] ) ? sanitize_text_field( wp_unslash( $_GET['state'] ) ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 		$session = get_transient( self::ai_api_connect_state_key() );
 
 		if ( '' === $code || '' === $state || ! is_array( $session ) || empty( $session['state'] ) || ! hash_equals( (string) $session['state'], $state ) ) {
@@ -1248,12 +1282,17 @@ class YoRo_Admin_Page {
 			);
 		}
 
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- handle_settings_save() verifies the settings form nonce before this private method is called.
 		$api_url = YoRo_AI_Settings::is_ai_api_url_locked()
 			? YoRo_AI_Settings::get_ai_api_url()
 			: ( isset( $_POST['yoro_ai_api_url'] ) ? esc_url_raw( wp_unslash( $_POST['yoro_ai_api_url'] ) ) : YoRo_AI_Settings::get_ai_api_url() );
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
 		if ( '' === $api_url ) {
-			$api_url = YoRo_AI_Settings::DEFAULT_AI_API_URL;
+			self::redirect_to_settings_with_connect_notice(
+				'error',
+				__( 'Enter the YoRo AI API URL before connecting your account.', 'yoro-ai-core' )
+			);
 		}
 
 		$state = wp_generate_password( 32, false, false );
@@ -1302,8 +1341,30 @@ class YoRo_Admin_Page {
 			);
 		}
 
-		wp_redirect( $connect_url );
+		self::safe_redirect_to_ai_api_url( $connect_url, $api_url );
 		exit;
+	}
+
+	private static function safe_redirect_to_ai_api_url( $redirect_url, $api_url ) {
+		$redirect_host = wp_parse_url( $redirect_url, PHP_URL_HOST );
+		$api_host      = wp_parse_url( $api_url, PHP_URL_HOST );
+
+		if ( empty( $redirect_host ) || empty( $api_host ) || strtolower( $redirect_host ) !== strtolower( $api_host ) ) {
+			self::redirect_to_settings_with_connect_notice(
+				'error',
+				__( 'YoRo returned a connection URL that does not match the configured API host.', 'yoro-ai-core' )
+			);
+		}
+
+		$allow_ai_api_host = static function ( $hosts ) use ( $api_host ) {
+			$hosts[] = strtolower( $api_host );
+
+			return array_values( array_unique( $hosts ) );
+		};
+
+		add_filter( 'allowed_redirect_hosts', $allow_ai_api_host );
+		wp_safe_redirect( $redirect_url );
+		remove_filter( 'allowed_redirect_hosts', $allow_ai_api_host );
 	}
 
 	private static function render_ai_api_connect_notice() {
@@ -1438,33 +1499,4 @@ class YoRo_Admin_Page {
 		);
 	}
 
-	public static function filter_admin_footer_text( $text ) {
-		$screen = get_current_screen();
-
-		if ( ! $screen || empty( $screen->id ) ) {
-			return $text;
-		}
-
-		// Main YoRo AI page: remove footer text completely.
-		if ( 'toplevel_page_' . self::MENU_SLUG === $screen->id ) {
-			return '';
-		}
-
-		return $text;
-	}	
-
-	public static function filter_update_footer( $text ) {
-		$screen = get_current_screen();
-
-		if ( ! $screen || empty( $screen->id ) ) {
-			return $text;
-		}
-
-		// Main YoRo AI page: remove WordPress version.
-		if ( 'toplevel_page_' . self::MENU_SLUG === $screen->id ) {
-			return '';
-		}
-
-		return $text;
-	}
 }

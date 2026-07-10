@@ -9,46 +9,7 @@ class YoRo_Logger {
 	public static function log( $data ) {
 		$data = is_array( $data ) ? $data : [];
 
-		if ( self::should_write_local_debug_log() ) {
-			error_log( '[YoRo AI] ' . wp_json_encode( self::compact_debug_log( $data ) ) );
-		}
-
 		return self::log_to_db( $data );
-	}
-
-	private static function should_write_local_debug_log() {
-		$enabled = defined( 'YORO_AI_LOCAL_DEBUG_LOG' ) && YORO_AI_LOCAL_DEBUG_LOG;
-
-		if ( function_exists( 'apply_filters' ) ) {
-			$enabled = (bool) apply_filters( 'yoro_ai_local_debug_log', $enabled );
-		}
-
-		return $enabled;
-	}
-
-	private static function compact_debug_log( $data ) {
-		$runtime = isset( $data['runtime'] ) && is_array( $data['runtime'] ) ? $data['runtime'] : [];
-		$result  = isset( $data['result'] ) && is_array( $data['result'] ) ? $data['result'] : [];
-		$timings = isset( $runtime['stage_timings'] ) && is_array( $runtime['stage_timings'] ) ? $runtime['stage_timings'] : [];
-
-		$summary = [
-			'trace_id'     => sanitize_text_field( $data['trace_id'] ?? $runtime['trace_id'] ?? '' ),
-			'status'       => sanitize_key( $data['status'] ?? $runtime['status'] ?? '' ),
-			'action'       => sanitize_text_field( $data['action'] ?? $runtime['action'] ?? '' ),
-			'preview'      => ! empty( $data['preview'] ) || ! empty( $runtime['runtime_snapshot']['preview'] ),
-			'confirm'      => ! empty( $data['confirm'] ) || ! empty( $runtime['runtime_snapshot']['confirm'] ),
-			'result_type'  => sanitize_key( $result['result_type'] ?? '' ),
-			'display_type' => sanitize_key( $result['display_type'] ?? '' ),
-			'count'        => isset( $result['count'] ) ? absint( $result['count'] ) : null,
-			'total_ms'     => isset( $timings['total_ms'] ) ? absint( $timings['total_ms'] ) : null,
-		];
-
-		return array_filter(
-			$summary,
-			function( $value ) {
-				return null !== $value && [] !== $value && '' !== $value;
-			}
-		);
 	}
 
 	private static function log_to_db( $data ) {
@@ -104,6 +65,7 @@ class YoRo_Logger {
 			$ordered_formats[] = $formats[ $key ];
 		}
 
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery,PluginCheck.Security.DirectDB -- Stores a local action-history row in the plugin's custom table.
 		$inserted = $wpdb->insert( $table, $insert_data, $ordered_formats );
 
 		return $inserted ? absint( $wpdb->insert_id ) : 0;
@@ -243,7 +205,9 @@ class YoRo_Logger {
 
 		global $wpdb;
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL,PluginCheck.Security.DirectDB -- Reads the schema of the plugin's known custom table.
 		$columns = $wpdb->get_col( "DESC {$table}", 0 );
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL,PluginCheck.Security.DirectDB
 		$cache[ $table ] = is_array( $columns ) ? $columns : [];
 
 		return $cache[ $table ];
@@ -319,6 +283,7 @@ class YoRo_Logger {
 
 		$table = YoRo_DB::logs_table_name();
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL,PluginCheck.Security.DirectDB -- Reads undo data from the plugin's custom log table.
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT * FROM {$table}
@@ -333,6 +298,7 @@ class YoRo_Logger {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL,PluginCheck.Security.DirectDB
 
 		if ( ! $row ) {
 			return null;
@@ -354,6 +320,7 @@ class YoRo_Logger {
 
 		$table = YoRo_DB::logs_table_name();
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL,PluginCheck.Security.DirectDB -- Reads undo data from the plugin's custom log table.
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT * FROM {$table}
@@ -369,6 +336,7 @@ class YoRo_Logger {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL,PluginCheck.Security.DirectDB
 
 		if ( ! $row ) {
 			return null;
@@ -390,6 +358,7 @@ class YoRo_Logger {
 
 		$table = YoRo_DB::logs_table_name();
 
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery,PluginCheck.Security.DirectDB -- Updates a single row in the plugin's custom log table.
 		return $wpdb->update(
 			$table,
 			[

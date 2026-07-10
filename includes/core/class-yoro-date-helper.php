@@ -453,15 +453,20 @@ class YoRo_Date_Helper {
 
 		switch ( $unit ) {
 			case 'hours':
+				/* translators: Placeholder values are generated from store data for this message. */
 				return sprintf( _n( 'Last %d hour', 'Last %d hours', $value, 'yoro-ai-core' ), $value );
 			case 'weeks':
+				/* translators: Placeholder values are generated from store data for this message. */
 				return sprintf( _n( 'Last %d week', 'Last %d weeks', $value, 'yoro-ai-core' ), $value );
 			case 'months':
+				/* translators: Placeholder values are generated from store data for this message. */
 				return sprintf( _n( 'Last %d month', 'Last %d months', $value, 'yoro-ai-core' ), $value );
 			case 'years':
+				/* translators: Placeholder values are generated from store data for this message. */
 				return sprintf( _n( 'Last %d year', 'Last %d years', $value, 'yoro-ai-core' ), $value );
 			case 'days':
 			default:
+				/* translators: Placeholder values are generated from store data for this message. */
 				return sprintf( _n( 'Last %d day', 'Last %d days', $value, 'yoro-ai-core' ), $value );
 		}
 	}

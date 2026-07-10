@@ -260,6 +260,7 @@ class YoRo_Report_Builder {
 			$insights[] = self::insight(
 				__( 'AOV versus store baseline', 'yoro-ai-core' ),
 				sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					__( 'Average order value is %1$s%% %2$s the %3$s baseline of %4$s %5$s.', 'yoro-ai-core' ),
 					wc_format_decimal( abs( $diff ), 1 ),
 					$diff >= 0 ? __( 'above', 'yoro-ai-core' ) : __( 'below', 'yoro-ai-core' ),
@@ -283,6 +284,7 @@ class YoRo_Report_Builder {
 			$insights[] = self::insight(
 				__( 'Store product context', 'yoro-ai-core' ),
 				sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'The store profile currently points to %s as core product groups, so product mix should be read against that context.', 'yoro-ai-core' ),
 					implode( ', ', array_slice( array_map( 'sanitize_text_field', $product_groups ), 0, 3 ) )
 				),
@@ -343,10 +345,12 @@ class YoRo_Report_Builder {
 				__( 'Attention threshold context', 'yoro-ai-core' ),
 				$has_confirmed_attention_threshold
 					? sprintf(
+						/* translators: %s: Value generated from store data. */
 						__( 'A confirmed store preference treats open orders around %d hours old as attention candidates.', 'yoro-ai-core' ),
 						absint( $thresholds['attention_order_age_hours'] )
 					)
 					: sprintf(
+						/* translators: %s: Value generated from store data. */
 						__( 'The current profile default treats open orders around %d hours old as attention candidates unless a confirmed store preference overrides it.', 'yoro-ai-core' ),
 						absint( $thresholds['attention_order_age_hours'] )
 					),
@@ -383,6 +387,7 @@ class YoRo_Report_Builder {
 			self::insight(
 				__( 'Inventory profile context', 'yoro-ai-core' ),
 				sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'The store profile currently tracks %d stock-risk signals, so product demand should be read together with availability.', 'yoro-ai-core' ),
 					$risk_count
 				),
@@ -422,6 +427,7 @@ class YoRo_Report_Builder {
 
 		return [
 			'trend' => $trend,
+			/* translators: %s: Value generated from store data. */
 			'delta' => sprintf( '%+0.1f%% %s', $percent, __( 'vs previous', 'yoro-ai-core' ) ),
 		];
 	}

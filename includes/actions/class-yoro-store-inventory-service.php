@@ -1363,6 +1363,7 @@ class YoRo_Store_Inventory_Service {
 		return [
 			'topic'   => $topic,
 			'title'   => $is_start_here
+				/* translators: %s: Value generated from store data. */
 				? sprintf( __( 'Start with %s', 'yoro-ai-core' ), sanitize_text_field( $product['name'] ?? '#' . $product_id ) )
 				: sanitize_text_field( $product['name'] ?? '#' . $product_id ),
 			'meta'    => implode( ' · ', $meta_parts ),
@@ -1412,9 +1413,12 @@ class YoRo_Store_Inventory_Service {
 		switch ( $topic ) {
 			case 'out_of_stock':
 				return 'status_only' === $inventory_mode
+					/* translators: %s: Value generated from store data. */
 					? sprintf( __( '%s is marked out of stock and is the clearest stock-status exception to review first.', 'yoro-ai-core' ), $product_name )
+					/* translators: %s: Value generated from store data. */
 					: sprintf( __( '%s is already out of stock and should be reviewed before demand slips further.', 'yoro-ai-core' ), $product_name );
 			case 'on_backorder':
+				/* translators: %s: Value generated from store data. */
 				return sprintf( __( '%s is already on backorder and may now be feeding directly into fulfillment pressure.', 'yoro-ai-core' ), $product_name );
 			case 'low_stock_in_processing_orders':
 				return sprintf(
@@ -1468,9 +1472,11 @@ class YoRo_Store_Inventory_Service {
 				: __( 'Quantity not tracked', 'yoro-ai-core' );
 		}
 
+		/* translators: %s: Value generated from store data. */
 		$summary = sprintf( __( 'Stock %d', 'yoro-ai-core' ), (int) $quantity );
 
 		if ( ! empty( $inventory_context['stock_management_enabled'] ) && $threshold > 0 ) {
+			/* translators: %s: Value generated from store data. */
 			$summary .= sprintf( __( ' / low %d', 'yoro-ai-core' ), $threshold );
 		}
 

@@ -84,6 +84,7 @@ class YoRo_Policy_Engine {
 				return new WP_Error(
 					'yoro_policy_risk_blocked',
 					sprintf(
+						/* translators: %s: Value generated from store data. */
 						__( 'Store policy blocks this %s-risk action for your role.', 'yoro-ai-core' ),
 						$risk_level
 					)
@@ -100,6 +101,7 @@ class YoRo_Policy_Engine {
 				return new WP_Error(
 					'yoro_policy_limit',
 					sprintf(
+						/* translators: %s: Value generated from store data. */
 						__( 'Store policy allows at most %d items for your role.', 'yoro-ai-core' ),
 						$max_items
 					)
@@ -158,6 +160,7 @@ class YoRo_Policy_Engine {
 		$table = YoRo_DB::policies_table_name();
 
 		foreach ( $roles as $role ) {
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL,PluginCheck.Security.DirectDB -- Reads plugin-owned custom policy rows for the current user's roles.
 			$row = $wpdb->get_row(
 				$wpdb->prepare(
 					"SELECT * FROM {$table} WHERE action = %s AND role = %s LIMIT 1",
@@ -166,6 +169,7 @@ class YoRo_Policy_Engine {
 				),
 				ARRAY_A
 			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL,PluginCheck.Security.DirectDB
 
 			if ( $row ) {
 				return $row;
@@ -247,6 +251,7 @@ class YoRo_Policy_Engine {
 			if ( ! empty( $policy['requires_preview'] ) ) {
 				$runtime['requires_preview'] = 1;
 				$runtime['reasons'][] = sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Policy requires preview for action "%s".', 'yoro-ai-core' ),
 					$action
 				);
@@ -255,6 +260,7 @@ class YoRo_Policy_Engine {
 			if ( ! empty( $policy['requires_confirmation'] ) ) {
 				$runtime['requires_confirmation'] = 1;
 				$runtime['reasons'][] = sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Policy requires confirmation for action "%s".', 'yoro-ai-core' ),
 					$action
 				);

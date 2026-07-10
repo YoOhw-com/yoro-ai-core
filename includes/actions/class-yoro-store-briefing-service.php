@@ -233,6 +233,7 @@ class YoRo_Store_Briefing_Service {
 		$comparison                = self::build_business_comparison( $business_metrics, $previous_business_metrics, $previous_window );
 
 		$customer_count_label = sprintf(
+			/* translators: Placeholder values are generated from store data for this message. */
 			_n( '%d active customer', '%d active customers', count( $customer_map ), 'yoro-ai-core' ),
 			count( $customer_map )
 		);
@@ -589,6 +590,7 @@ class YoRo_Store_Briefing_Service {
 		}
 
 		return sprintf(
+			/* translators: Placeholder values are generated from store data for this message. */
 			__( 'Sales comparison for %1$s vs %2$s: %3$s; %4$s; and %5$s.', 'yoro-ai-core' ),
 			$window_label,
 			$comparison_label,
@@ -613,6 +615,7 @@ class YoRo_Store_Briefing_Service {
 		}
 
 		return sprintf(
+			/* translators: Placeholder values are generated from store data for this message. */
 			__( 'Sales comparison for %1$s: gross sales %2$s (%3$s), orders %4$d (%5$s).', 'yoro-ai-core' ),
 			$window_label,
 			self::format_metric_value( $business_metrics['gross_sales'] ?? '0', $currency ),
@@ -636,6 +639,7 @@ class YoRo_Store_Briefing_Service {
 		$previous = self::format_metric_value( $metric['previous'] ?? '0', $previous_unit );
 
 		return sprintf(
+			/* translators: Placeholder values are generated from store data for this message. */
 			__( '%1$s were %2$s (%3$s; previous %4$s)', 'yoro-ai-core' ),
 			sanitize_text_field( $label ),
 			sanitize_text_field( (string) $current_value ),
@@ -704,6 +708,7 @@ class YoRo_Store_Briefing_Service {
 
 		if ( '' !== $from && '' !== $to ) {
 			return sprintf(
+				/* translators: Placeholder values are generated from store data for this message. */
 				__( '%1$s (%2$s to %3$s)', 'yoro-ai-core' ),
 				$label,
 				$from,
@@ -760,7 +765,9 @@ class YoRo_Store_Briefing_Service {
 
 		if ( '' === $headline ) {
 			$headline = $order_count > 0
+				/* translators: Placeholder values are generated from store data for this message. */
 				? sprintf( __( 'Sales activity for %1$s: %2$d orders, %3$s %4$s gross sales, and %5$s average order value.', 'yoro-ai-core' ), $window['label'], $order_count, $gross_sales, $currency, $average_order_value )
+				/* translators: %s: Value generated from store data. */
 				: sprintf( __( 'No order revenue is visible for %s yet.', 'yoro-ai-core' ), $window['label'] );
 		}
 
@@ -822,6 +829,7 @@ class YoRo_Store_Briefing_Service {
 		if ( empty( $insights ) && ! empty( $top_products[0]['name'] ) ) {
 			$insights[] = YoRo_Report_Builder::insight(
 				__( 'Top product signal', 'yoro-ai-core' ),
+				/* translators: %s: Value generated from store data. */
 				sprintf( __( '%s is the strongest product signal in this window.', 'yoro-ai-core' ), sanitize_text_field( $top_products[0]['name'] ) ),
 				'products',
 				'positive'
@@ -831,6 +839,7 @@ class YoRo_Store_Briefing_Service {
 		if ( ! empty( $top_categories[0]['name'] ) ) {
 			$insights[] = YoRo_Report_Builder::insight(
 				__( 'Category demand signal', 'yoro-ai-core' ),
+				/* translators: Placeholder values are generated from store data for this message. */
 				sprintf( __( '%1$s is the leading product category with %2$s items sold.', 'yoro-ai-core' ), sanitize_text_field( $top_categories[0]['name'] ), sanitize_text_field( $top_categories[0]['quantity'] ?? '0' ) ),
 				'products',
 				'neutral',
@@ -846,6 +855,7 @@ class YoRo_Store_Briefing_Service {
 		if ( $attention_total > 0 ) {
 			$alerts[] = YoRo_Report_Builder::alert(
 				__( 'Operations may affect revenue follow-through', 'yoro-ai-core' ),
+				/* translators: %s: Value generated from store data. */
 				sprintf( __( '%d attention items are present while reading the sales report.', 'yoro-ai-core' ), $attention_total ),
 				'watch',
 				'operations',
@@ -1172,6 +1182,7 @@ class YoRo_Store_Briefing_Service {
 			YoRo_Report_Builder::inventory_profile_insights( $profile_context )
 		);
 		$headline = sprintf(
+			/* translators: Placeholder values are generated from store data for this message. */
 			__( '%1$s for %2$s: %3$d new orders, %4$s gross sales, and %5$d attention items.', 'yoro-ai-core' ),
 			$briefing_label,
 			$window['label'],
@@ -1215,6 +1226,7 @@ class YoRo_Store_Briefing_Service {
 		if ( $attention_total > 0 ) {
 			$alerts[] = YoRo_Report_Builder::alert(
 				__( 'Attention queue is active', 'yoro-ai-core' ),
+				/* translators: %s: Value generated from store data. */
 				sprintf( __( '%d items need review before the store can be considered clear.', 'yoro-ai-core' ), $attention_total ),
 				'watch',
 				'operations',
@@ -1271,10 +1283,12 @@ class YoRo_Store_Briefing_Service {
 		$relative_days = YoRo_Date_Helper::get_relative_days_from_window_key( $window_key );
 
 		if ( $relative_days > 0 ) {
+			/* translators: %s: Value generated from store data. */
 			return sprintf( __( '%d-day store report', 'yoro-ai-core' ), $relative_days );
 		}
 
 		if ( ! empty( YoRo_Date_Helper::get_relative_window_from_window_key( $window_key ) ) || preg_match( '/^(?:range|month|quarter|year)_/', sanitize_key( $window_key ) ) ) {
+			/* translators: %s: Value generated from store data. */
 			return sprintf( __( '%s store report', 'yoro-ai-core' ), YoRo_Date_Helper::get_window_label( $window_key ) );
 		}
 
@@ -1440,6 +1454,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => 'operations_attention' === $top_topic || $top_score >= 50 ? 'warning' : 'neutral',
 				'title'   => __( 'Operational pressure is elevated', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					__( 'The live store queue shows %1$d attention items and %2$d backlog items right now.', 'yoro-ai-core' ),
 					absint( $operations['attention_total'] ?? 0 ),
 					absint( $operations['backlog_total'] ?? 0 )
@@ -1668,6 +1683,7 @@ class YoRo_Store_Briefing_Service {
 
 			$drilldowns[] = [
 				'label'   => sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Review: %s', 'yoro-ai-core' ),
 					sanitize_text_field( $priority_item['title'] )
 				),
@@ -1709,10 +1725,12 @@ class YoRo_Store_Briefing_Service {
 		$relative_days = YoRo_Date_Helper::get_relative_days_from_window_key( $window_key );
 
 		if ( $relative_days > 0 ) {
+			/* translators: %s: Value generated from store data. */
 			return sprintf( __( 'Review %d-day operations report', 'yoro-ai-core' ), $relative_days );
 		}
 
 		if ( ! empty( YoRo_Date_Helper::get_relative_window_from_window_key( $window_key ) ) || preg_match( '/^(?:range|month|quarter|year)_/', sanitize_key( $window_key ) ) ) {
+			/* translators: %s: Value generated from store data. */
 			return sprintf( __( 'Review %s operations report', 'yoro-ai-core' ), YoRo_Date_Helper::get_window_label( $window_key ) );
 		}
 
@@ -1898,6 +1916,7 @@ class YoRo_Store_Briefing_Service {
 		switch ( $topic ) {
 			case 'operations_attention':
 				return 'operations_attention' === $top_topic
+					/* translators: %s: Value generated from store data. */
 					? sprintf( __( 'Start here because the attention queue is the main pressure point in %s.', 'yoro-ai-core' ), $window_label )
 					: __( 'Use this to review the live attention queue first.', 'yoro-ai-core' );
 			case 'fulfillment':
@@ -2044,6 +2063,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => $repeat_customer_rate >= 25 ? 'positive' : 'neutral',
 				'title'   => __( 'Repeat customers are visible in this window', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					__( '%1$d customers ordered more than once, giving this window a %2$s%% repeat customer rate.', 'yoro-ai-core' ),
 					$repeat_customers,
 					wc_format_decimal( $repeat_customer_rate, 1 )
@@ -2057,6 +2077,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => $refund_rate >= 5 ? 'watch' : 'neutral',
 				'title'   => __( 'Refunds affect the sales readout', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Refunds represent %s%% of gross sales in this window, so net sales are the better health check.', 'yoro-ai-core' ),
 					wc_format_decimal( $refund_rate, 1 )
 				),
@@ -2069,6 +2090,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => 'watch',
 				'title'   => __( 'Discounting is shaping sales quality', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Discounts are %s%% of gross sales in this window, so margin quality may deserve a quick check.', 'yoro-ai-core' ),
 					wc_format_decimal( $discount_rate, 1 )
 				),
@@ -2081,6 +2103,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => 'positive',
 				'title'   => __( 'Basket size is helping order value', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Customers are buying %s items per order on average in this window.', 'yoro-ai-core' ),
 					wc_format_decimal( $items_per_order, 2 )
 				),
@@ -2093,6 +2116,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => $attention_total >= 10 ? 'warning' : 'watch',
 				'title'   => __( 'Operational pressure is building', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					__( 'Across the store right now, %1$d items look time-sensitive and %2$d orders are still sitting in backlog.', 'yoro-ai-core' ),
 					$attention_total,
 					$backlog_total
@@ -2104,6 +2128,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => 'watch',
 				'title'   => __( 'Backlog is present but controlled', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'Across the store right now, %d orders are still open across pending, processing, or on-hold states.', 'yoro-ai-core' ),
 					$backlog_total
 				),
@@ -2117,6 +2142,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => $completed_share >= 50 ? 'positive' : 'neutral',
 				'title'   => __( 'Completed orders are carrying the period', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					__( '%1$d of %2$d orders are already completed, which suggests fulfillment is moving.', 'yoro-ai-core' ),
 					$completed_count,
 					$order_count
@@ -2128,6 +2154,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => 'neutral',
 				'title'   => __( 'Most activity is still in-flight', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					__( '%1$d pending, %2$d processing, and %3$d on-hold orders still need to convert into completed revenue.', 'yoro-ai-core' ),
 					$pending_count,
 					$processing_count,
@@ -2143,6 +2170,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => 'positive',
 				'title'   => __( 'A clear customer leader stands out', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					__( '%1$s generated %2$d orders in this window and is one of the strongest repeat-customer signals.', 'yoro-ai-core' ),
 					$leader_name,
 					absint( $top_customers[0]['order_count'] ?? 0 )
@@ -2156,6 +2184,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => 'positive',
 				'title'   => __( 'One product is leading demand', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					__( '%1$s sold %2$s units and is the strongest product signal in this period.', 'yoro-ai-core' ),
 					$top_products[0]['name'],
 					wc_format_decimal( $top_products[0]['quantity'] ?? 0, 0 )
@@ -2169,6 +2198,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => 'watch',
 				'title'   => __( 'There is no order activity in this window', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: %s: Value generated from store data. */
 					__( 'YoRo did not find any orders in %s, so the sales report is mostly a pressure check rather than a revenue readout.', 'yoro-ai-core' ),
 					sanitize_text_field( $window['label'] ?? __( 'this period', 'yoro-ai-core' ) )
 				),
@@ -2248,6 +2278,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => 'positive',
 				'title'   => __( 'A repeat customer signal is visible', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					__( '%1$s generated %2$d orders in this window and is shaping the current customer mix.', 'yoro-ai-core' ),
 					sanitize_text_field( $top_customers[0]['name'] ),
 					absint( $top_customers[0]['order_count'] ?? 0 )
@@ -2262,6 +2293,7 @@ class YoRo_Store_Briefing_Service {
 				'tone'    => 'neutral',
 				'title'   => __( 'Product demand is concentrated', 'yoro-ai-core' ),
 				'message' => sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					__( '%1$s is leading demand with %2$s units in this window.', 'yoro-ai-core' ),
 					sanitize_text_field( $top_products[0]['name'] ),
 					sanitize_text_field( $top_products[0]['quantity'] ?? '0' )

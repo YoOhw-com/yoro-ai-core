@@ -6,8 +6,12 @@
 
 docs/
 includes/dev/
+tests/
+AI_FIRST_ENGINEERING.md
+CHANGELOG.md
 
 node_modules/
 vendor/
+dist/
 *.log
 *.map

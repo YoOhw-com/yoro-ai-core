@@ -616,10 +616,12 @@ class YoRo_Action_Executor {
 
 				if ( $out_of_stock > 0 || $backorder > 0 ) {
 					$out_of_stock_label = sprintf(
+						/* translators: Placeholder values are generated from store data for this message. */
 						_n( '%d out-of-stock product', '%d out-of-stock products', $out_of_stock, 'yoro-ai-core' ),
 						$out_of_stock
 					);
 					$backorder_label = sprintf(
+						/* translators: Placeholder values are generated from store data for this message. */
 						_n( '%d backorder item', '%d backorder items', $backorder, 'yoro-ai-core' ),
 						$backorder
 					);
@@ -661,6 +663,7 @@ class YoRo_Action_Executor {
 				$currency     = sanitize_text_field( $result['meta']['currency'] ?? '' );
 				$customer_count = absint( $result['business_metrics']['unique_customers'] ?? 0 );
 				$customer_label = sprintf(
+					/* translators: Placeholder values are generated from store data for this message. */
 					_n( '%d active customer', '%d active customers', $customer_count, 'yoro-ai-core' ),
 					$customer_count
 				);

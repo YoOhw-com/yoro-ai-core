@@ -115,6 +115,18 @@ class YoRo_AI_Core {
 
 		if ( is_admin() ) {
 			YoRo_Admin_Page::init();
+			add_action( 'admin_init', [ __CLASS__, 'add_privacy_policy_content' ] );
 		}
+	}
+
+	public static function add_privacy_policy_content() {
+		if ( ! function_exists( 'wp_add_privacy_policy_content' ) ) {
+			return;
+		}
+
+		$content = '<p>' . esc_html__( 'YoRo AI Core connects this site to the configured YoRo AI API service when an authorized store manager sends a chat request, tests the connection, connects a mailbox, syncs mailbox data, drafts an email, or approves an action that reports execution status. The plugin sends the site URL, plugin version, language settings, WooCommerce store context, requested order/product/customer data needed for the request, mailbox connection details entered by an administrator, chat instructions, approved action metadata, and execution results to the configured service. Customer email addresses, names, order details, message snippets, and email body text may be included when they are needed to answer the request or draft a reply.', 'yoro-ai-core' ) . '</p>';
+		$content .= '<p>' . esc_html__( 'YoRo AI Core stores service credentials, connection status, local action history, safety settings, email templates, and draft metadata in this WordPress database. The plugin does not contact the YoRo AI API until an administrator configures the service URL and site key or starts the account connection flow.', 'yoro-ai-core' ) . '</p>';
+
+		wp_add_privacy_policy_content( __( 'YoRo AI Core', 'yoro-ai-core' ), wp_kses_post( $content ) );
 	}
 }

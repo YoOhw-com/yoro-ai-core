@@ -10,7 +10,7 @@ class YoRo_AI_Settings {
 	const OPTION_AI_API_SITE_KEY = 'yoro_ai_api_site_key';
 	const OPTION_AI_API_ENABLED = 'yoro_ai_api_enabled';
 	const OPTION_AI_API_STATUS = 'yoro_ai_api_status';
-	const DEFAULT_AI_API_URL = 'http://127.0.0.1:8010/api/v1';
+	const DEFAULT_AI_API_URL = '';
 
 	public static function get_ai_api_site_key_source() {
 		if ( defined( 'YORO_AI_API_SITE_KEY' ) && YORO_AI_API_SITE_KEY ) {
@@ -280,9 +280,6 @@ class YoRo_AI_Settings {
 			? wp_unslash( $post['yoro_ai_api_url'] )
 			: self::DEFAULT_AI_API_URL;
 		$posted_ai_api_url = esc_url_raw( $posted_ai_api_url );
-		if ( '' === $posted_ai_api_url ) {
-			$posted_ai_api_url = self::DEFAULT_AI_API_URL;
-		}
 		$ai_api_site_key_clear = ! $ai_api_site_key_locked && ! empty( $post['yoro_ai_api_site_key_clear'] );
 		$new_ai_api_site_key = '';
 

@@ -108,72 +108,11 @@ class YoRo_DB {
 	}
 
 	private static function maybe_upgrade_policy_columns() {
-		global $wpdb;
-
-		$table = self::policies_table_name();
-
-		$columns = $wpdb->get_col( "DESC {$table}", 0 );
-
-		if ( ! is_array( $columns ) ) {
-			return;
-		}
-
-		$add_column = function( $column, $definition ) use ( $wpdb, $table, $columns ) {
-			if ( ! in_array( $column, $columns, true ) ) {
-				$wpdb->query( "ALTER TABLE {$table} ADD COLUMN {$definition}" );
-			}
-		};
-
-		$add_column( 'requires_preview', 'requires_preview TINYINT(1) NOT NULL DEFAULT 0' );
-		$add_column( 'requires_confirmation', 'requires_confirmation TINYINT(1) NOT NULL DEFAULT 0' );
-		$add_column( 'allow_ai', 'allow_ai TINYINT(1) NOT NULL DEFAULT 1' );
-		$add_column( 'allow_direct', 'allow_direct TINYINT(1) NOT NULL DEFAULT 1' );
-		$add_column( 'allow_write', 'allow_write TINYINT(1) NOT NULL DEFAULT 1' );
-		$add_column( 'allowed_risk_levels', 'allowed_risk_levels TEXT NULL' );
-		$add_column( 'updated_at', 'updated_at DATETIME NULL' );
-
-		$wpdb->query(
-			"UPDATE {$table}
-			SET allowed_risk_levels = " . $wpdb->prepare( '%s', wp_json_encode( [ 'low', 'medium', 'high' ] ) ) . "
-			WHERE allowed_risk_levels IS NULL OR allowed_risk_levels = ''"
-		);
+		// dbDelta() in create_tables() applies the canonical policy table schema.
 	}
 
 	private static function maybe_upgrade_log_columns() {
-		global $wpdb;
-
-		$table = self::logs_table_name();
-
-		$columns = $wpdb->get_col( "DESC {$table}", 0 );
-
-		if ( ! is_array( $columns ) ) {
-			return;
-		}
-
-		$add_column = function( $column, $definition ) use ( $wpdb, $table, $columns ) {
-			if ( ! in_array( $column, $columns, true ) ) {
-				$wpdb->query( "ALTER TABLE {$table} ADD COLUMN {$definition}" );
-			}
-		};
-
-		$add_column( 'trace_id', "trace_id VARCHAR(100) DEFAULT '' AFTER confirm" );
-		$add_column( 'telemetry', 'telemetry LONGTEXT NULL AFTER result' );
-
-		$indexes = $wpdb->get_results( "SHOW INDEX FROM {$table}", ARRAY_A );
-		$has_trace_index = false;
-
-		if ( is_array( $indexes ) ) {
-			foreach ( $indexes as $index ) {
-				if ( ! empty( $index['Key_name'] ) && 'trace_id' === $index['Key_name'] ) {
-					$has_trace_index = true;
-					break;
-				}
-			}
-		}
-
-		if ( ! $has_trace_index ) {
-			$wpdb->query( "ALTER TABLE {$table} ADD KEY trace_id (trace_id)" );
-		}
+		// dbDelta() in create_tables() applies the canonical log table schema.
 	}
 
 	public static function cleanup_local_history_commands() {
@@ -188,6 +127,7 @@ class YoRo_DB {
 			];
 		}
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- One-time cleanup for the plugin's custom log table.
 		$action_rows = $wpdb->query(
 			$wpdb->prepare(
 				"UPDATE {$table}
@@ -213,6 +153,7 @@ class YoRo_DB {
 			AND command IS NOT NULL
 			AND command <> ''"
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter
 
 		return [
 			'action_rows'     => false === $action_rows ? 0 : absint( $action_rows ),
@@ -225,6 +166,7 @@ class YoRo_DB {
 
 		$table = self::policies_table_name();
 
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Counts rows in the plugin's known custom policy table before seeding defaults.
 		$exists = $wpdb->get_var("SELECT COUNT(*) FROM {$table}");
 
 		if ( $exists > 0 ) {
@@ -261,6 +203,7 @@ class YoRo_DB {
 		];
 
 		foreach ( $defaults as $row ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Seeds a plugin-owned custom policy row.
 			$wpdb->insert( $table, $row );
 		}
 	}
@@ -268,6 +211,7 @@ class YoRo_DB {
 	private static function table_exists( $table ) {
 		global $wpdb;
 
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Checks existence of a plugin-owned custom table.
 		return $table === $wpdb->get_var(
 			$wpdb->prepare( 'SHOW TABLES LIKE %s', $table )
 		);
@@ -276,6 +220,7 @@ class YoRo_DB {
 	private static function cleanup_legacy_runtime_user_meta() {
 		global $wpdb;
 
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Removes legacy user meta keys owned by this plugin.
 		$wpdb->query(
 			$wpdb->prepare(
 				"DELETE FROM {$wpdb->usermeta} WHERE meta_key IN (%s, %s)",
