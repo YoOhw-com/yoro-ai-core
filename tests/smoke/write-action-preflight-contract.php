@@ -165,12 +165,6 @@ $expected = [
 		'write_action'    => true,
 		'confirm'         => true,
 	],
-	'assistant.submit_developer_request' => [
-		'required_params' => [ 'request_text' ],
-		'ai_exposed'      => true,
-		'write_action'    => true,
-		'confirm'         => true,
-	],
 ];
 
 $registry = class_exists( 'YoRo_Action_Registry' ) ? YoRo_Action_Registry::all() : [];

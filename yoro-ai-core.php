@@ -2,7 +2,7 @@
 /**
  * Plugin Name: YoRo AI Core
  * Description: AI operations assistant runtime for online stores.
- * Version: 0.1.7
+ * Version: 0.1.8
  * Requires at least: 6.4
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce

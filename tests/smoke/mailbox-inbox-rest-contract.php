@@ -109,6 +109,7 @@ YoRo_AI_Settings::update_ai_api_status(
 $requests = [];
 
 $http_filter = static function ( $preempt, $args, $url ) use ( &$requests ) {
+	$url_path = (string) wp_parse_url( $url, PHP_URL_PATH );
 	$requests[] = [
 		'url'     => $url,
 		'method'  => strtoupper( (string) ( $args['method'] ?? ( ! empty( $args['body'] ) ? 'POST' : 'GET' ) ) ),
@@ -138,9 +139,9 @@ $http_filter = static function ( $preempt, $args, $url ) use ( &$requests ) {
 		$payload['provider']     = 'imap';
 	} elseif ( false !== strpos( $url, '/email/inbox/sync' ) ) {
 		$payload['messages_synced'] = 1;
-	} elseif ( preg_match( '#/email/threads/77/reply$#', $url ) ) {
+	} elseif ( preg_match( '#/email/threads/77/reply$#', $url_path ) ) {
 		$payload['status'] = 'sent';
-	} elseif ( preg_match( '#/email/threads/77$#', $url ) ) {
+	} elseif ( preg_match( '#/email/threads/77$#', $url_path ) ) {
 		$payload['thread'] = [
 			'id'      => 77,
 			'subject' => 'Shipping question',
@@ -261,7 +262,7 @@ $assert( in_array( 'http://yoro-ai-api.test/api/v1/email/imap/connect', $urls, t
 $assert( in_array( 'http://yoro-ai-api.test/api/v1/email/gmail/disconnect', $urls, true ), 'Gmail disconnect must proxy to Laravel /email/gmail/disconnect.' );
 $assert( in_array( 'http://yoro-ai-api.test/api/v1/email/disconnect', $urls, true ), 'Generic disconnect must proxy to Laravel /email/disconnect.' );
 $assert( count( array_filter( $urls, static fn ( $url ) => false !== strpos( $url, '/email/inbox' ) ) ) >= 2, 'Inbox and sync requests must proxy to Laravel /email/inbox endpoints.' );
-$assert( in_array( 'http://yoro-ai-api.test/api/v1/email/threads/77', $urls, true ), 'Thread request must proxy to Laravel /email/threads/{thread}.' );
+$assert( count( array_filter( $urls, static fn ( $url ) => '/api/v1/email/threads/77' === (string) wp_parse_url( $url, PHP_URL_PATH ) ) ) >= 2, 'Thread request must proxy both enrichment passes to Laravel /email/threads/{thread}.' );
 $assert( in_array( 'http://yoro-ai-api.test/api/v1/email/threads/77/reply', $urls, true ), 'Reply request must proxy to Laravel /email/threads/{thread}/reply.' );
 
 $reply_requests = array_values(

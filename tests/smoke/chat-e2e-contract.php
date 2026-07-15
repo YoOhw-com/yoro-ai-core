@@ -390,7 +390,7 @@ try {
 
 	if ( in_array( $scenario, [ 'coupon', 'all' ], true ) ) {
 		$coupon_code = 'YORO-CHAT-E2E-' . $stamp;
-		$create_chat = $chat( 'Create coupon ' . $coupon_code . ' for 9 percent off' );
+		$create_chat = $chat( 'Create a percent coupon named ' . $coupon_code . ' with a discount amount of 9.' );
 		$create_chat_data = (array) $create_chat['data'];
 		$debug['coupon_create_chat'] = $compact( $create_chat_data );
 
@@ -534,7 +534,7 @@ try {
 		$debug['email_invalid_refund_preview'] = $invalid_refund_preview;
 		$assert_preview_blocked( $invalid_refund_preview, 'Invalid refund preview', 'orders.refund_preview', 'order_not_found' );
 
-		$invalid_send_chat = $chat( 'Send customer email for order ' . $invalid_order_id . ' with subject YoRo smoke and body This is a YoRo smoke email.' );
+		$invalid_send_chat = $chat( 'Send a customer email now for order ' . $invalid_order_id . ' with subject "YoRo smoke" and body "This is a YoRo smoke email." Do not only compose a draft.' );
 		$invalid_send_chat_data = (array) $invalid_send_chat['data'];
 		$debug['email_invalid_send_chat'] = $compact( $invalid_send_chat_data );
 

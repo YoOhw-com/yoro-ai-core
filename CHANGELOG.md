@@ -2,7 +2,10 @@
 
 ## Unreleased
 
+## 0.1.8 - 2026-07-15
+
 ### Changed
+- Mailbox thread detail views now focus on the customer message timeline and reply composer; advanced intelligence, workflow, internal-note, and reply-history panels are no longer rendered in this surface.
 - Main YoRo Chat now enters through the Laravel conversation endpoint and uses Laravel for reasoning, memory, pending operation graphs, debug traces, and natural assistant copy.
 - The WordPress plugin is scoped to UI, store context, action catalog exposure, local execution, confirmation, undo, and structured result rendering.
 - Quick-search secondary actions are labeled as direct UI actions instead of fallback AI routing.

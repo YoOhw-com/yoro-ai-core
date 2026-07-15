@@ -13,5 +13,7 @@ CHANGELOG.md
 node_modules/
 vendor/
 dist/
+yorohq-site/
+yorohq-site.zip
 *.log
 *.map

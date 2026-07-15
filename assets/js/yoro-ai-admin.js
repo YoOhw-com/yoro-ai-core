@@ -902,8 +902,6 @@
 			html += '<button type="button" class="button button-small yoro-quick-inbox-back"><span class="dashicons dashicons-arrow-left-alt" aria-hidden="true"></span><span>Inbox</span></button>';
 			html += '<div><strong>' + escapeHtml(thread.subject || '(No subject)') + '</strong><span>' + escapeHtml(mailboxParticipantsLabel(thread)) + '</span>' + renderMailboxThreadBadges(data, 'yoro-quick-inbox') + '</div>';
 			html += '</div>';
-			html += renderMailboxThreadIntelligence(data, 'yoro-quick-inbox');
-			html += renderMailboxThreadWorkflow(data, 'yoro-quick-inbox');
 			html += '<div class="yoro-quick-inbox-messages">';
 			messages.forEach(function(message) {
 				if (message.direction === 'internal') {
@@ -916,8 +914,6 @@
 				html += '</div>';
 			});
 			html += '</div>';
-			html += renderMailboxInternalNotes(data, 'yoro-quick-inbox');
-			html += renderMailboxReplyHistory(data, 'yoro-quick-inbox');
 			html += '<div class="yoro-quick-inbox-reply-box">';
 			html += '<textarea rows="3" class="yoro-quick-inbox-reply-input" placeholder="Reply from the shop inbox"></textarea>';
 			html += '<div class="yoro-quick-inbox-reply-actions">';
@@ -4847,9 +4843,6 @@
 			html += '</div>';
 			html += '</div>';
 
-			html += renderMailboxThreadIntelligence(data, 'yoro-mailbox');
-			html += renderMailboxThreadWorkflow(data, 'yoro-mailbox');
-
 			html += '<div class="yoro-mailbox-message-list">';
 			messages.forEach(function(message) {
 				if (message.direction === 'internal') {
@@ -4863,9 +4856,6 @@
 				html += '</div>';
 			});
 			html += '</div>';
-
-			html += renderMailboxInternalNotes(data, 'yoro-mailbox');
-			html += renderMailboxReplyHistory(data, 'yoro-mailbox');
 
 			html += '<div class="yoro-quick-inbox-reply-box yoro-mailbox-reply-box">';
 			html += '<textarea rows="3" class="yoro-mailbox-reply-input" placeholder="Reply from the shop inbox"></textarea>';
