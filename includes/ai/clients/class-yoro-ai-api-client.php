@@ -1936,6 +1936,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	private function normalize_connector_runtime( array $runtime ) {
 		$cutover = isset( $runtime['cutover'] ) && is_array( $runtime['cutover'] ) ? $runtime['cutover'] : [];
 		$checks = isset( $cutover['checks'] ) && is_array( $cutover['checks'] ) ? $cutover['checks'] : [];
+		$capability_manifest = isset( $runtime['capability_manifest'] ) && is_array( $runtime['capability_manifest'] ) ? $runtime['capability_manifest'] : [];
 
 		return [
 			'connector_key'           => sanitize_key( $runtime['connector_key'] ?? '' ),
@@ -1944,6 +1945,12 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'protocol_version'        => absint( $runtime['protocol_version'] ?? 0 ),
 			'connector_version'       => sanitize_text_field( $runtime['connector_version'] ?? '' ),
 			'delivery_protocol'       => sanitize_key( $runtime['delivery_protocol'] ?? '' ),
+			'capability_manifest'     => [
+				'current'     => ! empty( $capability_manifest['current'] ),
+				'manifest_id' => sanitize_text_field( $capability_manifest['manifest_id'] ?? '' ),
+				'revision'    => absint( $capability_manifest['revision'] ?? 0 ),
+				'expires_at'  => sanitize_text_field( $capability_manifest['expires_at'] ?? '' ),
+			],
 			'cutover'                 => [
 				'cutover_enabled'         => ! empty( $cutover['cutover_enabled'] ),
 				'connection_live_enabled' => ! empty( $cutover['connection_live_enabled'] ),

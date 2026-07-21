@@ -114,6 +114,12 @@ $http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http )
 				'protocol_version'        => 1,
 				'connector_version'       => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
 				'delivery_protocol'       => 'pull_v1',
+				'capability_manifest'     => [
+					'current'     => true,
+					'manifest_id' => 'manifest_hosted_smoke',
+					'revision'    => 42,
+					'expires_at'  => gmdate( 'c', time() + DAY_IN_SECONDS ),
+				],
 				'cutover'                 => [
 					'cutover_enabled'         => false,
 					'connection_live_enabled' => false,
@@ -172,6 +178,9 @@ try {
 	$assert( YoRo_AI_Settings::is_ai_api_account_connected(), 'A valid hosted account connection was not accepted.' );
 	$assert( YORO_AI_PROVIDER_YORO_AI_API === YoRo_AI_Provider_Resolver::resolve_provider(), 'The provider did not unlock for an active account connection.' );
 	$assert( 'connection_hosted_smoke' === ( $save_result['connector_runtime']['connector_connection_id'] ?? '' ), 'Handshake normalization dropped the connector runtime identity.' );
+	$assert( true === ( $save_result['connector_runtime']['capability_manifest']['current'] ?? null ), 'Handshake normalization dropped the server manifest attestation.' );
+	$assert( 'manifest_hosted_smoke' === ( $save_result['connector_runtime']['capability_manifest']['manifest_id'] ?? '' ), 'Handshake normalization changed the server manifest identity.' );
+	$assert( 42 === ( $save_result['connector_runtime']['capability_manifest']['revision'] ?? 0 ), 'Handshake normalization changed the server manifest revision.' );
 	$assert( false === ( $save_result['connector_runtime']['cutover']['cutover_allowed'] ?? null ), 'Handshake normalization must preserve a disabled live cutover.' );
 
 	$connector_client = new YoRo_Connector_Client();
