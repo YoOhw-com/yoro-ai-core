@@ -25,7 +25,7 @@ class YoRo_Admin_Page {
 		self::$admin_screen_ids[] = add_menu_page(
 			__( 'YoRo AI', 'yoro-ai-core' ),
 			__( 'YoRo AI', 'yoro-ai-core' ),
-			'manage_woocommerce',
+			YoRo_Capabilities::USE_AI,
 			self::MENU_SLUG,
 			[ __CLASS__, 'render_page' ],
 			self::get_menu_icon(),
@@ -242,8 +242,20 @@ class YoRo_Admin_Page {
 				'aiApiAccountUrl'                       => esc_url_raw( YoRo_AI_Settings::get_ai_api_account_url() ),
 				'aiApiBillingUrl'                       => esc_url_raw( YoRo_AI_Settings::get_ai_api_billing_url() ),
 				'aiApiDashboardUrl'                     => esc_url_raw( YoRo_AI_Settings::get_ai_api_dashboard_url() ),
-				'aiApiConversationDashboardBaseUrl'     => esc_url_raw( YoRo_AI_Settings::get_ai_api_conversation_dashboard_base_url() ),
-				'conversationStorageKey'                => $conversation_storage_key,
+					'aiApiConversationDashboardBaseUrl'     => esc_url_raw( YoRo_AI_Settings::get_ai_api_conversation_dashboard_base_url() ),
+					'accountConnection'                     => YoRo_AI_Settings::get_ai_api_account_connection(),
+					'canManageAccountConnection'            => current_user_can( YoRo_Capabilities::MANAGE_CONNECTION ),
+					'currentUserCapabilities'               => [
+						'use_ai'            => current_user_can( YoRo_Capabilities::USE_AI ),
+						'view_store_data'   => current_user_can( YoRo_Capabilities::VIEW_STORE_DATA ),
+						'execute_actions'   => current_user_can( YoRo_Capabilities::EXECUTE_ACTIONS ),
+						'manage_mailbox'    => current_user_can( YoRo_Capabilities::MANAGE_MAILBOX ),
+						'view_audit'        => current_user_can( YoRo_Capabilities::VIEW_AUDIT ),
+						'manage_connection' => current_user_can( YoRo_Capabilities::MANAGE_CONNECTION ),
+						'manage_access'     => current_user_can( YoRo_Capabilities::MANAGE_ACCESS ),
+						'manage_policies'   => current_user_can( YoRo_Capabilities::MANAGE_POLICIES ),
+					],
+					'conversationStorageKey'                => $conversation_storage_key,
 				'nonce'                                 => wp_create_nonce( 'wp_rest' ),
 				'orderStatuses'                         => $order_statuses,
 				'currentUser'                           => $current_user_payload,
@@ -267,9 +279,11 @@ class YoRo_Admin_Page {
 			__( 'Hi %s, what should YoRo handle today? I’ll ask before making store changes.', 'yoro-ai-core' ),
 			'' !== $user_name ? $user_name : __( 'there', 'yoro-ai-core' )
 		);
+		$account_connection = YoRo_AI_Settings::get_ai_api_account_connection();
+		$account_connected  = ! empty( $account_connection['connected'] );
 		?>
 		<div class="yoro-chat-shell">
-			<?php if ( current_user_can( 'manage_options' ) ) : ?>
+			<?php if ( current_user_can( YoRo_Capabilities::MANAGE_CONNECTION ) ) : ?>
 				<div class="yoro-ai-api-status" data-yoro-ai-api-status>
 					<button type="button" class="yoro-ai-api-status-toggle is-loading" data-yoro-ai-api-status-toggle aria-expanded="false" aria-controls="yoro-ai-api-status-panel">
 						<span class="yoro-ai-api-status-dot" aria-hidden="true"></span>
@@ -288,6 +302,41 @@ class YoRo_Admin_Page {
 				</div>
 			<?php endif; ?>
 
+			<section class="yoro-account-gate<?php echo $account_connected ? ' is-hidden' : ''; ?>" data-yoro-account-gate aria-live="polite" <?php echo $account_connected ? 'hidden' : ''; ?>>
+				<div class="yoro-account-gate-icon" aria-hidden="true">
+					<span class="dashicons dashicons-lock"></span>
+				</div>
+				<div class="yoro-account-gate-copy">
+					<span class="yoro-account-gate-eyebrow" data-yoro-account-gate-eyebrow><?php esc_html_e( 'Account connection required', 'yoro-ai-core' ); ?></span>
+					<h2 data-yoro-account-gate-title><?php esc_html_e( 'Connect YoRo before opening the AI workspace', 'yoro-ai-core' ); ?></h2>
+					<p data-yoro-account-gate-description><?php esc_html_e( 'Link this store to your YoRo account and Organization. This securely assigns the store, plan, usage, and team access before YoRo can read or act on store data.', 'yoro-ai-core' ); ?></p>
+					<div class="yoro-account-gate-meta">
+						<span><span class="dashicons dashicons-shield-alt" aria-hidden="true"></span><?php esc_html_e( 'Secure site credential', 'yoro-ai-core' ); ?></span>
+						<span><span class="dashicons dashicons-groups" aria-hidden="true"></span><?php esc_html_e( 'Organization ownership', 'yoro-ai-core' ); ?></span>
+						<span><span class="dashicons dashicons-chart-area" aria-hidden="true"></span><?php esc_html_e( 'Plan and usage sync', 'yoro-ai-core' ); ?></span>
+					</div>
+				</div>
+				<div class="yoro-account-gate-action" data-yoro-account-gate-action>
+					<?php if ( current_user_can( YoRo_Capabilities::MANAGE_CONNECTION ) && ! YoRo_AI_Settings::is_ai_api_site_key_locked() ) : ?>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>">
+							<input type="hidden" name="page" value="<?php echo esc_attr( self::MENU_SLUG ); ?>" />
+							<input type="hidden" name="yoro_admin_panel" value="settings" />
+							<?php wp_nonce_field( 'yoro_ai_save_settings', 'yoro_ai_settings_nonce' ); ?>
+							<button type="submit" class="button button-primary yoro-account-gate-button" name="yoro_ai_api_connect" value="1">
+								<span><?php esc_html_e( 'Connect YoRo Account', 'yoro-ai-core' ); ?></span>
+								<span class="dashicons dashicons-arrow-right-alt2" aria-hidden="true"></span>
+							</button>
+						</form>
+						<button type="button" class="button yoro-account-gate-settings" id="yoro-account-gate-settings"><?php esc_html_e( 'Connection settings', 'yoro-ai-core' ); ?></button>
+					<?php elseif ( current_user_can( YoRo_Capabilities::MANAGE_CONNECTION ) ) : ?>
+						<p><?php esc_html_e( 'The site credential is locked by server configuration. Update the configured credential or remove the constant before connecting.', 'yoro-ai-core' ); ?></p>
+					<?php else : ?>
+						<p><?php esc_html_e( 'Ask a WordPress administrator to connect this store to a YoRo account.', 'yoro-ai-core' ); ?></p>
+					<?php endif; ?>
+				</div>
+			</section>
+
+			<?php if ( current_user_can( YoRo_Capabilities::MANAGE_MAILBOX ) ) : ?>
 			<div class="yoro-chat-quick-actions" data-yoro-quick-actions>
 				<div class="yoro-chat-quick-tray">
 					<div class="yoro-chat-quick-panel" id="yoro-chat-quick-panel" hidden data-yoro-quick-panel>
@@ -333,6 +382,7 @@ class YoRo_Admin_Page {
 					</button>
 				</div>
 			</div>
+			<?php endif; ?>
 
 			<div id="yoro-chat-thread" class="yoro-chat-thread">
 				<div class="yoro-chat-message yoro-chat-message-assistant" data-yoro-initial-greeting="1">
@@ -362,19 +412,24 @@ class YoRo_Admin_Page {
 						<span><?php esc_html_e( 'New Conversation', 'yoro-ai-core' ); ?></span>
 					</button>
 
+					<?php if ( current_user_can( YoRo_Capabilities::VIEW_STORE_DATA ) ) : ?>
 					<button type="button" class="button" id="yoro-ai-load-context">
 						<span class="dashicons dashicons-database" aria-hidden="true"></span>
 						<span><?php esc_html_e( 'Context', 'yoro-ai-core' ); ?></span>
 					</button>
+					<?php endif; ?>
 
 					<span class="yoro-chat-actions-spacer" aria-hidden="true"></span>
 
+					<?php if ( current_user_can( YoRo_Capabilities::VIEW_AUDIT ) || current_user_can( YoRo_Capabilities::MANAGE_POLICIES ) || current_user_can( YoRo_Capabilities::MANAGE_CONNECTION ) ) : ?>
 					<button type="button" class="button yoro-chat-admin-button" id="yoro-ai-open-admin-panels">
 						<span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
 						<span><?php esc_html_e( 'Admin', 'yoro-ai-core' ); ?></span>
 					</button>
+					<?php endif; ?>
 				</div>
 
+				<?php if ( current_user_can( YoRo_Capabilities::VIEW_STORE_DATA ) ) : ?>
 				<div class="yoro-chat-workflows" aria-label="<?php esc_attr_e( 'Store operations workflows', 'yoro-ai-core' ); ?>">
 					<button type="button" class="yoro-chat-workflow-chip" data-yoro-workflow-action="store.get_daily_briefing" data-yoro-workflow-params="<?php echo esc_attr( wp_json_encode( [ 'window' => 'today', 'limit' => 1 ] ) ); ?>">
 						<span class="dashicons dashicons-clipboard" aria-hidden="true"></span>
@@ -401,6 +456,7 @@ class YoRo_Admin_Page {
 						<span><?php esc_html_e( 'Reports', 'yoro-ai-core' ); ?></span>
 					</button>
 				</div>
+				<?php endif; ?>
 			</div>
 		</div>
 		<?php self::render_admin_panel_modal_source(); ?>
@@ -413,17 +469,28 @@ class YoRo_Admin_Page {
 			? sanitize_key( wp_unslash( $_REQUEST['yoro_admin_panel'] ) )
 			: '';
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
-		$can_manage_options = current_user_can( 'manage_options' );
+		$can_view_history      = current_user_can( YoRo_Capabilities::VIEW_AUDIT );
+		$can_manage_policies   = current_user_can( YoRo_Capabilities::MANAGE_POLICIES );
+		$can_manage_connection = current_user_can( YoRo_Capabilities::MANAGE_CONNECTION );
+		$available_panels      = array_keys(
+			array_filter(
+				[
+					'history'  => $can_view_history,
+					'safety'   => $can_manage_policies,
+					'settings' => $can_manage_connection,
+				]
+			)
+		);
 
-		if ( ! in_array( $initial_panel, [ 'history', 'safety', 'settings' ], true ) ) {
+		if ( empty( $available_panels ) ) {
+			return;
+		}
+
+		if ( ! in_array( $initial_panel, $available_panels, true ) ) {
 			$initial_panel = '';
 		}
 
-		if ( ! $can_manage_options && 'history' !== $initial_panel ) {
-			$initial_panel = '';
-		}
-
-		$active_panel = '' !== $initial_panel ? $initial_panel : 'history';
+		$active_panel = '' !== $initial_panel ? $initial_panel : $available_panels[0];
 		$history_active = 'history' === $active_panel;
 		$safety_active = 'safety' === $active_panel;
 		$settings_active = 'settings' === $active_panel;
@@ -431,6 +498,7 @@ class YoRo_Admin_Page {
 		<div class="yoro-admin-panel-source" data-yoro-admin-panels data-yoro-admin-initial-panel="<?php echo esc_attr( $initial_panel ); ?>" hidden>
 			<div class="yoro-admin-panel-modal" data-yoro-admin-modal>
 				<div class="yoro-admin-panel-tabs" role="tablist" aria-label="<?php esc_attr_e( 'YoRo AI admin panels', 'yoro-ai-core' ); ?>">
+					<?php if ( $can_view_history ) : ?>
 					<button
 						type="button"
 						class="button yoro-admin-panel-tab<?php echo $history_active ? ' is-active' : ''; ?>"
@@ -440,8 +508,9 @@ class YoRo_Admin_Page {
 					>
 						<?php esc_html_e( 'History', 'yoro-ai-core' ); ?>
 					</button>
+					<?php endif; ?>
 
-					<?php if ( $can_manage_options ) : ?>
+					<?php if ( $can_manage_policies ) : ?>
 						<button
 							type="button"
 							class="button yoro-admin-panel-tab<?php echo $safety_active ? ' is-active' : ''; ?>"
@@ -451,7 +520,9 @@ class YoRo_Admin_Page {
 						>
 							<?php esc_html_e( 'Safety', 'yoro-ai-core' ); ?>
 						</button>
+					<?php endif; ?>
 
+					<?php if ( $can_manage_connection ) : ?>
 						<button
 							type="button"
 							class="button yoro-admin-panel-tab<?php echo $settings_active ? ' is-active' : ''; ?>"
@@ -464,6 +535,7 @@ class YoRo_Admin_Page {
 					<?php endif; ?>
 				</div>
 
+				<?php if ( $can_view_history ) : ?>
 				<div
 					class="yoro-admin-panel-section<?php echo $history_active ? ' is-active' : ''; ?>"
 					data-yoro-admin-panel="history"
@@ -471,8 +543,9 @@ class YoRo_Admin_Page {
 				>
 					<?php self::render_history_page(); ?>
 				</div>
+				<?php endif; ?>
 
-				<?php if ( $can_manage_options ) : ?>
+				<?php if ( $can_manage_policies ) : ?>
 					<div
 						class="yoro-admin-panel-section<?php echo $safety_active ? ' is-active' : ''; ?>"
 						data-yoro-admin-panel="safety"
@@ -480,7 +553,9 @@ class YoRo_Admin_Page {
 					>
 						<?php self::render_policies_page(); ?>
 					</div>
+				<?php endif; ?>
 
+				<?php if ( $can_manage_connection ) : ?>
 					<div
 						class="yoro-admin-panel-section<?php echo $settings_active ? ' is-active' : ''; ?>"
 						data-yoro-admin-panel="settings"
@@ -531,13 +606,16 @@ class YoRo_Admin_Page {
 
 		$table = YoRo_DB::policies_table_name();
 
-		$policy_mode      = get_option( 'yoro_policy_mode', 'balanced' );
-		$advanced_enabled = get_option( 'yoro_policy_advanced_enabled', 'no' );
+		$policy_mode      = YoRo_Safety_Contract::profile();
+		$policy_version   = YoRo_Safety_Contract::policy_version();
+		$server_managed   = YoRo_Safety_Contract::is_server_authoritative();
+		$management_url   = YoRo_Safety_Contract::management_url();
+		$advanced_enabled = 'no';
 
-		$allowed_modes = [ 'permissive', 'balanced', 'strict', 'custom' ];
+		$allowed_modes = [ 'advisory', 'assisted', 'delegated' ];
 
 		if ( ! in_array( $policy_mode, $allowed_modes, true ) ) {
-			$policy_mode = 'balanced';
+			$policy_mode = 'assisted';
 		}
 
 		$show_advanced = (
@@ -560,23 +638,46 @@ class YoRo_Admin_Page {
 			<?php if ( isset( $_GET['policy_saved'] ) ) : ?>
 				<?php if ( '1' === sanitize_text_field( wp_unslash( $_GET['policy_saved'] ) ) ) : ?>
 					<div class="notice notice-success is-dismissible" data-yoro-admin-notice-panel="safety">
-						<p><?php esc_html_e( 'Safety mode saved.', 'yoro-ai-core' ); ?></p>
+						<p><?php esc_html_e( 'Safety profile saved.', 'yoro-ai-core' ); ?></p>
+					</div>
+				<?php elseif ( 'centralized' === sanitize_key( wp_unslash( $_GET['policy_saved'] ) ) ) : ?>
+					<div class="notice notice-info is-dismissible" data-yoro-admin-notice-panel="safety">
+						<p><?php esc_html_e( 'This connected site uses the versioned Safety policy from the YoRo account.', 'yoro-ai-core' ); ?></p>
 					</div>
 				<?php else : ?>
 					<div class="notice notice-error is-dismissible" data-yoro-admin-notice-panel="safety">
-						<p><?php esc_html_e( 'Safety mode could not be saved.', 'yoro-ai-core' ); ?></p>
+						<p><?php esc_html_e( 'Safety profile could not be saved.', 'yoro-ai-core' ); ?></p>
 					</div>
 				<?php endif; ?>
 			<?php endif; ?>
 			<?php // phpcs:enable WordPress.Security.NonceVerification.Recommended ?>
 
 			<div class="yoro-ai-card">
-				<h2><?php esc_html_e( 'Safety Mode', 'yoro-ai-core' ); ?></h2>
+				<h2><?php esc_html_e( 'Safety Profile', 'yoro-ai-core' ); ?></h2>
 
 				<p class="description">
-					<?php esc_html_e( 'Choose how often YoRo should pause for review before store changes. Balanced is recommended for most stores.', 'yoro-ai-core' ); ?>
+					<?php esc_html_e( 'Choose the boundary between advice, reviewed execution, and explicitly delegated automation. Assisted is recommended for most stores.', 'yoro-ai-core' ); ?>
 				</p>
 
+				<?php if ( $server_managed ) : ?>
+					<div class="notice notice-info inline">
+						<p>
+							<?php
+							echo esc_html(
+								sprintf(
+									/* translators: 1: Safety profile name, 2: policy version. */
+									__( 'YoRo AI is the policy authority for this connected site. Active profile: %1$s, version %2$d.', 'yoro-ai-core' ),
+									ucfirst( $policy_mode ),
+									$policy_version
+								)
+							);
+							?>
+						</p>
+						<?php if ( '' !== $management_url ) : ?>
+							<p><a class="button button-primary" href="<?php echo esc_url( $management_url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Manage versioned Safety policy', 'yoro-ai-core' ); ?></a></p>
+						<?php endif; ?>
+					</div>
+				<?php else : ?>
 				<form method="post">
 					<?php wp_nonce_field( 'yoro_save_policy_mode', 'yoro_policy_mode_nonce' ); ?>
 					<input type="hidden" name="page" value="<?php echo esc_attr( self::MENU_SLUG ); ?>" />
@@ -584,35 +685,35 @@ class YoRo_Admin_Page {
 
 					<table class="form-table" role="presentation">
 						<tr>
-							<th scope="row"><?php esc_html_e( 'Mode', 'yoro-ai-core' ); ?></th>
+							<th scope="row"><?php esc_html_e( 'Profile', 'yoro-ai-core' ); ?></th>
 							<td>
 								<fieldset>
 									<label>
-										<input type="radio" name="yoro_policy_mode" value="permissive" <?php checked( $policy_mode, 'permissive' ); ?> />
-										<strong><?php esc_html_e( 'Permissive', 'yoro-ai-core' ); ?></strong>
+										<input type="radio" name="yoro_safety_profile" value="advisory" <?php checked( $policy_mode, 'advisory' ); ?> />
+										<strong><?php esc_html_e( 'Advisory', 'yoro-ai-core' ); ?></strong>
 									</label>
 									<p class="description">
-										<?php esc_html_e( 'Best for testing. YoRo asks less often, but still pauses before sensitive changes.', 'yoro-ai-core' ); ?>
+										<?php esc_html_e( 'YoRo may inspect and draft, but side effects are blocked.', 'yoro-ai-core' ); ?>
 									</p>
 
 									<br>
 
 									<label>
-										<input type="radio" name="yoro_policy_mode" value="balanced" <?php checked( $policy_mode, 'balanced' ); ?> />
-										<strong><?php esc_html_e( 'Balanced — Recommended', 'yoro-ai-core' ); ?></strong>
+										<input type="radio" name="yoro_safety_profile" value="assisted" <?php checked( $policy_mode, 'assisted' ); ?> />
+										<strong><?php esc_html_e( 'Assisted — Recommended', 'yoro-ai-core' ); ?></strong>
 									</label>
 									<p class="description">
-										<?php esc_html_e( 'Recommended for most stores. YoRo keeps everyday work moving and asks before meaningful changes.', 'yoro-ai-core' ); ?>
+										<?php esc_html_e( 'YoRo proposes actions and requires approval of the exact preview before AI-originated changes.', 'yoro-ai-core' ); ?>
 									</p>
 
 									<br>
 
 									<label>
-										<input type="radio" name="yoro_policy_mode" value="strict" <?php checked( $policy_mode, 'strict' ); ?> />
-										<strong><?php esc_html_e( 'Strict', 'yoro-ai-core' ); ?></strong>
+										<input type="radio" name="yoro_safety_profile" value="delegated" <?php checked( $policy_mode, 'delegated' ); ?> />
+										<strong><?php esc_html_e( 'Delegated', 'yoro-ai-core' ); ?></strong>
 									</label>
 									<p class="description">
-										<?php esc_html_e( 'Safer for larger teams. YoRo asks for review more often and keeps bulk changes tighter.', 'yoro-ai-core' ); ?>
+										<?php esc_html_e( 'Automation may skip confirmation only when a versioned YoRo AI policy rule explicitly matches.', 'yoro-ai-core' ); ?>
 									</p>
 
 								</fieldset>
@@ -620,21 +721,20 @@ class YoRo_Admin_Page {
 						</tr>
 					</table>
 
-					<?php submit_button( __( 'Save safety mode', 'yoro-ai-core' ) ); ?>
+					<?php submit_button( __( 'Save safety profile', 'yoro-ai-core' ) ); ?>
 				</form>
+				<?php endif; ?>
 			</div>
 
 			<div class="yoro-ai-card">
-				<h2><?php esc_html_e( 'Current Safety Mode', 'yoro-ai-core' ); ?></h2>
+				<h2><?php esc_html_e( 'Current Safety Profile', 'yoro-ai-core' ); ?></h2>
 
-				<?php if ( 'permissive' === $policy_mode ) : ?>
-					<p><?php esc_html_e( 'YoRo will allow common requests and still ask before risky store changes.', 'yoro-ai-core' ); ?></p>
-				<?php elseif ( 'strict' === $policy_mode ) : ?>
-					<p><?php esc_html_e( 'YoRo will use tighter bulk limits and ask for approval more often.', 'yoro-ai-core' ); ?></p>
-				<?php elseif ( 'custom' === $policy_mode ) : ?>
-					<p><?php esc_html_e( 'YoRo will use your custom role-based safety rules.', 'yoro-ai-core' ); ?></p>
+				<?php if ( 'advisory' === $policy_mode ) : ?>
+					<p><?php esc_html_e( 'YoRo can advise and draft, but cannot change store or mailbox data.', 'yoro-ai-core' ); ?></p>
+				<?php elseif ( 'delegated' === $policy_mode ) : ?>
+					<p><?php esc_html_e( 'YoRo AI uses explicit, versioned rules for delegated automation and falls back to review when no rule matches.', 'yoro-ai-core' ); ?></p>
 				<?php else : ?>
-					<p><?php esc_html_e( 'YoRo will use balanced safety controls for normal store management.', 'yoro-ai-core' ); ?></p>
+					<p><?php esc_html_e( 'YoRo will require review of the exact preview before AI-originated store changes.', 'yoro-ai-core' ); ?></p>
 				<?php endif; ?>
 			</div>
 
@@ -827,13 +927,18 @@ class YoRo_Admin_Page {
 		$ai_api_site_key_constant = $settings['ai_api_site_key_constant'] ?? '';
 		$ai_api_enabled = $settings['ai_api_enabled'] ?? 'no';
 		$ai_api_status = isset( $settings['ai_api_status'] ) && is_array( $settings['ai_api_status'] ) ? $settings['ai_api_status'] : [];
+		$ai_api_account_connection = isset( $settings['ai_api_account_connection'] ) && is_array( $settings['ai_api_account_connection'] ) ? $settings['ai_api_account_connection'] : YoRo_AI_Settings::get_ai_api_account_connection();
 		$ai_api_account_url = $settings['ai_api_account_url'] ?? YoRo_AI_Settings::get_ai_api_account_url();
 		$ai_api_billing_url = $settings['ai_api_billing_url'] ?? YoRo_AI_Settings::get_ai_api_billing_url();
 		$ai_api_site = isset( $ai_api_status['site'] ) && is_array( $ai_api_status['site'] ) ? $ai_api_status['site'] : [];
+		$ai_api_organization = isset( $ai_api_status['organization'] ) && is_array( $ai_api_status['organization'] ) ? $ai_api_status['organization'] : [];
+		$ai_api_connection = isset( $ai_api_status['connection'] ) && is_array( $ai_api_status['connection'] ) ? $ai_api_status['connection'] : [];
+		$ai_api_credential = isset( $ai_api_status['credential'] ) && is_array( $ai_api_status['credential'] ) ? $ai_api_status['credential'] : [];
 		$ai_api_entitlements = isset( $ai_api_status['entitlements'] ) && is_array( $ai_api_status['entitlements'] ) ? $ai_api_status['entitlements'] : [];
 		$ai_api_usage = isset( $ai_api_status['usage'] ) && is_array( $ai_api_status['usage'] ) ? $ai_api_status['usage'] : [];
 		$ai_api_plan_label = $ai_api_entitlements['plan_label'] ?? ( $ai_api_entitlements['usage_plan'] ?? ( $ai_api_site['plan'] ?? '' ) );
 		$ai_api_subscription_status = $ai_api_entitlements['subscription_status'] ?? '';
+		$show_ai_api_url_editor = ! $ai_api_url_locked && defined( 'WP_DEBUG' ) && WP_DEBUG;
 
 		?>
 		<div class="wrap yoro-ai-wrap">
@@ -862,7 +967,14 @@ class YoRo_Admin_Page {
 						<tr>
 							<th scope="row"><label for="yoro_ai_api_url"><?php esc_html_e( 'API URL', 'yoro-ai-core' ); ?></label></th>
 							<td>
-								<input type="url" name="yoro_ai_api_url" id="yoro_ai_api_url" value="<?php echo esc_attr( $ai_api_url ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Enter the YoRo AI API URL from your YoRo account', 'yoro-ai-core' ); ?>" <?php disabled( $ai_api_url_locked ); ?> />
+								<?php if ( $show_ai_api_url_editor ) : ?>
+									<input type="url" name="yoro_ai_api_url" id="yoro_ai_api_url" value="<?php echo esc_attr( $ai_api_url ); ?>" class="regular-text" placeholder="http://127.0.0.1:8010/api/v1" />
+								<?php else : ?>
+									<code><?php echo esc_html( '' !== $ai_api_url ? $ai_api_url : __( 'Not configured in this build', 'yoro-ai-core' ) ); ?></code>
+									<?php if ( ! $ai_api_url_locked ) : ?>
+										<input type="hidden" name="yoro_ai_api_url" value="<?php echo esc_attr( $ai_api_url ); ?>" />
+									<?php endif; ?>
+								<?php endif; ?>
 								<?php if ( '' !== $ai_api_url_constant ) : ?>
 									<p class="description">
 										<?php
@@ -874,13 +986,13 @@ class YoRo_Admin_Page {
 										?>
 									</p>
 								<?php else : ?>
-									<p class="description"><?php esc_html_e( 'YoRo AI Core does not contact an external service until this URL and a site key are configured.', 'yoro-ai-core' ); ?></p>
+									<p class="description"><?php echo esc_html( $show_ai_api_url_editor ? __( 'Development override. Production builds use the canonical YoRo service endpoint.', 'yoro-ai-core' ) : __( 'The production service endpoint is controlled by the YoRo build or YORO_AI_API_URL constant.', 'yoro-ai-core' ) ); ?></p>
 								<?php endif; ?>
 							</td>
 						</tr>
 
 						<tr>
-							<th scope="row"><label for="yoro_ai_api_site_key"><?php esc_html_e( 'Site key', 'yoro-ai-core' ); ?></label></th>
+							<th scope="row"><?php esc_html_e( 'Site credential', 'yoro-ai-core' ); ?></th>
 							<td>
 								<?php if ( 'constant' === $ai_api_site_key_source ) : ?>
 									<span class="dashicons dashicons-yes-alt" style="color:#00a32a;"></span>
@@ -899,27 +1011,7 @@ class YoRo_Admin_Page {
 									<?php esc_html_e( 'Not configured.', 'yoro-ai-core' ); ?>
 								<?php endif; ?>
 
-								<p style="margin-top:12px;">
-									<input
-										type="password"
-										name="yoro_ai_api_site_key"
-										id="yoro_ai_api_site_key"
-										value=""
-										class="regular-text"
-										autocomplete="new-password"
-										placeholder="<?php esc_attr_e( 'Paste a new site key to replace the current one', 'yoro-ai-core' ); ?>"
-										<?php disabled( 'constant' === $ai_api_site_key_source ); ?>
-									/>
-								</p>
-
-								<?php if ( 'constant' !== $ai_api_site_key_source ) : ?>
-									<p>
-										<label>
-											<input type="checkbox" name="yoro_ai_api_site_key_clear" value="yes" />
-											<?php esc_html_e( 'Clear saved site key', 'yoro-ai-core' ); ?>
-										</label>
-									</p>
-								<?php endif; ?>
+								<p class="description"><?php esc_html_e( 'The credential is issued automatically, encrypted in this WordPress database, and never displayed in the browser.', 'yoro-ai-core' ); ?></p>
 							</td>
 						</tr>
 
@@ -941,27 +1033,33 @@ class YoRo_Admin_Page {
 						<tr>
 							<th scope="row"><?php esc_html_e( 'Connection status', 'yoro-ai-core' ); ?></th>
 							<td>
-								<?php if ( ! empty( $ai_api_status['checked_at'] ) && ! empty( $ai_api_status['connected'] ) ) : ?>
+								<?php if ( ! empty( $ai_api_status['checked_at'] ) && ! empty( $ai_api_account_connection['connected'] ) ) : ?>
 									<span class="dashicons dashicons-yes-alt" style="color:#00a32a;"></span>
 									<?php esc_html_e( 'Connected.', 'yoro-ai-core' ); ?>
 								<?php elseif ( ! empty( $ai_api_status['checked_at'] ) ) : ?>
 									<span class="dashicons dashicons-warning" style="color:#dba617;"></span>
-										<?php echo esc_html( $ai_api_status['message'] ?? __( 'I could not verify the connection.', 'yoro-ai-core' ) ); ?>
+									<?php esc_html_e( 'Attention needed:', 'yoro-ai-core' ); ?>
+									<?php echo esc_html( $ai_api_status['message'] ?? __( 'I could not verify the connection.', 'yoro-ai-core' ) ); ?>
 								<?php else : ?>
-									<?php esc_html_e( 'Not checked yet.', 'yoro-ai-core' ); ?>
+									<?php echo esc_html( 'missing' === $ai_api_site_key_source ? __( 'Disconnected.', 'yoro-ai-core' ) : __( 'Not checked yet.', 'yoro-ai-core' ) ); ?>
 								<?php endif; ?>
 
 								<p style="margin-top:12px;">
 									<?php submit_button( __( 'Test connection', 'yoro-ai-core' ), 'secondary', 'yoro_ai_api_test_connection', false ); ?>
 								</p>
 
-								<?php if ( ! empty( $ai_api_status['connected'] ) ) : ?>
+								<?php if ( ! empty( $ai_api_account_connection['connected'] ) ) : ?>
 									<div style="margin-top:14px;display:grid;gap:10px;max-width:680px;">
-										<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">
+										<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;">
 											<div style="border:1px solid #dcdcde;border-radius:6px;padding:10px;background:#fff;">
 												<strong><?php esc_html_e( 'Store', 'yoro-ai-core' ); ?></strong><br>
 												<span><?php echo esc_html( $ai_api_site['name'] ?? get_bloginfo( 'name' ) ); ?></span><br>
 												<span class="description"><?php echo esc_html( $ai_api_site['url'] ?? home_url() ); ?></span>
+											</div>
+											<div style="border:1px solid #dcdcde;border-radius:6px;padding:10px;background:#fff;">
+												<strong><?php esc_html_e( 'Organization', 'yoro-ai-core' ); ?></strong><br>
+												<span><?php echo esc_html( $ai_api_organization['name'] ?? __( 'Unknown', 'yoro-ai-core' ) ); ?></span><br>
+												<span class="description"><?php echo esc_html( $ai_api_connection['status'] ?? __( 'Connected', 'yoro-ai-core' ) ); ?></span>
 											</div>
 											<div style="border:1px solid #dcdcde;border-radius:6px;padding:10px;background:#fff;">
 												<strong><?php esc_html_e( 'Plan', 'yoro-ai-core' ); ?></strong><br>
@@ -988,6 +1086,9 @@ class YoRo_Admin_Page {
 													<span class="description"><?php esc_html_e( 'Unlimited or not reported', 'yoro-ai-core' ); ?></span>
 												<?php endif; ?>
 											</div>
+											<?php if ( ! empty( $ai_api_credential['expires_at'] ) ) : ?>
+												<p class="description" style="grid-column:1/-1;margin:0;"><?php echo esc_html( sprintf( __( 'Credential expires: %s', 'yoro-ai-core' ), $ai_api_credential['expires_at'] ) ); ?></p>
+											<?php endif; ?>
 										</div>
 
 										<p style="margin:0;display:flex;gap:8px;flex-wrap:wrap;">
@@ -1057,7 +1158,7 @@ class YoRo_Admin_Page {
 
 	public static function handle_policy_save() {
 
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( YoRo_Capabilities::MANAGE_POLICIES ) ) {
 			return;
 		}
 
@@ -1074,26 +1175,36 @@ class YoRo_Admin_Page {
 				return;
 			}
 
-			$mode = isset( $_POST['yoro_policy_mode'] )
-				? sanitize_key( wp_unslash( $_POST['yoro_policy_mode'] ) )
-				: 'balanced';
+			if ( YoRo_Safety_Contract::is_server_authoritative() ) {
+				wp_safe_redirect(
+					add_query_arg(
+						[
+							'page'             => self::MENU_SLUG,
+							'yoro_admin_panel' => 'safety',
+							'policy_saved'     => 'centralized',
+						],
+						admin_url( 'admin.php' )
+					)
+				);
+				exit;
+			}
+
+			$mode = isset( $_POST['yoro_safety_profile'] )
+				? sanitize_key( wp_unslash( $_POST['yoro_safety_profile'] ) )
+				: 'assisted';
 
 			$allowed_modes = [
-				'permissive',
-				'balanced',
-				'strict',
-				'custom',
+				'advisory',
+				'assisted',
+				'delegated',
 			];
 
 			if ( ! in_array( $mode, $allowed_modes, true ) ) {
-				$mode = 'balanced';
+				$mode = 'assisted';
 			}
 
-			update_option( 'yoro_policy_mode', $mode );
-			update_option(
-				'yoro_policy_advanced_enabled',
-				isset( $_POST['yoro_policy_advanced_enabled'] ) ? 'yes' : 'no'
-			);
+			update_option( YoRo_Safety_Contract::PROFILE_OPTION, $mode );
+			update_option( YoRo_Safety_Contract::POLICY_VERSION_OPTION, YoRo_Safety_Contract::policy_version() + 1 );
 
 			wp_safe_redirect(
 				add_query_arg(
@@ -1226,7 +1337,7 @@ class YoRo_Admin_Page {
 			return;
 		}
 
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( YoRo_Capabilities::MANAGE_CONNECTION ) ) {
 			wp_die( esc_html__( 'You do not have permission to connect YoRo.', 'yoro-ai-core' ) );
 		}
 
@@ -1244,11 +1355,24 @@ class YoRo_Admin_Page {
 		}
 
 		$api_url = esc_url_raw( $session['api_url'] ?? YoRo_AI_Settings::get_ai_api_url() );
+		$code_verifier = sanitize_text_field( $session['code_verifier'] ?? '' );
+		$installation_uuid = sanitize_text_field( $session['installation_uuid'] ?? '' );
+
+		if ( '' === $code_verifier || '' === $installation_uuid || ! hash_equals( YoRo_AI_Settings::get_installation_uuid(), $installation_uuid ) ) {
+			delete_transient( self::ai_api_connect_state_key() );
+			self::redirect_to_settings_with_connect_notice(
+				'error',
+				__( 'YoRo connection proof is missing or belongs to another WordPress installation.', 'yoro-ai-core' )
+			);
+		}
+
 		$result  = ( new YoRo_AI_API_Client() )->exchange_wordpress_connect_code(
 			[
 				'code'           => $code,
 				'state'          => $state,
 				'site_url'       => home_url(),
+				'installation_uuid' => $installation_uuid,
+				'code_verifier'  => $code_verifier,
 				'plugin_version' => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
 			],
 			$api_url
@@ -1295,12 +1419,18 @@ class YoRo_Admin_Page {
 			);
 		}
 
-		$state = wp_generate_password( 32, false, false );
+		$connect_proof     = YoRo_AI_Settings::create_wordpress_connect_proof();
+		$state             = $connect_proof['state'];
+		$code_verifier     = $connect_proof['code_verifier'];
+		$code_challenge    = $connect_proof['code_challenge'];
+		$installation_uuid = $connect_proof['installation_uuid'];
 		set_transient(
 			self::ai_api_connect_state_key(),
 			[
-				'state'   => $state,
-				'api_url' => $api_url,
+				'state'             => $state,
+				'api_url'           => $api_url,
+				'code_verifier'     => $code_verifier,
+				'installation_uuid' => $installation_uuid,
 			],
 			15 * MINUTE_IN_SECONDS
 		);
@@ -1315,7 +1445,12 @@ class YoRo_Admin_Page {
 					]
 				),
 				'state'            => $state,
+				'installation_uuid' => $installation_uuid,
+				'code_challenge'    => $code_challenge,
+				'code_challenge_method' => 'S256',
+				'environment'      => YoRo_AI_Settings::get_ai_api_environment(),
 				'plugin_version'   => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+				'wordpress_actor'  => YoRo_WordPress_Actor::current_payload(),
 				'language_context' => [
 					'site_locale'        => get_locale(),
 					'user_locale'        => get_user_locale(),
@@ -1348,8 +1483,20 @@ class YoRo_Admin_Page {
 	private static function safe_redirect_to_ai_api_url( $redirect_url, $api_url ) {
 		$redirect_host = wp_parse_url( $redirect_url, PHP_URL_HOST );
 		$api_host      = wp_parse_url( $api_url, PHP_URL_HOST );
+		$redirect_scheme = strtolower( (string) wp_parse_url( $redirect_url, PHP_URL_SCHEME ) );
+		$api_scheme      = strtolower( (string) wp_parse_url( $api_url, PHP_URL_SCHEME ) );
+		$redirect_port   = wp_parse_url( $redirect_url, PHP_URL_PORT );
+		$api_port        = wp_parse_url( $api_url, PHP_URL_PORT );
+		$redirect_port   = $redirect_port ? absint( $redirect_port ) : ( 'https' === $redirect_scheme ? 443 : 80 );
+		$api_port        = $api_port ? absint( $api_port ) : ( 'https' === $api_scheme ? 443 : 80 );
 
-		if ( empty( $redirect_host ) || empty( $api_host ) || strtolower( $redirect_host ) !== strtolower( $api_host ) ) {
+		if (
+			empty( $redirect_host ) ||
+			empty( $api_host ) ||
+			strtolower( $redirect_host ) !== strtolower( $api_host ) ||
+			$redirect_scheme !== $api_scheme ||
+			$redirect_port !== $api_port
+		) {
 			self::redirect_to_settings_with_connect_notice(
 				'error',
 				__( 'YoRo returned a connection URL that does not match the configured API host.', 'yoro-ai-core' )
@@ -1430,7 +1577,7 @@ class YoRo_Admin_Page {
 			return;
 		}
 
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( YoRo_Capabilities::MANAGE_CONNECTION ) ) {
 			return;
 		}
 

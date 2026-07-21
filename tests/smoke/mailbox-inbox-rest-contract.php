@@ -92,19 +92,22 @@ update_option( 'yoro_ai_api_url', 'http://yoro-ai-api.test/api/v1', false );
 update_option( 'yoro_ai_api_site_key', 'site-key-test', false );
 update_option( 'yoro_ai_api_enabled', 'yes', false );
 update_option( 'woocommerce_email_from_address', 'support@example.test', false );
-YoRo_AI_Settings::update_ai_api_status(
+$connected_status                 = YoRo_AI_Settings::get_ai_api_status();
+$connected_status['entitlements'] = array_merge(
+	(array) ( $connected_status['entitlements'] ?? [] ),
 	[
-		'connected'    => true,
-		'entitlements' => [
-			'conversation'    => true,
-			'email_composer' => true,
-			'email_inbox'    => true,
-		],
-		'usage'        => [
-			'remaining' => 100,
-		],
+		'conversation'   => true,
+		'email_composer' => true,
+		'email_inbox'    => true,
 	]
 );
+$connected_status['usage']        = array_merge(
+	(array) ( $connected_status['usage'] ?? [] ),
+	[
+		'remaining' => 100,
+	]
+);
+YoRo_AI_Settings::update_ai_api_status( $connected_status );
 
 $requests = [];
 

@@ -5,7 +5,7 @@ Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 0.1.8
+Stable tag: 0.1.9
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -95,6 +95,11 @@ YoRo AI Core will not boot its runtime. Administrators will see a notice explain
 Yes. The repository includes `.distignore` rules for omitting development docs, generated archives, and debug test fixtures from release packages.
 
 == Changelog ==
+
+= 0.1.9 =
+* Added canonical WooCommerce capability manifest and context-pack publication.
+* Added the gated pull connector runtime with fenced leases, actor mapping, execution journaling, and canonical result reporting.
+* Added connector contract smoke coverage while keeping production live cutover disabled.
 
 = 0.1.8 =
 * Completed the AI-first conversation bridge and structured action contract cleanup.

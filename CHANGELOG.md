@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Added
+- Capability manifests now publish canonical `yoro.conversation` v1 semantics for each WooCommerce action, including intent families, target/content slots, value catalogs, and reporting hints.
+
+### Changed
+- Live cutover conformance is bound to the exact deployed driver descriptor and refreshed capability manifest before operation execution can remain enabled.
+
+## 0.1.9 - 2026-07-21
+
+### Added
+- Canonical WooCommerce capability manifest and context-pack publishers with stable capability revisions and independently refreshed live context.
+- Gated `pull_v1` connector runtime for claim acknowledgement, fenced lease renewal, exact WordPress actor mapping, local execution journaling, and canonical result publication.
+- Connector runtime smoke coverage for schema conversion, safe context boundaries, handshake normalization, API routes, lease headers, actor restoration, and read-only execution.
+
+### Changed
+- WordPress capability downgrades and frozen actor subjects now fail closed before connector execution.
+- Production live cutover remains disabled until the WooCommerce driver advertises `operation_execution` and deployed shadow parity is attested.
+
 ## 0.1.8 - 2026-07-15
 
 ### Changed

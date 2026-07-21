@@ -10,7 +10,21 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		$api_url  = YoRo_AI_Settings::get_ai_api_url();
 		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
 
-		return $this->handshake_with_credentials( $api_url, $site_key );
+		$status = $this->handshake_with_credentials( $api_url, $site_key );
+
+		if ( is_wp_error( $status ) || ! $this->should_rotate_credential( $status ) ) {
+			return $status;
+		}
+
+		$rotation = $this->rotate_site_credential();
+
+		if ( is_wp_error( $rotation ) || empty( $rotation['site_key'] ) ) {
+			return $status;
+		}
+
+		$saved = YoRo_AI_Settings::save_connected_ai_api_credentials( $api_url, sanitize_text_field( $rotation['site_key'] ) );
+
+		return is_wp_error( $saved ) ? $status : $saved;
 	}
 
 	public function handshake_with_credentials( $api_url, $site_key, $record_status = true ) {
@@ -21,7 +35,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			);
 
 			if ( $record_status ) {
-				$this->record_handshake_status( false, $error->get_error_message() );
+				$this->record_handshake_status( false, $error->get_error_message(), [], 'account_required' );
 			}
 
 			return $error;
@@ -32,14 +46,11 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_handshake_endpoint_url( $api_url ),
 			[
 				'timeout' => 15,
-				'headers' => [
-					'Authorization' => 'Bearer ' . $site_key,
-					'Accept'        => 'application/json',
-					'Content-Type'  => 'application/json',
-				],
+				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode(
 					[
 						'site_url'         => home_url(),
+						'installation_uuid' => YoRo_AI_Settings::get_installation_uuid(),
 						'plugin_version'   => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
 						'language_context' => $this->build_language_context(),
 					]
@@ -52,7 +63,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->record_request( 'handshake', $duration_ms, 'error' );
 
 			if ( $record_status ) {
-				$this->record_handshake_status( false, $response->get_error_message() );
+				$this->record_handshake_status( false, $response->get_error_message(), [], 'degraded' );
 			}
 
 			return $response;
@@ -71,7 +82,8 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->record_request( 'handshake', $duration_ms, 'error' );
 
 			if ( $record_status ) {
-				$this->record_handshake_status( false, $message );
+				$failure_state = in_array( (int) $code, [ 401, 403, 422 ], true ) ? 'attention_required' : 'degraded';
+				$this->record_handshake_status( false, $message, [], $failure_state );
 			}
 
 			return new WP_Error( 'yoro_ai_api_handshake_error', $message );
@@ -83,7 +95,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->record_request( 'handshake', $duration_ms, 'error' );
 
 			if ( $record_status ) {
-				$this->record_handshake_status( false, $message );
+				$this->record_handshake_status( false, $message, [], 'degraded' );
 			}
 
 			return new WP_Error( 'yoro_ai_api_invalid_handshake', $message );
@@ -91,10 +103,14 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 
 		$status = $this->normalize_handshake_response( $json );
 
+		if ( class_exists( 'YoRo_WordPress_Actor' ) ) {
+			YoRo_WordPress_Actor::record_access( $status['actor_access'] ?? [] );
+		}
+
 		$this->record_request( 'handshake', $duration_ms, 'success' );
 
 		if ( $record_status ) {
-			$this->record_handshake_status( true, '', $status );
+			$this->record_handshake_status( YoRo_AI_Settings::is_ai_api_account_connected( $status ), '', $status );
 		}
 
 		return $status;
@@ -124,6 +140,15 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'action_confirm',
 			'yoro_ai_api_action_confirm_error',
 			__( 'I could not confirm the YoRo AI action.', 'yoro-ai-core' )
+		);
+	}
+
+	public function claim_action( array $payload ) {
+		return $this->request_action_claim(
+			$this->build_action_claim_payload( $payload ),
+			'action_claim',
+			'yoro_ai_api_action_claim_error',
+			__( 'I could not claim the approved YoRo action.', 'yoro-ai-core' )
 		);
 	}
 
@@ -208,6 +233,72 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$response,
 			'yoro_ai_api_connect_exchange_error',
 			__( 'I could not finish the YoRo account connection.', 'yoro-ai-core' )
+		);
+	}
+
+	public function disconnect_site( array $payload = [] ) {
+		$api_url  = YoRo_AI_Settings::get_ai_api_url();
+		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
+
+		if ( '' === $api_url || '' === $site_key ) {
+			return new WP_Error( 'yoro_ai_api_missing_config', __( 'YoRo AI API is not connected yet.', 'yoro-ai-core' ) );
+		}
+
+		$response = wp_remote_post(
+			$this->build_site_disconnect_endpoint_url( $api_url ),
+			[
+				'timeout' => 15,
+				'headers' => $this->authenticated_headers( $site_key ),
+				'body'    => wp_json_encode(
+					[
+						'installation_uuid' => sanitize_text_field( $payload['installation_uuid'] ?? YoRo_AI_Settings::get_installation_uuid() ),
+						'reason'            => sanitize_text_field( $payload['reason'] ?? 'Disconnected from WordPress.' ),
+					]
+				),
+			]
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		return $this->decode_public_json_response(
+			$response,
+			'yoro_ai_api_disconnect_error',
+			__( 'YoRo could not revoke this WordPress connection.', 'yoro-ai-core' )
+		);
+	}
+
+	public function rotate_site_credential() {
+		$api_url  = YoRo_AI_Settings::get_ai_api_url();
+		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
+
+		if ( '' === $api_url || '' === $site_key ) {
+			return new WP_Error( 'yoro_ai_api_missing_config', __( 'YoRo AI API is not connected yet.', 'yoro-ai-core' ) );
+		}
+
+		$response = wp_remote_post(
+			$this->build_site_credential_rotation_endpoint_url( $api_url ),
+			[
+				'timeout' => 15,
+				'headers' => $this->authenticated_headers( $site_key ),
+				'body'    => wp_json_encode(
+					[
+						'installation_uuid' => YoRo_AI_Settings::get_installation_uuid(),
+						'plugin_version'    => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+					]
+				),
+			]
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		return $this->decode_public_json_response(
+			$response,
+			'yoro_ai_api_rotation_error',
+			__( 'YoRo could not rotate the WordPress credential.', 'yoro-ai-core' )
 		);
 	}
 
@@ -478,11 +569,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_conversation_message_endpoint_url( $api_url ),
 			[
 				'timeout' => $this->api_timeout( $operation, $payload ),
-				'headers' => [
-					'Authorization' => 'Bearer ' . $site_key,
-					'Accept'        => 'application/json',
-					'Content-Type'  => 'application/json',
-				],
+				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode( $payload ),
 			]
 		);
@@ -546,10 +633,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_conversation_show_endpoint_url( $api_url, $conversation_id ),
 			[
 				'timeout' => 15,
-				'headers' => [
-					'Authorization' => 'Bearer ' . $site_key,
-					'Accept'        => 'application/json',
-				],
+				'headers' => $this->authenticated_headers( $site_key ),
 			]
 		);
 		$duration_ms = max( 0, (int) round( ( microtime( true ) - $started_at ) * 1000 ) );
@@ -603,11 +687,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_action_confirm_endpoint_url( $api_url ),
 			[
 				'timeout' => 15,
-				'headers' => [
-					'Authorization' => 'Bearer ' . $site_key,
-					'Accept'        => 'application/json',
-					'Content-Type'  => 'application/json',
-				],
+				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode( $payload ),
 			]
 		);
@@ -653,11 +733,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_action_execution_endpoint_url( $api_url ),
 			[
 				'timeout' => 15,
-				'headers' => [
-					'Authorization' => 'Bearer ' . $site_key,
-					'Accept'        => 'application/json',
-					'Content-Type'  => 'application/json',
-				],
+				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode( $payload ),
 			]
 		);
@@ -680,6 +756,43 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 				$error_code,
 				$this->public_response_message( $json, $default_message )
 			);
+		}
+
+		$this->record_request( $operation, $duration_ms, 'success' );
+
+		return is_array( $json ) ? $json : [ 'success' => true ];
+	}
+
+	private function request_action_claim( array $payload, $operation, $error_code, $default_message ) {
+		$api_url  = YoRo_AI_Settings::get_ai_api_url();
+		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
+
+		if ( '' === $api_url || '' === $site_key ) {
+			return new WP_Error( 'yoro_ai_api_missing_config', __( 'YoRo AI API is not connected yet.', 'yoro-ai-core' ) );
+		}
+
+		$started_at = microtime( true );
+		$response = wp_remote_post(
+			$this->build_action_claim_endpoint_url( $api_url ),
+			[
+				'timeout' => 15,
+				'headers' => $this->authenticated_headers( $site_key ),
+				'body'    => wp_json_encode( $payload ),
+			]
+		);
+		$duration_ms = max( 0, (int) round( ( microtime( true ) - $started_at ) * 1000 ) );
+
+		if ( is_wp_error( $response ) ) {
+			$this->record_request( $operation, $duration_ms, 'error' );
+			return $response;
+		}
+
+		$code = wp_remote_retrieve_response_code( $response );
+		$json = json_decode( wp_remote_retrieve_body( $response ), true );
+
+		if ( $code < 200 || $code >= 300 ) {
+			$this->record_request( $operation, $duration_ms, 'error' );
+			return new WP_Error( $error_code, $this->public_response_message( $json, $default_message ) );
 		}
 
 		$this->record_request( $operation, $duration_ms, 'success' );
@@ -717,11 +830,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_email_compose_endpoint_url( $api_url ),
 			[
 				'timeout' => $this->api_timeout( $operation, $payload ),
-				'headers' => [
-					'Authorization' => 'Bearer ' . $site_key,
-					'Accept'        => 'application/json',
-					'Content-Type'  => 'application/json',
-				],
+				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode( $payload ),
 			]
 		);
@@ -795,11 +904,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 
 		$args = [
 			'timeout' => $this->api_timeout( $operation, $payload ),
-			'headers' => [
-				'Authorization' => 'Bearer ' . $site_key,
-				'Accept'        => 'application/json',
-				'Content-Type'  => 'application/json',
-			],
+			'headers' => $this->authenticated_headers( $site_key ),
 		];
 
 		if ( 'GET' !== $method ) {
@@ -938,10 +1043,32 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	}
 
 	private function build_action_confirm_payload( array $payload ) {
-		return [
+		$built = [
 			'conversation_id'         => sanitize_text_field( $payload['conversation_id'] ?? '' ),
 			'pending_operation_token' => sanitize_text_field( $payload['pending_operation_token'] ?? '' ),
 			'params'                  => isset( $payload['params'] ) && is_array( $payload['params'] ) ? $payload['params'] : [],
+		];
+
+		foreach ( [ 'plan_hash', 'preview_hash' ] as $key ) {
+			if ( isset( $payload[ $key ] ) ) {
+				$built[ $key ] = sanitize_text_field( $payload[ $key ] );
+			}
+		}
+
+		foreach ( [ 'resolved_impact', 'approved_groups' ] as $key ) {
+			if ( isset( $payload[ $key ] ) && is_array( $payload[ $key ] ) ) {
+				$built[ $key ] = $payload[ $key ];
+			}
+		}
+
+		return $built;
+	}
+
+	private function build_action_claim_payload( array $payload ) {
+		return [
+			'conversation_id'         => sanitize_text_field( $payload['conversation_id'] ?? '' ),
+			'pending_operation_token' => sanitize_text_field( $payload['pending_operation_token'] ?? '' ),
+			'execution_permit'        => sanitize_text_field( $payload['execution_permit'] ?? '' ),
 		];
 	}
 
@@ -949,6 +1076,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return [
 			'conversation_id'         => sanitize_text_field( $payload['conversation_id'] ?? '' ),
 			'pending_operation_token' => sanitize_text_field( $payload['pending_operation_token'] ?? '' ),
+			'execution_permit'        => sanitize_text_field( $payload['execution_permit'] ?? '' ),
 			'event_type'              => sanitize_key( $payload['event_type'] ?? 'executed' ),
 			'status'                  => sanitize_key( $payload['status'] ?? 'executed' ),
 			'action'                  => sanitize_text_field( $payload['action'] ?? '' ),
@@ -1050,8 +1178,8 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			return preg_replace( '#/conversations/message$#', '/conversations/' . $conversation_id, $api_url );
 		}
 
-		if ( preg_match( '#/actions/(execute|confirm)$#', $api_url ) ) {
-			return preg_replace( '#/actions/(execute|confirm)$#', '/conversations/' . $conversation_id, $api_url );
+		if ( preg_match( '#/actions/(execute|confirm|claim)$#', $api_url ) ) {
+			return preg_replace( '#/actions/(execute|confirm|claim)$#', '/conversations/' . $conversation_id, $api_url );
 		}
 
 		if ( preg_match( '#/sites/handshake$#', $api_url ) ) {
@@ -1099,6 +1227,24 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		}
 
 		return $api_url . '/actions/confirm';
+	}
+
+	private function build_action_claim_endpoint_url( $api_url ) {
+		$api_url = untrailingslashit( esc_url_raw( $api_url ) );
+
+		if ( preg_match( '#/actions/claim$#', $api_url ) ) {
+			return $api_url;
+		}
+
+		if ( preg_match( '#/actions/(execute|confirm)$#', $api_url ) ) {
+			return preg_replace( '#/actions/(execute|confirm)$#', '/actions/claim', $api_url );
+		}
+
+		if ( preg_match( '#/(conversations/message|sites/handshake)$#', $api_url ) ) {
+			return preg_replace( '#/(conversations/message|sites/handshake)$#', '/actions/claim', $api_url );
+		}
+
+		return $api_url . '/actions/claim';
 	}
 
 	private function build_email_compose_endpoint_url( $api_url ) {
@@ -1152,14 +1298,49 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return $api_url . '/sites/handshake';
 	}
 
+	private function build_site_disconnect_endpoint_url( $api_url ) {
+		$api_url = untrailingslashit( esc_url_raw( $api_url ) );
+
+		if ( preg_match( '#/sites/disconnect$#', $api_url ) ) {
+			return $api_url;
+		}
+
+		return $api_url . '/sites/disconnect';
+	}
+
+	private function build_site_credential_rotation_endpoint_url( $api_url ) {
+		$api_url = untrailingslashit( esc_url_raw( $api_url ) );
+
+		if ( preg_match( '#/sites/credentials/rotate$#', $api_url ) ) {
+			return $api_url;
+		}
+
+		return $api_url . '/sites/credentials/rotate';
+	}
+
 	private function build_api_base_url( $api_url ) {
 		$api_url = untrailingslashit( esc_url_raw( $api_url ) );
 
 		return preg_replace(
-			'#/(?:sites/handshake|conversations(?:/message|/[^/]+)?|actions/(?:execute|confirm)|ai/email/compose|connect/wordpress/(?:intents|exchange)|email/(?:(?:gmail|microsoft)/connect-intents|gmail/disconnect|imap/connect|disconnect|inbox(?:/sync)?|threads/[^/]+(?:/(?:reply|archive|reopen|read|unread|notes|messages/[^/]+/retry))?))$#',
+			'#/(?:sites/(?:handshake|disconnect|credentials/rotate)|conversations(?:/message|/[^/]+)?|actions/(?:execute|confirm|claim)|ai/email/compose|connect/wordpress/(?:intents|exchange)|email/(?:(?:gmail|microsoft)/connect-intents|gmail/disconnect|imap/connect|disconnect|inbox(?:/sync)?|threads/[^/]+(?:/(?:reply|archive|reopen|read|unread|notes|messages/[^/]+/retry))?))$#',
 			'',
 			$api_url
 		);
+	}
+
+	private function authenticated_headers( $site_key ) {
+		$headers = [
+			'Authorization' => 'Bearer ' . $site_key,
+			'Accept'        => 'application/json',
+			'Content-Type'  => 'application/json',
+		];
+		$assertion = class_exists( 'YoRo_WordPress_Actor' ) ? YoRo_WordPress_Actor::assertion( $site_key ) : '';
+
+		if ( '' !== $assertion ) {
+			$headers['X-YoRo-Actor-Assertion'] = $assertion;
+		}
+
+		return $headers;
 	}
 
 	private function sanitize_person_payload( $person ) {
@@ -1221,6 +1402,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$assistant_response['message']
 				?? ( $assistant_response['question'] ?? ( $response['summary'] ?? ( $response['message'] ?? '' ) ) )
 		);
+		$safety = isset( $response['safety'] ) && is_array( $response['safety'] ) ? $response['safety'] : [];
 
 		if ( ! in_array( $mode, [ 'task_request', 'clarify', 'chat_only', 'unsupported_request', 'out_of_scope' ], true ) ) {
 			$mode = 'clarify';
@@ -1258,6 +1440,17 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'action_plan'            => $action_plan,
 			'email_preview'          => isset( $response['email_preview'] ) && is_array( $response['email_preview'] ) ? $response['email_preview'] : [],
 			'assistant'              => $assistant_response,
+			'safety'                 => [
+				'origin' => sanitize_key( $safety['origin'] ?? '' ),
+				'profile' => sanitize_key( $safety['profile'] ?? '' ),
+				'policy_version' => absint( $safety['policy_version'] ?? 0 ),
+				'decision' => isset( $safety['decision'] ) && is_array( $safety['decision'] ) ? $safety['decision'] : [],
+				'resolved_impact' => isset( $safety['resolved_impact'] ) && is_array( $safety['resolved_impact'] ) ? $safety['resolved_impact'] : [],
+				'approval_groups' => isset( $safety['approval_groups'] ) && is_array( $safety['approval_groups'] ) ? $safety['approval_groups'] : [],
+				'plan_hash' => sanitize_text_field( $safety['plan_hash'] ?? '' ),
+				'preview_hash' => sanitize_text_field( $safety['preview_hash'] ?? '' ),
+				'blocked' => ! empty( $safety['blocked'] ),
+			],
 			'meta'                   => array_merge(
 				$response_meta,
 				[
@@ -1630,11 +1823,36 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	private function normalize_handshake_response( array $response ) {
 		$site         = isset( $response['site'] ) && is_array( $response['site'] ) ? $response['site'] : [];
 		$client       = isset( $response['client'] ) && is_array( $response['client'] ) ? $response['client'] : [];
+		$organization = isset( $response['organization'] ) && is_array( $response['organization'] ) ? $response['organization'] : [];
+		$connection   = isset( $response['connection'] ) && is_array( $response['connection'] ) ? $response['connection'] : [];
+		$credential   = isset( $response['credential'] ) && is_array( $response['credential'] ) ? $response['credential'] : [];
 		$entitlements = isset( $response['entitlements'] ) && is_array( $response['entitlements'] ) ? $response['entitlements'] : [];
 		$usage        = isset( $response['usage'] ) && is_array( $response['usage'] ) ? $response['usage'] : [];
+		$account_connection = isset( $response['account_connection'] ) && is_array( $response['account_connection'] ) ? $response['account_connection'] : [];
+		$actor_access = isset( $response['actor_access'] ) && is_array( $response['actor_access'] ) ? $response['actor_access'] : [];
+		$safety = isset( $response['safety'] ) && is_array( $response['safety'] ) ? $response['safety'] : [];
+		$connector_runtime = isset( $response['connector_runtime'] ) && is_array( $response['connector_runtime'] ) ? $response['connector_runtime'] : [];
+		$connection_id = absint( $connection['id'] ?? 0 );
+		$installation_uuid = sanitize_text_field( $connection['installation_uuid'] ?? '' );
+		$credential_expires_at = sanitize_text_field( $credential['expires_at'] ?? '' );
+		$credential_expires = '' !== $credential_expires_at ? strtotime( $credential_expires_at ) : false;
+		$credential_active = false === $credential_expires || $credential_expires > time();
+		$account_connected = ! empty( $account_connection['connected'] )
+			&& 'active' === sanitize_key( $account_connection['status'] ?? '' )
+			&& absint( $organization['id'] ?? 0 ) > 0
+			&& absint( $site['id'] ?? 0 ) > 0
+			&& $connection_id > 0
+			&& 'active' === sanitize_key( $connection['status'] ?? '' )
+			&& '' !== $installation_uuid
+			&& hash_equals( YoRo_AI_Settings::get_installation_uuid(), $installation_uuid )
+			&& absint( $credential['id'] ?? 0 ) > 0
+			&& $credential_active
+			&& 'wordpress_connection' === sanitize_key( $credential['type'] ?? '' )
+			&& $connection_id === absint( $credential['site_connection_id'] ?? 0 );
 
 		return [
-			'connected'    => ! empty( $response['success'] ),
+			'connected'    => $account_connected,
+			'service_available' => true,
 			'checked_at'   => current_time( 'mysql' ),
 			'account_url'  => esc_url_raw( $response['account_url'] ?? '' ),
 			'billing_url'  => esc_url_raw( $response['billing_url'] ?? '' ),
@@ -1645,6 +1863,40 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 				'status' => sanitize_key( $site['status'] ?? '' ),
 				'plan'   => sanitize_key( $site['plan'] ?? '' ),
 			],
+			'organization' => [
+				'id'   => absint( $organization['id'] ?? 0 ),
+				'name' => sanitize_text_field( $organization['name'] ?? '' ),
+			],
+			'account_connection' => [
+				'required'  => true,
+				'connected' => $account_connected,
+				'status'    => $account_connected ? 'active' : sanitize_key( $account_connection['status'] ?? 'account_required' ),
+				'message'   => sanitize_text_field( $account_connection['message'] ?? '' ),
+			],
+			'actor_access' => [
+				'required'    => true,
+				'assigned'    => ! empty( $actor_access['assigned'] ),
+				'status'      => sanitize_key( $actor_access['status'] ?? 'missing' ),
+				'message'     => sanitize_text_field( $actor_access['message'] ?? '' ),
+				'seat_id'     => sanitize_text_field( $actor_access['seat_id'] ?? '' ),
+				'identity_id' => sanitize_text_field( $actor_access['identity_id'] ?? '' ),
+				'role'        => sanitize_key( $actor_access['role'] ?? '' ),
+				'permissions' => array_values( array_filter( array_map( 'sanitize_key', is_array( $actor_access['permissions'] ?? null ) ? $actor_access['permissions'] : [] ) ) ),
+			],
+			'connection'   => [
+				'id'                => absint( $connection['id'] ?? 0 ),
+				'installation_uuid' => sanitize_text_field( $connection['installation_uuid'] ?? '' ),
+				'status'            => sanitize_key( $connection['status'] ?? '' ),
+				'plugin_version'    => sanitize_text_field( $connection['plugin_version'] ?? '' ),
+				'last_seen_at'      => sanitize_text_field( $connection['last_seen_at'] ?? '' ),
+			],
+			'credential'   => [
+				'id'                 => absint( $credential['id'] ?? 0 ),
+				'type'               => sanitize_key( $credential['type'] ?? '' ),
+				'site_connection_id' => absint( $credential['site_connection_id'] ?? 0 ),
+				'abilities'          => array_values( array_filter( array_map( 'sanitize_text_field', is_array( $credential['abilities'] ?? null ) ? $credential['abilities'] : [] ) ) ),
+				'expires_at'         => sanitize_text_field( $credential['expires_at'] ?? '' ),
+			],
 			'client'       => [
 				'site_url'       => esc_url_raw( $client['site_url'] ?? '' ),
 				'plugin_version' => sanitize_text_field( $client['plugin_version'] ?? '' ),
@@ -1652,29 +1904,116 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'entitlements' => [
 				'conversation'        => ! empty( $entitlements['conversation'] ),
 				'email_composer'      => ! empty( $entitlements['email_composer'] ),
+				'email_inbox'         => ! empty( $entitlements['email_inbox'] ),
+				'write_actions'       => ! empty( $entitlements['write_actions'] ),
 				'usage_plan'          => sanitize_key( $entitlements['usage_plan'] ?? '' ),
+				'plan_label'          => sanitize_text_field( $entitlements['plan_label'] ?? '' ),
 				'subscription_status' => sanitize_key( $entitlements['subscription_status'] ?? '' ),
+				'access_state'        => sanitize_key( $entitlements['access_state'] ?? '' ),
+				'blocked_reason'      => sanitize_key( $entitlements['blocked_reason'] ?? '' ),
 			],
 			'usage'        => [
-				'period'    => sanitize_text_field( $usage['period'] ?? '' ),
-				'limit'     => isset( $usage['limit'] ) ? absint( $usage['limit'] ) : null,
-				'used'      => isset( $usage['used'] ) ? absint( $usage['used'] ) : null,
-				'remaining' => isset( $usage['remaining'] ) ? absint( $usage['remaining'] ) : null,
+				'period'             => sanitize_text_field( $usage['period'] ?? '' ),
+				'limit'              => isset( $usage['credit_limit'] ) ? (float) $usage['credit_limit'] : ( isset( $usage['limit'] ) ? (float) $usage['limit'] : null ),
+				'used'               => isset( $usage['credits_used'] ) ? (float) $usage['credits_used'] : ( isset( $usage['used'] ) ? (float) $usage['used'] : null ),
+				'remaining'          => isset( $usage['credits_remaining'] ) ? (float) $usage['credits_remaining'] : ( isset( $usage['remaining'] ) ? (float) $usage['remaining'] : null ),
+				'usage_percent'      => isset( $usage['usage_percent'] ) ? (float) $usage['usage_percent'] : null,
+				'hard_limit_reached' => ! empty( $usage['hard_limit_reached'] ),
+			],
+			'safety'       => [
+				'server_provided' => in_array( sanitize_key( $safety['profile'] ?? '' ), [ 'advisory', 'assisted', 'delegated' ], true ),
+				'profile' => in_array( sanitize_key( $safety['profile'] ?? '' ), [ 'advisory', 'assisted', 'delegated' ], true )
+					? sanitize_key( $safety['profile'] )
+					: 'assisted',
+				'version'        => max( 1, absint( $safety['version'] ?? 1 ) ),
+				'rules'          => isset( $safety['rules'] ) && is_array( $safety['rules'] ) ? $safety['rules'] : [],
+				'management_url' => esc_url_raw( $safety['management_url'] ?? '' ),
+			],
+			'connector_runtime' => $this->normalize_connector_runtime( $connector_runtime ),
+		];
+	}
+
+	private function normalize_connector_runtime( array $runtime ) {
+		$cutover = isset( $runtime['cutover'] ) && is_array( $runtime['cutover'] ) ? $runtime['cutover'] : [];
+		$checks = isset( $cutover['checks'] ) && is_array( $cutover['checks'] ) ? $cutover['checks'] : [];
+		$capability_manifest = isset( $runtime['capability_manifest'] ) && is_array( $runtime['capability_manifest'] ) ? $runtime['capability_manifest'] : [];
+
+		return [
+			'connector_key'           => sanitize_key( $runtime['connector_key'] ?? '' ),
+			'connector_connection_id' => sanitize_text_field( $runtime['connector_connection_id'] ?? '' ),
+			'execution_mode'          => sanitize_key( $runtime['execution_mode'] ?? '' ),
+			'protocol_version'        => absint( $runtime['protocol_version'] ?? 0 ),
+			'connector_version'       => sanitize_text_field( $runtime['connector_version'] ?? '' ),
+			'delivery_protocol'       => sanitize_key( $runtime['delivery_protocol'] ?? '' ),
+			'capability_manifest'     => [
+				'current'     => ! empty( $capability_manifest['current'] ),
+				'manifest_id' => sanitize_text_field( $capability_manifest['manifest_id'] ?? '' ),
+				'revision'    => absint( $capability_manifest['revision'] ?? 0 ),
+				'expires_at'  => sanitize_text_field( $capability_manifest['expires_at'] ?? '' ),
+			],
+			'cutover'                 => [
+				'cutover_enabled'         => ! empty( $cutover['cutover_enabled'] ),
+				'connection_live_enabled' => ! empty( $cutover['connection_live_enabled'] ),
+				'conformance_ready'       => ! empty( $cutover['conformance_ready'] ),
+				'cutover_allowed'         => ! empty( $cutover['cutover_allowed'] ),
+				'checks'                  => [
+					'active_connection'          => ! empty( $checks['active_connection'] ),
+					'remote_agent_mode'          => ! empty( $checks['remote_agent_mode'] ),
+					'compatible_driver'          => ! empty( $checks['compatible_driver'] ),
+					'operation_execution_feature' => ! empty( $checks['operation_execution_feature'] ),
+					'current_capability_manifest' => ! empty( $checks['current_capability_manifest'] ),
+					'current_context_pack'        => ! empty( $checks['current_context_pack'] ),
+					'runtime_credential'          => ! empty( $checks['runtime_credential'] ),
+					'conformance_attestation'     => ! empty( $checks['conformance_attestation'] ),
+				],
 			],
 		];
 	}
 
-	private function record_handshake_status( $connected, $message = '', array $status = [] ) {
-		YoRo_AI_Settings::update_ai_api_status(
-			array_merge(
-				$status,
-				[
-					'connected'  => (bool) $connected,
-					'checked_at' => current_time( 'mysql' ),
-					'message'    => sanitize_text_field( $message ),
-				]
-			)
-		);
+	private function should_rotate_credential( array $status ) {
+		$expires_at = sanitize_text_field( $status['credential']['expires_at'] ?? '' );
+		$expires    = '' !== $expires_at ? strtotime( $expires_at ) : false;
+
+		if ( false === $expires || $expires <= time() ) {
+			return false;
+		}
+
+		$threshold_days = max( 1, absint( apply_filters( 'yoro_ai_credential_rotation_threshold_days', 14 ) ) );
+
+		return $expires <= time() + ( $threshold_days * DAY_IN_SECONDS );
+	}
+
+	private function record_handshake_status( $connected, $message = '', array $status = [], $failure_state = '' ) {
+		$existing = YoRo_AI_Settings::get_ai_api_status();
+		$next = array_merge( $existing, $status );
+		unset( $next['actor_access'] );
+
+		if ( 'degraded' === $failure_state ) {
+			$next['service_available'] = false;
+			$next['service_status'] = 'degraded';
+			$next['checked_at'] = current_time( 'mysql' );
+			$next['message'] = sanitize_text_field( $message );
+			YoRo_AI_Settings::update_ai_api_status( $next );
+
+			return;
+		}
+
+		$next['connected'] = (bool) $connected;
+		$next['service_available'] = '' === $failure_state;
+		$next['service_status'] = '' === $failure_state ? 'available' : $failure_state;
+		$next['checked_at'] = current_time( 'mysql' );
+		$next['message'] = sanitize_text_field( $message );
+
+		if ( '' !== $failure_state ) {
+			$next['account_connection'] = [
+				'required'  => true,
+				'connected' => false,
+				'status'    => $failure_state,
+				'message'   => sanitize_text_field( $message ),
+			];
+		}
+
+		YoRo_AI_Settings::update_ai_api_status( $next );
 	}
 
 	private function record_api_usage( $response ) {
@@ -1684,9 +2023,10 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 
 		$usage = $response['usage'];
 		$status = YoRo_AI_Settings::get_ai_api_status();
-		$status['connected'] = true;
 		$status['checked_at'] = current_time( 'mysql' );
 		$status['message'] = '';
+		$status['service_available'] = true;
+		$status['service_status'] = 'available';
 		$status['usage'] = [
 			'period'    => sanitize_text_field( $usage['period'] ?? '' ),
 			'limit'     => isset( $usage['limit'] ) ? absint( $usage['limit'] ) : null,

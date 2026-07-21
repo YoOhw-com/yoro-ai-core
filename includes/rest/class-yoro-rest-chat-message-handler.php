@@ -44,6 +44,9 @@ class YoRo_REST_Chat_Message_Handler {
 		);
 		$client_context['conversation_id'] = $conversation_id;
 		$context = self::compact_context( $client_context );
+		$context['safety_contract_version'] = YoRo_Safety_Contract::VERSION;
+		$context['safety_profile'] = YoRo_Safety_Contract::profile();
+		$context['safety_policy_version'] = YoRo_Safety_Contract::policy_version();
 		$catalog      = YoRo_Action_Catalog_Builder::build( $context );
 		$router_hints = YoRo_Action_Catalog_Builder::build_router_hints( $message, $context, $catalog );
 
@@ -155,7 +158,7 @@ class YoRo_REST_Chat_Message_Handler {
 			'action'          => $response_action,
 			'params'          => isset( $response['params'] ) && is_array( $response['params'] ) ? $response['params'] : [],
 			'parser_source'   => 'conversation_orchestrator',
-			'parser_rule'     => 'laravel.conversation.message',
+			'parser_rule'     => 'yoro_ai.conversation.message',
 			'confidence'      => isset( $response['confidence'] ) ? (float) $response['confidence'] : 0,
 			'original_command'=> $message,
 			'language'        => sanitize_text_field( $response['language'] ?? 'unknown' ),
@@ -189,6 +192,7 @@ class YoRo_REST_Chat_Message_Handler {
 			'read_only'     => true,
 			'result_type'   => 'assistant_message',
 			'display_type'  => 'assistant_message',
+			'safety'        => isset( $response['safety'] ) && is_array( $response['safety'] ) ? $response['safety'] : [],
 		];
 
 		if ( ! $confirm_required && 'clarify' === $stage && '' !== $parsed['action'] ) {

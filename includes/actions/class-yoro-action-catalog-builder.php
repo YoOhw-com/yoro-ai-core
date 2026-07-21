@@ -10,7 +10,7 @@ class YoRo_Action_Catalog_Builder {
 		$catalog = [];
 		$context = is_array( $context ) ? $context : [];
 
-		foreach ( YoRo_Action_Registry::all() as $name => $action ) {
+		foreach ( YoRo_Action_Registry::available_for_current_user() as $name => $action ) {
 			if ( empty( $action['ai_exposed'] ) ) {
 				continue;
 			}
@@ -23,6 +23,55 @@ class YoRo_Action_Catalog_Builder {
 			self::apply_catalog_scope( array_values( array_filter( $catalog ) ), $context ),
 			$context
 		);
+	}
+
+	public static function semantic_contract( $name, $action ) {
+		$item = is_array( $action ) ? self::build_action_item( $name, $action ) : null;
+
+		if ( ! is_array( $item ) ) {
+			return [];
+		}
+
+		return [
+			'version'                  => 1,
+			'intent_family'            => self::canonical_intent_family( $name, $item['intent_family'] ?? '' ),
+			'slot_contract'            => is_array( $item['slot_contract'] ?? null ) ? $item['slot_contract'] : [],
+			'product_identifier_types' => is_array( $item['product_identifier_types'] ?? null ) ? $item['product_identifier_types'] : [],
+			'value_catalogs'            => is_array( $item['value_catalogs'] ?? null ) ? $item['value_catalogs'] : [],
+			'param_hints'               => is_array( $item['param_hints'] ?? null ) ? $item['param_hints'] : [],
+			'reporting_contract'        => is_array( $item['reporting_contract'] ?? null ) ? $item['reporting_contract'] : [],
+			'target_type'              => sanitize_key( $item['target_type'] ?? '' ),
+			'supports_bulk'            => ! empty( $item['supports_bulk'] ),
+		];
+	}
+
+	private static function canonical_intent_family( $action, $fallback ) {
+		$families = [
+			'orders.search'                  => 'orders_search',
+			'orders.get_details'             => 'order_details',
+			'orders.refund_preview'           => 'order_refund',
+			'customers.lookup'                => 'customer_lookup',
+			'orders.find_by_customer'         => 'customer_orders',
+			'coupons.lookup'                  => 'coupon_lookup',
+			'coupons.create'                  => 'coupon_create',
+			'orders.update_status'            => 'update_order_status',
+			'products.update_stock'           => 'update_product_stock',
+			'products.update_stock_status'    => 'update_product_stock_status',
+			'orders.add_note'                 => 'add_note',
+			'orders.remove_note'              => 'remove_note',
+			'orders.restore_statuses'         => 'update_order_status',
+			'operations.get_summary'          => 'operations_report',
+			'store.get_business_summary'      => 'sales_report',
+			'store.get_daily_briefing'        => 'store_report',
+			'store.get_insights'              => 'store_signals',
+			'operations.get_attention_queue'  => 'operations_attention',
+			'operations.get_fulfillment_queue' => 'fulfillment_review',
+			'customers.get_service_queue'     => 'customer_service_review',
+			'products.get_inventory_queue'    => 'inventory_review',
+		];
+		$action = sanitize_text_field( $action );
+
+		return sanitize_key( $families[ $action ] ?? $fallback );
 	}
 
 	public static function build_router_hints( $command = '', $context = [], $catalog = null ) {
@@ -203,6 +252,13 @@ class YoRo_Action_Catalog_Builder {
 			'write_action'          => ! empty( $action['write_action'] ),
 			'requires_confirmation' => ! empty( $action['requires_confirmation'] ) || ! empty( $action['write_action'] ),
 			'risk_level'            => sanitize_key( $action['risk_level'] ?? 'low' ),
+			'effect'                => sanitize_key( $action['effect'] ?? ( ! empty( $action['write_action'] ) ? 'mutate' : 'read' ) ),
+			'reversibility'         => sanitize_key( $action['reversibility'] ?? ( ! empty( $action['write_action'] ) ? 'partial' : 'full' ) ),
+			'external_side_effect'  => ! empty( $action['external_side_effect'] ),
+			'target_type'           => sanitize_key( $action['target_type'] ?? '' ),
+			'supports_bulk'         => ! empty( $action['supports_bulk'] ),
+			'max_targets'           => isset( $action['max_targets'] ) ? absint( $action['max_targets'] ) : ( isset( $action['max_items'] ) ? absint( $action['max_items'] ) : 1 ),
+			'safety_contract_version' => YoRo_Safety_Contract::VERSION,
 			'max_items'             => isset( $action['max_items'] ) ? absint( $action['max_items'] ) : 1,
 			'capabilities'          => isset( $action['capabilities'] ) && is_array( $action['capabilities'] )
 				? array_values( array_map( 'sanitize_key', $action['capabilities'] ) )

@@ -129,6 +129,10 @@ class YoRo_Context_Provider {
 			'can_manage_options'       => current_user_can( 'manage_options' ),
 			'can_manage_woocommerce'   => current_user_can( 'manage_woocommerce' ),
 			'can_edit_shop_orders'     => current_user_can( 'edit_shop_orders' ),
+			'can_use_yoro_ai'          => current_user_can( YoRo_Capabilities::USE_AI ),
+			'can_view_store_data'      => current_user_can( YoRo_Capabilities::VIEW_STORE_DATA ),
+			'can_execute_yoro_actions' => current_user_can( YoRo_Capabilities::EXECUTE_ACTIONS ),
+			'can_manage_yoro_mailbox'  => current_user_can( YoRo_Capabilities::MANAGE_MAILBOX ),
 		];
 	}
 

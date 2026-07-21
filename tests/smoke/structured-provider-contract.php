@@ -48,6 +48,20 @@ $assert( class_exists( 'YoRo_Action_Catalog_Builder' ), 'YoRo_Action_Catalog_Bui
 $assert( class_exists( 'YoRo_Context_Provider' ), 'YoRo_Context_Provider is not loaded.' );
 $assert( class_exists( 'YoRo_Store_Knowledge_Provider' ), 'YoRo_Store_Knowledge_Provider is not loaded.' );
 
+$admin_ids = get_users(
+	[
+		'role'   => 'administrator',
+		'number' => 1,
+		'fields' => 'ID',
+	]
+);
+
+if ( ! empty( $admin_ids ) ) {
+	wp_set_current_user( absint( $admin_ids[0] ) );
+}
+
+$assert( ! empty( $admin_ids ), 'An administrator is required to build the permission-scoped action catalog.' );
+
 $custom_stock_status_filter = static function ( $statuses ) {
 	$statuses = is_array( $statuses ) ? $statuses : [];
 	$statuses['preorder'] = 'Preorder';
@@ -201,7 +215,7 @@ if ( class_exists( 'YoRo_Action_Catalog_Builder' ) && class_exists( 'YoRo_Contex
 
 		$assert( [ 'operations.get_summary', 'store.get_business_summary', 'store.get_daily_briefing', 'store.get_insights' ] === $report_actions, 'Report-provider catalog scope must expose only store report providers.' );
 		$assert( 'report_provider_catalog' === ( $report_hints['catalog_scope'] ?? '' ), 'Report-provider catalog scope must be exposed in router hints.' );
-		$assert( 'provider_catalog' === ( $report_hints['report_topic_selection'] ?? '' ), 'Report-provider catalog hints must delegate report topic selection to Laravel.' );
+		$assert( 'provider_catalog' === ( $report_hints['report_topic_selection'] ?? '' ), 'Report-provider catalog hints must delegate report topic selection to YoRo AI.' );
 		$assert( true === ( $report_hints['report_provider_catalog'] ?? false ), 'Report-provider catalog hint must be explicit.' );
 		$assert( ! isset( $report_hints['report_topic'] ), 'Report-provider catalog hints must not invent a report topic without UI context.' );
 
@@ -221,7 +235,7 @@ if ( class_exists( 'YoRo_Store_Knowledge_Provider' ) ) {
 	$assert( isset( $knowledge['profiles']['catalog'] ), 'Store knowledge must include catalog profile.' );
 	$assert( 'yoro_action_registry' === ( $knowledge['capabilities']['action_source'] ?? '' ), 'Capabilities must come from the YoRo action registry.' );
 	$assert( 'plugin_executor' === ( $knowledge['capabilities']['execution_boundary'] ?? '' ), 'Execution boundary must remain plugin_executor.' );
-	$assert( 'laravel_conversation_brain' === ( $knowledge['capabilities']['routing_boundary'] ?? '' ), 'Routing boundary must remain laravel_conversation_brain.' );
+	$assert( 'yoro_ai_conversation_brain' === ( $knowledge['capabilities']['routing_boundary'] ?? '' ), 'Routing boundary must remain yoro_ai_conversation_brain.' );
 	$assert( 'woocommerce_settings' === ( $knowledge['sources']['settings'] ?? '' ), 'Settings source must be WooCommerce settings.' );
 
 	$product_stock_statuses = (array) ( $knowledge['facts']['product_model']['stock_statuses'] ?? [] );

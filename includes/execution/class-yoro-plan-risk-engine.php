@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Plan_Risk_Engine {
 
-	public static function evaluate( $plan ) {
+	public static function evaluate( $plan, $context = [] ) {
 		if ( ! is_array( $plan ) || empty( $plan['type'] ) ) {
 			return [
 				'risk_level'            => 'unknown',
@@ -22,13 +22,14 @@ class YoRo_Plan_Risk_Engine {
 		$risk_level = 'low';
 		$requires_confirmation = false;
 		$reasons = [];
+		$origin = sanitize_key( is_array( $context ) ? ( $context['origin'] ?? ( $context['source'] ?? '' ) ) : '' );
+		$total_target_count = 0;
 
 		if ( 'sequence' === $plan['type'] ) {
 			$risk_level = 'medium';
 
 			if ( self::plan_has_write_action( $plan ) ) {
-				$requires_confirmation = true;
-				$reasons[] = __( 'Plan contains multiple write steps.', 'yoro-ai-core' );
+				$reasons[] = __( 'Plan contains multiple store operations.', 'yoro-ai-core' );
 			} else {
 				$reasons[] = __( 'Plan contains multiple read-only steps.', 'yoro-ai-core' );
 			}
@@ -64,21 +65,14 @@ class YoRo_Plan_Risk_Engine {
 				);
 			}
 
-			if ( ! empty( $registered['write_action'] ) ) {
-				$requires_confirmation = true;
-				$reasons[] = sprintf(
-					/* translators: %s: Value generated from store data. */
-					__( 'Action "%s" changes store data.', 'yoro-ai-core' ),
-					$action_name
-				);
-			}
-
 			$is_write_action = ! empty( $registered['write_action'] );
-			$is_financial   = YoRo_Action_Registry::has_capability( $action_name, 'financial' );
-			$is_destructive = YoRo_Action_Registry::has_capability( $action_name, 'destructive' );
-			$is_email       = YoRo_Action_Registry::has_capability( $action_name, 'customer_communication' );
+			$effect = sanitize_key( $registered['effect'] ?? ( $is_write_action ? 'mutate' : 'read' ) );
+			$is_financial   = 'financial' === $effect || YoRo_Action_Registry::has_capability( $action_name, 'financial' );
+			$is_destructive = 'delete' === $effect || YoRo_Action_Registry::has_capability( $action_name, 'destructive' );
+			$is_email       = 'communicate' === $effect || YoRo_Action_Registry::has_capability( $action_name, 'customer_communication' );
 
 			$item_count = self::count_items( $params );
+			$total_target_count += $item_count;
 
 			if ( $is_write_action && $item_count > 1 ) {
 				$requires_confirmation = true;
@@ -88,6 +82,10 @@ class YoRo_Plan_Risk_Engine {
 					$action_name,
 					$item_count
 				);
+			}
+
+			if ( $is_write_action && 'high' === $action_risk ) {
+				$requires_confirmation = true;
 			}
 
 			if ( $is_financial ) {
@@ -130,6 +128,19 @@ class YoRo_Plan_Risk_Engine {
 			}
 		}
 
+		if ( $total_target_count > 1 && self::plan_has_write_action( $plan ) ) {
+			$requires_confirmation = true;
+			$reasons[] = sprintf(
+				/* translators: %s: Value generated from store data. */
+				__( 'The complete plan affects %d targets.', 'yoro-ai-core' ),
+				$total_target_count
+			);
+		}
+
+		if ( 'direct_ui' === $origin && ! empty( $context['confirm'] ) ) {
+			$requires_confirmation = false;
+		}
+
 		$semantic_warnings = self::extract_semantic_warnings( $plan );
 
 		if ( ! empty( $semantic_warnings ) ) {
@@ -141,6 +152,8 @@ class YoRo_Plan_Risk_Engine {
 			'requires_confirmation' => $requires_confirmation,
 			'reasons'               => array_values( array_unique( $reasons ) ),
 			'semantic_warnings'     => $semantic_warnings,
+			'target_count'          => max( 1, $total_target_count ),
+			'origin'                => $origin,
 		];
 	}
 

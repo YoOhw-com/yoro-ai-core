@@ -171,7 +171,24 @@
 		const aiApiStatusLabel = aiApiStatusRoot ? aiApiStatusRoot.querySelector('[data-yoro-ai-api-status-label]') : null;
 		const aiApiStatusBody = aiApiStatusRoot ? aiApiStatusRoot.querySelector('[data-yoro-ai-api-status-body]') : null;
 		const aiApiStatusRefresh = aiApiStatusRoot ? aiApiStatusRoot.querySelector('[data-yoro-ai-api-status-refresh]') : null;
+		const accountGate = document.querySelector('[data-yoro-account-gate]');
+		const accountGateSettings = document.getElementById('yoro-account-gate-settings');
+		const accountGateEyebrow = document.querySelector('[data-yoro-account-gate-eyebrow]');
+		const accountGateTitle = document.querySelector('[data-yoro-account-gate-title]');
+		const accountGateDescription = document.querySelector('[data-yoro-account-gate-description]');
+		const accountGateAction = document.querySelector('[data-yoro-account-gate-action]');
+		const accountGateDefaultAction = accountGateAction ? accountGateAction.innerHTML : '';
 		let aiApiStatusData = null;
+		let accountConnectionState = normalizeAccountConnection(
+			window.YoRoAIAdmin && YoRoAIAdmin.accountConnection ? YoRoAIAdmin.accountConnection : {}
+		);
+		let actorAccessState = normalizeActorAccess({
+			status: accountConnectionState.connected ? 'checking' : 'account_required',
+			assigned: false
+		});
+		let accessHydrationPending = accountConnectionState.connected === true;
+		let entitlementAccessState = {};
+		let usageAccessState = {};
 
 		if (!commandField || !runButton || !chatThread) {
 			registerMailboxSettings();
@@ -466,6 +483,10 @@
 		}
 
 		function openQuickInboxPanel() {
+			if (!requireAccountConnection()) {
+				return false;
+			}
+
 			if (!quickActionsPanel || !quickActionsToggle || !quickInboxBody) {
 				return false;
 			}
@@ -478,6 +499,10 @@
 		function registerQuickActions() {
 			if (quickActionsToggle && quickActionsPanel) {
 				quickActionsToggle.addEventListener('click', function () {
+					if (!requireAccountConnection()) {
+						return;
+					}
+
 					setQuickActionsOpen(quickActionsPanel.hidden);
 				});
 			}
@@ -550,7 +575,7 @@
 		}
 
 		function runQuickAction(action, params, options) {
-			if (!action || isSending) {
+			if (!action || isSending || !requireAccountConnection()) {
 				return;
 			}
 
@@ -1292,32 +1317,34 @@
 		}
 
 		function registerAiApiStatus() {
-			if (!aiApiStatusRoot || !aiApiStatusToggle || !aiApiStatusPanel || !aiApiStatusBody || !window.YoRoAIAdmin || !YoRoAIAdmin.aiApiStatusUrl) {
+			if (!window.YoRoAIAdmin || !YoRoAIAdmin.aiApiHandshakeUrl) {
 				return;
 			}
 
-			aiApiStatusToggle.addEventListener('click', function () {
-				const isOpen = aiApiStatusPanel.hidden;
-				aiApiStatusPanel.hidden = !isOpen;
-				aiApiStatusToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-			});
+			if (aiApiStatusRoot && aiApiStatusToggle && aiApiStatusPanel && aiApiStatusBody) {
+				aiApiStatusToggle.addEventListener('click', function () {
+					const isOpen = aiApiStatusPanel.hidden;
+					aiApiStatusPanel.hidden = !isOpen;
+					aiApiStatusToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+				});
 
-			if (aiApiStatusRefresh && YoRoAIAdmin.aiApiHandshakeUrl) {
-				aiApiStatusRefresh.addEventListener('click', function () {
-					loadAiApiStatus(true);
+				if (aiApiStatusRefresh) {
+					aiApiStatusRefresh.addEventListener('click', function () {
+						loadAiApiStatus(true);
+					});
+				}
+
+				document.addEventListener('click', function (event) {
+					if (aiApiStatusPanel.hidden || aiApiStatusRoot.contains(event.target)) {
+						return;
+					}
+
+					aiApiStatusPanel.hidden = true;
+					aiApiStatusToggle.setAttribute('aria-expanded', 'false');
 				});
 			}
 
-			document.addEventListener('click', function (event) {
-				if (aiApiStatusPanel.hidden || aiApiStatusRoot.contains(event.target)) {
-					return;
-				}
-
-				aiApiStatusPanel.hidden = true;
-				aiApiStatusToggle.setAttribute('aria-expanded', 'false');
-			});
-
-			loadAiApiStatus(false);
+			loadAiApiStatus(true);
 		}
 
 		function loadAiApiStatus(forceHandshake) {
@@ -1357,23 +1384,25 @@
 		}
 
 		function renderAiApiStatus(data) {
-			if (!aiApiStatusToggle || !aiApiStatusBody) {
-				return;
-			}
-
 			aiApiStatusData = data || {};
 
 			const connection = data && data.connection ? data.connection : {};
+			const accountConnection = data && data.account_connection ? data.account_connection : {};
+			const actorAccess = data && data.actor_access ? data.actor_access : {};
 			const site = data && data.site ? data.site : {};
 			const usage = data && data.usage ? data.usage : {};
 			const entitlements = data && data.entitlements ? data.entitlements : {};
 			const capabilities = data && data.capabilities ? data.capabilities : {};
 			const configured = data && data.configured ? data.configured : {};
-			const connected = !!connection.connected;
+			const connected = !!accountConnection.connected;
+			const serviceAvailable = connection.service_available !== false && accountConnection.service_available !== false;
 			const plan = site.plan || entitlements.usage_plan || '';
 			const remaining = usage.remaining;
 			const hasQuota = remaining === null || remaining === undefined || Number(remaining) > 0;
-			const stateClass = connected && hasQuota ? 'is-connected' : (connected ? 'is-warning' : 'is-error');
+			accessHydrationPending = false;
+			applyAccountConnectionState(accountConnection, actorAccess, entitlements, usage);
+			const accessActive = isYoRoAccessActive();
+			const stateClass = accessActive && hasQuota && serviceAvailable ? 'is-connected' : (connected ? 'is-warning' : 'is-error');
 			const provider = data && data.resolved_provider ? data.resolved_provider : '';
 			const accountUrl = (data && data.account_url) || YoRoAIAdmin.aiApiAccountUrl || '';
 			const billingUrl = (data && data.billing_url) || YoRoAIAdmin.aiApiBillingUrl || '';
@@ -1381,19 +1410,24 @@
 			const conversationDashboardUrl = getConversationDashboardUrl(conversationState.conversation_id, data);
 			const actionLinks = [];
 
+			if (!aiApiStatusToggle || !aiApiStatusBody) {
+				return;
+			}
+
 			aiApiStatusToggle.classList.remove('is-loading', 'is-connected', 'is-warning', 'is-error');
 			aiApiStatusToggle.classList.add(stateClass);
 
 			if (aiApiStatusLabel) {
 				aiApiStatusLabel.textContent = connected
-					? ('YoRo AI' + (plan ? ' · ' + plan : ''))
-					: 'YoRo AI · offline';
+					? ('YoRo AI' + (serviceAvailable ? (plan ? ' · ' + plan : '') : ' · temporarily unavailable'))
+					: 'YoRo AI · connect account';
 			}
 
 			let html = '';
 			html += '<dl class="yoro-ai-api-status-grid">';
-			html += renderAiApiStatusRow('Connection', connected ? 'Connected' : (connection.message || 'Not connected'));
-			html += renderAiApiStatusRow('Service', formatAiApiProviderName(provider));
+			html += renderAiApiStatusRow('Account', connected ? 'Connected' : (accountConnection.message || connection.message || 'Connection required'));
+			html += renderAiApiStatusRow('Operator', actorAccess.assigned ? (actorAccess.role || 'Assigned') : (actorAccess.message || actorAccess.status || 'Seat required'));
+			html += renderAiApiStatusRow('Service', serviceAvailable ? formatAiApiProviderName(provider) : 'Temporarily unavailable');
 			html += renderAiApiStatusRow('Plan', plan || 'unknown');
 			html += renderAiApiStatusRow('Subscription', entitlements.subscription_status || 'unknown');
 			html += renderAiApiStatusRow('Usage', renderAiApiUsageText(usage));
@@ -1463,13 +1497,24 @@
 				|| (error && error.data && error.data.message)
 				|| 'I could not check the YoRo AI connection right now.';
 
+			accessHydrationPending = false;
+
+			if (isAccountConnectionActive()) {
+				applyAccountConnectionState(accountConnectionState, {
+					required: true,
+					assigned: false,
+					status: 'unavailable',
+					message: message
+				});
+			}
+
 			if (aiApiStatusToggle) {
 				aiApiStatusToggle.classList.remove('is-loading', 'is-connected', 'is-warning');
-				aiApiStatusToggle.classList.add('is-error');
+				aiApiStatusToggle.classList.add(isAccountConnectionActive() ? 'is-warning' : 'is-error');
 			}
 
 			if (aiApiStatusLabel) {
-				aiApiStatusLabel.textContent = 'YoRo AI · error';
+				aiApiStatusLabel.textContent = isAccountConnectionActive() ? 'YoRo AI · temporarily unavailable' : 'YoRo AI · connect account';
 			}
 
 			if (aiApiStatusBody) {
@@ -1904,6 +1949,8 @@
 			next_scoped_command: ''
 		};
 
+		applyAccountConnectionState(accountConnectionState);
+
 		registerHistoryHandlers();
 		registerPrimaryControls();
 		registerQuickActions();
@@ -1912,6 +1959,43 @@
 		registerMailboxSettings();
 
 		function registerPrimaryControls() {
+			if (accountGateSettings) {
+				accountGateSettings.addEventListener('click', function () {
+					openAdminPanels('settings');
+				});
+			}
+
+			if (accountGate) {
+				accountGate.addEventListener('click', function (event) {
+					const target = event.target && event.target.closest
+						? event.target.closest('[data-yoro-operator-access-check]')
+						: null;
+
+					if (!target || !accountGate.contains(target)) {
+						return;
+					}
+
+					event.preventDefault();
+
+					if (!window.YoRoAIAdmin || !YoRoAIAdmin.aiApiHandshakeUrl) {
+						return;
+					}
+
+					accessHydrationPending = true;
+					actorAccessState = normalizeActorAccess({
+						status: 'checking',
+						assigned: false
+					});
+					applyAccountConnectionState(
+						accountConnectionState,
+						actorAccessState,
+						entitlementAccessState,
+						usageAccessState
+					);
+					loadAiApiStatus(true);
+				});
+			}
+
 			commandField.addEventListener('input', function () {
 				if (
 					conversationState.next_scoped_command &&
@@ -3088,6 +3172,10 @@
 		}
 
 		function hydrateStoredConversation() {
+			if (!isYoRoAccessActive()) {
+				return;
+			}
+
 			const conversationId = normalizeStoredConversationId(conversationState.conversation_id);
 			const url = buildConversationLoadUrl(conversationId);
 
@@ -3199,7 +3287,177 @@
 		}
 
 		function syncRunButtonState() {
-			runButton.disabled = isSending || commandField.value.trim() === '';
+			runButton.disabled = !isYoRoAccessActive() || isSending || commandField.value.trim() === '';
+		}
+
+		function normalizeAccountConnection(connection) {
+			connection = connection && typeof connection === 'object' ? connection : {};
+
+			return {
+				required: connection.required !== false,
+				connected: connection.connected === true,
+				status: String(connection.status || (connection.connected ? 'active' : 'account_required')),
+				message: String(connection.message || ''),
+				service_available: connection.service_available !== false
+			};
+		}
+
+		function isAccountConnectionActive() {
+			return accountConnectionState.connected === true && accountConnectionState.status === 'active';
+		}
+
+		function isYoRoAccessChecking() {
+			return accessHydrationPending
+				&& isAccountConnectionActive()
+				&& actorAccessState.status === 'checking';
+		}
+
+		function normalizeActorAccess(access) {
+			access = access && typeof access === 'object' ? access : {};
+
+			return {
+				required: access.required !== false,
+				assigned: access.assigned === true,
+				status: String(access.status || 'missing'),
+				message: String(access.message || ''),
+				role: String(access.role || ''),
+				permissions: Array.isArray(access.permissions) ? access.permissions.map(String) : []
+			};
+		}
+
+		function isYoRoAccessActive() {
+			const subscriptionActive = entitlementAccessState.access_state !== 'blocked';
+			const hasCredits = usageAccessState.hard_limit_reached !== true;
+			const canUseAi = actorAccessState.permissions.indexOf('yoro_use_ai') !== -1;
+
+			return isAccountConnectionActive()
+				&& actorAccessState.assigned === true
+				&& actorAccessState.status === 'active'
+				&& canUseAi
+				&& subscriptionActive
+				&& hasCredits;
+		}
+
+		function requireAccountConnection() {
+			if (isYoRoAccessActive()) {
+				return true;
+			}
+
+			if (accountGate) {
+				accountGate.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			}
+
+			return false;
+		}
+
+		function applyAccountConnectionState(connection, actorAccess, entitlements, usage) {
+			accountConnectionState = normalizeAccountConnection(connection);
+			if (actorAccess !== undefined) {
+				actorAccessState = normalizeActorAccess(actorAccess);
+			}
+			if (entitlements && typeof entitlements === 'object') {
+				entitlementAccessState = entitlements;
+			}
+			if (usage && typeof usage === 'object') {
+				usageAccessState = usage;
+			}
+			const accessible = isYoRoAccessActive();
+			const checking = isYoRoAccessChecking();
+			const gateHidden = accessible || checking;
+
+			if (accountGate) {
+				accountGate.hidden = gateHidden;
+				accountGate.classList.toggle('is-hidden', gateHidden);
+			}
+			renderAccountAccessGate();
+
+			if (chatShell) {
+				chatShell.classList.toggle('is-account-locked', !accessible && !checking);
+				chatShell.classList.toggle('is-account-checking', checking);
+				chatShell.setAttribute('aria-busy', checking ? 'true' : 'false');
+			}
+
+			commandField.disabled = !accessible;
+			commandField.setAttribute('aria-disabled', accessible ? 'false' : 'true');
+			contextButton && (contextButton.disabled = !accessible || isSending);
+			clearButton && (clearButton.disabled = !accessible || isSending);
+			inboxButton && (inboxButton.disabled = !accessible || isSending);
+			quickActionsToggle && (quickActionsToggle.disabled = !accessible || isSending);
+
+			workflowButtons.forEach(function(button) {
+				button.disabled = !accessible || isSending;
+			});
+
+			syncRunButtonState();
+		}
+
+		function renderAccountAccessGate() {
+			if (!accountGateEyebrow || !accountGateTitle || !accountGateDescription || !accountGateAction) {
+				return;
+			}
+
+			let eyebrow = 'Account connection required';
+			let title = 'Connect YoRo before opening the AI workspace';
+			let description = 'Link this store to your YoRo account and Organization before YoRo can read or act on store data.';
+			let action = accountGateDefaultAction;
+
+			if (isAccountConnectionActive() && entitlementAccessState.access_state === 'blocked') {
+				eyebrow = 'Subscription action required';
+				title = 'Reactivate your YoRo plan';
+				description = 'This Organization subscription is inactive. Renew or select a plan to reopen the AI workspace.';
+				action = accessGateLink((YoRoAIAdmin && YoRoAIAdmin.aiApiBillingUrl) || '', 'Open billing');
+			} else if (isAccountConnectionActive() && usageAccessState.hard_limit_reached === true) {
+				eyebrow = 'Monthly AI credits used';
+				title = 'Add credits or upgrade your plan';
+				description = 'The Organization has reached its current AI Agent credit limit. Store data remains unchanged.';
+				action = accessGateLink((YoRoAIAdmin && YoRoAIAdmin.aiApiBillingUrl) || '', 'Billing / Upgrade');
+			} else if (isAccountConnectionActive() && actorAccessState.status === 'checking') {
+				eyebrow = 'Verifying operator access';
+				title = 'Checking your YoRo seat';
+				description = 'YoRo is securely matching this WordPress user to the Organization access list.';
+				action = '<p>Please wait a moment.</p>';
+			} else if (isAccountConnectionActive() && actorAccessState.status === 'unavailable') {
+				eyebrow = 'Access check unavailable';
+				title = 'YoRo access could not be verified';
+				description = actorAccessState.message || 'YoRo could not verify this WordPress user right now.';
+				action = accessGateCheckAction('Try again', 'YoRo will verify your current WordPress account.');
+			} else if (isAccountConnectionActive() && actorAccessState.status === 'seat_required') {
+				eyebrow = 'Access request sent';
+				title = 'Waiting for Organization approval';
+				description = 'Your current WordPress account has requested YoRo access. An Organization Owner or Admin must assign you an operator seat before you can continue.';
+				action = accessGateCheckAction('Check access', 'No separate YoRo sign-in is required.');
+			} else if (isAccountConnectionActive() && actorAccessState.status === 'revoked') {
+				eyebrow = 'Operator access revoked';
+				title = 'Ask an Organization Owner or Admin to restore access';
+				description = 'Your WordPress account is recognized, but its YoRo operator seat is no longer active.';
+				action = accessGateCheckAction('Check access', 'Use this after an Owner or Admin restores your seat.');
+			} else if (isAccountConnectionActive() && !isYoRoAccessActive()) {
+				eyebrow = 'Operator access required';
+				title = 'Request access with your WordPress account';
+				description = 'YoRo will identify this signed-in WordPress user and send an access request to the connected Organization.';
+				action = accessGateCheckAction('Request access', 'You do not need a YoRo account or a separate password.');
+			}
+
+			accountGateEyebrow.textContent = eyebrow;
+			accountGateTitle.textContent = title;
+			accountGateDescription.textContent = description;
+			accountGateAction.innerHTML = action;
+		}
+
+		function accessGateLink(url, label) {
+			if (!url) {
+				return '<p>Ask your Organization owner or administrator for access.</p>';
+			}
+
+			return '<a class="button button-primary yoro-account-gate-button" href="' + escapeHtml(url) + '">' + escapeHtml(label) + '</a>';
+		}
+
+		function accessGateCheckAction(label, note) {
+			return '<button type="button" class="button button-primary yoro-account-gate-button" data-yoro-operator-access-check>'
+				+ escapeHtml(label)
+				+ '</button><p class="yoro-account-gate-action-note">'
+				+ escapeHtml(note)
+				+ '</p>';
 		}
 
 		function setButtonLabel(button, label) {
@@ -3219,9 +3477,10 @@
 
 		function setLoading(isLoading) {
 			syncRunButtonState();
+			const accountLocked = !isYoRoAccessActive();
 
 			if (contextButton) {
-				contextButton.disabled = isLoading;
+				contextButton.disabled = accountLocked || isLoading;
 			}
 
 			if (adminPanelsButton) {
@@ -3229,11 +3488,19 @@
 			}
 
 			if (inboxButton) {
-				inboxButton.disabled = isLoading;
+				inboxButton.disabled = accountLocked || isLoading;
+			}
+
+			if (clearButton) {
+				clearButton.disabled = accountLocked || isLoading;
+			}
+
+			if (quickActionsToggle) {
+				quickActionsToggle.disabled = accountLocked || isLoading;
 			}
 
 			workflowButtons.forEach(function(button) {
-				button.disabled = isLoading;
+				button.disabled = accountLocked || isLoading;
 			});
 
 			setButtonLabel(runButton, isLoading ? YoRoAIAdmin.i18n.running : (YoRoAIAdmin.i18n.askYoRo || 'Send'));
@@ -5044,6 +5311,10 @@
 		}
 
 		function loadContext() {
+			if (!requireAccountConnection()) {
+				return;
+			}
+
 			const command = 'Context';
 			addUserMessage(command);
 			const loading = addLoadingMessage();
@@ -5319,7 +5590,7 @@
 		}
 
 		function runCommand(confirm, onConfirmSuccess, commandOverride) {
-			if (isSending) {
+			if (isSending || !requireAccountConnection()) {
 				return;
 			}
 
@@ -5782,6 +6053,11 @@
 				const confirmCancel = target.closest('.yoro-confirm-cancel');
 				const undoLast = target.closest('.yoro-undo-last');
 				const insertCommand = target.closest('.yoro-insert-command');
+
+				if ((clarifyOption || approveButton) && !requireAccountConnection()) {
+					event.preventDefault();
+					return;
+				}
 
 				if (clarifyOption) {
 					event.preventDefault();

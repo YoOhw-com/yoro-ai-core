@@ -34,7 +34,7 @@ class YoRo_Runtime_Guard {
 			return $policy;
 		}
 
-		$risk = YoRo_Plan_Risk_Engine::evaluate( $plan );
+		$risk = YoRo_Plan_Risk_Engine::evaluate( $plan, $context );
 
 		$runtime_policy = YoRo_Policy_Engine::get_runtime_policy_for_plan(
 			$plan,

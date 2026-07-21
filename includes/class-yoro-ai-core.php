@@ -16,6 +16,7 @@ class YoRo_AI_Core {
 		self::include_ai();
 		self::include_actions();
 		self::include_execution();
+		self::include_commerce();
 		self::include_rest();
 
 		if ( is_admin() ) {
@@ -24,6 +25,8 @@ class YoRo_AI_Core {
 	}
 
 	private static function include_core() {
+		require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-capabilities.php';
+		require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-wordpress-actor.php';
 		require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-action-cache.php';
 		require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-logger.php';
 		require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-db.php';
@@ -78,6 +81,7 @@ class YoRo_AI_Core {
 	}
 
 	private static function include_execution() {
+		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-safety-contract.php';
 		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-plan-semantic-validator.php';
 		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-action-planner.php';
 		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-policy-engine.php';
@@ -85,6 +89,14 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-runtime-guard.php';
 		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-action-executor.php';
 		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-plan-executor.php';
+	}
+
+	private static function include_commerce() {
+		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-commerce-contract-builder.php';
+		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-client.php';
+		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-snapshot-publisher.php';
+		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-execution-journal.php';
+		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-runtime.php';
 	}
 
 	private static function include_rest() {
@@ -104,12 +116,16 @@ class YoRo_AI_Core {
 
 	private static function boot() {
 		YoRo_DB::maybe_upgrade();
+		YoRo_Safety_Contract::maybe_migrate_legacy_profile();
+		YoRo_Capabilities::maybe_install();
 
 		YoRo_Action_Registry::init();
 
 		YoRo_Orders_Actions::register();
 
 		do_action( 'yoro_register_actions' );
+
+		YoRo_Connector_Runtime::init();
 
 		YoRo_REST_API::init();
 

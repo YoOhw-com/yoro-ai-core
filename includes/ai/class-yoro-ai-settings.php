@@ -10,6 +10,7 @@ class YoRo_AI_Settings {
 	const OPTION_AI_API_SITE_KEY = 'yoro_ai_api_site_key';
 	const OPTION_AI_API_ENABLED = 'yoro_ai_api_enabled';
 	const OPTION_AI_API_STATUS = 'yoro_ai_api_status';
+	const OPTION_INSTALLATION_UUID = 'yoro_ai_installation_uuid';
 	const DEFAULT_AI_API_URL = '';
 
 	public static function get_ai_api_site_key_source() {
@@ -36,6 +37,18 @@ class YoRo_AI_Settings {
 		}
 
 		return esc_url_raw( (string) get_option( self::OPTION_AI_API_URL, self::DEFAULT_AI_API_URL ) );
+	}
+
+	public static function get_ai_api_environment() {
+		$environment = function_exists( 'wp_get_environment_type' ) ? wp_get_environment_type() : 'production';
+
+		if ( 'local' === $environment ) {
+			return 'development';
+		}
+
+		return in_array( $environment, [ 'production', 'staging', 'development' ], true )
+			? $environment
+			: 'production';
 	}
 
 	public static function get_ai_api_dashboard_url() {
@@ -141,7 +154,32 @@ class YoRo_AI_Settings {
 			return YORO_AI_API_SITE_KEY;
 		}
 
-		return sanitize_text_field( (string) get_option( self::OPTION_AI_API_SITE_KEY, '' ) );
+		return self::decrypt_ai_api_site_key( (string) get_option( self::OPTION_AI_API_SITE_KEY, '' ) );
+	}
+
+	public static function get_installation_uuid() {
+		$uuid = sanitize_text_field( (string) get_option( self::OPTION_INSTALLATION_UUID, '' ) );
+
+		if ( preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $uuid ) ) {
+			return strtolower( $uuid );
+		}
+
+		$uuid = wp_generate_uuid4();
+		update_option( self::OPTION_INSTALLATION_UUID, $uuid, false );
+
+		return $uuid;
+	}
+
+	public static function create_wordpress_connect_proof() {
+		$state         = wp_generate_password( 48, false, false );
+		$code_verifier = wp_generate_password( 64, false, false );
+
+		return [
+			'state'             => $state,
+			'code_verifier'     => $code_verifier,
+			'code_challenge'    => rtrim( strtr( base64_encode( hash( 'sha256', $code_verifier, true ) ), '+/', '-_' ), '=' ),
+			'installation_uuid' => self::get_installation_uuid(),
+		];
 	}
 
 	public static function is_ai_api_enabled() {
@@ -152,6 +190,50 @@ class YoRo_AI_Settings {
 		$status = get_option( self::OPTION_AI_API_STATUS, [] );
 
 		return is_array( $status ) ? self::normalize_ai_api_status( $status ) : [];
+	}
+
+	public static function get_ai_api_account_connection( $status = null ) {
+		$status = is_array( $status ) ? self::normalize_ai_api_status( $status ) : self::get_ai_api_status();
+		$account_connection = isset( $status['account_connection'] ) && is_array( $status['account_connection'] )
+			? $status['account_connection']
+			: [];
+		$organization = isset( $status['organization'] ) && is_array( $status['organization'] ) ? $status['organization'] : [];
+		$connection   = isset( $status['connection'] ) && is_array( $status['connection'] ) ? $status['connection'] : [];
+		$credential   = isset( $status['credential'] ) && is_array( $status['credential'] ) ? $status['credential'] : [];
+		$site         = isset( $status['site'] ) && is_array( $status['site'] ) ? $status['site'] : [];
+		$connection_id = absint( $connection['id'] ?? 0 );
+		$installation_uuid = sanitize_text_field( $connection['installation_uuid'] ?? '' );
+		$local_installation_uuid = self::get_installation_uuid();
+		$credential_expires_at = sanitize_text_field( $credential['expires_at'] ?? '' );
+		$credential_expires = '' !== $credential_expires_at ? strtotime( $credential_expires_at ) : false;
+		$credential_active = false === $credential_expires || $credential_expires > time();
+
+		$connected = ! empty( $account_connection['connected'] )
+			&& 'active' === sanitize_key( $account_connection['status'] ?? '' )
+			&& absint( $organization['id'] ?? 0 ) > 0
+			&& absint( $site['id'] ?? 0 ) > 0
+			&& $connection_id > 0
+			&& 'active' === sanitize_key( $connection['status'] ?? '' )
+			&& '' !== $installation_uuid
+			&& hash_equals( $local_installation_uuid, $installation_uuid )
+			&& absint( $credential['id'] ?? 0 ) > 0
+			&& $credential_active
+			&& 'wordpress_connection' === sanitize_key( $credential['type'] ?? '' )
+			&& $connection_id === absint( $credential['site_connection_id'] ?? 0 );
+
+		return [
+			'required'          => true,
+			'connected'         => $connected,
+			'status'            => $connected ? 'active' : sanitize_key( $account_connection['status'] ?? 'account_required' ),
+			'message'           => sanitize_text_field( $account_connection['message'] ?? ( $connected ? '' : __( 'Connect this site to a YoRo account to use YoRo AI.', 'yoro-ai-core' ) ) ),
+			'service_available' => ! array_key_exists( 'service_available', $status ) || ! empty( $status['service_available'] ),
+		];
+	}
+
+	public static function is_ai_api_account_connected( $status = null ) {
+		$account_connection = self::get_ai_api_account_connection( $status );
+
+		return ! empty( $account_connection['connected'] );
 	}
 
 	public static function get_ai_api_entitlements() {
@@ -172,6 +254,10 @@ class YoRo_AI_Settings {
 		$feature = self::normalize_ai_api_feature( $feature );
 
 		if ( '' === $feature ) {
+			return false;
+		}
+
+		if ( ! self::is_ai_api_account_connected() ) {
 			return false;
 		}
 
@@ -243,6 +329,7 @@ class YoRo_AI_Settings {
 			'ai_api_site_key_constant'   => self::get_ai_api_site_key_constant_name(),
 			'ai_api_enabled'             => self::is_ai_api_enabled() ? 'yes' : 'no',
 			'ai_api_status'              => self::get_ai_api_status(),
+			'ai_api_account_connection'  => self::get_ai_api_account_connection(),
 			'ai_api_account_url'         => self::get_ai_api_account_url(),
 			'ai_api_billing_url'         => self::get_ai_api_billing_url(),
 			'ai_api_dashboard_url'       => self::get_ai_api_dashboard_url(),
@@ -353,7 +440,15 @@ class YoRo_AI_Settings {
 			if ( $ai_api_site_key_clear ) {
 				update_option( self::OPTION_AI_API_SITE_KEY, '', false );
 			} elseif ( '' !== $new_ai_api_site_key ) {
-				update_option( self::OPTION_AI_API_SITE_KEY, $new_ai_api_site_key, false );
+				$encrypted_site_key = self::encrypt_ai_api_site_key( $new_ai_api_site_key );
+
+				if ( is_wp_error( $encrypted_site_key ) ) {
+					$ai_api_connection_can_save = false;
+					$result['ai_api_connection_error'] = $encrypted_site_key;
+					$result['ai_api_credentials_rejected'] = true;
+				} else {
+					update_option( self::OPTION_AI_API_SITE_KEY, $encrypted_site_key, false );
+				}
 			}
 		}
 
@@ -369,7 +464,16 @@ class YoRo_AI_Settings {
 	}
 
 	private static function test_ai_api_credentials( $api_url, $site_key ) {
-		return ( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $site_key, false );
+		$result = ( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $site_key, false );
+
+		if ( is_wp_error( $result ) || self::is_ai_api_account_connected( $result ) ) {
+			return $result;
+		}
+
+		return new WP_Error(
+			'yoro_ai_account_connection_required',
+			__( 'This credential is not linked to an active YoRo account connection. Use Connect YoRo Account instead.', 'yoro-ai-core' )
+		);
 	}
 
 	public static function save_connected_ai_api_credentials( $api_url, $site_key ) {
@@ -400,7 +504,13 @@ class YoRo_AI_Settings {
 			update_option( self::OPTION_AI_API_URL, $target_ai_api_url );
 		}
 
-		update_option( self::OPTION_AI_API_SITE_KEY, $target_site_key, false );
+		$encrypted_site_key = self::encrypt_ai_api_site_key( $target_site_key );
+
+		if ( is_wp_error( $encrypted_site_key ) ) {
+			return $encrypted_site_key;
+		}
+
+		update_option( self::OPTION_AI_API_SITE_KEY, $encrypted_site_key, false );
 		update_option( self::OPTION_AI_API_ENABLED, 'yes' );
 		self::update_ai_api_status( $connection_result );
 
@@ -415,11 +525,77 @@ class YoRo_AI_Settings {
 			);
 		}
 
+		$site_key = self::get_ai_api_site_key();
+
+		if ( '' !== $site_key ) {
+			$disconnect_result = ( new YoRo_AI_API_Client() )->disconnect_site(
+				[
+					'installation_uuid' => self::get_installation_uuid(),
+					'reason'            => 'Disconnected by a WordPress administrator.',
+				]
+			);
+
+			if ( is_wp_error( $disconnect_result ) ) {
+				return $disconnect_result;
+			}
+		}
+
 		update_option( self::OPTION_AI_API_SITE_KEY, '', false );
 		update_option( self::OPTION_AI_API_ENABLED, 'no' );
 		self::clear_ai_api_status();
 
 		return true;
+	}
+
+	private static function encrypt_ai_api_site_key( $site_key ) {
+		if ( ! function_exists( 'openssl_encrypt' ) ) {
+			return new WP_Error(
+				'yoro_ai_api_encryption_unavailable',
+				__( 'The server cannot securely store the YoRo site credential. Enable OpenSSL and reconnect.', 'yoro-ai-core' )
+			);
+		}
+
+		try {
+			$iv = random_bytes( 12 );
+		} catch ( Exception $exception ) {
+			return new WP_Error( 'yoro_ai_api_encryption_failed', __( 'YoRo could not create secure credential storage.', 'yoro-ai-core' ) );
+		}
+
+		$tag        = '';
+		$key        = hash( 'sha256', wp_salt( 'auth' ) . '|' . wp_salt( 'secure_auth' ), true );
+		$ciphertext = openssl_encrypt( (string) $site_key, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag );
+
+		if ( false === $ciphertext || 16 !== strlen( $tag ) ) {
+			return new WP_Error( 'yoro_ai_api_encryption_failed', __( 'YoRo could not securely store the site credential.', 'yoro-ai-core' ) );
+		}
+
+		return 'yoro_enc_v1:' . base64_encode( $iv . $tag . $ciphertext );
+	}
+
+	private static function decrypt_ai_api_site_key( $stored ) {
+		$prefix = 'yoro_enc_v1:';
+
+		if ( 0 !== strpos( (string) $stored, $prefix ) ) {
+			return defined( 'WP_DEBUG' ) && WP_DEBUG ? sanitize_text_field( (string) $stored ) : '';
+		}
+
+		if ( ! function_exists( 'openssl_decrypt' ) ) {
+			return '';
+		}
+
+		$payload = base64_decode( substr( (string) $stored, strlen( $prefix ) ), true );
+
+		if ( false === $payload || strlen( $payload ) < 29 ) {
+			return '';
+		}
+
+		$iv         = substr( $payload, 0, 12 );
+		$tag        = substr( $payload, 12, 16 );
+		$ciphertext = substr( $payload, 28 );
+		$key        = hash( 'sha256', wp_salt( 'auth' ) . '|' . wp_salt( 'secure_auth' ), true );
+		$plaintext  = openssl_decrypt( $ciphertext, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag );
+
+		return false === $plaintext ? '' : sanitize_text_field( $plaintext );
 	}
 
 	private static function sanitize_ai_api_status_value( $value ) {

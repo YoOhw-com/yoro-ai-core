@@ -39,7 +39,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'execute_action' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'account_connection_permission_check' ],
 			]
 		);
 
@@ -49,7 +49,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'cancel_conversation_action' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'account_connection_permission_check' ],
 			]
 		);
 
@@ -59,7 +59,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'chat_message' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'account_connection_permission_check' ],
 			]
 		);
 
@@ -69,7 +69,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'GET',
 				'callback'            => [ __CLASS__, 'get_chat_conversation' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'account_connection_permission_check' ],
 			]
 		);
 
@@ -79,9 +79,7 @@ class YoRo_REST_API {
 			[
 				'methods'  => 'POST',
 				'callback' => [ __CLASS__, 'undo_last_action' ],
-				'permission_callback' => function () {
-					return current_user_can( 'manage_woocommerce' );
-				},
+				'permission_callback' => [ __CLASS__, 'action_permission_check' ],
 			]
 		);
 
@@ -91,7 +89,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'GET',
 				'callback'            => [ __CLASS__, 'get_ai_api_status' ],
-				'permission_callback' => [ __CLASS__, 'settings_permission_check' ],
+				'permission_callback' => [ __CLASS__, 'ai_status_permission_check' ],
 			]
 		);
 
@@ -101,7 +99,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'test_ai_api_handshake' ],
-				'permission_callback' => [ __CLASS__, 'settings_permission_check' ],
+				'permission_callback' => [ __CLASS__, 'ai_status_permission_check' ],
 			]
 		);
 
@@ -111,7 +109,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'create_gmail_mailbox_connect_intent' ],
-				'permission_callback' => [ __CLASS__, 'settings_permission_check' ],
+				'permission_callback' => [ __CLASS__, 'account_connection_settings_permission_check' ],
 			]
 		);
 
@@ -121,7 +119,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'disconnect_gmail_mailbox' ],
-				'permission_callback' => [ __CLASS__, 'settings_permission_check' ],
+				'permission_callback' => [ __CLASS__, 'account_connection_settings_permission_check' ],
 			]
 		);
 
@@ -131,7 +129,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'create_microsoft_mailbox_connect_intent' ],
-				'permission_callback' => [ __CLASS__, 'settings_permission_check' ],
+				'permission_callback' => [ __CLASS__, 'account_connection_settings_permission_check' ],
 			]
 		);
 
@@ -141,7 +139,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'connect_imap_mailbox' ],
-				'permission_callback' => [ __CLASS__, 'settings_permission_check' ],
+				'permission_callback' => [ __CLASS__, 'account_connection_settings_permission_check' ],
 			]
 		);
 
@@ -151,7 +149,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'disconnect_mailbox' ],
-				'permission_callback' => [ __CLASS__, 'settings_permission_check' ],
+				'permission_callback' => [ __CLASS__, 'account_connection_settings_permission_check' ],
 			]
 		);
 
@@ -161,7 +159,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'GET',
 				'callback'            => [ __CLASS__, 'get_mailbox_inbox' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'mailbox_permission_check' ],
 			]
 		);
 
@@ -171,7 +169,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'sync_mailbox_inbox' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'mailbox_permission_check' ],
 			]
 		);
 
@@ -182,12 +180,12 @@ class YoRo_REST_API {
 				[
 					'methods'             => 'GET',
 					'callback'            => [ __CLASS__, 'get_mailbox_thread' ],
-					'permission_callback' => [ __CLASS__, 'permission_check' ],
+					'permission_callback' => [ __CLASS__, 'mailbox_permission_check' ],
 				],
 				[
 					'methods'             => 'PATCH',
 					'callback'            => [ __CLASS__, 'update_mailbox_thread' ],
-					'permission_callback' => [ __CLASS__, 'permission_check' ],
+					'permission_callback' => [ __CLASS__, 'mailbox_permission_check' ],
 				],
 			]
 		);
@@ -198,7 +196,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'reply_mailbox_thread' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'mailbox_permission_check' ],
 			]
 		);
 
@@ -208,7 +206,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'archive_mailbox_thread' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'mailbox_permission_check' ],
 			]
 		);
 
@@ -218,7 +216,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'reopen_mailbox_thread' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'mailbox_permission_check' ],
 			]
 		);
 
@@ -228,7 +226,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'mark_mailbox_thread_read' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'mailbox_permission_check' ],
 			]
 		);
 
@@ -238,7 +236,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'mark_mailbox_thread_unread' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'mailbox_permission_check' ],
 			]
 		);
 
@@ -248,7 +246,7 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'add_mailbox_thread_note' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'mailbox_permission_check' ],
 			]
 		);
 
@@ -258,25 +256,61 @@ class YoRo_REST_API {
 			[
 				'methods'             => 'POST',
 				'callback'            => [ __CLASS__, 'retry_mailbox_thread_reply' ],
-				'permission_callback' => [ __CLASS__, 'permission_check' ],
+				'permission_callback' => [ __CLASS__, 'mailbox_permission_check' ],
 			]
 		);
 
 	}
 
 	public static function permission_check() {
-		return current_user_can( 'manage_woocommerce' );
+		return current_user_can( YoRo_Capabilities::VIEW_STORE_DATA );
 	}
 
 	public static function settings_permission_check() {
-		return current_user_can( 'manage_options' );
+		return current_user_can( YoRo_Capabilities::MANAGE_CONNECTION );
+	}
+
+	public static function ai_status_permission_check() {
+		return current_user_can( YoRo_Capabilities::USE_AI );
+	}
+
+	public static function account_connection_permission_check() {
+		return self::connected_capability_permission_check( YoRo_Capabilities::USE_AI );
+	}
+
+	public static function account_connection_settings_permission_check() {
+		return self::connected_capability_permission_check( YoRo_Capabilities::MANAGE_CONNECTION );
+	}
+
+	public static function mailbox_permission_check() {
+		return self::connected_capability_permission_check( YoRo_Capabilities::MANAGE_MAILBOX );
+	}
+
+	public static function action_permission_check() {
+		return self::connected_capability_permission_check( YoRo_Capabilities::EXECUTE_ACTIONS );
+	}
+
+	private static function connected_capability_permission_check( $capability ) {
+		if ( ! current_user_can( $capability ) ) {
+			return false;
+		}
+
+		if ( YoRo_AI_Settings::is_ai_api_account_connected() ) {
+			return true;
+		}
+
+		return new WP_Error(
+			'yoro_ai_account_connection_required',
+			__( 'Connect this WordPress site to a YoRo account before using YoRo AI.', 'yoro-ai-core' ),
+			[ 'status' => 403 ]
+		);
 	}
 
 	public static function get_actions() {
 		return rest_ensure_response(
 			[
 				'success' => true,
-				'actions' => YoRo_Action_Registry::all(),
+				'actions' => YoRo_Action_Registry::available_for_current_user(),
 			]
 		);
 	}
@@ -1231,6 +1265,7 @@ class YoRo_REST_API {
 		}
 
 		$api_url = YoRo_AI_Settings::get_ai_api_url();
+		$account_connection = YoRo_AI_Settings::get_ai_api_account_connection( $status );
 
 		return [
 			'success'             => true,
@@ -1249,11 +1284,16 @@ class YoRo_REST_API {
 				'enabled'          => YoRo_AI_Settings::is_ai_api_enabled(),
 			],
 			'connection'          => [
-				'connected'  => ! empty( $status['connected'] ),
-				'checked_at' => sanitize_text_field( $status['checked_at'] ?? '' ),
-				'message'    => sanitize_text_field( $status['message'] ?? '' ),
+				'connected'         => ! empty( $account_connection['connected'] ),
+				'service_available' => ! empty( $account_connection['service_available'] ),
+				'checked_at'        => sanitize_text_field( $status['checked_at'] ?? '' ),
+				'message'           => sanitize_text_field( $status['message'] ?? '' ),
 			],
+			'account_connection'  => $account_connection,
+			'actor_access'        => isset( $status['actor_access'] ) && is_array( $status['actor_access'] ) ? $status['actor_access'] : [],
 			'site'                => isset( $status['site'] ) && is_array( $status['site'] ) ? $status['site'] : [],
+			'organization'        => isset( $status['organization'] ) && is_array( $status['organization'] ) ? $status['organization'] : [],
+			'site_connection'     => isset( $status['connection'] ) && is_array( $status['connection'] ) ? $status['connection'] : [],
 			'entitlements'        => $entitlements,
 			'usage'               => $usage,
 			'capabilities'        => [
