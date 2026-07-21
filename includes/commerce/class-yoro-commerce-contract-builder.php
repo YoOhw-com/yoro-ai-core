@@ -150,6 +150,7 @@ class YoRo_Commerce_Contract_Builder {
 		$risk_level = sanitize_key( $action['risk_level'] ?? 'low' );
 		$reversibility = sanitize_key( $action['reversibility'] ?? ( ! empty( $action['write_action'] ) ? 'partial' : 'full' ) );
 		$permission = sanitize_key( $action['permission'] ?? '' );
+		$conversation_semantics = YoRo_Action_Catalog_Builder::semantic_contract( $name, $action );
 
 		if ( ! in_array( $effect, [ 'read', 'draft', 'mutate', 'communicate', 'delete', 'financial' ], true )
 			|| ! in_array( $risk_level, [ 'low', 'medium', 'high', 'critical' ], true )
@@ -177,6 +178,7 @@ class YoRo_Commerce_Contract_Builder {
 				'woocommerce.action' => [
 					'registry_action' => $name,
 				],
+				'yoro.conversation' => $conversation_semantics,
 			],
 		];
 	}

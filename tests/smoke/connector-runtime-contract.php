@@ -243,6 +243,10 @@ try {
 	$get_details_schema = $actions['orders.get_details']['input_schema']['properties'] ?? [];
 	$search_action = YoRo_Action_Registry::get( 'orders.search' );
 	$assert( isset( $actions['orders.search'] ), 'Capability manifest must expose orders.search.' );
+	$search_semantics = $actions['orders.search']['extensions']['yoro.conversation'] ?? [];
+	$assert( 1 === ( $search_semantics['version'] ?? 0 ), 'Capability manifest actions must publish yoro.conversation v1 semantics.' );
+	$assert( 'orders_search' === ( $search_semantics['intent_family'] ?? '' ), 'Canonical conversation semantics must retain the connector-owned intent family.' );
+	$assert( is_array( $search_semantics['slot_contract'] ?? null ), 'Canonical conversation semantics must retain a structured slot contract.' );
 	$assert( [ 'string', 'array' ] === ( $search_schema['status']['type'] ?? null ), 'Legacy union types must remain unions in canonical JSON Schema.' );
 	$assert( 'number' === ( $search_schema['total_min']['type'] ?? '' ), 'Legacy float types must become JSON Schema numbers.' );
 	$assert( 'integer' === ( $get_details_schema['order_ids']['items']['type'] ?? '' ), 'Legacy typed arrays must preserve their item type.' );
