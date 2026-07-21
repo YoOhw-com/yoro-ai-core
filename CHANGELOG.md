@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+- Capability manifests now publish canonical `yoro.conversation` v1 semantics for each WooCommerce action, including intent families, target/content slots, value catalogs, and reporting hints.
+
+### Changed
+- Live cutover conformance is bound to the exact deployed driver descriptor and refreshed capability manifest before operation execution can remain enabled.
+
 ## 0.1.9 - 2026-07-21
 
 ### Added
