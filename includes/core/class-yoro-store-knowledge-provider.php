@@ -1153,7 +1153,7 @@ class YoRo_Store_Knowledge_Provider {
 			'surfaces'            => $surfaces,
 			'action_source'       => 'yoro_action_registry',
 			'execution_boundary'  => 'plugin_executor',
-			'routing_boundary'    => 'laravel_conversation_brain',
+			'routing_boundary'    => 'yoro_ai_conversation_brain',
 			'confirmation_policy' => 'write_actions_require_confirmation',
 		];
 	}

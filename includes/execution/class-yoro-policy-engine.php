@@ -29,13 +29,8 @@ class YoRo_Policy_Engine {
 			);
 		}
 
-		$mode = get_option( 'yoro_policy_mode', 'balanced' );
-
-		if ( 'custom' === $mode ) {
-			$policy = self::get_policy_for_roles( $action, $roles );
-		} else {
-			$policy = self::build_preset_policy( $mode, $action, $registered, $roles );
-		}
+		$mode = YoRo_Safety_Contract::profile();
+		$policy = self::build_preset_policy( $mode, $action, $registered, $roles );
 
 		if ( ! $policy ) {
 			return true;
@@ -50,14 +45,14 @@ class YoRo_Policy_Engine {
 
 		$source = isset( $context['source'] ) ? sanitize_key( $context['source'] ) : '';
 
-		if ( 'ai' === $source && isset( $policy['allow_ai'] ) && ! absint( $policy['allow_ai'] ) ) {
+		if ( 'ai_chat' === $source && isset( $policy['allow_ai'] ) && ! absint( $policy['allow_ai'] ) ) {
 			return new WP_Error(
 				'yoro_policy_ai_blocked',
 				__( 'Store policy blocks this action from chat commands.', 'yoro-ai-core' )
 			);
 		}
 
-		if ( 'direct' === $source && isset( $policy['allow_direct'] ) && ! absint( $policy['allow_direct'] ) ) {
+		if ( 'direct_ui' === $source && isset( $policy['allow_direct'] ) && ! absint( $policy['allow_direct'] ) ) {
 			return new WP_Error(
 				'yoro_policy_direct_blocked',
 				__( 'Store policy blocks direct execution for this action.', 'yoro-ai-core' )
@@ -133,7 +128,16 @@ class YoRo_Policy_Engine {
 				? $plan['steps']
 				: [];
 
+			$items_by_action = [];
+			$limits_by_action = [];
+
 			foreach ( $steps as $step ) {
+				$step_action = sanitize_text_field( $step['action'] ?? '' );
+				$items_by_action[ $step_action ] = ( $items_by_action[ $step_action ] ?? 0 )
+					+ self::count_items( isset( $step['params'] ) && is_array( $step['params'] ) ? $step['params'] : [] );
+				$step_policy = self::get_runtime_policy( $step['action'] ?? '', $context );
+				$step_limit = isset( $step_policy['max_items'] ) ? absint( $step_policy['max_items'] ) : 0;
+				$limits_by_action[ $step_action ] = $step_limit;
 				$policy = self::evaluate(
 					$step['action'] ?? '',
 					$step['params'] ?? [],
@@ -142,6 +146,21 @@ class YoRo_Policy_Engine {
 
 				if ( is_wp_error( $policy ) ) {
 					return $policy;
+				}
+			}
+
+			foreach ( $items_by_action as $step_action => $total_items ) {
+				$plan_limit = absint( $limits_by_action[ $step_action ] ?? 0 );
+
+				if ( $plan_limit > 0 && $total_items > $plan_limit ) {
+					return new WP_Error(
+						'yoro_policy_plan_limit',
+						sprintf(
+							/* translators: %s: Value generated from store data. */
+							__( 'This Safety policy allows at most %d affected targets for one action across the complete plan.', 'yoro-ai-core' ),
+							$plan_limit
+						)
+					);
 				}
 			}
 
@@ -191,21 +210,7 @@ class YoRo_Policy_Engine {
 			return [];
 		}
 
-		$mode = get_option( 'yoro_policy_mode', 'balanced' );
-
-		if ( 'custom' === $mode ) {
-			$policy = self::get_policy_for_roles( $action, $roles );
-
-			$policy = is_array( $policy ) ? $policy : [];
-
-			return apply_filters(
-				'yoro_runtime_policy',
-				$policy,
-				$action,
-				$context
-			);
-		}
-
+		$mode = YoRo_Safety_Contract::profile();
 		$policy = self::build_preset_policy( $mode, $action, $registered, $roles );
 
 		return apply_filters(
@@ -299,12 +304,11 @@ class YoRo_Policy_Engine {
 	private static function build_preset_policy( $mode, $action, $registered, $roles ) {
 		$mode = sanitize_key( $mode );
 
-		if ( ! in_array( $mode, [ 'permissive', 'balanced', 'strict' ], true ) ) {
-			$mode = 'balanced';
+		if ( ! in_array( $mode, [ 'advisory', 'assisted', 'delegated' ], true ) ) {
+			$mode = 'assisted';
 		}
 
-		$is_admin        = in_array( 'administrator', (array) $roles, true );
-		$is_shop_manager = in_array( 'shop_manager', (array) $roles, true );
+		$can_manage_policies = current_user_can( YoRo_Capabilities::MANAGE_POLICIES );
 
 		$risk_level   = sanitize_key( $registered['risk_level'] ?? 'low' );
 		$write_action = ! empty( $registered['write_action'] );
@@ -339,11 +343,18 @@ class YoRo_Policy_Engine {
 			$policy['requires_confirmation'] = 1;
 		}
 
-		if ( 'permissive' === $mode ) {
+		if ( 'advisory' === $mode ) {
+			if ( $write_action ) {
+				$policy['allow'] = 0;
+				$policy['allow_write'] = 0;
+				$policy['allow_ai'] = 0;
+				$policy['allow_direct'] = 0;
+			}
+
 			return $policy;
 		}
 
-		if ( 'balanced' === $mode ) {
+		if ( 'assisted' === $mode ) {
 			if ( $is_confirmation_exempt_read ) {
 				$policy['requires_confirmation'] = 0;
 				return $policy;
@@ -361,52 +372,51 @@ class YoRo_Policy_Engine {
 				$policy['max_items'] = 20;
 			}
 
-			if ( $is_shop_manager && 'high' === $risk_level ) {
+			if ( ! $can_manage_policies && 'high' === $risk_level ) {
 				$policy['allowed_risk_levels'] = wp_json_encode( [ 'low', 'medium' ] );
 			}
 
 			return $policy;
 		}
 
-		if ( 'strict' === $mode ) {
-			if ( $write_action ) {
-				$policy['requires_preview']      = 1;
-				$policy['requires_confirmation'] = 1;
-			}
+		if ( 'delegated' === $mode ) {
+			$policy['requires_confirmation'] = $write_action ? 1 : 0;
+			$rule = self::get_delegation_rule( $action, $roles );
 
-			if ( ( $is_financial && ! $is_confirmation_exempt_read ) || $is_destructive || ( $is_email && $write_action ) ) {
-				$policy['requires_preview']      = 1;
-				$policy['requires_confirmation'] = 1;
-			}
-
-			if ( $max_items > 5 ) {
-				$policy['max_items'] = 5;
-			}
-
-			if ( $is_bulk && $policy['max_items'] > 5 ) {
-				$policy['max_items'] = 5;
-			}
-
-			if ( $is_shop_manager ) {
-				$policy['allowed_risk_levels'] = wp_json_encode( [ 'low', 'medium' ] );
-			}
-
-			if ( 'high' === $risk_level && ! $is_admin ) {
-				$policy['allow'] = 0;
-			}
-
-			if ( $write_action && ! $is_admin ) {
-				$policy['allow_ai'] = 0;
-			}
-
-			if ( $is_destructive && ! $is_admin ) {
-				$policy['allow_ai'] = 0;
+			if ( is_array( $rule ) && ! empty( $rule['allow'] ) ) {
+				$policy['requires_confirmation'] = ! empty( $rule['requires_confirmation'] ) ? 1 : 0;
+				$policy['max_items'] = max( 1, absint( $rule['max_targets'] ?? $policy['max_items'] ) );
 			}
 
 			return $policy;
 		}
 
 		return $policy;
+	}
+
+	private static function get_delegation_rule( $action, $roles ) {
+		$rules = get_option( 'yoro_safety_delegation_rules', [] );
+		$rules = is_array( $rules ) ? $rules : [];
+
+		foreach ( $rules as $rule ) {
+			if ( ! is_array( $rule ) || empty( $rule['enabled'] ) ) {
+				continue;
+			}
+
+			if ( ! in_array( $rule['action'] ?? '*', [ '*', $action ], true ) ) {
+				continue;
+			}
+
+			$rule_roles = isset( $rule['roles'] ) && is_array( $rule['roles'] ) ? $rule['roles'] : [];
+
+			if ( ! empty( $rule_roles ) && empty( array_intersect( $rule_roles, $roles ) ) ) {
+				continue;
+			}
+
+			return $rule;
+		}
+
+		return null;
 	}
 
 	private static function decode_allowed_risk_levels( $value ) {

@@ -10,7 +10,7 @@ class YoRo_Action_Catalog_Builder {
 		$catalog = [];
 		$context = is_array( $context ) ? $context : [];
 
-		foreach ( YoRo_Action_Registry::all() as $name => $action ) {
+		foreach ( YoRo_Action_Registry::available_for_current_user() as $name => $action ) {
 			if ( empty( $action['ai_exposed'] ) ) {
 				continue;
 			}
@@ -203,6 +203,13 @@ class YoRo_Action_Catalog_Builder {
 			'write_action'          => ! empty( $action['write_action'] ),
 			'requires_confirmation' => ! empty( $action['requires_confirmation'] ) || ! empty( $action['write_action'] ),
 			'risk_level'            => sanitize_key( $action['risk_level'] ?? 'low' ),
+			'effect'                => sanitize_key( $action['effect'] ?? ( ! empty( $action['write_action'] ) ? 'mutate' : 'read' ) ),
+			'reversibility'         => sanitize_key( $action['reversibility'] ?? ( ! empty( $action['write_action'] ) ? 'partial' : 'full' ) ),
+			'external_side_effect'  => ! empty( $action['external_side_effect'] ),
+			'target_type'           => sanitize_key( $action['target_type'] ?? '' ),
+			'supports_bulk'         => ! empty( $action['supports_bulk'] ),
+			'max_targets'           => isset( $action['max_targets'] ) ? absint( $action['max_targets'] ) : ( isset( $action['max_items'] ) ? absint( $action['max_items'] ) : 1 ),
+			'safety_contract_version' => YoRo_Safety_Contract::VERSION,
 			'max_items'             => isset( $action['max_items'] ) ? absint( $action['max_items'] ) : 1,
 			'capabilities'          => isset( $action['capabilities'] ) && is_array( $action['capabilities'] )
 				? array_values( array_map( 'sanitize_key', $action['capabilities'] ) )

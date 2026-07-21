@@ -31,6 +31,8 @@ class YoRo_REST_Execute_Handler {
 		$trace_id = 'yoro_' . wp_generate_uuid4();
 
 		$stored_action_state = null;
+		$pending_operation = [];
+		$execution_permit = '';
 		$direct_confirmation_allowed = '' === $pending_operation_token;
 
 		if ( $confirm && '' !== $conversation_id && '' !== $pending_operation_token ) {
@@ -58,6 +60,9 @@ class YoRo_REST_Execute_Handler {
 				? $plan['params']
 				: $params;
 			$direct_confirmation_allowed = false;
+			$pending_operation = isset( $stored_action_state['pending_operation'] ) && is_array( $stored_action_state['pending_operation'] )
+				? $stored_action_state['pending_operation']
+				: [];
 		} else {
 			if ( empty( $action ) ) {
 				return new WP_Error(
@@ -107,16 +112,30 @@ class YoRo_REST_Execute_Handler {
 			$parsed,
 			$pending_operation_token
 		);
+		$trusted_origin = YoRo_Safety_Contract::trusted_origin( $pending_operation_token, 'execute' );
+		$preflight = YoRo_Safety_Contract::preflight( $plan, $pending_operation );
 
-		if ( $confirm && self::is_laravel_internal_action( $action ) && '' !== $pending_operation_token ) {
+		if ( $confirm && self::is_yoro_ai_internal_action( $action ) && '' !== $pending_operation_token ) {
 			if ( 'email.reply.send' === $action ) {
 				$request_params = self::with_mailbox_reply_woocommerce_html( $request_params );
 			}
 
+			$internal_preflight_plan = $plan;
+
+			if ( 'single' === ( $internal_preflight_plan['type'] ?? '' ) ) {
+				$internal_preflight_plan['params'] = array_merge(
+					isset( $internal_preflight_plan['params'] ) && is_array( $internal_preflight_plan['params'] ) ? $internal_preflight_plan['params'] : [],
+					$request_params
+				);
+			}
+
+			$preflight = YoRo_Safety_Contract::preflight( $internal_preflight_plan, $pending_operation );
+
 			$confirmation = YoRo_REST_Conversation_Action_Coordinator::confirm_pending_operation(
 				$parsed,
 				$pending_operation_token,
-				$request_params
+				$request_params,
+				$preflight
 			);
 
 			if ( is_wp_error( $confirmation ) ) {
@@ -128,18 +147,27 @@ class YoRo_REST_Execute_Handler {
 				);
 			}
 
+			$claim = YoRo_REST_Conversation_Action_Coordinator::claim_pending_operation( $parsed, $confirmation );
+
+			if ( is_wp_error( $claim ) ) {
+				return rest_ensure_response(
+					YoRo_REST_Conversation_Action_Coordinator::build_confirmation_error_response( $trace_id, $claim )
+				);
+			}
+
 			return rest_ensure_response(
-				self::build_laravel_internal_action_response(
+				self::build_yoro_ai_internal_action_response(
 					$trace_id,
 					$parsed,
 					$plan,
-					is_array( $confirmation ) ? $confirmation : []
+					is_array( $claim ) ? $claim : []
 				)
 			);
 		}
 
 		$policy_context = [
-			'source'  => 'direct',
+			'source'  => $trusted_origin,
+			'origin'  => $trusted_origin,
 			'route'   => 'execute',
 			'preview' => $preview,
 			'confirm' => $confirm,
@@ -172,8 +200,8 @@ class YoRo_REST_Execute_Handler {
 			$plan,
 			$runtime,
 			[
-				'execution_source' => 'direct',
-				'parser_source'    => 'direct',
+				'execution_source' => $trusted_origin,
+				'parser_source'    => $trusted_origin,
 				'retrieved_examples' => isset( $parsed['retrieved_examples'] ) && is_array( $parsed['retrieved_examples'] ) ? $parsed['retrieved_examples'] : [],
 				'route_candidates' => isset( $parsed['route_candidates'] ) && is_array( $parsed['route_candidates'] ) ? $parsed['route_candidates'] : [],
 				'request_started_at' => $request_started_at,
@@ -209,7 +237,8 @@ class YoRo_REST_Execute_Handler {
 			$confirmation = YoRo_REST_Conversation_Action_Coordinator::confirm_pending_operation(
 				$parsed,
 				$pending_operation_token,
-				$request_params
+				$request_params,
+				$preflight
 			);
 
 			if ( is_wp_error( $confirmation ) ) {
@@ -219,6 +248,18 @@ class YoRo_REST_Execute_Handler {
 						$confirmation
 					)
 				);
+			}
+
+			$claim = YoRo_REST_Conversation_Action_Coordinator::claim_pending_operation( $parsed, $confirmation );
+
+			if ( is_wp_error( $claim ) ) {
+				return rest_ensure_response(
+					YoRo_REST_Conversation_Action_Coordinator::build_confirmation_error_response( $trace_id, $claim )
+				);
+			}
+
+			if ( is_array( $claim ) ) {
+				$execution_permit = sanitize_text_field( $claim['_execution_permit'] ?? '' );
 			}
 		}
 
@@ -249,7 +290,8 @@ class YoRo_REST_Execute_Handler {
 				$params,
 				$result,
 				$trace_id,
-				$plan
+				$plan,
+				$execution_permit
 			);
 
 			YoRo_REST_Execute_Log_Helper::log_error(
@@ -354,7 +396,8 @@ class YoRo_REST_Execute_Handler {
 			$params,
 			$result,
 			$trace_id,
-			$plan
+			$plan,
+			$execution_permit
 		);
 
 		return rest_ensure_response(
@@ -372,7 +415,7 @@ class YoRo_REST_Execute_Handler {
 		);
 	}
 
-	private static function is_laravel_internal_action( $action ) {
+	private static function is_yoro_ai_internal_action( $action ) {
 		$action = sanitize_text_field( (string) $action );
 
 		return 0 === strpos( $action, 'store_preferences.' )
@@ -406,7 +449,7 @@ class YoRo_REST_Execute_Handler {
 		return $params;
 	}
 
-	private static function build_laravel_internal_action_response( $trace_id, $parsed, $plan, $confirmation ) {
+	private static function build_yoro_ai_internal_action_response( $trace_id, $parsed, $plan, $confirmation ) {
 		$result = isset( $confirmation['result'] ) && is_array( $confirmation['result'] )
 			? $confirmation['result']
 			: [];
@@ -531,7 +574,7 @@ class YoRo_REST_Execute_Handler {
 		];
 	}
 
-	private static function report_conversation_action_events( $conversation_id, $pending_operation_token, $action, $params, $result, $trace_id, $plan = [] ) {
+	private static function report_conversation_action_events( $conversation_id, $pending_operation_token, $action, $params, $result, $trace_id, $plan = [], $execution_permit = '' ) {
 		$conversation_id = sanitize_text_field( (string) $conversation_id );
 
 		if ( '' === $conversation_id ) {
@@ -545,7 +588,8 @@ class YoRo_REST_Execute_Handler {
 			$params,
 			$result,
 			$trace_id,
-			is_array( $plan ) ? $plan : []
+			is_array( $plan ) ? $plan : [],
+			$execution_permit
 		);
 
 		if ( empty( $payloads ) ) {
@@ -559,7 +603,7 @@ class YoRo_REST_Execute_Handler {
 		}
 	}
 
-	private static function build_conversation_action_event_payloads( $conversation_id, $pending_operation_token, $action, $params, $result, $trace_id, $plan ) {
+	private static function build_conversation_action_event_payloads( $conversation_id, $pending_operation_token, $action, $params, $result, $trace_id, $plan, $execution_permit = '' ) {
 		$result = is_array( $result ) ? $result : [];
 
 		if ( empty( $result ) || ! empty( $result['preview'] ) || ! empty( $result['requires_confirmation'] ) ) {
@@ -596,7 +640,8 @@ class YoRo_REST_Execute_Handler {
 					self::summary_for_action_event( $step_result, $step, $step_action ),
 					self::operation_id_for_step( $step, $index, $plan ),
 					self::trace_id_for_step( $trace_id, $index ),
-					self::user_content_slots_for_step( $step, $index, $plan )
+					self::user_content_slots_for_step( $step, $index, $plan ),
+					$execution_permit
 				);
 			}
 
@@ -619,7 +664,8 @@ class YoRo_REST_Execute_Handler {
 				$summary,
 				self::operation_id_for_single_action( $plan ),
 				$trace_id,
-				self::user_content_slots_for_single_action( $plan )
+				self::user_content_slots_for_single_action( $plan ),
+				$execution_permit
 			),
 		];
 	}
@@ -631,7 +677,7 @@ class YoRo_REST_Execute_Handler {
 			&& is_array( $result['actions'] );
 	}
 
-	private static function build_action_event_payload( $conversation_id, $pending_operation_token, $action, $params, $result, $status, $summary, $operation_id, $trace_id, $user_content_slots = [] ) {
+	private static function build_action_event_payload( $conversation_id, $pending_operation_token, $action, $params, $result, $status, $summary, $operation_id, $trace_id, $user_content_slots = [], $execution_permit = '' ) {
 		$status = sanitize_key( (string) $status );
 
 		if ( ! in_array( $status, [ 'executed', 'failed' ], true ) ) {
@@ -641,6 +687,7 @@ class YoRo_REST_Execute_Handler {
 		return [
 			'conversation_id'         => sanitize_text_field( (string) $conversation_id ),
 			'pending_operation_token' => sanitize_text_field( (string) $pending_operation_token ),
+			'execution_permit'        => sanitize_text_field( (string) $execution_permit ),
 			'event_type'              => $status,
 			'status'                  => $status,
 			'action'                  => sanitize_text_field( (string) $action ),

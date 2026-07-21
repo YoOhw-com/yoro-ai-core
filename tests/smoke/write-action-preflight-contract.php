@@ -43,6 +43,22 @@ $assert = static function ( $condition, $message ) use ( &$failures ) {
 	}
 };
 
+$previous_user_id = get_current_user_id();
+$admin_ids         = get_users(
+	[
+		'role'   => 'administrator',
+		'number' => 1,
+		'fields' => 'ID',
+	]
+);
+$admin_id          = ! empty( $admin_ids ) ? absint( $admin_ids[0] ) : 0;
+
+$assert( $admin_id > 0, 'A WordPress administrator user is required for action-catalog capability checks.' );
+
+if ( $admin_id > 0 ) {
+	wp_set_current_user( $admin_id );
+}
+
 $assert_blocked_preview_has_no_execution_surface = static function ( array $preview, string $action_name ) use ( $assert ) {
 	$assert( false === (bool) ( $preview['will_execute'] ?? true ), "{$action_name} blocked preview must set will_execute=false." );
 	$assert( false === (bool) ( $preview['execution_required'] ?? false ), "{$action_name} blocked preview must not expose execution_required=true." );
@@ -216,6 +232,8 @@ foreach ( $expected as $action_name => $contract ) {
 		$assert_blocked_preview_has_no_execution_surface( $preview, $action_name );
 	}
 }
+
+wp_set_current_user( $previous_user_id );
 
 if ( $failures ) {
 	foreach ( $failures as $failure ) {

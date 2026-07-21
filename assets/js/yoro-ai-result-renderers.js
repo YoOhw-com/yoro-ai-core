@@ -1828,6 +1828,25 @@
 		return html;
 	}
 
+	function safetyApprovalLines(data) {
+		data = data || {};
+		const result = data.result || {};
+		const safety = result.safety || data.safety || {};
+		const groups = Array.isArray(safety.approval_groups) ? safety.approval_groups : [];
+
+		return groups.map(function(group) {
+			group = group || {};
+			const label = String(group.label || group.id || '').replace(/_/g, ' ').trim();
+			const targetCount = parseInt(group.target_count || 0, 10) || 0;
+
+			if (!label) {
+				return '';
+			}
+
+			return 'Approval scope: ' + label + (targetCount > 0 ? ' (' + targetCount + ' target' + (targetCount === 1 ? '' : 's') + ')' : '');
+		}).filter(Boolean);
+	}
+
 	function renderPreview(data, h) {
 		const preview = data.preview || {};
 
@@ -2398,7 +2417,7 @@
 		const pendingOperationToken = getPendingOperationToken(data);
 		const useDirectConfirm = (plan.type || '') !== 'sequence' && action !== 'multi.query_and_apply';
 		const blocked = result.blocked === true || !!result.block_reason;
-		const changeLines = buildActionChangeLines(action, params, result);
+		const changeLines = buildActionChangeLines(action, params, result).concat(safetyApprovalLines(data));
 		const intro = blocked ? '' : approvalIntro(action, params, result);
 		const title = blocked ? blockedConfirmationTitle(action, result) : (isCouponAction(action) ? 'Review coupon details' : 'Please approve this change');
 		let actionsHtml = '';

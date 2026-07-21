@@ -25,7 +25,7 @@ class YoRo_REST_Conversation_Action_Coordinator {
 		return $parsed;
 	}
 
-	public static function confirm_pending_operation( $parsed, $fallback_pending_operation_token = '', $params_override = [] ) {
+	public static function confirm_pending_operation( $parsed, $fallback_pending_operation_token = '', $params_override = [], $safety_context = [] ) {
 		$conversation_id = self::conversation_id_from_parsed( $parsed );
 		$pending_operation_token = self::pending_operation_token_from_parsed(
 			$parsed,
@@ -46,6 +46,14 @@ class YoRo_REST_Conversation_Action_Coordinator {
 			$payload['params'] = $params_override;
 		}
 
+		if ( is_array( $safety_context ) ) {
+			foreach ( [ 'plan_hash', 'preview_hash', 'resolved_impact', 'approved_groups' ] as $key ) {
+				if ( array_key_exists( $key, $safety_context ) ) {
+					$payload[ $key ] = $safety_context[ $key ];
+				}
+			}
+		}
+
 		$response = $client->confirm_action( $payload );
 
 		if ( is_wp_error( $response ) ) {
@@ -59,6 +67,68 @@ class YoRo_REST_Conversation_Action_Coordinator {
 					$response['message'] ?? __( 'I could not confirm that pending operation.', 'yoro-ai-core' )
 				)
 			);
+		}
+
+		return $response;
+	}
+
+	public static function claim_pending_operation( $parsed, $confirmation ) {
+		$confirmation = is_array( $confirmation ) ? $confirmation : [];
+		$permit = isset( $confirmation['execution_permit'] ) && is_array( $confirmation['execution_permit'] )
+			? $confirmation['execution_permit']
+			: [];
+		$token = sanitize_text_field( $permit['token'] ?? '' );
+
+		if ( '' === $token ) {
+			return $confirmation;
+		}
+
+		$client = YoRo_AI_Provider_Resolver::get_client();
+		$response = $client->claim_action(
+			[
+				'conversation_id'         => self::conversation_id_from_parsed( $parsed ),
+				'pending_operation_token' => self::pending_operation_token_from_parsed( $parsed ),
+				'execution_permit'        => $token,
+			]
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		if ( is_array( $response ) && isset( $response['success'] ) && empty( $response['success'] ) ) {
+			return new WP_Error(
+				'yoro_execution_permit_claim_failed',
+				sanitize_text_field( $response['message'] ?? __( 'I could not claim the approved execution permit.', 'yoro-ai-core' ) )
+			);
+		}
+
+		if ( is_array( $response ) ) {
+			foreach ( [ 'plan_hash', 'preview_hash' ] as $hash_key ) {
+				$expected = sanitize_text_field( $permit[ $hash_key ] ?? '' );
+				$claimed  = sanitize_text_field( $response[ $hash_key ] ?? '' );
+
+				if ( '' !== $expected && ( '' === $claimed || ! hash_equals( $expected, $claimed ) ) ) {
+					return new WP_Error(
+						'yoro_execution_permit_binding_mismatch',
+						__( 'The claimed execution permit no longer matches the approved preview.', 'yoro-ai-core' )
+					);
+				}
+			}
+
+			$expected_policy_version = absint( $permit['policy_version'] ?? 0 );
+			$claimed_policy_version  = absint( $response['policy_version'] ?? 0 );
+
+			if ( $expected_policy_version > 0 && $expected_policy_version !== $claimed_policy_version ) {
+				return new WP_Error(
+					'yoro_execution_permit_policy_mismatch',
+					__( 'The Safety policy changed before execution could start.', 'yoro-ai-core' )
+				);
+			}
+		}
+
+		if ( is_array( $response ) ) {
+			$response['_execution_permit'] = $token;
 		}
 
 		return $response;
@@ -95,7 +165,7 @@ class YoRo_REST_Conversation_Action_Coordinator {
 			'matched'         => true,
 			'action'          => sanitize_text_field( $plan['action'] ?? ( $pending_operation['action'] ?? '' ) ),
 			'params'          => isset( $plan['params'] ) && is_array( $plan['params'] ) ? $plan['params'] : [],
-			'parser_source'   => 'laravel_pending_operation',
+			'parser_source'   => 'yoro_ai_pending_operation',
 			'parser_rule'     => 'conversation.pending_operation_graph',
 			'confidence'      => 1,
 			'action_plan'     => $action_plan,
@@ -103,7 +173,7 @@ class YoRo_REST_Conversation_Action_Coordinator {
 			'meta'            => [
 				'conversation_id'         => $conversation_id,
 				'pending_operation_token' => $pending_operation_token,
-				'pending_operation_source' => 'laravel',
+				'pending_operation_source' => 'yoro_ai',
 			],
 		];
 
@@ -112,6 +182,7 @@ class YoRo_REST_Conversation_Action_Coordinator {
 		return [
 			'parsed' => $parsed,
 			'plan'   => $plan,
+			'pending_operation' => $pending_operation,
 		];
 	}
 
@@ -245,7 +316,7 @@ class YoRo_REST_Conversation_Action_Coordinator {
 				'action'        => $action,
 				'params'        => is_array( $params ) ? $params : [],
 				'parser_source' => 'conversation_orchestrator',
-				'parser_rule'   => 'laravel.conversation.cancelled',
+				'parser_rule'   => 'yoro_ai.conversation.cancelled',
 				'meta'          => [
 					'conversation_id'         => $conversation_id,
 					'pending_operation_token' => $pending_operation_token,

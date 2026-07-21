@@ -44,7 +44,7 @@ class YoRo_REST_Runtime_Log {
 			'yoro_ai_api_route_total_ms' => isset( $ai_meta['yoro_ai_api_route_total_ms'] ) ? absint( $ai_meta['yoro_ai_api_route_total_ms'] ) : null,
 			'yoro_ai_api_plan_gate_ms' => isset( $ai_meta['yoro_ai_api_plan_gate_ms'] ) ? absint( $ai_meta['yoro_ai_api_plan_gate_ms'] ) : null,
 			'yoro_ai_api_router_ms' => isset( $ai_meta['yoro_ai_api_router_ms'] ) ? absint( $ai_meta['yoro_ai_api_router_ms'] ) : null,
-			'yoro_ai_api_laravel_total_ms' => isset( $ai_meta['yoro_ai_api_laravel_total_ms'] ) ? absint( $ai_meta['yoro_ai_api_laravel_total_ms'] ) : null,
+			'yoro_ai_api_server_total_ms' => isset( $ai_meta['yoro_ai_api_server_total_ms'] ) ? absint( $ai_meta['yoro_ai_api_server_total_ms'] ) : null,
 			'yoro_ai_api_input_tokens' => isset( $ai_meta['yoro_ai_api_input_tokens'] ) ? absint( $ai_meta['yoro_ai_api_input_tokens'] ) : null,
 			'yoro_ai_api_output_tokens' => isset( $ai_meta['yoro_ai_api_output_tokens'] ) ? absint( $ai_meta['yoro_ai_api_output_tokens'] ) : null,
 			'yoro_ai_api_total_tokens' => isset( $ai_meta['yoro_ai_api_total_tokens'] ) ? absint( $ai_meta['yoro_ai_api_total_tokens'] ) : null,
