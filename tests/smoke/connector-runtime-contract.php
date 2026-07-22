@@ -312,6 +312,11 @@ try {
 	$assert( 1 === count( $client->results ), 'Pull runtime must publish one canonical execution result.' );
 	$assert( 'operation.claimed' === ( $client->events[0]['payload']['event_type'] ?? '' ), 'Pull runtime acknowledgement must use operation.claimed.' );
 	$assert( 'executed' === ( $client->results[0]['payload']['status'] ?? '' ), 'The safe read smoke operation must finish as executed.' );
+	$execution_telemetry = $client->results[0]['payload']['extensions']['yoro.execution'] ?? [];
+	$assert( 1 === ( $execution_telemetry['version'] ?? 0 ), 'Execution results must publish the connector-neutral yoro.execution v1 extension.' );
+	$assert( isset( $execution_telemetry['started_at'], $execution_telemetry['completed_at'] ), 'Execution telemetry must contain precise executor boundaries.' );
+	$assert( isset( $execution_telemetry['duration_ms'] ) && $execution_telemetry['duration_ms'] >= 0, 'Execution telemetry must contain a non-negative executor duration.' );
+	$assert( 1 === ( $execution_telemetry['action_attempt_count'] ?? 0 ), 'Execution telemetry must report the exact local attempt count.' );
 	$assert( $claim_token === ( $client->results[0]['claim_token'] ?? '' ), 'Result publication must retain exact lease authority.' );
 	$assert( 1 === ( $client->results[0]['lease_generation'] ?? 0 ), 'Result publication must retain the lease generation.' );
 	$assert( $admin_id === get_current_user_id(), 'Connector execution must restore the original WordPress user.' );

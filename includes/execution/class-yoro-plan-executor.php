@@ -52,7 +52,9 @@ class YoRo_Plan_Executor {
 
 		$pre_undo = self::build_pre_execution_undo_for_step( $action, $params );
 
+		$execution_clock = self::start_execution_clock();
 		$result = YoRo_Action_Executor::execute( $action, $params, $confirm, $preview, $context );
+		$execution_telemetry = self::finish_execution_clock( $execution_clock, 1 );
 
 		if ( is_wp_error( $result ) ) {
 			return [
@@ -72,6 +74,7 @@ class YoRo_Plan_Executor {
 						'message' => $result->get_error_message(),
 					],
 				],
+				'_yoro_execution_telemetry' => $execution_telemetry,
 			];
 		}
 
@@ -104,6 +107,7 @@ class YoRo_Plan_Executor {
 
 			$result['undo_plan'] = $undo_plan;
 			$result['undoable']  = ! empty( $undo_plan );
+			$result['_yoro_execution_telemetry'] = $execution_telemetry;
 		}
 
 		return $result;
@@ -296,6 +300,7 @@ class YoRo_Plan_Executor {
 
 			$attempt = 0;
 			$result  = null;
+			$execution_clock = self::start_execution_clock();
 
 			while ( $attempt < $max_attempts ) {
 				$attempt++;
@@ -312,6 +317,8 @@ class YoRo_Plan_Executor {
 					break;
 				}
 			}
+
+			$execution_telemetry = self::finish_execution_clock( $execution_clock, $attempt );
 
 			do_action( 'yoro_workflow_step_finish', $workflow, $step, $params, $result, $plan );
 
@@ -339,6 +346,7 @@ class YoRo_Plan_Executor {
 					'retry'    => $step['retry'] ?? [ 'max_attempts' => 1 ],
 					'attempts' => $attempt,
 					'failed'   => true,
+					'execution_telemetry' => $execution_telemetry,
 					'result'   => [
 						'success' => false,
 						'action'  => $action,
@@ -492,6 +500,7 @@ class YoRo_Plan_Executor {
 				'on_error' => $step['on_error'] ?? 'stop',
 				'retry'    => $step['retry'] ?? [ 'max_attempts' => 1 ],
 				'attempts' => $attempt,
+				'execution_telemetry' => $execution_telemetry,
 				'result'   => $result,
 			];
 		}
@@ -520,6 +529,41 @@ class YoRo_Plan_Executor {
 			'result_type'  => 'multi_action',
 			'display_type' => 'multi_action',
 		];
+	}
+
+	private static function start_execution_clock() {
+		$started_at = microtime( true );
+
+		return [
+			'started_at_unix' => $started_at,
+			'started_at'      => self::format_execution_time( $started_at ),
+		];
+	}
+
+	private static function finish_execution_clock( $clock, $attempts ) {
+		$clock = is_array( $clock ) ? $clock : [];
+		$completed_at = microtime( true );
+		$started_at = isset( $clock['started_at_unix'] ) ? (float) $clock['started_at_unix'] : $completed_at;
+
+		return [
+			'version'              => 1,
+			'started_at'           => sanitize_text_field( $clock['started_at'] ?? self::format_execution_time( $started_at ) ),
+			'completed_at'         => self::format_execution_time( $completed_at ),
+			'duration_ms'          => max( 0, (int) round( ( $completed_at - $started_at ) * 1000 ) ),
+			'action_attempt_count' => max( 1, absint( $attempts ) ),
+		];
+	}
+
+	private static function format_execution_time( $timestamp ) {
+		$seconds = (int) floor( (float) $timestamp );
+		$microseconds = (int) round( ( (float) $timestamp - $seconds ) * 1000000 );
+
+		if ( $microseconds >= 1000000 ) {
+			$seconds++;
+			$microseconds = 0;
+		}
+
+		return gmdate( 'Y-m-d\\TH:i:s', $seconds ) . sprintf( '.%06dZ', $microseconds );
 	}
 
 	private static function workflow_with_terminal_status( $workflow, $status ) {

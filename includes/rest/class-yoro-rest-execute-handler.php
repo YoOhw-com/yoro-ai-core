@@ -641,7 +641,8 @@ class YoRo_REST_Execute_Handler {
 					self::operation_id_for_step( $step, $index, $plan ),
 					self::trace_id_for_step( $trace_id, $index ),
 					self::user_content_slots_for_step( $step, $index, $plan ),
-					$execution_permit
+					$execution_permit,
+					self::execution_telemetry_for_event( $step, $step_result )
 				);
 			}
 
@@ -665,7 +666,8 @@ class YoRo_REST_Execute_Handler {
 				self::operation_id_for_single_action( $plan ),
 				$trace_id,
 				self::user_content_slots_for_single_action( $plan ),
-				$execution_permit
+				$execution_permit,
+				self::execution_telemetry_for_event( $result )
 			),
 		];
 	}
@@ -677,14 +679,14 @@ class YoRo_REST_Execute_Handler {
 			&& is_array( $result['actions'] );
 	}
 
-	private static function build_action_event_payload( $conversation_id, $pending_operation_token, $action, $params, $result, $status, $summary, $operation_id, $trace_id, $user_content_slots = [], $execution_permit = '' ) {
+	private static function build_action_event_payload( $conversation_id, $pending_operation_token, $action, $params, $result, $status, $summary, $operation_id, $trace_id, $user_content_slots = [], $execution_permit = '', $execution_telemetry = [] ) {
 		$status = sanitize_key( (string) $status );
 
 		if ( ! in_array( $status, [ 'executed', 'failed' ], true ) ) {
 			$status = 'executed';
 		}
 
-		return [
+		$payload = [
 			'conversation_id'         => sanitize_text_field( (string) $conversation_id ),
 			'pending_operation_token' => sanitize_text_field( (string) $pending_operation_token ),
 			'execution_permit'        => sanitize_text_field( (string) $execution_permit ),
@@ -698,6 +700,39 @@ class YoRo_REST_Execute_Handler {
 			'user_content_slots'      => self::normalize_user_content_slots_for_event( $user_content_slots ),
 			'source'                  => 'plugin',
 			'trace_id'                => sanitize_text_field( (string) $trace_id ),
+		];
+
+		if ( ! empty( $execution_telemetry ) ) {
+			$payload['execution_telemetry'] = $execution_telemetry;
+		}
+
+		return $payload;
+	}
+
+	private static function execution_telemetry_for_event( $container, $fallback = [] ) {
+		$container = is_array( $container ) ? $container : [];
+		$fallback = is_array( $fallback ) ? $fallback : [];
+		$telemetry = isset( $container['execution_telemetry'] ) && is_array( $container['execution_telemetry'] )
+			? $container['execution_telemetry']
+			: ( isset( $container['_yoro_execution_telemetry'] ) && is_array( $container['_yoro_execution_telemetry'] )
+				? $container['_yoro_execution_telemetry']
+				: ( isset( $fallback['_yoro_execution_telemetry'] ) && is_array( $fallback['_yoro_execution_telemetry'] )
+					? $fallback['_yoro_execution_telemetry']
+					: [] ) );
+
+		if ( 1 !== absint( $telemetry['version'] ?? 0 )
+			|| empty( $telemetry['started_at'] )
+			|| empty( $telemetry['completed_at'] )
+			|| ! isset( $telemetry['duration_ms'], $telemetry['action_attempt_count'] ) ) {
+			return [];
+		}
+
+		return [
+			'version'              => 1,
+			'started_at'           => sanitize_text_field( $telemetry['started_at'] ),
+			'completed_at'         => sanitize_text_field( $telemetry['completed_at'] ),
+			'duration_ms'          => max( 0, absint( $telemetry['duration_ms'] ) ),
+			'action_attempt_count' => max( 1, absint( $telemetry['action_attempt_count'] ) ),
 		];
 	}
 

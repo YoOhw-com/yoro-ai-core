@@ -212,6 +212,7 @@ class YoRo_Connector_Runtime {
 
 		$original_user_id = get_current_user_id();
 		wp_set_current_user( $validation['user_id'] );
+		$execution_clock = $this->start_execution_clock();
 
 		try {
 			$execution = YoRo_Action_Executor::execute(
@@ -229,13 +230,16 @@ class YoRo_Connector_Runtime {
 			wp_set_current_user( $original_user_id );
 		}
 
+		$execution_telemetry = $this->finish_execution_clock( $execution_clock );
+
 		$result = is_wp_error( $execution ) || ! is_array( $execution ) || empty( $execution['success'] )
 			? $this->failed_result(
 				$operation,
 				is_wp_error( $execution ) ? $execution->get_error_code() : 'local_execution_failed',
-				is_wp_error( $execution ) ? $execution->get_error_message() : sanitize_text_field( $execution['message'] ?? 'The local action failed.' )
+				is_wp_error( $execution ) ? $execution->get_error_message() : sanitize_text_field( $execution['message'] ?? 'The local action failed.' ),
+				$execution_telemetry
 			)
-			: $this->executed_result( $operation, $execution );
+			: $this->executed_result( $operation, $execution, $execution_telemetry );
 		YoRo_Connector_Execution_Journal::complete( $operation, $result );
 
 		return $result;
@@ -299,7 +303,7 @@ class YoRo_Connector_Runtime {
 		];
 	}
 
-	private function executed_result( array $operation, array $execution ) {
+	private function executed_result( array $operation, array $execution, array $execution_telemetry ) {
 		$summary = sanitize_text_field( $execution['summary'] ?? ( $execution['message'] ?? 'The local operation completed.' ) );
 
 		return array_merge(
@@ -308,12 +312,24 @@ class YoRo_Connector_Runtime {
 				'status'      => 'executed',
 				'summary'     => '' !== $summary ? $summary : 'The local operation completed.',
 				'result'      => $execution,
-				'occurred_at' => gmdate( 'c' ),
+				'occurred_at' => $execution_telemetry['completed_at'],
+				'extensions'  => [
+					'yoro.execution' => $execution_telemetry,
+				],
 			]
 		);
 	}
 
-	private function failed_result( array $operation, $code, $message ) {
+	private function failed_result( array $operation, $code, $message, array $execution_telemetry = [] ) {
+		$execution_fields = empty( $execution_telemetry )
+			? [ 'occurred_at' => gmdate( 'c' ) ]
+			: [
+				'occurred_at' => $execution_telemetry['completed_at'],
+				'extensions'  => [
+					'yoro.execution' => $execution_telemetry,
+				],
+			];
+
 		return array_merge(
 			$this->result_identity( $operation ),
 			[
@@ -325,9 +341,43 @@ class YoRo_Connector_Runtime {
 					'retryable' => false,
 					'details'   => [],
 				],
-				'occurred_at' => gmdate( 'c' ),
-			]
+			],
+			$execution_fields
 		);
+	}
+
+	private function start_execution_clock() {
+		$started_at = microtime( true );
+
+		return [
+			'started_at_unix' => $started_at,
+			'started_at'      => $this->format_execution_time( $started_at ),
+		];
+	}
+
+	private function finish_execution_clock( array $clock ) {
+		$completed_at = microtime( true );
+		$started_at = isset( $clock['started_at_unix'] ) ? (float) $clock['started_at_unix'] : $completed_at;
+
+		return [
+			'version'              => 1,
+			'started_at'           => sanitize_text_field( $clock['started_at'] ?? $this->format_execution_time( $started_at ) ),
+			'completed_at'         => $this->format_execution_time( $completed_at ),
+			'duration_ms'          => max( 0, (int) round( ( $completed_at - $started_at ) * 1000 ) ),
+			'action_attempt_count' => 1,
+		];
+	}
+
+	private function format_execution_time( $timestamp ) {
+		$seconds = (int) floor( (float) $timestamp );
+		$microseconds = (int) round( ( (float) $timestamp - $seconds ) * 1000000 );
+
+		if ( $microseconds >= 1000000 ) {
+			$seconds++;
+			$microseconds = 0;
+		}
+
+		return gmdate( 'Y-m-d\\TH:i:s', $seconds ) . sprintf( '.%06dZ', $microseconds );
 	}
 
 	private function result_identity( array $operation ) {

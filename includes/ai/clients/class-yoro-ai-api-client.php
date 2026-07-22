@@ -1073,7 +1073,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	}
 
 	private function build_action_execution_payload( array $payload ) {
-		return [
+		$built = [
 			'conversation_id'         => sanitize_text_field( $payload['conversation_id'] ?? '' ),
 			'pending_operation_token' => sanitize_text_field( $payload['pending_operation_token'] ?? '' ),
 			'execution_permit'        => sanitize_text_field( $payload['execution_permit'] ?? '' ),
@@ -1087,6 +1087,33 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			'user_content_slots'      => $this->normalize_user_content_slots( $payload['user_content_slots'] ?? [] ),
 			'source'                  => sanitize_key( $payload['source'] ?? 'plugin' ),
 			'trace_id'                => sanitize_text_field( $payload['trace_id'] ?? '' ),
+		];
+
+		$execution_telemetry = $this->normalize_execution_telemetry( $payload['execution_telemetry'] ?? [] );
+
+		if ( ! empty( $execution_telemetry ) ) {
+			$built['execution_telemetry'] = $execution_telemetry;
+		}
+
+		return $built;
+	}
+
+	private function normalize_execution_telemetry( $telemetry ) {
+		$telemetry = is_array( $telemetry ) ? $telemetry : [];
+
+		if ( 1 !== absint( $telemetry['version'] ?? 0 )
+			|| empty( $telemetry['started_at'] )
+			|| empty( $telemetry['completed_at'] )
+			|| ! isset( $telemetry['duration_ms'], $telemetry['action_attempt_count'] ) ) {
+			return [];
+		}
+
+		return [
+			'version'              => 1,
+			'started_at'           => sanitize_text_field( $telemetry['started_at'] ),
+			'completed_at'         => sanitize_text_field( $telemetry['completed_at'] ),
+			'duration_ms'          => max( 0, absint( $telemetry['duration_ms'] ) ),
+			'action_attempt_count' => max( 1, absint( $telemetry['action_attempt_count'] ) ),
 		];
 	}
 

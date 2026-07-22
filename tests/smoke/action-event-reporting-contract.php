@@ -381,6 +381,11 @@ if ( 2 === count( $execution_payloads ) ) {
 	$assert( 'user_goal' === ( $second_payload['user_content_slots'][0]['provenance'] ?? '' ), 'Second execution event must preserve user_goal provenance.' );
 	$assert( true === (bool) ( $first_payload['result']['success'] ?? false ), 'First execution event must include the first step result.' );
 	$assert( true === (bool) ( $second_payload['result']['success'] ?? false ), 'Second execution event must include the second step result.' );
+	$assert( 1 === ( $first_payload['execution_telemetry']['version'] ?? 0 ), 'First execution event must carry connector executor timing v1.' );
+	$assert( isset( $first_payload['execution_telemetry']['started_at'], $first_payload['execution_telemetry']['completed_at'] ), 'First execution timing must include exact boundaries.' );
+	$assert( isset( $first_payload['execution_telemetry']['duration_ms'] ) && $first_payload['execution_telemetry']['duration_ms'] >= 0, 'First execution timing must include a non-negative duration.' );
+	$assert( 1 === ( $first_payload['execution_telemetry']['action_attempt_count'] ?? 0 ), 'First execution timing must include the exact attempt count.' );
+	$assert( 1 === ( $second_payload['execution_telemetry']['version'] ?? 0 ), 'Second execution event must carry connector executor timing v1.' );
 
 	if ( '' !== $trace_id ) {
 		$assert( $trace_id . '_step_1' === ( $first_payload['trace_id'] ?? '' ), 'First execution event trace_id must be scoped to step 1.' );
