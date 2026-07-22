@@ -50,11 +50,16 @@ class YoRo_Action_Catalog_Builder {
 			'orders.search'                  => 'orders_search',
 			'orders.get_details'             => 'order_details',
 			'orders.refund_preview'           => 'order_refund',
+			'orders.create_refund'            => 'order_refund',
+			'orders.add_tracking'             => 'order_tracking',
 			'customers.lookup'                => 'customer_lookup',
 			'orders.find_by_customer'         => 'customer_orders',
 			'coupons.lookup'                  => 'coupon_lookup',
 			'coupons.create'                  => 'coupon_create',
+			'coupons.update'                  => 'coupon_update',
 			'orders.update_status'            => 'update_order_status',
+			'products.get_details'            => 'product_details',
+			'products.update_catalog'         => 'update_product_catalog',
 			'products.update_stock'           => 'update_product_stock',
 			'products.update_stock_status'    => 'update_product_stock_status',
 			'orders.add_note'                 => 'add_note',
@@ -285,6 +290,48 @@ class YoRo_Action_Catalog_Builder {
 	private static function value_catalogs_for_action( $action ) {
 		$action = sanitize_text_field( $action );
 
+		if ( 'products.update_catalog' === $action ) {
+			$visibility_options = function_exists( 'wc_get_product_visibility_options' )
+				? wc_get_product_visibility_options()
+				: [
+					'visible' => 'Visible',
+					'catalog' => 'Catalog',
+					'search'  => 'Search',
+					'hidden'  => 'Hidden',
+				];
+
+			return [
+				'product_statuses' => [
+					[ 'key' => 'draft', 'label' => __( 'Draft', 'yoro-ai-core' ) ],
+					[ 'key' => 'pending', 'label' => __( 'Pending review', 'yoro-ai-core' ) ],
+					[ 'key' => 'private', 'label' => __( 'Private', 'yoro-ai-core' ) ],
+					[ 'key' => 'publish', 'label' => __( 'Published', 'yoro-ai-core' ) ],
+				],
+				'catalog_visibility' => array_values(
+					array_map(
+						static function( $key, $label ) {
+							return [
+								'key'   => sanitize_key( $key ),
+								'label' => sanitize_text_field( $label ),
+							];
+						},
+						array_keys( $visibility_options ),
+						array_values( $visibility_options )
+					)
+				),
+			];
+		}
+
+		if ( 'coupons.update' === $action ) {
+			return [
+				'discount_types' => [
+					[ 'key' => 'percent', 'label' => __( 'Percentage discount', 'yoro-ai-core' ) ],
+					[ 'key' => 'fixed_cart', 'label' => __( 'Fixed cart discount', 'yoro-ai-core' ) ],
+					[ 'key' => 'fixed_product', 'label' => __( 'Fixed product discount', 'yoro-ai-core' ) ],
+				],
+			];
+		}
+
 		if ( 'products.update_stock_status' !== $action || ! class_exists( 'YoRo_Product_Helper' ) ) {
 			return [];
 		}
@@ -514,6 +561,8 @@ class YoRo_Action_Catalog_Builder {
 		$map = [
 			'orders.get_details'                   => [ 'order_ids' ],
 			'orders.refund_preview'                => [ 'order_id' ],
+			'orders.create_refund'                 => [ 'order_id', 'amount', 'refund_payment' ],
+			'orders.add_tracking'                  => [ 'order_id', 'tracking_number' ],
 			'orders.email_customer_preview'        => [ 'order_id', 'template' ],
 			'orders.email_customer_template'       => [ 'order_id', 'template' ],
 			'orders.use_email_template'            => [ 'order_id', 'template_id' ],
@@ -531,8 +580,11 @@ class YoRo_Action_Catalog_Builder {
 			'orders.restore_statuses'              => [ 'statuses' ],
 			'products.update_stock'                => [ 'product_id', 'stock_quantity' ],
 			'products.update_stock_status'         => [ 'product_id', 'stock_status' ],
+			'products.get_details'                 => [ 'product_id' ],
+			'products.update_catalog'              => [ 'product_id' ],
 			'coupons.lookup'                       => [ 'coupon_code' ],
 			'coupons.create'                       => [ 'coupon_code', 'discount_type', 'discount_amount' ],
+			'coupons.update'                       => [ 'coupon_code' ],
 			'email_templates.save'                 => [ 'name', 'subject', 'body' ],
 			'email_templates.delete'               => [ 'template_id' ],
 		];
@@ -557,8 +609,11 @@ class YoRo_Action_Catalog_Builder {
 			'products.get_inventory_queue'                  => 'inventory_review',
 			'products.update_stock'                         => 'update_product_stock',
 			'products.update_stock_status'                  => 'update_product_stock_status',
+			'products.get_details'                          => 'product_details',
+			'products.update_catalog'                       => 'update_product_catalog',
 			'coupons.lookup'                                => 'coupon_lookup',
 			'coupons.create'                                => 'coupon_create',
+			'coupons.update'                                => 'coupon_update',
 			'customers.get_service_queue'                   => 'customer_service_review',
 			'orders.search'                                 => 'search_orders',
 			'orders.get_details'                            => 'get_order_details',
@@ -566,6 +621,8 @@ class YoRo_Action_Catalog_Builder {
 			'customers.lookup'                              => 'customer_lookup',
 			'orders.update_status'                          => 'update_order_status',
 			'orders.refund_preview'                         => 'refund_review',
+			'orders.create_refund'                          => 'refund_execution',
+			'orders.add_tracking'                           => 'add_tracking',
 			'orders.add_note'                               => 'add_note',
 			'orders.compose_customer_email'                 => 'customer_email',
 			'orders.get_customer_email_drafts'              => 'customer_email',
@@ -589,8 +646,13 @@ class YoRo_Action_Catalog_Builder {
 			'inventory_review' => 'Use for stock pressure, low-stock, restock, backorder, or inventory queue requests.',
 			'update_product_stock' => 'Use for changing one specific product stock quantity. This is a write action and requires confirmation.',
 			'update_product_stock_status' => 'Use for changing one specific product manual stock status to one of the store configured stock statuses. This is a write action and requires confirmation.',
+			'product_details' => 'Use for opening live catalog, price, visibility, and inventory details for one specific product or variation.',
+			'update_product_catalog' => 'Use for changing explicit catalog fields on one specific product or variation, including prices, sale schedule, publish status, or catalog visibility. This requires confirmation.',
 			'coupon_lookup' => 'Use for looking up one specific coupon by coupon code or coupon ID. This is read-only.',
 			'coupon_create' => 'Use for creating one new WooCommerce coupon with a code, discount type, and discount amount. This is a write action and requires confirmation.',
+			'coupon_update' => 'Use for updating one existing coupon or enabling/disabling it without deletion. This is a write action and requires confirmation.',
+			'refund_execution' => 'Use only when the person explicitly wants to create a refund, provides an amount, and chooses gateway payment versus a manual WooCommerce refund record. This is irreversible and requires confirmation.',
+			'add_tracking' => 'Use for adding an exact shipment tracking record to one order through an advertised connector adapter. This requires confirmation.',
 			'customer_service_review' => 'Use for reply load, follow-up load, or customer-service queue requests.',
 			'customer_email' => 'Use for composing, previewing, saving, or sending customer email work. Treat a natural-language goal as instruction when it is already present.',
 			'update_order_status' => 'Use for status changes on one or more orders. Clarify only when status or target order is still unresolved.',
@@ -627,6 +689,9 @@ class YoRo_Action_Catalog_Builder {
 				'topic'          => 'sales',
 				'role'           => 'Best for revenue, sales, customer activity, product demand, and commercial performance.',
 				'metric_domains' => [ 'revenue', 'orders', 'customers', 'products' ],
+				'supports_comparison' => true,
+				'answer_shapes'       => [ 'report', 'metric_comparison' ],
+				'comparison_source'   => 'time_window.comparison_or_previous_period',
 			],
 			'operations.get_summary'     => [
 				'user_surface'   => 'store_report',

@@ -184,6 +184,67 @@ class YoRo_Coupons_Service {
 		];
 	}
 
+	public static function update_coupon( $params ) {
+		$contract = self::normalize_coupon_update_params( $params );
+		$error    = self::validate_coupon_update_contract( $contract );
+
+		if ( is_wp_error( $error ) ) {
+			return $error;
+		}
+
+		$coupon = $contract['coupon'];
+		$before = self::coupon_result_item( $coupon );
+
+		try {
+			self::apply_coupon_update_contract( $coupon, $contract );
+			$coupon->save();
+		} catch ( Exception $exception ) {
+			return new WP_Error(
+				'coupon_update_failed',
+				__( 'WooCommerce could not save the coupon update.', 'yoro-ai-core' )
+			);
+		}
+
+		$coupon = self::get_coupon( $coupon->get_id() );
+
+		if ( ! $coupon ) {
+			return new WP_Error( 'coupon_update_failed', __( 'The coupon was saved, but I could not read it back from WooCommerce.', 'yoro-ai-core' ) );
+		}
+
+		$item = self::coupon_result_item( $coupon );
+		$summary = sprintf(
+			/* translators: %s: coupon code */
+			__( 'Updated coupon %s.', 'yoro-ai-core' ),
+			$item['coupon_code']
+		);
+
+		return [
+			'success'       => true,
+			'action'        => 'coupons.update',
+			'summary'       => $summary,
+			'message'       => $summary,
+			'coupon_id'     => $item['coupon_id'],
+			'coupon_code'   => $item['coupon_code'],
+			'coupon'        => $item,
+			'coupons'       => [ $item ],
+			'before'        => $before,
+			'changed_fields' => $contract['changed_fields'],
+			'processed'     => [ $item['coupon_id'] ],
+			'skipped'       => [],
+			'errors'        => [],
+			'count'         => 1,
+			'read_only'     => false,
+			'undoable'      => false,
+			'undo_plan'     => [],
+			'result_type'   => 'coupon',
+			'display_type'  => 'coupon',
+			'meta'          => [
+				'changes_store' => true,
+				'changed_fields' => $contract['changed_fields'],
+			],
+		];
+	}
+
 	public static function preview_lookup_coupon( $params ) {
 		if ( ! class_exists( 'WC_Coupon' ) ) {
 			return self::preview_block(
@@ -299,6 +360,58 @@ class YoRo_Coupons_Service {
 		];
 	}
 
+	public static function preview_update_coupon( $params ) {
+		$contract = self::normalize_coupon_update_params( $params );
+		$error    = self::validate_coupon_update_contract( $contract );
+		$block_reason = '';
+
+		if ( is_wp_error( $error ) ) {
+			$block_reason = $error->get_error_code();
+			$message      = $error->get_error_message();
+		} else {
+			$message = sprintf(
+				/* translators: %s: coupon code */
+				__( 'This will update coupon %s after approval.', 'yoro-ai-core' ),
+				$contract['coupon']->get_code()
+			);
+		}
+
+		$coupon = $contract['coupon'] instanceof WC_Coupon
+			? self::coupon_result_item( $contract['coupon'] )
+			: [
+				'coupon_id'   => absint( $contract['target']['coupon_id'] ?? 0 ),
+				'coupon_code' => sanitize_text_field( $contract['target']['coupon_code'] ?? '' ),
+			];
+
+		foreach ( $contract['changes'] as $field => $value ) {
+			if ( 'expiry_date' === $field ) {
+				$coupon['date_expires'] = $contract['expiry']['label'];
+			} else {
+				$coupon[ $field ] = $value;
+			}
+		}
+
+		if ( isset( $coupon['discount_type'], $coupon['discount_amount'] ) ) {
+			$coupon['discount_summary'] = self::format_discount_summary( $coupon['discount_type'], $coupon['discount_amount'] );
+			$coupon['discount_type_label'] = self::discount_type_label( $coupon['discount_type'] );
+		}
+
+		return [
+			'type'           => 'write',
+			'will_execute'   => false,
+			'action'         => 'coupons.update',
+			'summary'        => $message,
+			'message'        => $message,
+			'blocked'        => '' !== $block_reason,
+			'block_reason'   => $block_reason,
+			'coupon'         => $coupon,
+			'coupons'        => [ $coupon ],
+			'changed_fields' => $contract['changed_fields'],
+			'count'          => '' === $block_reason ? 1 : 0,
+			'changes_store'  => '' === $block_reason,
+		];
+	}
+
 	private static function resolve_coupon_target( $params ) {
 		$params = is_array( $params ) ? $params : [];
 		$coupon_id = absint( $params['coupon_id'] ?? 0 );
@@ -343,6 +456,134 @@ class YoRo_Coupons_Service {
 			'individual_use'       => self::normalize_boolean( $params['individual_use'] ?? false ),
 			'free_shipping'        => self::normalize_boolean( $params['free_shipping'] ?? false ),
 		];
+	}
+
+	private static function normalize_coupon_update_params( $params ) {
+		$params  = is_array( $params ) ? $params : [];
+		$target  = self::resolve_coupon_target( $params );
+		$coupon  = self::get_coupon( $target['coupon_id'] ?? 0 );
+		$changes = [];
+
+		foreach ( [ 'discount_type', 'discount_amount', 'description', 'usage_limit', 'usage_limit_per_user', 'individual_use', 'free_shipping', 'enabled' ] as $field ) {
+			if ( ! array_key_exists( $field, $params ) ) {
+				continue;
+			}
+
+			switch ( $field ) {
+				case 'discount_type':
+					$changes[ $field ] = sanitize_key( $params[ $field ] );
+					break;
+				case 'discount_amount':
+					$changes[ $field ] = is_numeric( $params[ $field ] ) ? round( (float) $params[ $field ], 4 ) : null;
+					break;
+				case 'usage_limit':
+				case 'usage_limit_per_user':
+					$changes[ $field ] = self::nullable_positive_int( $params[ $field ] );
+					break;
+				case 'individual_use':
+				case 'free_shipping':
+				case 'enabled':
+					$changes[ $field ] = self::normalize_boolean( $params[ $field ] );
+					break;
+				default:
+					$changes[ $field ] = sanitize_textarea_field( $params[ $field ] );
+			}
+		}
+
+		$expiry_input = null;
+
+		if ( array_key_exists( 'expiry_date', $params ) ) {
+			$expiry_input = sanitize_text_field( $params['expiry_date'] );
+		} elseif ( array_key_exists( 'date_expires', $params ) ) {
+			$expiry_input = sanitize_text_field( $params['date_expires'] );
+		}
+
+		$expiry = null !== $expiry_input ? self::normalize_expiry_date( $expiry_input ) : [ 'value' => null, 'label' => '' ];
+
+		if ( null !== $expiry_input ) {
+			$changes['expiry_date'] = $expiry_input;
+		}
+
+		return [
+			'target'         => $target,
+			'coupon'         => $coupon,
+			'changes'        => $changes,
+			'changed_fields' => array_keys( $changes ),
+			'expiry_input'   => $expiry_input,
+			'expiry'         => $expiry,
+		];
+	}
+
+	private static function validate_coupon_update_contract( $contract ) {
+		if ( '' === ( $contract['target']['target_type'] ?? '' ) ) {
+			return new WP_Error( 'missing_coupon_target', __( 'Please choose a coupon first.', 'yoro-ai-core' ) );
+		}
+
+		if ( ! $contract['coupon'] instanceof WC_Coupon ) {
+			return new WP_Error( 'coupon_not_found', __( 'I could not find that coupon.', 'yoro-ai-core' ) );
+		}
+
+		if ( empty( $contract['changes'] ) ) {
+			return new WP_Error( 'missing_coupon_changes', __( 'Please provide at least one coupon field to update.', 'yoro-ai-core' ) );
+		}
+
+		$changes = $contract['changes'];
+		$discount_type = $changes['discount_type'] ?? $contract['coupon']->get_discount_type();
+		$discount_amount = array_key_exists( 'discount_amount', $changes ) ? $changes['discount_amount'] : (float) $contract['coupon']->get_amount();
+
+		if ( ! in_array( $discount_type, self::discount_types(), true ) ) {
+			return new WP_Error( 'invalid_discount_type', __( 'Please choose a valid discount type: percent, fixed cart, or fixed product.', 'yoro-ai-core' ) );
+		}
+
+		if ( null === $discount_amount || $discount_amount <= 0 || 'percent' === $discount_type && $discount_amount > 100 ) {
+			return new WP_Error( 'invalid_discount_amount', __( 'Please choose a valid discount amount greater than zero.', 'yoro-ai-core' ) );
+		}
+
+		if ( null !== $contract['expiry_input'] && '' !== $contract['expiry_input'] && empty( $contract['expiry']['value'] ) ) {
+			return new WP_Error( 'invalid_expiry_date', __( 'Please provide a valid coupon expiry date.', 'yoro-ai-core' ) );
+		}
+
+		return true;
+	}
+
+	private static function apply_coupon_update_contract( WC_Coupon $coupon, $contract ) {
+		$changes = $contract['changes'];
+
+		if ( array_key_exists( 'discount_type', $changes ) ) {
+			$coupon->set_discount_type( $changes['discount_type'] );
+		}
+
+		if ( array_key_exists( 'discount_amount', $changes ) ) {
+			$coupon->set_amount( $changes['discount_amount'] );
+		}
+
+		if ( array_key_exists( 'description', $changes ) ) {
+			$coupon->set_description( $changes['description'] );
+		}
+
+		if ( array_key_exists( 'expiry_date', $changes ) ) {
+			$coupon->set_date_expires( $contract['expiry']['value'] );
+		}
+
+		if ( array_key_exists( 'usage_limit', $changes ) ) {
+			$coupon->set_usage_limit( $changes['usage_limit'] );
+		}
+
+		if ( array_key_exists( 'usage_limit_per_user', $changes ) ) {
+			$coupon->set_usage_limit_per_user( $changes['usage_limit_per_user'] );
+		}
+
+		if ( array_key_exists( 'individual_use', $changes ) ) {
+			$coupon->set_individual_use( $changes['individual_use'] );
+		}
+
+		if ( array_key_exists( 'free_shipping', $changes ) ) {
+			$coupon->set_free_shipping( $changes['free_shipping'] );
+		}
+
+		if ( array_key_exists( 'enabled', $changes ) && method_exists( $coupon, 'set_status' ) ) {
+			$coupon->set_status( $changes['enabled'] ? 'publish' : 'draft' );
+		}
 	}
 
 	private static function validate_coupon_create_contract( $contract ) {
@@ -425,6 +666,8 @@ class YoRo_Coupons_Service {
 			'maximum_amount'          => method_exists( $coupon, 'get_maximum_amount' ) ? sanitize_text_field( $coupon->get_maximum_amount() ) : '',
 			'date_expires'            => self::format_date( $date_expires ),
 			'coupons_enabled'         => self::coupons_enabled(),
+			'status'                  => method_exists( $coupon, 'get_status' ) ? sanitize_key( $coupon->get_status() ) : get_post_status( $coupon_id ),
+			'enabled'                 => 'publish' === ( method_exists( $coupon, 'get_status' ) ? sanitize_key( $coupon->get_status() ) : get_post_status( $coupon_id ) ),
 		];
 	}
 

@@ -1189,7 +1189,9 @@ class YoRo_Orders_Read_Service {
 				'reason'     => $refund->get_reason(),
 				'date'       => $refund_date ? YoRo_Date_Helper::format_wc_datetime( $refund_date ) : '',
 				'date_ts'    => $refund_date ? YoRo_Date_Helper::get_wc_timestamp( $refund_date ) : 0,
-				'created_by' => $refund->get_created_by(),
+				'created_by' => method_exists( $refund, 'get_created_by' )
+					? $refund->get_created_by()
+					: ( method_exists( $refund, 'get_refunded_by' ) ? $refund->get_refunded_by() : 0 ),
 			];
 		}
 
@@ -2731,6 +2733,7 @@ class YoRo_Orders_Read_Service {
 
 	private static function order_has_tracking( WC_Order $order ) {
 		$tracking_meta_keys = [
+			'_yoro_tracking_number',
 			'_tracking_number',
 			'_wc_shipment_tracking_items',
 			'_aftership_tracking_number',

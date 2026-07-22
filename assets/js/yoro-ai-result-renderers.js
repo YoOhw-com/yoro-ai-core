@@ -84,6 +84,8 @@
 			'orders.search': 'Find orders',
 			'orders.get_details': 'Open order details',
 			'orders.refund_preview': 'Preview refund',
+			'orders.create_refund': 'Create refund',
+			'orders.add_tracking': 'Add shipment tracking',
 			'orders.email_customer_preview': 'Preview customer email',
 			'orders.email_customer_template': 'Send customer email',
 			'orders.update_status': 'Update order status',
@@ -102,6 +104,9 @@
 			'email.reply.send': 'Send email reply',
 			'coupons.lookup': 'Look up coupon',
 			'coupons.create': 'Create coupon',
+			'coupons.update': 'Update coupon',
+			'products.get_details': 'Open product details',
+			'products.update_catalog': 'Update product catalog',
 			'store_preferences.save': 'Save store preference',
 		};
 
@@ -1532,7 +1537,8 @@
 	function isCouponAction(action) {
 		return [
 			'coupons.lookup',
-			'coupons.create'
+			'coupons.create',
+			'coupons.update'
 		].indexOf(String(action || '')) !== -1;
 	}
 
@@ -2637,7 +2643,7 @@
 		const editUrl = couponParamValue(coupon, result, {}, 'edit_url');
 		const title = action === 'coupons.create'
 			? 'Coupon created'
-			: (code ? 'Coupon ' + code : 'Coupon details');
+			: (action === 'coupons.update' ? 'Coupon updated' : (code ? 'Coupon ' + code : 'Coupon details'));
 		const message = result.summary || result.message || '';
 		let actionsHtml = '';
 
@@ -2721,6 +2727,26 @@
 				return {
 					title: 'Coupon created',
 					message: result.summary || 'I created that coupon.'
+				};
+			case 'coupons.update':
+				return {
+					title: 'Coupon updated',
+					message: result.summary || 'I updated that coupon.'
+				};
+			case 'orders.add_tracking':
+				return {
+					title: 'Tracking added',
+					message: result.summary || 'I added shipment tracking to the order.'
+				};
+			case 'orders.create_refund':
+				return {
+					title: 'Refund created',
+					message: result.summary || 'I created the order refund.'
+				};
+			case 'products.update_catalog':
+				return {
+					title: 'Product updated',
+					message: result.summary || 'I updated the product catalog details.'
 				};
 			default:
 				return {

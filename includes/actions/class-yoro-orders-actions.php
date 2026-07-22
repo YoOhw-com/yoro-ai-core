@@ -257,6 +257,101 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
+			'products.get_details',
+			[
+				'label'            => __( 'Get product details', 'yoro-ai-core' ),
+				'description'      => __( 'Get catalog, pricing, visibility, and inventory details for one product or variation.', 'yoro-ai-core' ),
+				'category'         => 'products',
+				'permission'       => 'manage_woocommerce',
+				'callback'         => [ __CLASS__, 'get_product_details' ],
+				'risk_level'       => 'low',
+				'write_action'     => false,
+				'input_schema'     => [
+					'product_id'       => 'integer',
+					'product_sku'      => 'string',
+					'global_unique_id' => 'string',
+				],
+				'product_identifier_types' => self::product_identifier_types(),
+				'preview_callback' => [ __CLASS__, 'preview_get_product_details' ],
+				'max_items'        => 1,
+				'ai_description'   => __( 'Open one specific WooCommerce product or variation by product ID, SKU, or global unique ID and return its live catalog, pricing, visibility, and inventory details.', 'yoro-ai-core' ),
+				'ai_examples'      => [
+					'Show product #123 details',
+					'Open SKU HOODIE-BLUE',
+					'Xem chi tiết sản phẩm #123',
+				],
+				'required_params'     => [ 'product_id' ],
+				'param_hints'         => [
+					'product_id'       => __( 'Use the specific WooCommerce product or variation ID when available.', 'yoro-ai-core' ),
+					'product_sku'      => __( 'Use the exact SKU when the product is identified by SKU.', 'yoro-ai-core' ),
+					'global_unique_id' => __( 'Use the exact global unique ID, such as GTIN, UPC, EAN, or ISBN.', 'yoro-ai-core' ),
+				],
+				'clarification_hints' => [
+					'product_id' => __( 'Ask which product or variation should be opened when no target is clear.', 'yoro-ai-core' ),
+				],
+				'capabilities' => [
+					'products',
+					'catalog',
+					'pricing',
+					'read',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'products.update_catalog',
+			[
+				'label'                 => __( 'Update product catalog details', 'yoro-ai-core' ),
+				'description'           => __( 'Update pricing, sale schedule, product status, or catalog visibility for one product or variation.', 'yoro-ai-core' ),
+				'category'              => 'products',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'update_product_catalog' ],
+				'risk_level'            => 'medium',
+				'write_action'          => true,
+				'requires_confirmation' => true,
+				'input_schema'          => [
+					'product_id'        => 'integer',
+					'product_sku'       => 'string',
+					'global_unique_id'  => 'string',
+					'regular_price'     => 'number',
+					'sale_price'        => 'number|string',
+					'sale_price_from'   => 'string',
+					'sale_price_to'     => 'string',
+					'status'            => 'string',
+					'catalog_visibility' => 'string',
+				],
+				'product_identifier_types' => self::product_identifier_types(),
+				'preview_callback'      => [ __CLASS__, 'preview_update_product_catalog' ],
+				'max_items'             => 1,
+				'ai_description'        => __( 'Update one product or variation catalog record. Use only the fields the person explicitly wants changed. This can set regular or sale pricing, clear a sale price with an empty value, schedule a sale, change draft/pending/private/publish status, or change WooCommerce catalog visibility.', 'yoro-ai-core' ),
+				'ai_examples'           => [
+					'Set product #123 regular price to 29.99',
+					'Hide SKU HOODIE-BLUE from the catalog',
+					'Cập nhật giá sản phẩm #123 thành 29.99',
+				],
+				'required_params'       => [ 'product_id' ],
+				'param_hints'           => [
+					'product_id'        => __( 'Use the specific WooCommerce product or variation ID when available.', 'yoro-ai-core' ),
+					'product_sku'       => __( 'Use the exact SKU when the product is identified by SKU.', 'yoro-ai-core' ),
+					'global_unique_id'  => __( 'Use the exact global unique ID, such as GTIN, UPC, EAN, or ISBN.', 'yoro-ai-core' ),
+					'regular_price'     => __( 'Use a non-negative numeric regular price.', 'yoro-ai-core' ),
+					'sale_price'        => __( 'Use a non-negative numeric sale price no higher than regular price, or an empty string to clear it.', 'yoro-ai-core' ),
+					'status'            => __( 'Use draft, pending, private, or publish.', 'yoro-ai-core' ),
+					'catalog_visibility' => __( 'Use visible, catalog, search, or hidden.', 'yoro-ai-core' ),
+				],
+				'clarification_hints'   => [
+					'product_id' => __( 'Ask which product or variation should be updated when no target is clear.', 'yoro-ai-core' ),
+				],
+				'capabilities' => [
+					'products',
+					'catalog',
+					'pricing',
+					'write',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
 			'products.update_stock',
 			[
 				'label'                 => __( 'Update product stock', 'yoro-ai-core' ),
@@ -446,6 +541,67 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
+			'coupons.update',
+			[
+				'label'                 => __( 'Update coupon', 'yoro-ai-core' ),
+				'description'           => __( 'Update discount, expiry, usage, flags, or enabled status for one WooCommerce coupon.', 'yoro-ai-core' ),
+				'category'              => 'coupons',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'update_coupon' ],
+				'risk_level'            => 'medium',
+				'write_action'          => true,
+				'requires_confirmation' => true,
+				'input_schema'          => [
+					'coupon_id'            => 'integer',
+					'coupon_code'          => 'string',
+					'discount_type'        => 'string',
+					'discount_amount'      => 'number',
+					'description'          => 'string',
+					'expiry_date'          => 'string',
+					'usage_limit'          => 'integer',
+					'usage_limit_per_user' => 'integer',
+					'individual_use'       => 'boolean',
+					'free_shipping'        => 'boolean',
+					'enabled'              => 'boolean',
+				],
+				'preview_callback'      => [ __CLASS__, 'preview_update_coupon' ],
+				'max_items'             => 1,
+				'ai_description'        => __( 'Update one existing WooCommerce coupon by code or coupon ID without deleting it. Use only fields the person explicitly wants changed. The enabled field safely switches between publish and draft.', 'yoro-ai-core' ),
+				'ai_examples'           => [
+					'Change coupon SUMMER10 to 15 percent off',
+					'Disable coupon VIP20',
+					'Gia hạn mã SUMMER10 đến cuối tháng',
+				],
+				'required_params'       => [ 'coupon_code' ],
+				'slot_contract'         => [
+					'target_slots' => [
+						[
+							'field'   => 'coupon_code',
+							'aliases' => [ 'coupon_id' ],
+							'kind'    => 'coupon_target',
+						],
+					],
+				],
+				'param_hints'           => [
+					'coupon_code'     => __( 'Use the exact coupon code when provided.', 'yoro-ai-core' ),
+					'coupon_id'       => __( 'Use the numeric WooCommerce coupon ID when provided.', 'yoro-ai-core' ),
+					'discount_type'   => __( 'Use percent, fixed_cart, or fixed_product.', 'yoro-ai-core' ),
+					'discount_amount' => __( 'Use a positive amount. Percent coupons cannot exceed 100.', 'yoro-ai-core' ),
+					'enabled'         => __( 'Use true to publish the coupon or false to move it to draft without deleting it.', 'yoro-ai-core' ),
+				],
+				'clarification_hints'   => [
+					'coupon_code' => __( 'Ask which coupon should be updated when no coupon code or ID is available.', 'yoro-ai-core' ),
+				],
+				'capabilities'          => [
+					'coupons',
+					'discounts',
+					'promotions',
+					'write',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
 			'store.get_daily_briefing',
 			[
 				'label'       => __( 'Get store report overview', 'yoro-ai-core' ),
@@ -501,6 +657,7 @@ class YoRo_Orders_Actions {
 					'window' => 'string',
 					'time_window' => 'object',
 					'focus'  => 'string',
+					'answer_shape' => 'string',
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_business_summary' ],
 				'max_items'        => 1,
@@ -518,6 +675,7 @@ class YoRo_Orders_Actions {
 					'window' => __( 'Use calendar windows like this_week, this_month, last_year, month_YYYY_MM, quarter_YYYY_qN, year_YYYY, or range_YYYY_MM_DD_to_YYYY_MM_DD when the person names a calendar/from-to period; use rolling windows like last_N_days/weeks/months/years for custom recent ranges.', 'yoro-ai-core' ),
 					'time_window' => __( 'Structured AI date contract with canonical_key, source_text, timezone, granularity, and date_field. Mirror canonical_key into window.', 'yoro-ai-core' ),
 					'focus'  => __( 'Use overview unless the person explicitly narrows to one business dimension.', 'yoro-ai-core' ),
+					'answer_shape' => __( 'Use metric_comparison when the person explicitly asks to compare this window with another period; otherwise use report.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [],
 				'capabilities' => [
@@ -770,6 +928,107 @@ class YoRo_Orders_Actions {
 					'financial',
 					'preview',
 					'read',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'orders.add_tracking',
+			[
+				'label'                 => __( 'Add shipment tracking', 'yoro-ai-core' ),
+				'description'           => __( 'Add an explicit shipment tracking record to one store order through a registered integration adapter.', 'yoro-ai-core' ),
+				'category'              => 'orders',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'add_tracking' ],
+				'risk_level'            => 'medium',
+				'write_action'          => true,
+				'requires_confirmation' => true,
+				'input_schema'          => [
+					'order_id'        => 'integer',
+					'tracking_number' => 'string',
+					'carrier'        => 'string',
+					'tracking_url'   => 'string',
+					'shipped_at'     => 'string',
+					'adapter_key'    => 'string',
+				],
+				'preview_callback'      => [ __CLASS__, 'preview_add_tracking' ],
+				'max_items'             => 1,
+				'target_type'           => 'order',
+				'reversibility'         => 'partial',
+				'ai_description'        => __( 'Add shipment tracking to one specific order after approval. Execution is fail-closed through an explicitly registered integration adapter; omit adapter_key to use the built-in namespaced WooCommerce tracking record.', 'yoro-ai-core' ),
+				'ai_examples'           => [
+					'Add tracking 1Z999AA10123456784 to order #1234',
+					'Add DHL tracking JD0146000062818281 to this order',
+					'Thêm mã vận đơn VN123456 cho đơn #1234',
+				],
+				'required_params'       => [ 'order_id', 'tracking_number' ],
+				'param_hints'           => [
+					'order_id'        => __( 'Use the specific store order ID.', 'yoro-ai-core' ),
+					'tracking_number' => __( 'Use the exact carrier tracking number.', 'yoro-ai-core' ),
+					'carrier'        => __( 'Use the carrier name only when it is known.', 'yoro-ai-core' ),
+					'tracking_url'   => __( 'Use an explicit valid carrier tracking URL when available.', 'yoro-ai-core' ),
+					'shipped_at'     => __( 'Use an ISO date or datetime only when shipment timing is known.', 'yoro-ai-core' ),
+					'adapter_key'    => __( 'Use an adapter key only when the connector manifest advertises that adapter for orders.add_tracking.', 'yoro-ai-core' ),
+				],
+				'clarification_hints'   => [
+					'order_id'        => __( 'Ask which order should receive tracking when no order target is clear.', 'yoro-ai-core' ),
+					'tracking_number' => __( 'Ask for the exact tracking number when it is missing.', 'yoro-ai-core' ),
+				],
+				'capabilities'          => [
+					'orders',
+					'fulfillment',
+					'tracking',
+					'write',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'orders.create_refund',
+			[
+				'label'                 => __( 'Create order refund', 'yoro-ai-core' ),
+				'description'           => __( 'Create an amount-based WooCommerce refund for one order.', 'yoro-ai-core' ),
+				'category'              => 'orders',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'create_refund' ],
+				'risk_level'            => 'high',
+				'write_action'          => true,
+				'requires_confirmation' => true,
+				'effect'                => 'financial',
+				'reversibility'         => 'none',
+				'external_side_effect'  => true,
+				'target_type'           => 'order',
+				'input_schema'          => [
+					'order_id'       => 'integer',
+					'amount'         => 'number',
+					'reason'         => 'string',
+					'refund_payment' => 'boolean',
+				],
+				'preview_callback'      => [ __CLASS__, 'preview_create_refund' ],
+				'max_items'             => 1,
+				'ai_description'        => __( 'Create one irreversible amount-based refund after explicit approval. refund_payment is required: true asks the original payment gateway to send money and is allowed only when the live gateway supports refunds; false records a manual refund in WooCommerce.', 'yoro-ai-core' ),
+				'ai_examples'           => [
+					'Refund 25 dollars for order #1234 and record it manually',
+					'Refund 25 through the payment gateway for order #1234',
+					'Hoàn tiền 250000 cho đơn #1234 và chỉ ghi nhận thủ công',
+				],
+				'required_params'       => [ 'order_id', 'amount', 'refund_payment' ],
+				'param_hints'           => [
+					'order_id'       => __( 'Use the exact store order ID.', 'yoro-ai-core' ),
+					'amount'         => __( 'Use a positive amount no greater than the live remaining refundable amount.', 'yoro-ai-core' ),
+					'reason'         => __( 'Use the person-provided refund reason without inventing one.', 'yoro-ai-core' ),
+					'refund_payment' => __( 'This boolean is mandatory. Use true only when the person explicitly wants the gateway to send money; use false for a manual WooCommerce refund record.', 'yoro-ai-core' ),
+				],
+				'clarification_hints'   => [
+					'order_id'       => __( 'Ask which order should be refunded when no target is clear.', 'yoro-ai-core' ),
+					'amount'         => __( 'Ask for the exact refund amount when it is missing.', 'yoro-ai-core' ),
+					'refund_payment' => __( 'Ask whether to send money through the original gateway or only record a manual refund.', 'yoro-ai-core' ),
+				],
+				'capabilities'          => [
+					'orders',
+					'financial',
+					'refund',
+					'write',
 				],
 			]
 		);
@@ -1509,6 +1768,14 @@ class YoRo_Orders_Actions {
 		return YoRo_Orders_Read_Service::get_inventory_queue( $params );
 	}
 
+	public static function get_product_details( $params ) {
+		return YoRo_Store_Catalog_Service::get_product_details( $params );
+	}
+
+	public static function update_product_catalog( $params ) {
+		return YoRo_Store_Catalog_Service::update_product_catalog( $params );
+	}
+
 	public static function update_product_stock( $params ) {
 		return YoRo_Store_Inventory_Service::update_product_stock( $params );
 	}
@@ -1525,6 +1792,10 @@ class YoRo_Orders_Actions {
 		return YoRo_Coupons_Service::create_coupon( $params );
 	}
 
+	public static function update_coupon( $params ) {
+		return YoRo_Coupons_Service::update_coupon( $params );
+	}
+
 	public static function get_store_insights( $params ) {
 		return YoRo_Orders_Read_Service::get_store_insights( $params );
 	}
@@ -1539,6 +1810,14 @@ class YoRo_Orders_Actions {
 
 	public static function refund_preview( $params ) {
 		return YoRo_Orders_Read_Service::refund_preview( $params );
+	}
+
+	public static function add_tracking( $params ) {
+		return YoRo_Fulfillment_Write_Service::add_tracking( $params );
+	}
+
+	public static function create_refund( $params ) {
+		return YoRo_Order_Refund_Service::create_refund( $params );
 	}
 
 	public static function email_customer_preview( $params ) {
@@ -1645,6 +1924,14 @@ class YoRo_Orders_Actions {
 		return YoRo_Orders_Read_Service::preview_get_inventory_queue( $params );
 	}
 
+	public static function preview_get_product_details( $params ) {
+		return YoRo_Store_Catalog_Service::preview_get_product_details( $params );
+	}
+
+	public static function preview_update_product_catalog( $params ) {
+		return YoRo_Store_Catalog_Service::preview_update_product_catalog( $params );
+	}
+
 	public static function preview_update_product_stock( $params ) {
 		return YoRo_Store_Inventory_Service::preview_update_product_stock( $params );
 	}
@@ -1661,6 +1948,10 @@ class YoRo_Orders_Actions {
 		return YoRo_Coupons_Service::preview_create_coupon( $params );
 	}
 
+	public static function preview_update_coupon( $params ) {
+		return YoRo_Coupons_Service::preview_update_coupon( $params );
+	}
+
 	public static function preview_get_store_insights( $params ) {
 		return YoRo_Orders_Read_Service::preview_get_store_insights( $params );
 	}
@@ -1675,6 +1966,14 @@ class YoRo_Orders_Actions {
 
 	public static function preview_refund_preview( $params ) {
 		return YoRo_Orders_Read_Service::preview_refund_preview( $params );
+	}
+
+	public static function preview_add_tracking( $params ) {
+		return YoRo_Fulfillment_Write_Service::preview_add_tracking( $params );
+	}
+
+	public static function preview_create_refund( $params ) {
+		return YoRo_Order_Refund_Service::preview_create_refund( $params );
 	}
 
 	public static function preview_email_customer_preview( $params ) {

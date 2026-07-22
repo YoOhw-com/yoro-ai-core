@@ -190,6 +190,7 @@ class YoRo_Order_Presenter {
 
 	private static function order_has_tracking( WC_Order $order ) {
 		$tracking_meta_keys = [
+			'_yoro_tracking_number',
 			'_tracking_number',
 			'_wc_shipment_tracking_items',
 			'_aftership_tracking_number',

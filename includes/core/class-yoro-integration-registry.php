@@ -7,9 +7,166 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Integration_Registry {
 
 	const REGISTRY_VERSION = 1;
+	const CORE_TRACKING_ADAPTER = 'woocommerce.core_tracking';
+
+	public static function adapters() {
+		$adapters = apply_filters(
+			'yoro_integration_adapters',
+			[
+				self::CORE_TRACKING_ADAPTER => [
+					'key'          => self::CORE_TRACKING_ADAPTER,
+					'label'        => 'WooCommerce core tracking record',
+					'domain'       => 'fulfillment',
+					'version'      => 1,
+					'active'       => class_exists( 'WooCommerce' ),
+					'capabilities' => [ 'orders.add_tracking' ],
+					'callbacks'    => [
+						'orders.add_tracking' => [ __CLASS__, 'write_core_tracking' ],
+					],
+					'source'       => 'yoro_connector_builtin',
+				],
+			]
+		);
+
+		$normalized = [];
+
+		foreach ( is_array( $adapters ) ? $adapters : [] as $key => $adapter ) {
+			$adapter = self::normalize_adapter( $key, $adapter );
+
+			if ( ! empty( $adapter['key'] ) ) {
+				$normalized[ $adapter['key'] ] = $adapter;
+			}
+		}
+
+		return $normalized;
+	}
+
+	public static function adapter_facts() {
+		return array_values(
+			array_map(
+				static function( $adapter ) {
+					unset( $adapter['callbacks'] );
+
+					return $adapter;
+				},
+				self::adapters()
+			)
+		);
+	}
+
+	public static function execute( $capability, $params = [], $adapter_key = '' ) {
+		$capability = sanitize_text_field( (string) $capability );
+		$adapter_key = sanitize_text_field( (string) $adapter_key );
+
+		if ( '' === $adapter_key && 'orders.add_tracking' === $capability ) {
+			$adapter_key = self::CORE_TRACKING_ADAPTER;
+		}
+
+		$adapters = self::adapters();
+		$adapter  = $adapters[ $adapter_key ] ?? null;
+
+		if ( ! is_array( $adapter ) || empty( $adapter['active'] ) ) {
+			return new WP_Error(
+				'yoro_integration_adapter_unavailable',
+				__( 'The requested integration adapter is not available.', 'yoro-ai-core' )
+			);
+		}
+
+		if ( ! in_array( $capability, $adapter['capabilities'], true ) ) {
+			return new WP_Error(
+				'yoro_integration_capability_unavailable',
+				__( 'That integration adapter does not support the requested action.', 'yoro-ai-core' )
+			);
+		}
+
+		$callback = $adapter['callbacks'][ $capability ] ?? null;
+
+		if ( ! is_callable( $callback ) ) {
+			return new WP_Error(
+				'yoro_integration_adapter_invalid',
+				__( 'The integration adapter cannot execute this action.', 'yoro-ai-core' )
+			);
+		}
+
+		$result = call_user_func( $callback, is_array( $params ) ? $params : [] );
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return is_array( $result )
+			? array_merge( $result, [ 'adapter_key' => $adapter_key ] )
+			: [
+				'success'     => true,
+				'adapter_key' => $adapter_key,
+			];
+	}
+
+	public static function supports( $capability, $adapter_key = '' ) {
+		$capability = sanitize_text_field( (string) $capability );
+		$adapter_key = sanitize_text_field( (string) $adapter_key );
+
+		if ( '' === $adapter_key && 'orders.add_tracking' === $capability ) {
+			$adapter_key = self::CORE_TRACKING_ADAPTER;
+		}
+
+		$adapter = self::adapters()[ $adapter_key ] ?? null;
+
+		return is_array( $adapter )
+			&& ! empty( $adapter['active'] )
+			&& in_array( $capability, $adapter['capabilities'], true )
+			&& is_callable( $adapter['callbacks'][ $capability ] ?? null );
+	}
+
+	public static function write_core_tracking( $params ) {
+		$order = $params['order'] ?? null;
+		$tracking = isset( $params['tracking'] ) && is_array( $params['tracking'] ) ? $params['tracking'] : [];
+		$tracking_number = sanitize_text_field( $tracking['tracking_number'] ?? '' );
+
+		if ( ! $order instanceof WC_Order || '' === $tracking_number ) {
+			return new WP_Error(
+				'yoro_invalid_tracking_contract',
+				__( 'A valid order and tracking number are required.', 'yoro-ai-core' )
+			);
+		}
+
+		$order->update_meta_data( '_yoro_tracking_number', $tracking_number );
+		$order->update_meta_data( '_yoro_tracking_carrier', sanitize_text_field( $tracking['carrier'] ?? '' ) );
+		$order->update_meta_data( '_yoro_tracking_url', esc_url_raw( $tracking['tracking_url'] ?? '' ) );
+		$order->update_meta_data( '_yoro_tracking_shipped_at', sanitize_text_field( $tracking['shipped_at'] ?? '' ) );
+		$order->update_meta_data( '_yoro_tracking_adapter', self::CORE_TRACKING_ADAPTER );
+		$order->save();
+		$carrier = sanitize_text_field( $tracking['carrier'] ?? '' );
+
+		if ( '' === $carrier ) {
+			$carrier = __( 'Tracking', 'yoro-ai-core' );
+		}
+
+		$order->add_order_note(
+			sprintf(
+				/* translators: 1: shipping carrier, 2: tracking number */
+				__( '[YoRo] Added shipment tracking: %1$s %2$s.', 'yoro-ai-core' ),
+				$carrier,
+				$tracking_number
+			),
+			0,
+			true
+		);
+
+		return [
+			'success'  => true,
+			'tracking' => [
+				'tracking_number' => $tracking_number,
+				'carrier'         => sanitize_text_field( $tracking['carrier'] ?? '' ),
+				'tracking_url'    => esc_url_raw( $tracking['tracking_url'] ?? '' ),
+				'shipped_at'      => sanitize_text_field( $tracking['shipped_at'] ?? '' ),
+			],
+		];
+	}
 
 	public static function facts() {
 		$plugins             = self::plugin_inventory();
+		$adapter_facts       = self::adapter_facts();
 		$active_plugins      = array_values(
 			array_filter(
 				$plugins,
@@ -44,18 +201,28 @@ class YoRo_Integration_Registry {
 				'shipping'
 			),
 		];
+		$integrated_adapters = array_values(
+			array_filter(
+				array_map(
+					static function( $adapter ) {
+						return ! empty( $adapter['active'] ) ? sanitize_text_field( $adapter['key'] ?? '' ) : '';
+					},
+					$adapter_facts
+				)
+			)
+		);
+
+		foreach ( $known as $key => $integration ) {
+			if ( ! empty( $integration['yoro_adapter'] ) && ! in_array( $key, $integrated_adapters, true ) ) {
+				$integrated_adapters[] = sanitize_key( $key );
+			}
+		}
 
 		return [
 			'platform'              => 'wordpress',
 			'registry_version'      => self::REGISTRY_VERSION,
-			'integrated_adapters'   => array_values(
-				array_filter(
-					array_keys( $known ),
-					static function( $key ) use ( $known ) {
-						return ! empty( $known[ $key ]['yoro_adapter'] );
-					}
-				)
-			),
+			'integrated_adapters'   => $integrated_adapters,
+			'adapters'              => $adapter_facts,
 			'installed_plugins'     => array_slice( $plugins, 0, 60 ),
 			'active_plugins'        => array_slice( $active_plugins, 0, 30 ),
 			'shipping_extensions'   => array_slice( $shipping_extensions, 0, 12 ),
@@ -74,6 +241,46 @@ class YoRo_Integration_Registry {
 				'modify_settings'          => 'YoRo can write or change settings for this integration.',
 				'general_guidance'         => 'YoRo may give general guidance, clearly labeled as not based on live rule inspection.',
 			],
+		];
+	}
+
+	private static function normalize_adapter( $fallback_key, $adapter ) {
+		if ( ! is_array( $adapter ) ) {
+			return [];
+		}
+
+		$key = sanitize_text_field( $adapter['key'] ?? $fallback_key );
+		$capabilities = array_values(
+			array_unique(
+				array_filter(
+					array_map( 'sanitize_text_field', (array) ( $adapter['capabilities'] ?? [] ) )
+				)
+			)
+		);
+
+		if ( '' === $key || empty( $capabilities ) ) {
+			return [];
+		}
+
+		$callbacks = [];
+
+		foreach ( is_array( $adapter['callbacks'] ?? null ) ? $adapter['callbacks'] : [] as $capability => $callback ) {
+			$capability = sanitize_text_field( $capability );
+
+			if ( in_array( $capability, $capabilities, true ) && is_callable( $callback ) ) {
+				$callbacks[ $capability ] = $callback;
+			}
+		}
+
+		return [
+			'key'          => $key,
+			'label'        => sanitize_text_field( $adapter['label'] ?? $key ),
+			'domain'       => sanitize_key( $adapter['domain'] ?? 'general' ),
+			'version'      => max( 1, absint( $adapter['version'] ?? 1 ) ),
+			'active'       => ! empty( $adapter['active'] ),
+			'capabilities' => $capabilities,
+			'callbacks'    => $callbacks,
+			'source'       => sanitize_key( $adapter['source'] ?? 'connector_extension' ),
 		];
 	}
 

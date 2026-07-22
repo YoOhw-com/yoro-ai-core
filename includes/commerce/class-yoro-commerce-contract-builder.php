@@ -55,6 +55,10 @@ class YoRo_Commerce_Contract_Builder {
 					'plugin_version' => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
 					'execution_boundary' => 'plugin_executor',
 				],
+				'woocommerce.integrations' => [
+					'registry_version' => YoRo_Integration_Registry::REGISTRY_VERSION,
+					'adapters'         => YoRo_Integration_Registry::adapter_facts(),
+				],
 			],
 		];
 	}
@@ -120,6 +124,10 @@ class YoRo_Commerce_Contract_Builder {
 						],
 						'woocommerce.runtime' => [
 							'hpos_enabled' => ! empty( $woocommerce['hpos_enabled'] ),
+						],
+						'woocommerce.integrations' => [
+							'registry_version' => YoRo_Integration_Registry::REGISTRY_VERSION,
+							'adapters'         => YoRo_Integration_Registry::adapter_facts(),
 						],
 					],
 				],

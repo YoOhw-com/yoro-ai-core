@@ -842,7 +842,7 @@ class YoRo_Store_Inventory_Service {
 		return '' === $value ? '' : ucwords( $value );
 	}
 
-	private static function resolve_product_target( $params ) {
+	public static function resolve_product_target( $params ) {
 		$params = is_array( $params ) ? $params : [];
 		$product_id = isset( $params['product_id'] ) ? absint( $params['product_id'] ) : 0;
 		$product_sku = self::clean_product_identifier( $params['product_sku'] ?? '' );
