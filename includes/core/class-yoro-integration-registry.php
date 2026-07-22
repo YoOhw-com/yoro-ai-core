@@ -6,9 +6,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Integration_Registry {
 
-	const REGISTRY_VERSION = 1;
+	const REGISTRY_VERSION = 2;
 	const CORE_TRACKING_ADAPTER = 'woocommerce.core_tracking';
 	const SHIPMENT_TRACKING_ADAPTER = 'woocommerce.shipment_tracking';
+	const WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER = 'woocommerce.subscriptions';
 
 	public static function adapters() {
 		$builtin_adapters = [
@@ -41,14 +42,36 @@ class YoRo_Integration_Registry {
 			];
 		}
 
+		if ( function_exists( 'wcs_get_subscriptions' ) ) {
+			$builtin_adapters[ self::WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER ] = [
+				'key'          => self::WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER,
+				'label'        => 'WooCommerce Subscriptions',
+				'domain'       => 'subscriptions',
+				'version'      => 1,
+				'active'       => true,
+				'capabilities' => [ 'subscriptions.get_summary' ],
+				'callbacks'    => [
+					'subscriptions.get_summary' => [ __CLASS__, 'read_subscription_summary' ],
+				],
+				'source'       => 'woocommerce_extension',
+			];
+		}
+
 		$adapters = apply_filters( 'yoro_integration_adapters', $builtin_adapters );
 
-		$normalized = [];
+		$normalized   = [];
+		$duplicate_keys = [];
 
 		foreach ( is_array( $adapters ) ? $adapters : [] as $key => $adapter ) {
 			$adapter = self::normalize_adapter( $key, $adapter );
 
-			if ( ! empty( $adapter['key'] ) ) {
+			if ( ! empty( $adapter['key'] ) && ! isset( $duplicate_keys[ $adapter['key'] ] ) ) {
+				if ( isset( $normalized[ $adapter['key'] ] ) ) {
+					unset( $normalized[ $adapter['key'] ] );
+					$duplicate_keys[ $adapter['key'] ] = true;
+					continue;
+				}
+
 				$normalized[ $adapter['key'] ] = $adapter;
 			}
 		}
@@ -220,6 +243,70 @@ class YoRo_Integration_Registry {
 		];
 	}
 
+	public static function read_subscription_summary( $params ) {
+		if ( ! function_exists( 'wcs_get_subscriptions' ) ) {
+			return new WP_Error(
+				'yoro_integration_adapter_unavailable',
+				__( 'WooCommerce Subscriptions is not available.', 'yoro-ai-core' )
+			);
+		}
+
+		$params     = is_array( $params ) ? $params : [];
+		$window_key = YoRo_Date_Helper::window_key_from_params( $params, 'window', 'today' );
+		$requested_window = YoRo_Date_Helper::resolve_window( $window_key );
+
+		if ( empty( $requested_window ) ) {
+			return new WP_Error(
+				'yoro_invalid_subscription_window',
+				__( 'Please provide a valid subscription summary time window.', 'yoro-ai-core' )
+			);
+		}
+
+		$subscriptions = wcs_get_subscriptions(
+			[
+				'subscriptions_per_page' => 500,
+				'subscription_status'    => 'any',
+				'orderby'                => 'date',
+				'order'                  => 'DESC',
+			]
+		);
+		$status_counts = [];
+		$currency_totals = [];
+
+		foreach ( is_array( $subscriptions ) ? $subscriptions : [] as $subscription ) {
+			if ( ! is_object( $subscription ) || ! method_exists( $subscription, 'get_status' ) ) {
+				continue;
+			}
+
+			$status   = sanitize_key( $subscription->get_status() );
+			$currency = method_exists( $subscription, 'get_currency' ) ? sanitize_text_field( $subscription->get_currency() ) : '';
+			$total    = method_exists( $subscription, 'get_total' ) ? (float) $subscription->get_total() : 0.0;
+			$status_counts[ $status ] = ( $status_counts[ $status ] ?? 0 ) + 1;
+			$currency_totals[ $currency ] = ( $currency_totals[ $currency ] ?? 0.0 ) + $total;
+		}
+
+		return [
+			'success'         => true,
+			'action'          => 'subscriptions.get_summary',
+			'summary'         => sprintf(
+				/* translators: %d: subscription count */
+				__( 'Read %d subscriptions through the registered WooCommerce Subscriptions adapter.', 'yoro-ai-core' ),
+				array_sum( $status_counts )
+			),
+			'count'           => array_sum( $status_counts ),
+			'status_counts'   => $status_counts,
+			'currency_totals' => array_map( static fn( $total ) => wc_format_decimal( $total, 2 ), $currency_totals ),
+			'coverage_contract' => [
+				'requested_window'   => YoRo_Date_Helper::build_window_payload( $requested_window ),
+				'observation_kind'   => 'live_snapshot',
+				'historical_evidence' => false,
+				'observed_at'        => gmdate( DATE_ATOM ),
+			],
+			'read_only'       => true,
+			'changes_store'   => false,
+		];
+	}
+
 	public static function facts() {
 		$plugins             = self::plugin_inventory();
 		$adapter_facts       = self::adapter_facts();
@@ -301,11 +388,23 @@ class YoRo_Integration_Registry {
 	}
 
 	private static function normalize_adapter( $fallback_key, $adapter ) {
-		if ( ! is_array( $adapter ) ) {
+		if ( ! is_array( $adapter )
+			|| ! array_key_exists( 'key', $adapter )
+			|| ! array_key_exists( 'domain', $adapter )
+			|| ! array_key_exists( 'version', $adapter )
+			|| ! array_key_exists( 'capabilities', $adapter )
+			|| ! array_key_exists( 'callbacks', $adapter ) ) {
 			return [];
 		}
 
-		$key = sanitize_text_field( $adapter['key'] ?? $fallback_key );
+		$key = sanitize_text_field( $adapter['key'] );
+
+		if ( is_string( $fallback_key ) && sanitize_text_field( $fallback_key ) !== $key ) {
+			return [];
+		}
+
+		$domain  = sanitize_key( $adapter['domain'] );
+		$version = absint( $adapter['version'] );
 		$capabilities = array_values(
 			array_unique(
 				array_filter(
@@ -314,7 +413,7 @@ class YoRo_Integration_Registry {
 			)
 		);
 
-		if ( '' === $key || empty( $capabilities ) ) {
+		if ( '' === $key || '' === $domain || $version < 1 || empty( $capabilities ) ) {
 			return [];
 		}
 
@@ -328,11 +427,17 @@ class YoRo_Integration_Registry {
 			}
 		}
 
+		if ( count( $callbacks ) !== count( $capabilities )
+			|| array_diff( $capabilities, array_keys( $callbacks ) )
+			|| array_diff( array_keys( $callbacks ), $capabilities ) ) {
+			return [];
+		}
+
 		return [
 			'key'          => $key,
 			'label'        => sanitize_text_field( $adapter['label'] ?? $key ),
-			'domain'       => sanitize_key( $adapter['domain'] ?? 'general' ),
-			'version'      => max( 1, absint( $adapter['version'] ?? 1 ) ),
+			'domain'       => $domain,
+			'version'      => $version,
 			'active'       => ! empty( $adapter['active'] ),
 			'capabilities' => $capabilities,
 			'callbacks'    => $callbacks,

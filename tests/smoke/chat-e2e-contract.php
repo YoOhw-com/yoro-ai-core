@@ -11,7 +11,7 @@
  * YORO_RUN_CHAT_E2E=1 YORO_CHAT_E2E_SCENARIO=all wp eval-file wp-content/plugins/yoro-ai-core/tests/smoke/chat-e2e-contract.php
  * YORO_RUN_CHAT_E2E=1 YORO_CHAT_E2E_API_URL=http://127.0.0.1:8010/api/v1 wp eval-file wp-content/plugins/yoro-ai-core/tests/smoke/chat-e2e-contract.php
  *
- * Scenarios: coupon, order, inventory, email, all.
+ * Scenarios: coupon, order, inventory, email, multilingual, all.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -25,10 +25,10 @@ if ( '1' !== (string) getenv( 'YORO_RUN_CHAT_E2E' ) ) {
 }
 
 $scenario = sanitize_key( (string) ( getenv( 'YORO_CHAT_E2E_SCENARIO' ) ?: 'all' ) );
-$allowed_scenarios = [ 'coupon', 'order', 'inventory', 'email', 'all' ];
+$allowed_scenarios = [ 'coupon', 'order', 'inventory', 'email', 'multilingual', 'all' ];
 
 if ( ! in_array( $scenario, $allowed_scenarios, true ) ) {
-	fwrite( STDERR, "Invalid YORO_CHAT_E2E_SCENARIO. Use coupon, order, inventory, email, or all.\n" );
+	fwrite( STDERR, "Invalid YORO_CHAT_E2E_SCENARIO. Use coupon, order, inventory, email, multilingual, or all.\n" );
 	exit( 1 );
 }
 
@@ -387,6 +387,36 @@ try {
 	$assert( class_exists( 'WooCommerce' ), 'WooCommerce must be active.' );
 	$assert( class_exists( 'YoRo_REST_Chat_Message_Handler' ), 'YoRo chat handler must be loaded.' );
 	$assert( class_exists( 'YoRo_AI_Provider_Resolver' ) && YoRo_AI_Provider_Resolver::supports( 'conversation' ), 'YoRo AI conversation provider must be connected.' );
+
+	if ( in_array( $scenario, [ 'multilingual', 'all' ], true ) ) {
+		$multilingual_cases = [
+			'arabic inventory risk' => [
+				'message' => 'أعطني تقريرًا إجماليًا عن مخاطر المخزون الحالية ومؤشرات انخفاض ونفاد المخزون.',
+				'action'  => 'store.get_inventory_risk',
+			],
+			'traditional chinese customer lifecycle' => [
+				'message' => '請顯示本月的客戶生命週期與重複購買客戶。',
+				'action'  => 'store.get_customer_lifecycle',
+			],
+			'hindi returns intelligence' => [
+				'message' => 'इस महीने दर्ज की गई वापसी और विनिमय अनुरोधों की रिपोर्ट दिखाएँ।',
+				'action'  => 'store.get_returns_intelligence',
+			],
+			'swahili sales report' => [
+				'message' => 'Onyesha ripoti ya mauzo ya duka mwezi huu.',
+				'action'  => 'store.get_business_summary',
+			],
+		];
+
+		foreach ( $multilingual_cases as $case => $expectation ) {
+			$response = $chat( $expectation['message'] );
+			$data     = (array) ( $response['data'] ?? [] );
+			$debug[ 'multilingual_' . sanitize_key( $case ) ] = $compact( $data );
+
+			$assert( 200 === (int) ( $response['status'] ?? 0 ), "{$case} chat must return HTTP 200." );
+			$assert_read_action_plan( $data, $case, $expectation['action'] );
+		}
+	}
 
 	if ( in_array( $scenario, [ 'coupon', 'all' ], true ) ) {
 		$coupon_code = 'YORO-CHAT-E2E-' . $stamp;

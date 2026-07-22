@@ -79,6 +79,8 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-write-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-order-refund-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-refund-intelligence-service.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-commerce-intelligence-service.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-order-return-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-coupons-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-email-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-actions.php';

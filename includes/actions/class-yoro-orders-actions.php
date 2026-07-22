@@ -813,6 +813,106 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
+			'store.get_inventory_risk',
+			[
+				'label'            => __( 'Get inventory risk intelligence', 'yoro-ai-core' ),
+				'description'      => __( 'Analyze live inventory pressure and prepare non-executable reorder proposals.', 'yoro-ai-core' ),
+				'category'         => 'store',
+				'permission'       => 'manage_woocommerce',
+				'callback'         => [ __CLASS__, 'get_inventory_risk' ],
+				'preview_callback' => [ __CLASS__, 'preview_get_inventory_risk' ],
+				'risk_level'       => 'low',
+				'write_action'     => false,
+				'input_schema'     => [
+					'window'      => 'string',
+					'time_window' => 'object',
+					'limit'       => 'integer',
+					'focus'       => 'string',
+				],
+				'max_items'        => 50,
+				'ai_description'   => __( 'Use as the inventory risk report provider for current out-of-stock, backorder, and low-stock pressure. It may propose a reorder action but never invents a target quantity or executes a stock change.', 'yoro-ai-core' ),
+				'ai_examples'      => [
+					'Show inventory risk and reorder candidates',
+					'اعرض مخاطر المخزون الحالية',
+					'显示当前库存风险',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'window'      => __( 'Use the canonical time-window key selected by the semantic router.', 'yoro-ai-core' ),
+					'time_window' => __( 'Use the structured AI time-window contract; inventory evidence remains a live snapshot.', 'yoro-ai-core' ),
+					'limit'       => __( 'Keep live risk drilldowns between 1 and 50 products.', 'yoro-ai-core' ),
+					'focus'       => __( 'Use a canonical semantic focus from the AI contract; do not parse localized keywords in the connector.', 'yoro-ai-core' ),
+				],
+				'clarification_hints' => [],
+				'capabilities'        => [ 'store', 'products', 'inventory', 'read', 'reporting' ],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'store.get_customer_lifecycle',
+			[
+				'label'            => __( 'Get customer lifecycle intelligence', 'yoro-ai-core' ),
+				'description'      => __( 'Analyze customer identity and repeat-order behavior in a canonical time window.', 'yoro-ai-core' ),
+				'category'         => 'store',
+				'permission'       => 'manage_woocommerce',
+				'callback'         => [ __CLASS__, 'get_customer_lifecycle' ],
+				'preview_callback' => [ __CLASS__, 'preview_get_customer_lifecycle' ],
+				'risk_level'       => 'low',
+				'write_action'     => false,
+				'input_schema'     => [
+					'window'      => 'string',
+					'time_window' => 'object',
+				],
+				'max_items'        => 20,
+				'ai_description'   => __( 'Use as the customer report provider for customer identities and repeat-order behavior within the selected structured time window. It does not claim first-ever or at-risk status without sufficient history.', 'yoro-ai-core' ),
+				'ai_examples'      => [
+					'Show customer lifecycle this quarter',
+					'이번 달 반복 구매 고객을 보여줘',
+					'Покажи повторных клиентов за месяц',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'window'      => __( 'Use the canonical time-window key selected by the semantic router.', 'yoro-ai-core' ),
+					'time_window' => __( 'Use the structured AI time-window contract; never send localized date words for connector parsing.', 'yoro-ai-core' ),
+				],
+				'clarification_hints' => [],
+				'capabilities'        => [ 'store', 'customers', 'orders', 'read', 'reporting' ],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'store.get_returns_intelligence',
+			[
+				'label'            => __( 'Get returns intelligence', 'yoro-ai-core' ),
+				'description'      => __( 'Analyze recorded return and exchange requests in a canonical time window.', 'yoro-ai-core' ),
+				'category'         => 'store',
+				'permission'       => 'manage_woocommerce',
+				'callback'         => [ __CLASS__, 'get_returns_intelligence' ],
+				'preview_callback' => [ __CLASS__, 'preview_get_returns_intelligence' ],
+				'risk_level'       => 'low',
+				'write_action'     => false,
+				'input_schema'     => [
+					'window'      => 'string',
+					'time_window' => 'object',
+				],
+				'max_items'        => 20,
+				'ai_description'   => __( 'Use as the returns report provider for recorded return and exchange request count, requested resolutions, and safe request drilldowns.', 'yoro-ai-core' ),
+				'ai_examples'      => [
+					'Show return and exchange requests this month',
+					'इस महीने के रिटर्न अनुरोध दिखाएँ',
+					'Onyesha maombi ya kurejesha bidhaa mwezi huu',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'window'      => __( 'Use the canonical time-window key selected by the semantic router.', 'yoro-ai-core' ),
+					'time_window' => __( 'Use the structured AI time-window contract; never send localized date words for connector parsing.', 'yoro-ai-core' ),
+				],
+				'clarification_hints' => [],
+				'capabilities'        => [ 'store', 'orders', 'returns', 'exchanges', 'read', 'reporting' ],
+			]
+		);
+
+		YoRo_Action_Registry::register(
 			'store.get_insights',
 			[
 				'label'       => __( 'Get store signal report', 'yoro-ai-core' ),
@@ -1174,6 +1274,82 @@ class YoRo_Orders_Actions {
 					'refund',
 					'write',
 				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'orders.create_return_request',
+			[
+				'label'                 => __( 'Create return request', 'yoro-ai-core' ),
+				'description'           => __( 'Record an exact return or exchange request for operator review without refund, replacement, customer contact, or stock change.', 'yoro-ai-core' ),
+				'category'              => 'orders',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'create_return_request' ],
+				'preview_callback'      => [ __CLASS__, 'preview_create_return_request' ],
+				'risk_level'            => 'medium',
+				'write_action'          => true,
+				'requires_confirmation' => true,
+				'effect'                => 'mutate',
+				'reversibility'         => 'partial',
+				'external_side_effect'  => false,
+				'target_type'           => 'order',
+				'input_schema'          => [
+					'order_id'       => 'integer',
+					'type'           => 'string',
+					'line_items'     => [
+						'type'     => 'array',
+						'maxItems' => 100,
+						'items'    => [
+							'type'                 => 'object',
+							'properties'           => [
+								'order_item_id' => [ 'type' => 'integer' ],
+								'quantity'      => [ 'type' => 'integer' ],
+							],
+							'required'             => [ 'order_item_id', 'quantity' ],
+							'additionalProperties' => false,
+						],
+					],
+					'reason'         => 'string',
+					'resolution'     => 'string',
+					'idempotency_key'=> 'string',
+				],
+				'max_items'             => 1,
+				'ai_description'        => __( 'Record one return or exchange request after confirmation. Use exact order item IDs and quantities, preserve the person-provided reason, choose a requested resolution, and provide a stable idempotency key. This action never performs the refund, replacement, customer contact, or inventory change.', 'yoro-ai-core' ),
+				'ai_examples'           => [
+					'Record a return request for item 55 quantity 1 on order #1234 because it arrived damaged',
+					'为订单 #1234 记录换货请求',
+					'سجّل طلب إرجاع للطلب #1234',
+				],
+				'required_params'       => [ 'order_id', 'type', 'line_items', 'reason', 'resolution', 'idempotency_key' ],
+				'param_hints'           => [
+					'order_id'       => __( 'Use the exact store order ID.', 'yoro-ai-core' ),
+					'type'           => __( 'Use return or exchange from the language-independent value catalog.', 'yoro-ai-core' ),
+					'line_items'     => __( 'Use exact order item IDs and positive quantities from live order details.', 'yoro-ai-core' ),
+					'reason'         => __( 'Preserve the user-provided reason as a scoped user-content slot; never invent or translate it silently.', 'yoro-ai-core' ),
+					'resolution'     => __( 'Use refund, replacement, store_credit, or review as the requested resolution; this action does not execute it.', 'yoro-ai-core' ),
+					'idempotency_key'=> __( 'Use one stable unique key for this exact request so retries cannot create duplicates.', 'yoro-ai-core' ),
+				],
+				'clarification_hints'   => [
+					'order_id'   => __( 'Ask which order the return or exchange is for.', 'yoro-ai-core' ),
+					'line_items' => __( 'Ask which exact order items and quantities are being returned or exchanged.', 'yoro-ai-core' ),
+					'reason'     => __( 'Ask for the customer or operator-provided reason.', 'yoro-ai-core' ),
+				],
+				'slot_contract'         => [
+					'target_slots' => [
+						[ 'field' => 'order_id', 'aliases' => [ 'order_ids' ], 'kind' => 'order_target' ],
+					],
+					'user_content_slots' => [
+						[
+							'field'              => 'reason',
+							'kind'               => 'return_reason',
+							'source'             => 'user_literal',
+							'prompt_priority'    => 'content_first',
+							'placeholder_policy' => 'reject_placeholders',
+							'max_length'         => 2000,
+						],
+					],
+				],
+				'capabilities'          => [ 'orders', 'returns', 'exchanges', 'write' ],
 			]
 		);
 
@@ -1886,10 +2062,60 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		if ( YoRo_Integration_Registry::supports( 'subscriptions.get_summary', YoRo_Integration_Registry::WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER ) ) {
+			YoRo_Action_Registry::register(
+				'subscriptions.get_summary',
+				[
+					'label'            => __( 'Get subscriptions summary', 'yoro-ai-core' ),
+					'description'      => __( 'Read subscription counts and recurring totals through the registered WooCommerce Subscriptions adapter.', 'yoro-ai-core' ),
+					'category'         => 'subscriptions',
+					'permission'       => 'manage_woocommerce',
+					'callback'         => [ __CLASS__, 'get_subscriptions_summary' ],
+					'preview_callback' => [ __CLASS__, 'preview_get_subscriptions_summary' ],
+					'risk_level'       => 'low',
+					'write_action'     => false,
+					'input_schema'     => [
+						'window'      => 'string',
+						'time_window' => 'object',
+					],
+					'max_items'        => 1,
+					'ai_description'   => __( 'Use as the subscriptions report provider only when the connector manifest advertises this exact adapter-backed capability.', 'yoro-ai-core' ),
+					'ai_examples'      => [
+						'Show subscription status summary',
+						'عرض ملخص الاشتراكات',
+						'订阅状态汇总',
+					],
+					'required_params'     => [],
+					'param_hints'         => [
+						'window'      => __( 'Use the canonical time-window key selected by the semantic router.', 'yoro-ai-core' ),
+						'time_window' => __( 'Use the structured AI time-window contract; subscription evidence remains a live snapshot.', 'yoro-ai-core' ),
+					],
+					'clarification_hints' => [],
+					'capabilities'        => [ 'subscriptions', 'read', 'reporting', 'integrations' ],
+				]
+			);
+		}
 	}
 
 	public static function search_orders( $params ) {
 		return YoRo_Orders_Read_Service::search_orders( $params );
+	}
+
+	public static function get_subscriptions_summary( $params ) {
+		return YoRo_Integration_Registry::execute(
+			'subscriptions.get_summary',
+			$params,
+			YoRo_Integration_Registry::WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER
+		);
+	}
+
+	public static function preview_get_subscriptions_summary( $params ) {
+		return [
+			'type'          => 'read',
+			'will_execute'  => YoRo_Integration_Registry::supports( 'subscriptions.get_summary', YoRo_Integration_Registry::WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER ),
+			'action'        => 'subscriptions.get_summary',
+			'changes_store' => false,
+		];
 	}
 
 	public static function get_order_details( $params ) {
@@ -1956,6 +2182,18 @@ class YoRo_Orders_Actions {
 		return YoRo_Refund_Intelligence_Service::get_refund_intelligence( $params );
 	}
 
+	public static function get_inventory_risk( $params ) {
+		return YoRo_Commerce_Intelligence_Service::get_inventory_risk( $params );
+	}
+
+	public static function get_customer_lifecycle( $params ) {
+		return YoRo_Commerce_Intelligence_Service::get_customer_lifecycle( $params );
+	}
+
+	public static function get_returns_intelligence( $params ) {
+		return YoRo_Commerce_Intelligence_Service::get_returns_intelligence( $params );
+	}
+
 	public static function get_daily_briefing( $params ) {
 		return YoRo_Orders_Read_Service::get_daily_briefing( $params );
 	}
@@ -1970,6 +2208,10 @@ class YoRo_Orders_Actions {
 
 	public static function create_refund( $params ) {
 		return YoRo_Order_Refund_Service::create_refund( $params );
+	}
+
+	public static function create_return_request( $params ) {
+		return YoRo_Order_Return_Service::create_return_request( $params );
 	}
 
 	public static function email_customer_preview( $params ) {
@@ -2120,6 +2362,18 @@ class YoRo_Orders_Actions {
 		return YoRo_Refund_Intelligence_Service::preview_get_refund_intelligence( $params );
 	}
 
+	public static function preview_get_inventory_risk( $params ) {
+		return YoRo_Commerce_Intelligence_Service::preview_read( 'store.get_inventory_risk', $params, 'today' );
+	}
+
+	public static function preview_get_customer_lifecycle( $params ) {
+		return YoRo_Commerce_Intelligence_Service::preview_read( 'store.get_customer_lifecycle', $params );
+	}
+
+	public static function preview_get_returns_intelligence( $params ) {
+		return YoRo_Commerce_Intelligence_Service::preview_read( 'store.get_returns_intelligence', $params );
+	}
+
 	public static function preview_get_daily_briefing( $params ) {
 		return YoRo_Orders_Read_Service::preview_get_daily_briefing( $params );
 	}
@@ -2134,6 +2388,10 @@ class YoRo_Orders_Actions {
 
 	public static function preview_create_refund( $params ) {
 		return YoRo_Order_Refund_Service::preview_create_refund( $params );
+	}
+
+	public static function preview_create_return_request( $params ) {
+		return YoRo_Order_Return_Service::preview_create_return_request( $params );
 	}
 
 	public static function preview_email_customer_preview( $params ) {

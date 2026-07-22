@@ -203,8 +203,7 @@ class YoRo_Commerce_Contract_Builder {
 			}
 
 			if ( is_array( $definition ) ) {
-				$type = $definition['type'] ?? 'string';
-				$properties[ $field ] = array_merge( $definition, self::schema_definition( $type ) );
+				$properties[ $field ] = self::property_schema_definition( $definition );
 			} else {
 				$properties[ $field ] = self::schema_definition( $definition );
 			}
@@ -225,8 +224,9 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	private static function schema_definition( $legacy_type ) {
-		$legacy_type = strtolower( trim( (string) $legacy_type ) );
-		$types = array_values( array_filter( array_map( 'trim', explode( '|', $legacy_type ) ) ) );
+		$types = is_array( $legacy_type )
+			? array_values( array_filter( array_map( 'strval', $legacy_type ) ) )
+			: array_values( array_filter( array_map( 'trim', explode( '|', strtolower( trim( (string) $legacy_type ) ) ) ) ) );
 		$canonical_types = [];
 		$array_item_type = '';
 
@@ -255,6 +255,27 @@ class YoRo_Commerce_Contract_Builder {
 		}
 
 		return $definition;
+	}
+
+	private static function property_schema_definition( array $definition ) {
+		$canonical = self::schema_definition( $definition['type'] ?? 'string' );
+
+		foreach ( [ 'enum', 'minimum', 'maximum', 'minLength', 'maxLength', 'pattern', 'minItems', 'maxItems' ] as $constraint ) {
+			if ( array_key_exists( $constraint, $definition ) ) {
+				$canonical[ $constraint ] = $definition[ $constraint ];
+			}
+		}
+
+		$types = is_array( $canonical['type'] ?? null ) ? $canonical['type'] : [ $canonical['type'] ?? '' ];
+		$item_type = is_array( $definition['items'] ?? null ) ? ( $definition['items']['type'] ?? '' ) : '';
+
+		if ( in_array( 'array', $types, true ) && is_scalar( $item_type ) && '' !== (string) $item_type ) {
+			$canonical['items'] = [
+				'type' => self::canonical_schema_type( $item_type ),
+			];
+		}
+
+		return $canonical;
 	}
 
 	private static function canonical_schema_type( $type ) {
