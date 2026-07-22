@@ -97,6 +97,10 @@ $expected_actions = [
 			'amount'         => 'number',
 			'reason'         => 'string',
 			'refund_payment' => 'boolean',
+			'line_items'     => 'array',
+			'shipping_amount' => 'number',
+			'restock_items'   => 'boolean',
+			'idempotency_key' => 'string',
 		],
 	],
 	'products.get_details' => [

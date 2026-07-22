@@ -177,6 +177,7 @@ class YoRo_Commerce_Contract_Builder {
 			'external_side_effect'  => ! empty( $action['external_side_effect'] ),
 			'write_action'          => ! in_array( $effect, [ 'read', 'draft' ], true ),
 			'requires_confirmation' => ! empty( $action['requires_confirmation'] ) || ! empty( $action['write_action'] ),
+			'supports_bulk'         => ! empty( $action['supports_bulk'] ),
 			'max_targets'           => max( 1, absint( $action['max_targets'] ?? ( $action['max_items'] ?? 1 ) ) ),
 			'input_schema'          => $input_schema,
 			'output_schema'         => self::object_schema( $action['output_schema'] ?? [], [] ),

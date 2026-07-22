@@ -181,6 +181,20 @@ class YoRo_Fulfillment_Write_Service {
 	}
 
 	private static function tracking_is_unchanged( WC_Order $order, $contract ) {
-		return (string) $order->get_meta( '_yoro_tracking_number', true ) === (string) $contract['tracking_number'];
+		$tracking_number = (string) $contract['tracking_number'];
+
+		if ( (string) $order->get_meta( '_yoro_tracking_number', true ) === $tracking_number ) {
+			return true;
+		}
+
+		$shipment_items = $order->get_meta( '_wc_shipment_tracking_items', true );
+
+		foreach ( is_array( $shipment_items ) ? $shipment_items : [] as $shipment_item ) {
+			if ( is_array( $shipment_item ) && (string) ( $shipment_item['tracking_number'] ?? '' ) === $tracking_number ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 }

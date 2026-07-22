@@ -5,6 +5,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class YoRo_Store_Catalog_Service {
+	const BATCH_IDEMPOTENCY_OPTION_PREFIX = 'yoro_ai_catalog_batch_';
+	const BATCH_MAX_ITEMS = 20;
 
 	public static function get_product_details( $params ) {
 		$target = YoRo_Store_Inventory_Service::resolve_product_target( $params );
@@ -171,6 +173,361 @@ class YoRo_Store_Catalog_Service {
 			'count'          => '' === $block_reason ? 1 : 0,
 			'changes_store'  => '' === $block_reason,
 		];
+	}
+
+	public static function update_product_catalog_batch( $params ) {
+		$contract = self::normalize_batch_contract( $params );
+		$error    = self::validate_batch_contract( $contract );
+
+		if ( is_wp_error( $error ) ) {
+			return $error;
+		}
+
+		$existing = self::batch_idempotency_result( $contract );
+
+		if ( is_wp_error( $existing ) || is_array( $existing ) ) {
+			return $existing;
+		}
+
+		$preview = self::build_batch_preview( $contract );
+
+		if ( ! empty( $preview['blocked'] ) ) {
+			return new WP_Error( 'catalog_batch_validation_failed', __( 'One or more catalog batch items are invalid. Review the per-item preview before retrying.', 'yoro-ai-core' ) );
+		}
+
+		$lock = self::acquire_batch_idempotency_lock( $contract );
+
+		if ( is_wp_error( $lock ) || is_array( $lock ) ) {
+			return $lock;
+		}
+
+		$results   = [];
+		$processed = [];
+		$errors    = [];
+
+		foreach ( $contract['items'] as $index => $item ) {
+			$result = self::update_product_catalog( self::batch_item_params( $item ) );
+
+			if ( is_wp_error( $result ) ) {
+				$error_item = [
+					'index'   => $index,
+					'code'    => $result->get_error_code(),
+					'message' => $result->get_error_message(),
+					'target'  => self::batch_item_target( $item ),
+				];
+				$errors[]  = $error_item;
+				$results[] = array_merge( $error_item, [ 'success' => false ] );
+				continue;
+			}
+
+			$product_id  = absint( $result['product_id'] ?? 0 );
+			$processed[] = $product_id;
+			$results[]   = [
+				'index'          => $index,
+				'success'        => true,
+				'product_id'     => $product_id,
+				'target'         => self::batch_item_target( $item ),
+				'changed_fields' => $result['changed_fields'] ?? [],
+				'product'        => $result['product'] ?? [],
+			];
+		}
+
+		$success = empty( $errors );
+		$summary = sprintf(
+			/* translators: 1: successful catalog updates, 2: failed catalog updates */
+			__( 'Catalog batch finished with %1$d updated and %2$d failed products.', 'yoro-ai-core' ),
+			count( $processed ),
+			count( $errors )
+		);
+		$result = [
+			'success'           => $success,
+			'action'            => 'products.update_catalog_batch',
+			'summary'           => $summary,
+			'message'           => $summary,
+			'results'           => $results,
+			'processed'         => array_values( array_filter( $processed ) ),
+			'skipped'           => [],
+			'errors'            => $errors,
+			'count'             => count( $processed ),
+			'read_only'         => false,
+			'undoable'          => false,
+			'undo_plan'         => [],
+			'idempotent_replay' => false,
+			'result_type'       => 'products',
+			'display_type'      => 'generic',
+			'meta'              => [
+				'changes_store'     => count( $processed ) > 0,
+				'idempotent_replay' => false,
+			],
+		];
+
+		self::complete_batch_idempotency_record( $contract, $result );
+
+		return $result;
+	}
+
+	public static function preview_update_product_catalog_batch( $params ) {
+		$contract = self::normalize_batch_contract( $params );
+		$error    = self::validate_batch_contract( $contract );
+
+		if ( is_wp_error( $error ) ) {
+			return [
+				'type'              => 'write',
+				'will_execute'      => false,
+				'action'            => 'products.update_catalog_batch',
+				'summary'           => $error->get_error_message(),
+				'message'           => $error->get_error_message(),
+				'blocked'           => true,
+				'block_reason'      => $error->get_error_code(),
+				'items'             => [],
+				'count'             => 0,
+				'changes_store'     => false,
+				'idempotent_replay' => false,
+			];
+		}
+
+		$existing = self::batch_idempotency_result( $contract );
+
+		if ( is_wp_error( $existing ) ) {
+			return [
+				'type'              => 'write',
+				'will_execute'      => false,
+				'action'            => 'products.update_catalog_batch',
+				'summary'           => $existing->get_error_message(),
+				'message'           => $existing->get_error_message(),
+				'blocked'           => true,
+				'block_reason'      => $existing->get_error_code(),
+				'items'             => [],
+				'count'             => 0,
+				'changes_store'     => false,
+				'idempotent_replay' => false,
+			];
+		}
+
+		if ( is_array( $existing ) ) {
+			return [
+				'type'              => 'write',
+				'will_execute'      => false,
+				'action'            => 'products.update_catalog_batch',
+				'summary'           => __( 'This batch idempotency key already completed; retrying will return the saved result without applying updates again.', 'yoro-ai-core' ),
+				'message'           => __( 'This batch idempotency key already completed; retrying will return the saved result without applying updates again.', 'yoro-ai-core' ),
+				'blocked'           => false,
+				'block_reason'      => '',
+				'items'             => $existing['results'] ?? [],
+				'count'             => 0,
+				'changes_store'     => false,
+				'idempotent_replay' => true,
+			];
+		}
+
+		return self::build_batch_preview( $contract );
+	}
+
+	private static function normalize_batch_contract( $params ) {
+		$params = is_array( $params ) ? $params : [];
+		$items  = [];
+		$patch_fields = [ 'regular_price', 'sale_price', 'sale_price_from', 'sale_price_to', 'status', 'catalog_visibility' ];
+
+		foreach ( is_array( $params['items'] ?? null ) ? $params['items'] : [] as $item ) {
+			$item  = is_array( $item ) ? $item : [];
+			$patch = is_array( $item['patch'] ?? null ) ? $item['patch'] : [];
+			$items[] = [
+				'product_id'       => absint( $item['product_id'] ?? 0 ),
+				'variation_id'     => absint( $item['variation_id'] ?? 0 ),
+				'product_sku'      => sanitize_text_field( $item['product_sku'] ?? '' ),
+				'global_unique_id' => sanitize_text_field( $item['global_unique_id'] ?? '' ),
+				'patch'            => array_intersect_key(
+					$patch,
+					array_fill_keys( $patch_fields, true )
+				),
+				'patch_valid'      => is_array( $item['patch'] ?? null ) && empty( array_diff( array_keys( $patch ), $patch_fields ) ),
+			];
+		}
+
+		return [
+			'items'                    => $items,
+			'items_input_valid'        => is_array( $params['items'] ?? null ),
+			'idempotency_key'          => sanitize_text_field( $params['idempotency_key'] ?? '' ),
+			'idempotency_key_original' => trim( (string) ( $params['idempotency_key'] ?? '' ) ),
+		];
+	}
+
+	private static function validate_batch_contract( $contract ) {
+		if ( ! $contract['items_input_valid'] || empty( $contract['items'] ) || count( $contract['items'] ) > self::BATCH_MAX_ITEMS ) {
+			return new WP_Error( 'invalid_catalog_batch_items', __( 'Catalog batch items must contain between 1 and 20 targets.', 'yoro-ai-core' ) );
+		}
+
+		if ( '' === $contract['idempotency_key'] || strlen( $contract['idempotency_key_original'] ) > 190 ) {
+			return new WP_Error( 'catalog_batch_idempotency_key_required', __( 'A valid idempotency key no longer than 190 characters is required for catalog batch updates.', 'yoro-ai-core' ) );
+		}
+
+		return true;
+	}
+
+	private static function build_batch_preview( $contract ) {
+		$items       = [];
+		$blocked     = false;
+		$seen_target = [];
+
+		foreach ( $contract['items'] as $index => $item ) {
+			$target_count = count(
+				array_filter(
+					[
+						$item['product_id'],
+						$item['variation_id'],
+						$item['product_sku'],
+						$item['global_unique_id'],
+					],
+					static fn( $value ) => '' !== (string) $value && 0 !== $value
+				)
+			);
+			$preview = $item['patch_valid'] && 1 === $target_count
+				? self::preview_update_product_catalog( self::batch_item_params( $item ) )
+				: [
+					'blocked'      => true,
+					'block_reason' => $item['patch_valid'] ? 'ambiguous_catalog_batch_target' : 'invalid_catalog_batch_patch',
+					'message'      => $item['patch_valid']
+						? __( 'Each catalog batch item requires exactly one product or variation identifier.', 'yoro-ai-core' )
+						: __( 'Each catalog batch item requires a patch object containing only supported catalog fields.', 'yoro-ai-core' ),
+				];
+			$product_id = absint( $preview['product_id'] ?? 0 );
+
+			if ( $item['variation_id'] > 0 && 'variation' !== ( $preview['product']['type'] ?? '' ) ) {
+				$preview['blocked']      = true;
+				$preview['block_reason'] = 'invalid_catalog_batch_variation';
+				$preview['message']      = __( 'The variation_id target must resolve to a WooCommerce product variation.', 'yoro-ai-core' );
+			}
+
+			if ( $product_id > 0 && isset( $seen_target[ $product_id ] ) ) {
+				$preview['blocked']      = true;
+				$preview['block_reason'] = 'duplicate_catalog_batch_target';
+				$preview['message']      = __( 'Each product or variation may appear only once in a catalog batch.', 'yoro-ai-core' );
+			}
+
+			if ( $product_id > 0 ) {
+				$seen_target[ $product_id ] = true;
+			}
+
+			$blocked = $blocked || ! empty( $preview['blocked'] );
+			$items[] = [
+				'index'          => $index,
+				'target'         => self::batch_item_target( $item ),
+				'product_id'     => $product_id,
+				'blocked'        => ! empty( $preview['blocked'] ),
+				'block_reason'   => sanitize_key( $preview['block_reason'] ?? '' ),
+				'message'        => sanitize_text_field( $preview['message'] ?? '' ),
+				'changed_fields' => $preview['changed_fields'] ?? [],
+				'changes'        => $preview['changes'] ?? [],
+			];
+		}
+
+		$message = $blocked
+			? __( 'One or more catalog batch items need correction before approval.', 'yoro-ai-core' )
+			: sprintf(
+				/* translators: %d: product count */
+				_n( 'This will update %d product after approval.', 'This will update %d products after approval.', count( $items ), 'yoro-ai-core' ),
+				count( $items )
+			);
+
+		return [
+			'type'              => 'write',
+			'will_execute'      => false,
+			'action'            => 'products.update_catalog_batch',
+			'summary'           => $message,
+			'message'           => $message,
+			'blocked'           => $blocked,
+			'block_reason'      => $blocked ? 'catalog_batch_validation_failed' : '',
+			'items'             => $items,
+			'count'             => $blocked ? 0 : count( $items ),
+			'changes_store'     => ! $blocked,
+			'idempotent_replay' => false,
+		];
+	}
+
+	private static function batch_item_params( $item ) {
+		return array_merge(
+			[
+				'product_id'       => $item['product_id'] > 0 ? $item['product_id'] : $item['variation_id'],
+				'product_sku'      => $item['product_sku'],
+				'global_unique_id' => $item['global_unique_id'],
+			],
+			$item['patch']
+		);
+	}
+
+	private static function batch_item_target( $item ) {
+		return array_filter(
+			[
+				'product_id'       => absint( $item['product_id'] ?? 0 ),
+				'variation_id'     => absint( $item['variation_id'] ?? 0 ),
+				'product_sku'      => sanitize_text_field( $item['product_sku'] ?? '' ),
+				'global_unique_id' => sanitize_text_field( $item['global_unique_id'] ?? '' ),
+			]
+		);
+	}
+
+	private static function batch_idempotency_option_name( $key ) {
+		return self::BATCH_IDEMPOTENCY_OPTION_PREFIX . substr( hash( 'sha256', $key ), 0, 40 );
+	}
+
+	private static function batch_idempotency_signature( $contract ) {
+		return hash( 'sha256', wp_json_encode( $contract['items'] ) );
+	}
+
+	private static function batch_idempotency_result( $contract ) {
+		$record = get_option( self::batch_idempotency_option_name( $contract['idempotency_key'] ), null );
+
+		if ( ! is_array( $record ) ) {
+			return null;
+		}
+
+		if ( ! hash_equals( (string) ( $record['signature'] ?? '' ), self::batch_idempotency_signature( $contract ) ) ) {
+			return new WP_Error( 'catalog_batch_idempotency_key_conflict', __( 'That catalog batch idempotency key was already used with different targets or patches.', 'yoro-ai-core' ) );
+		}
+
+		if ( 'complete' === ( $record['status'] ?? '' ) && is_array( $record['result'] ?? null ) ) {
+			$result = $record['result'];
+			$result['idempotent_replay'] = true;
+			$result['count']             = 0;
+			$result['meta']['changes_store']     = false;
+			$result['meta']['idempotent_replay'] = true;
+
+			return $result;
+		}
+
+		return new WP_Error( 'catalog_batch_in_progress', __( 'A catalog batch with that idempotency key is already in progress.', 'yoro-ai-core' ) );
+	}
+
+	private static function acquire_batch_idempotency_lock( $contract ) {
+		$option_name = self::batch_idempotency_option_name( $contract['idempotency_key'] );
+		$record      = [
+			'status'     => 'in_progress',
+			'signature'  => self::batch_idempotency_signature( $contract ),
+			'created_at' => gmdate( 'c' ),
+		];
+
+		if ( add_option( $option_name, $record, '', false ) ) {
+			return true;
+		}
+
+		$existing = self::batch_idempotency_result( $contract );
+
+		return null === $existing
+			? new WP_Error( 'catalog_batch_lock_failed', __( 'The catalog batch could not acquire an idempotency lock.', 'yoro-ai-core' ) )
+			: $existing;
+	}
+
+	private static function complete_batch_idempotency_record( $contract, $result ) {
+		update_option(
+			self::batch_idempotency_option_name( $contract['idempotency_key'] ),
+			[
+				'status'       => 'complete',
+				'signature'    => self::batch_idempotency_signature( $contract ),
+				'completed_at' => gmdate( 'c' ),
+				'result'       => $result,
+			],
+			false
+		);
 	}
 
 	private static function normalize_catalog_contract( $params ) {

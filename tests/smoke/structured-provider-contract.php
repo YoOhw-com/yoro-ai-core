@@ -171,7 +171,7 @@ if ( class_exists( 'YoRo_Action_Catalog_Builder' ) && class_exists( 'YoRo_Contex
 		$assert( in_array( 'preorder', $stock_status_keys, true ), 'products.update_stock_status must expose custom stock statuses in value_catalogs.' );
 	}
 
-	foreach ( [ 'orders.search', 'operations.get_summary', 'store.get_daily_briefing', 'store.get_business_summary', 'store.get_insights' ] as $windowed_action ) {
+	foreach ( [ 'orders.search', 'operations.get_summary', 'store.get_daily_briefing', 'store.get_business_summary', 'store.get_refund_intelligence', 'store.get_insights' ] as $windowed_action ) {
 		if ( isset( $by_name[ $windowed_action ] ) ) {
 			$assert( array_key_exists( 'time_window', (array) ( $by_name[ $windowed_action ]['input_schema'] ?? [] ) ), sprintf( '%s must expose structured time_window.', $windowed_action ) );
 		}
@@ -180,6 +180,7 @@ if ( class_exists( 'YoRo_Action_Catalog_Builder' ) && class_exists( 'YoRo_Contex
 	$report_topics = [
 		'store.get_daily_briefing'   => 'overview',
 		'store.get_business_summary' => 'sales',
+		'store.get_refund_intelligence' => 'refunds',
 		'operations.get_summary'     => 'operations',
 		'store.get_insights'         => 'signals',
 	];
@@ -213,7 +214,7 @@ if ( class_exists( 'YoRo_Action_Catalog_Builder' ) && class_exists( 'YoRo_Contex
 
 		sort( $report_actions );
 
-		$assert( [ 'operations.get_summary', 'store.get_business_summary', 'store.get_daily_briefing', 'store.get_insights' ] === $report_actions, 'Report-provider catalog scope must expose only store report providers.' );
+		$assert( [ 'operations.get_summary', 'store.get_business_summary', 'store.get_daily_briefing', 'store.get_insights', 'store.get_refund_intelligence' ] === $report_actions, 'Report-provider catalog scope must expose only store report providers.' );
 		$assert( 'report_provider_catalog' === ( $report_hints['catalog_scope'] ?? '' ), 'Report-provider catalog scope must be exposed in router hints.' );
 		$assert( 'provider_catalog' === ( $report_hints['report_topic_selection'] ?? '' ), 'Report-provider catalog hints must delegate report topic selection to YoRo AI.' );
 		$assert( true === ( $report_hints['report_provider_catalog'] ?? false ), 'Report-provider catalog hint must be explicit.' );
@@ -222,6 +223,10 @@ if ( class_exists( 'YoRo_Action_Catalog_Builder' ) && class_exists( 'YoRo_Contex
 		$overview_context = array_merge( $report_context, [ 'report_topic' => 'overview' ] );
 		$overview_hints = YoRo_Action_Catalog_Builder::build_router_hints( 'Can you show store performance?', $overview_context, $report_catalog );
 		$assert( 'overview' === ( $overview_hints['report_topic'] ?? '' ), 'Report topic hint must preserve explicit UI report context.' );
+
+		$refunds_context = array_merge( $report_context, [ 'report_topic' => 'refunds' ] );
+		$refunds_hints = YoRo_Action_Catalog_Builder::build_router_hints( 'Show refund intelligence', $refunds_context, $report_catalog );
+		$assert( 'refunds' === ( $refunds_hints['report_topic'] ?? '' ), 'Report topic hint must preserve explicit refund UI context.' );
 	}
 
 if ( class_exists( 'YoRo_Store_Knowledge_Provider' ) ) {

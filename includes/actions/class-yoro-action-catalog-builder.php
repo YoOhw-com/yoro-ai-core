@@ -60,6 +60,7 @@ class YoRo_Action_Catalog_Builder {
 			'orders.update_status'            => 'update_order_status',
 			'products.get_details'            => 'product_details',
 			'products.update_catalog'         => 'update_product_catalog',
+			'products.update_catalog_batch'   => 'update_product_catalog_batch',
 			'products.update_stock'           => 'update_product_stock',
 			'products.update_stock_status'    => 'update_product_stock_status',
 			'orders.add_note'                 => 'add_note',
@@ -67,6 +68,7 @@ class YoRo_Action_Catalog_Builder {
 			'orders.restore_statuses'         => 'update_order_status',
 			'operations.get_summary'          => 'operations_report',
 			'store.get_business_summary'      => 'sales_report',
+			'store.get_refund_intelligence'   => 'refund_report',
 			'store.get_daily_briefing'        => 'store_report',
 			'store.get_insights'              => 'store_signals',
 			'operations.get_attention_queue'  => 'operations_attention',
@@ -137,7 +139,7 @@ class YoRo_Action_Catalog_Builder {
 	private static function report_topic_from_context( $context ) {
 		$topic = sanitize_key( $context['report_topic'] ?? '' );
 
-		return in_array( $topic, [ 'overview', 'sales', 'operations', 'signals' ], true ) ? $topic : '';
+		return in_array( $topic, [ 'overview', 'sales', 'operations', 'signals', 'refunds' ], true ) ? $topic : '';
 	}
 
 	private static function is_report_provider_catalog( $catalog ) {
@@ -281,7 +283,42 @@ class YoRo_Action_Catalog_Builder {
 				continue;
 			}
 
-			$normalized[ $param ] = sanitize_text_field( $type );
+			$normalized[ $param ] = is_array( $type )
+				? self::normalize_structured_schema_definition( $type )
+				: sanitize_text_field( $type );
+		}
+
+		return $normalized;
+	}
+
+	private static function normalize_structured_schema_definition( $definition ) {
+		$normalized = [];
+		$schema_keys = [
+			'additionalProperties' => 'additionalProperties',
+			'anyOf'                => 'anyOf',
+			'items'                => 'items',
+			'maxItems'             => 'maxItems',
+			'minItems'             => 'minItems',
+			'oneOf'                => 'oneOf',
+			'properties'           => 'properties',
+			'required'             => 'required',
+			'type'                 => 'type',
+		];
+
+		foreach ( is_array( $definition ) ? $definition : [] as $key => $value ) {
+			$key = is_int( $key ) ? $key : ( $schema_keys[ $key ] ?? sanitize_key( $key ) );
+
+			if ( '' === $key ) {
+				continue;
+			}
+
+			if ( is_array( $value ) ) {
+				$normalized[ $key ] = self::normalize_structured_schema_definition( $value );
+			} elseif ( is_bool( $value ) || is_int( $value ) || is_float( $value ) ) {
+				$normalized[ $key ] = $value;
+			} else {
+				$normalized[ $key ] = sanitize_text_field( $value );
+			}
 		}
 
 		return $normalized;
@@ -290,7 +327,7 @@ class YoRo_Action_Catalog_Builder {
 	private static function value_catalogs_for_action( $action ) {
 		$action = sanitize_text_field( $action );
 
-		if ( 'products.update_catalog' === $action ) {
+		if ( in_array( $action, [ 'products.update_catalog', 'products.update_catalog_batch' ], true ) ) {
 			$visibility_options = function_exists( 'wc_get_product_visibility_options' )
 				? wc_get_product_visibility_options()
 				: [
@@ -582,6 +619,7 @@ class YoRo_Action_Catalog_Builder {
 			'products.update_stock_status'         => [ 'product_id', 'stock_status' ],
 			'products.get_details'                 => [ 'product_id' ],
 			'products.update_catalog'              => [ 'product_id' ],
+			'products.update_catalog_batch'        => [ 'items', 'idempotency_key' ],
 			'coupons.lookup'                       => [ 'coupon_code' ],
 			'coupons.create'                       => [ 'coupon_code', 'discount_type', 'discount_amount' ],
 			'coupons.update'                       => [ 'coupon_code' ],
@@ -601,6 +639,7 @@ class YoRo_Action_Catalog_Builder {
 
 		$map = [
 			'store.get_business_summary'                    => 'sales_report',
+			'store.get_refund_intelligence'                 => 'refund_report',
 			'store.get_daily_briefing'                      => 'store_report',
 			'operations.get_summary'                        => 'operations_report',
 			'store.get_insights'                            => 'store_signals',
@@ -611,6 +650,7 @@ class YoRo_Action_Catalog_Builder {
 			'products.update_stock_status'                  => 'update_product_stock_status',
 			'products.get_details'                          => 'product_details',
 			'products.update_catalog'                       => 'update_product_catalog',
+			'products.update_catalog_batch'                 => 'product_catalog_batch_update',
 			'coupons.lookup'                                => 'coupon_lookup',
 			'coupons.create'                                => 'coupon_create',
 			'coupons.update'                                => 'coupon_update',
@@ -641,6 +681,7 @@ class YoRo_Action_Catalog_Builder {
 			'sales_report' => 'Use for the sales part of the store report: revenue, order value, customer activity, product demand, or commercial performance.',
 			'operations_report' => 'Use for the operations part of the store report: order flow, backlog, aged queues, workload, or execution pressure.',
 			'store_signals' => 'Use for the signals part of the store report: patterns, trends, grouped signals, or cross-domain reads across orders, customers, products, and inventory.',
+			'refund_report' => 'Use for refund amount, count, rates, top refunded products, refund reasons, safe refund drilldowns, and period comparison.',
 			'operations_attention' => 'Use for urgent, manual review, or needs-attention queue requests.',
 			'fulfillment_review' => 'Use for shipping blockers, fulfillment backlog, or waiting-to-ship queue requests.',
 			'inventory_review' => 'Use for stock pressure, low-stock, restock, backorder, or inventory queue requests.',
@@ -648,6 +689,7 @@ class YoRo_Action_Catalog_Builder {
 			'update_product_stock_status' => 'Use for changing one specific product manual stock status to one of the store configured stock statuses. This is a write action and requires confirmation.',
 			'product_details' => 'Use for opening live catalog, price, visibility, and inventory details for one specific product or variation.',
 			'update_product_catalog' => 'Use for changing explicit catalog fields on one specific product or variation, including prices, sale schedule, publish status, or catalog visibility. This requires confirmation.',
+			'product_catalog_batch_update' => 'Use for changing explicit catalog fields across 1 to 20 unique products or variations. This requires a per-target patch, confirmation, and an idempotency key.',
 			'coupon_lookup' => 'Use for looking up one specific coupon by coupon code or coupon ID. This is read-only.',
 			'coupon_create' => 'Use for creating one new WooCommerce coupon with a code, discount type, and discount amount. This is a write action and requires confirmation.',
 			'coupon_update' => 'Use for updating one existing coupon or enabling/disabling it without deletion. This is a write action and requires confirmation.',
@@ -689,6 +731,16 @@ class YoRo_Action_Catalog_Builder {
 				'topic'          => 'sales',
 				'role'           => 'Best for revenue, sales, customer activity, product demand, and commercial performance.',
 				'metric_domains' => [ 'revenue', 'orders', 'customers', 'products' ],
+				'supports_comparison' => true,
+				'answer_shapes'       => [ 'report', 'metric_comparison' ],
+				'comparison_source'   => 'time_window.comparison_or_previous_period',
+			],
+			'store.get_refund_intelligence' => [
+				'user_surface'        => 'store_report',
+				'report_type'         => 'refund_intelligence',
+				'topic'               => 'refunds',
+				'role'                => 'Best for refund amount, count, rates, products, reasons, and safe refund drilldowns.',
+				'metric_domains'      => [ 'refunds', 'orders', 'products', 'revenue' ],
 				'supports_comparison' => true,
 				'answer_shapes'       => [ 'report', 'metric_comparison' ],
 				'comparison_source'   => 'time_window.comparison_or_previous_period',

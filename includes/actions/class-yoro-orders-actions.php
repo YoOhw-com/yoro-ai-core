@@ -352,6 +352,85 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
+			'products.update_catalog_batch',
+			[
+				'label'                 => __( 'Update product catalog batch', 'yoro-ai-core' ),
+				'description'           => __( 'Update explicit catalog fields for up to 20 products or variations in one confirmed batch.', 'yoro-ai-core' ),
+				'category'              => 'products',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'update_product_catalog_batch' ],
+				'risk_level'            => 'medium',
+				'write_action'          => true,
+				'requires_confirmation' => true,
+				'input_schema'          => [
+					'items' => [
+						'type'     => 'array',
+						'minItems' => 1,
+						'maxItems' => 20,
+						'items'    => [
+							'type'                 => 'object',
+							'properties'           => [
+								'product_id'       => [ 'type' => 'integer' ],
+								'variation_id'     => [ 'type' => 'integer' ],
+								'product_sku'      => [ 'type' => 'string' ],
+								'global_unique_id' => [ 'type' => 'string' ],
+								'patch'            => [
+									'type'                 => 'object',
+									'properties'           => [
+										'regular_price'      => [ 'type' => 'number' ],
+										'sale_price'         => [ 'type' => [ 'number', 'string' ] ],
+										'sale_price_from'    => [ 'type' => 'string' ],
+										'sale_price_to'      => [ 'type' => 'string' ],
+										'status'             => [ 'type' => 'string' ],
+										'catalog_visibility' => [ 'type' => 'string' ],
+									],
+									'additionalProperties' => false,
+								],
+							],
+							'required'             => [ 'patch' ],
+							'anyOf'                => [
+								[ 'required' => [ 'product_id' ] ],
+								[ 'required' => [ 'variation_id' ] ],
+								[ 'required' => [ 'product_sku' ] ],
+								[ 'required' => [ 'global_unique_id' ] ],
+							],
+							'additionalProperties' => false,
+						],
+					],
+					'idempotency_key' => 'string',
+				],
+				'product_identifier_types' => self::product_identifier_types(),
+				'preview_callback'        => [ __CLASS__, 'preview_update_product_catalog_batch' ],
+				'max_items'               => 20,
+				'max_targets'             => 20,
+				'supports_bulk'           => true,
+				'target_type'             => 'product',
+				'reversibility'           => 'partial',
+				'ai_description'          => __( 'Update one to 20 products or variations by ID, SKU, or global unique ID. Every item has its own explicit catalog patch. Preview validates all targets and patches; execution requires confirmation and an idempotency key.', 'yoro-ai-core' ),
+				'ai_examples'             => [
+					'Update prices for these three products',
+					'Hide these SKUs from the catalog',
+					'Cập nhật giá cho danh sách sản phẩm này',
+				],
+				'required_params'         => [ 'items', 'idempotency_key' ],
+				'param_hints'             => [
+					'items'           => __( 'Provide 1 to 20 unique product or variation targets, each with an explicit patch object.', 'yoro-ai-core' ),
+					'idempotency_key' => __( 'Provide a stable unique key for this exact batch so retries cannot apply it twice.', 'yoro-ai-core' ),
+				],
+				'clarification_hints'     => [
+					'items' => __( 'Ask which products and exact catalog fields should be updated when the batch scope is incomplete.', 'yoro-ai-core' ),
+				],
+				'capabilities'            => [
+					'products',
+					'catalog',
+					'pricing',
+					'bulk',
+					'write',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
 			'products.update_stock',
 			[
 				'label'                 => __( 'Update product stock', 'yoro-ai-core' ),
@@ -691,6 +770,49 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
+			'store.get_refund_intelligence',
+			[
+				'label'            => __( 'Get refund intelligence', 'yoro-ai-core' ),
+				'description'      => __( 'Analyze refund amount, rate, count, products, reasons, and safe refund drilldowns for a canonical time window.', 'yoro-ai-core' ),
+				'category'         => 'store',
+				'permission'       => 'manage_woocommerce',
+				'callback'         => [ __CLASS__, 'get_refund_intelligence' ],
+				'risk_level'       => 'low',
+				'write_action'     => false,
+				'input_schema'     => [
+					'window'       => 'string',
+					'time_window'  => 'object',
+					'limit'        => 'integer',
+					'answer_shape' => 'string',
+				],
+				'preview_callback' => [ __CLASS__, 'preview_get_refund_intelligence' ],
+				'max_items'        => 20,
+				'ai_description'   => __( 'Use as the refund report provider for refund volume, amount, rates, top refunded products, refund reasons, and safe refund drilldowns. Honor the structured time window and its comparison period.', 'yoro-ai-core' ),
+				'ai_examples'      => [
+					'Show refund intelligence this month',
+					'Compare refunds this week with last week',
+					'Phân tích hoàn tiền tháng này',
+				],
+				'required_params'     => [],
+				'param_hints'         => [
+					'window'       => __( 'Use the canonical window key resolved from the person request.', 'yoro-ai-core' ),
+					'time_window'  => __( 'Use the structured time-window contract, including comparison when the person asks for one.', 'yoro-ai-core' ),
+					'limit'        => __( 'Limit safe refund drilldowns to 1 through 20 rows.', 'yoro-ai-core' ),
+					'answer_shape' => __( 'Use metric_comparison for an explicit comparison request; otherwise use report.', 'yoro-ai-core' ),
+				],
+				'clarification_hints' => [],
+				'capabilities' => [
+					'store',
+					'orders',
+					'refunds',
+					'products',
+					'read',
+					'reporting',
+				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
 			'store.get_insights',
 			[
 				'label'       => __( 'Get store signal report', 'yoro-ai-core' ),
@@ -987,7 +1109,7 @@ class YoRo_Orders_Actions {
 			'orders.create_refund',
 			[
 				'label'                 => __( 'Create order refund', 'yoro-ai-core' ),
-				'description'           => __( 'Create an amount-based WooCommerce refund for one order.', 'yoro-ai-core' ),
+				'description'           => __( 'Create an amount-based or itemized WooCommerce refund for one order.', 'yoro-ai-core' ),
 				'category'              => 'orders',
 				'permission'            => 'manage_woocommerce',
 				'callback'              => [ __CLASS__, 'create_refund' ],
@@ -1003,10 +1125,28 @@ class YoRo_Orders_Actions {
 					'amount'         => 'number',
 					'reason'         => 'string',
 					'refund_payment' => 'boolean',
+					'line_items'     => [
+						'type'     => 'array',
+						'maxItems' => 100,
+						'items'    => [
+							'type'                 => 'object',
+							'properties'           => [
+								'order_item_id' => [ 'type' => 'integer' ],
+								'quantity'      => [ 'type' => 'integer' ],
+								'amount'        => [ 'type' => 'number' ],
+								'tax'           => [ 'type' => [ 'number', 'object' ] ],
+							],
+							'required'             => [ 'order_item_id', 'quantity', 'amount', 'tax' ],
+							'additionalProperties' => false,
+						],
+					],
+					'shipping_amount' => 'number',
+					'restock_items'   => 'boolean',
+					'idempotency_key' => 'string',
 				],
 				'preview_callback'      => [ __CLASS__, 'preview_create_refund' ],
 				'max_items'             => 1,
-				'ai_description'        => __( 'Create one irreversible amount-based refund after explicit approval. refund_payment is required: true asks the original payment gateway to send money and is allowed only when the live gateway supports refunds; false records a manual refund in WooCommerce.', 'yoro-ai-core' ),
+				'ai_description'        => __( 'Create one irreversible amount-based or line-item refund after explicit approval. refund_payment is required. Optional line_items, shipping_amount, and restock_items must match live remaining quantities and amounts. Use a stable idempotency_key for safe retries.', 'yoro-ai-core' ),
 				'ai_examples'           => [
 					'Refund 25 dollars for order #1234 and record it manually',
 					'Refund 25 through the payment gateway for order #1234',
@@ -1018,6 +1158,10 @@ class YoRo_Orders_Actions {
 					'amount'         => __( 'Use a positive amount no greater than the live remaining refundable amount.', 'yoro-ai-core' ),
 					'reason'         => __( 'Use the person-provided refund reason without inventing one.', 'yoro-ai-core' ),
 					'refund_payment' => __( 'This boolean is mandatory. Use true only when the person explicitly wants the gateway to send money; use false for a manual WooCommerce refund record.', 'yoro-ai-core' ),
+					'line_items'     => __( 'Use exact order item IDs, remaining quantities, line amounts, and taxes from the live preview.', 'yoro-ai-core' ),
+					'shipping_amount' => __( 'Use a non-negative shipping amount no greater than live remaining refundable shipping.', 'yoro-ai-core' ),
+					'restock_items'   => __( 'Use true only when the person explicitly wants refunded product quantities returned to managed stock.', 'yoro-ai-core' ),
+					'idempotency_key' => __( 'Use a stable unique key for this exact refund request so a retry cannot create a duplicate refund.', 'yoro-ai-core' ),
 				],
 				'clarification_hints'   => [
 					'order_id'       => __( 'Ask which order should be refunded when no target is clear.', 'yoro-ai-core' ),
@@ -1776,6 +1920,10 @@ class YoRo_Orders_Actions {
 		return YoRo_Store_Catalog_Service::update_product_catalog( $params );
 	}
 
+	public static function update_product_catalog_batch( $params ) {
+		return YoRo_Store_Catalog_Service::update_product_catalog_batch( $params );
+	}
+
 	public static function update_product_stock( $params ) {
 		return YoRo_Store_Inventory_Service::update_product_stock( $params );
 	}
@@ -1802,6 +1950,10 @@ class YoRo_Orders_Actions {
 
 	public static function get_business_summary( $params ) {
 		return YoRo_Orders_Read_Service::get_business_summary( $params );
+	}
+
+	public static function get_refund_intelligence( $params ) {
+		return YoRo_Refund_Intelligence_Service::get_refund_intelligence( $params );
 	}
 
 	public static function get_daily_briefing( $params ) {
@@ -1932,6 +2084,10 @@ class YoRo_Orders_Actions {
 		return YoRo_Store_Catalog_Service::preview_update_product_catalog( $params );
 	}
 
+	public static function preview_update_product_catalog_batch( $params ) {
+		return YoRo_Store_Catalog_Service::preview_update_product_catalog_batch( $params );
+	}
+
 	public static function preview_update_product_stock( $params ) {
 		return YoRo_Store_Inventory_Service::preview_update_product_stock( $params );
 	}
@@ -1958,6 +2114,10 @@ class YoRo_Orders_Actions {
 
 	public static function preview_get_business_summary( $params ) {
 		return YoRo_Orders_Read_Service::preview_get_business_summary( $params );
+	}
+
+	public static function preview_get_refund_intelligence( $params ) {
+		return YoRo_Refund_Intelligence_Service::preview_get_refund_intelligence( $params );
 	}
 
 	public static function preview_get_daily_briefing( $params ) {

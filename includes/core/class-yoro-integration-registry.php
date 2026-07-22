@@ -8,12 +8,11 @@ class YoRo_Integration_Registry {
 
 	const REGISTRY_VERSION = 1;
 	const CORE_TRACKING_ADAPTER = 'woocommerce.core_tracking';
+	const SHIPMENT_TRACKING_ADAPTER = 'woocommerce.shipment_tracking';
 
 	public static function adapters() {
-		$adapters = apply_filters(
-			'yoro_integration_adapters',
-			[
-				self::CORE_TRACKING_ADAPTER => [
+		$builtin_adapters = [
+			self::CORE_TRACKING_ADAPTER => [
 					'key'          => self::CORE_TRACKING_ADAPTER,
 					'label'        => 'WooCommerce core tracking record',
 					'domain'       => 'fulfillment',
@@ -24,9 +23,25 @@ class YoRo_Integration_Registry {
 						'orders.add_tracking' => [ __CLASS__, 'write_core_tracking' ],
 					],
 					'source'       => 'yoro_connector_builtin',
+			],
+		];
+
+		if ( function_exists( 'wc_st_add_tracking_number' ) ) {
+			$builtin_adapters[ self::SHIPMENT_TRACKING_ADAPTER ] = [
+				'key'          => self::SHIPMENT_TRACKING_ADAPTER,
+				'label'        => 'WooCommerce Shipment Tracking',
+				'domain'       => 'fulfillment',
+				'version'      => 1,
+				'active'       => true,
+				'capabilities' => [ 'orders.add_tracking' ],
+				'callbacks'    => [
+					'orders.add_tracking' => [ __CLASS__, 'write_shipment_tracking' ],
 				],
-			]
-		);
+				'source'       => 'woocommerce_extension',
+			];
+		}
+
+		$adapters = apply_filters( 'yoro_integration_adapters', $builtin_adapters );
 
 		$normalized = [];
 
@@ -164,6 +179,47 @@ class YoRo_Integration_Registry {
 		];
 	}
 
+	public static function write_shipment_tracking( $params ) {
+		$order           = $params['order'] ?? null;
+		$tracking        = isset( $params['tracking'] ) && is_array( $params['tracking'] ) ? $params['tracking'] : [];
+		$tracking_number = sanitize_text_field( $tracking['tracking_number'] ?? '' );
+
+		if ( ! function_exists( 'wc_st_add_tracking_number' ) ) {
+			return new WP_Error(
+				'yoro_integration_adapter_unavailable',
+				__( 'WooCommerce Shipment Tracking is not available.', 'yoro-ai-core' )
+			);
+		}
+
+		if ( ! $order instanceof WC_Order || '' === $tracking_number ) {
+			return new WP_Error(
+				'yoro_invalid_tracking_contract',
+				__( 'A valid order and tracking number are required.', 'yoro-ai-core' )
+			);
+		}
+
+		$provider    = sanitize_text_field( $tracking['carrier'] ?? '' );
+		$tracking_url = esc_url_raw( $tracking['tracking_url'] ?? '' );
+		$date_shipped = self::shipment_tracking_timestamp( $tracking['shipped_at'] ?? '' );
+		$reflection  = new ReflectionFunction( 'wc_st_add_tracking_number' );
+
+		if ( $reflection->getNumberOfParameters() >= 5 ) {
+			wc_st_add_tracking_number( $order->get_id(), $tracking_number, $provider, $date_shipped, $tracking_url );
+		} else {
+			wc_st_add_tracking_number( $order->get_id(), $tracking_number, $provider, $date_shipped );
+		}
+
+		return [
+			'success'  => true,
+			'tracking' => [
+				'tracking_number' => $tracking_number,
+				'carrier'         => $provider,
+				'tracking_url'    => $tracking_url,
+				'shipped_at'      => sanitize_text_field( $tracking['shipped_at'] ?? '' ),
+			],
+		];
+	}
+
 	public static function facts() {
 		$plugins             = self::plugin_inventory();
 		$adapter_facts       = self::adapter_facts();
@@ -282,6 +338,22 @@ class YoRo_Integration_Registry {
 			'callbacks'    => $callbacks,
 			'source'       => sanitize_key( $adapter['source'] ?? 'connector_extension' ),
 		];
+	}
+
+	private static function shipment_tracking_timestamp( $value ) {
+		$value = sanitize_text_field( (string) $value );
+
+		if ( '' === $value ) {
+			return time();
+		}
+
+		try {
+			$date = new DateTimeImmutable( $value, wp_timezone() );
+
+			return $date->getTimestamp();
+		} catch ( Exception $exception ) {
+			return time();
+		}
 	}
 
 	private static function woocommerce_adapter_status() {

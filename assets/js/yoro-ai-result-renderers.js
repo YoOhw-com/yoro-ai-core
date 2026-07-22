@@ -107,6 +107,8 @@
 			'coupons.update': 'Update coupon',
 			'products.get_details': 'Open product details',
 			'products.update_catalog': 'Update product catalog',
+			'products.update_catalog_batch': 'Update product catalog batch',
+			'store.get_refund_intelligence': 'Get refund intelligence',
 			'store_preferences.save': 'Save store preference',
 		};
 
@@ -1332,6 +1334,22 @@
 
 		if (isCouponAction(action)) {
 			return couponConfirmationLines(action, params, result, { completed: completed });
+		}
+
+		if (action === 'products.update_catalog_batch') {
+			const batchItems = Array.isArray(result.items) ? result.items : (Array.isArray(result.results) ? result.results : []);
+
+			batchItems.slice(0, 20).forEach(function(item) {
+				item = item || {};
+				const target = item.product_id ? ('Product #' + item.product_id) : ('Batch item ' + (Number(item.index || 0) + 1));
+				const fields = Array.isArray(item.changed_fields) ? item.changed_fields.join(', ') : '';
+				const state = item.blocked || item.success === false ? (item.message || item.block_reason || 'needs correction') : (completed ? 'updated' : 'will update');
+				lines.push(target + ': ' + state + (fields ? ' (' + fields + ')' : '') + '.');
+			});
+
+			if (batchItems.length) {
+				return lines.filter(Boolean);
+			}
 		}
 
 		if (result.blocked === true || result.block_reason) {
@@ -2747,6 +2765,11 @@
 				return {
 					title: 'Product updated',
 					message: result.summary || 'I updated the product catalog details.'
+				};
+			case 'products.update_catalog_batch':
+				return {
+					title: result.idempotent_replay ? 'Catalog batch already applied' : 'Catalog batch completed',
+					message: result.summary || 'I completed the product catalog batch.'
 				};
 			default:
 				return {
