@@ -6,7 +6,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Integration_Registry {
 
-	const REGISTRY_VERSION = 2;
+	const REGISTRY_VERSION = 3;
+	const REGISTRY_CONTRACT_TYPE = 'yoro.connector.adapter_registry';
+	const ADAPTER_CONTRACT_TYPE = 'yoro.connector.adapter_descriptor';
+	const CONTRACT_SCHEMA_VERSION = 1;
 	const CORE_TRACKING_ADAPTER = 'woocommerce.core_tracking';
 	const SHIPMENT_TRACKING_ADAPTER = 'woocommerce.shipment_tracking';
 	const WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER = 'woocommerce.subscriptions';
@@ -83,13 +86,48 @@ class YoRo_Integration_Registry {
 		return array_values(
 			array_map(
 				static function( $adapter ) {
-					unset( $adapter['callbacks'] );
-
-					return $adapter;
+					return [
+						'contract_type'   => self::ADAPTER_CONTRACT_TYPE,
+						'schema_version'  => self::CONTRACT_SCHEMA_VERSION,
+						'key'             => $adapter['key'],
+						'label'           => $adapter['label'],
+						'domain'          => $adapter['domain'],
+						'version'         => $adapter['version'],
+						'active'          => $adapter['active'],
+						'capabilities'    => $adapter['capabilities'],
+						'source'          => $adapter['source'],
+						'conformance'     => [
+							'status'                     => 'conformant',
+							'callback_coverage_complete' => true,
+							'capabilities_unique'        => true,
+						],
+					];
 				},
 				self::adapters()
 			)
 		);
+	}
+
+	public static function registry_contract() {
+		return [
+			'contract_type'    => self::REGISTRY_CONTRACT_TYPE,
+			'schema_version'   => self::CONTRACT_SCHEMA_VERSION,
+			'registry_version' => self::REGISTRY_VERSION,
+			'adapters'         => self::adapter_facts(),
+		];
+	}
+
+	public static function define_adapter( $key, array $definition ) {
+		$adapter = self::normalize_adapter( $key, $definition );
+
+		if ( empty( $adapter ) ) {
+			return new WP_Error(
+				'yoro_integration_adapter_nonconformant',
+				__( 'The integration adapter does not conform to the YoRo adapter contract.', 'yoro-ai-core' )
+			);
+		}
+
+		return $adapter;
 	}
 
 	public static function execute( $capability, $params = [], $adapter_key = '' ) {
@@ -262,6 +300,13 @@ class YoRo_Integration_Registry {
 			);
 		}
 
+		if ( self::has_explicit_time_window( $params ) && 'today' !== $window_key ) {
+			return new WP_Error(
+				'yoro_subscription_history_unsupported',
+				__( 'Subscription reporting currently supports only a live snapshot. Choose the current view or use a historical provider.', 'yoro-ai-core' )
+			);
+		}
+
 		$subscriptions = wcs_get_subscriptions(
 			[
 				'subscriptions_per_page' => 500,
@@ -297,6 +342,10 @@ class YoRo_Integration_Registry {
 			'status_counts'   => $status_counts,
 			'currency_totals' => array_map( static fn( $total ) => wc_format_decimal( $total, 2 ), $currency_totals ),
 			'coverage_contract' => [
+				'schema_version'     => 1,
+				'coverage_mode'      => 'live_snapshot',
+				'time_window_support'=> 'current_only',
+				'evidence_mode'      => 'adapter_snapshot',
 				'requested_window'   => YoRo_Date_Helper::build_window_payload( $requested_window ),
 				'observation_kind'   => 'live_snapshot',
 				'historical_evidence' => false,
@@ -413,8 +462,20 @@ class YoRo_Integration_Registry {
 			)
 		);
 
-		if ( '' === $key || '' === $domain || $version < 1 || empty( $capabilities ) ) {
+		if ( '' === $key
+			|| 1 !== preg_match( '/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/', $key )
+			|| '' === $domain
+			|| 1 !== preg_match( '/^[a-z][a-z0-9_]*$/', $domain )
+			|| $version < 1
+			|| empty( $capabilities )
+			|| count( $capabilities ) !== count( array_unique( $capabilities ) ) ) {
 			return [];
+		}
+
+		foreach ( $capabilities as $capability ) {
+			if ( 1 !== preg_match( '/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/', $capability ) ) {
+				return [];
+			}
 		}
 
 		$callbacks = [];
@@ -443,6 +504,11 @@ class YoRo_Integration_Registry {
 			'callbacks'    => $callbacks,
 			'source'       => sanitize_key( $adapter['source'] ?? 'connector_extension' ),
 		];
+	}
+
+	private static function has_explicit_time_window( $params ) {
+		return is_array( $params )
+			&& ( ! empty( $params['time_window'] ) || ! empty( $params['window'] ) || ! empty( $params['date_window'] ) );
 	}
 
 	private static function shipment_tracking_timestamp( $value ) {

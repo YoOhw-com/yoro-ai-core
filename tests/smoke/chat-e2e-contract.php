@@ -11,7 +11,7 @@
  * YORO_RUN_CHAT_E2E=1 YORO_CHAT_E2E_SCENARIO=all wp eval-file wp-content/plugins/yoro-ai-core/tests/smoke/chat-e2e-contract.php
  * YORO_RUN_CHAT_E2E=1 YORO_CHAT_E2E_API_URL=http://127.0.0.1:8010/api/v1 wp eval-file wp-content/plugins/yoro-ai-core/tests/smoke/chat-e2e-contract.php
  *
- * Scenarios: coupon, order, inventory, email, multilingual, all.
+ * Scenarios: coupon, order, inventory, email, multilingual, return_lifecycle, all.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -25,10 +25,10 @@ if ( '1' !== (string) getenv( 'YORO_RUN_CHAT_E2E' ) ) {
 }
 
 $scenario = sanitize_key( (string) ( getenv( 'YORO_CHAT_E2E_SCENARIO' ) ?: 'all' ) );
-$allowed_scenarios = [ 'coupon', 'order', 'inventory', 'email', 'multilingual', 'all' ];
+$allowed_scenarios = [ 'coupon', 'order', 'inventory', 'email', 'multilingual', 'return_lifecycle', 'all' ];
 
 if ( ! in_array( $scenario, $allowed_scenarios, true ) ) {
-	fwrite( STDERR, "Invalid YORO_CHAT_E2E_SCENARIO. Use coupon, order, inventory, email, multilingual, or all.\n" );
+	fwrite( STDERR, "Invalid YORO_CHAT_E2E_SCENARIO. Use coupon, order, inventory, email, multilingual, return_lifecycle, or all.\n" );
 	exit( 1 );
 }
 
@@ -109,6 +109,8 @@ $compact = static function ( array $data ) {
 			'email'        => $data['result']['email'] ?? null,
 			'note_ids'     => $data['result']['note_ids'] ?? null,
 			'order_id'     => $data['result']['order_id'] ?? null,
+			'request_id'   => $data['result']['request_id'] ?? null,
+			'status'       => $data['result']['status'] ?? null,
 			'product_id'   => $data['result']['product_id'] ?? null,
 			'stock_quantity' => $data['result']['stock_quantity'] ?? null,
 			'stock_status' => $data['result']['stock_status'] ?? null,
@@ -415,7 +417,87 @@ try {
 
 			$assert( 200 === (int) ( $response['status'] ?? 0 ), "{$case} chat must return HTTP 200." );
 			$assert_read_action_plan( $data, $case, $expectation['action'] );
+
+			$execution = $execute( $data, false );
+			$execution_data = (array) ( $execution['data'] ?? [] );
+			$debug[ 'multilingual_' . sanitize_key( $case ) . '_execute' ] = [
+				'status' => $execution['status'] ?? 0,
+				'data'   => $compact( $execution_data ),
+			];
+			$assert( 200 === (int) ( $execution['status'] ?? 0 ), "{$case} execution must return HTTP 200." );
+			$assert( true === (bool) ( $execution_data['success'] ?? false ), "{$case} execution must complete successfully." );
+			$assert( true === (bool) ( $execution_data['result']['read_only'] ?? false ), "{$case} execution must remain read-only." );
 		}
+	}
+
+	if ( in_array( $scenario, [ 'multilingual', 'return_lifecycle', 'all' ], true ) ) {
+		$return_product_id = $create_simple_product( 'YORO-CHAT-E2E-RETURN-' . $stamp, 'YoRo multilingual return ' . $stamp );
+		$return_order_id = $create_order( $return_product_id );
+		$return_order = wc_get_order( $return_order_id );
+		$return_items = $return_order ? $return_order->get_items() : [];
+		$return_item = ! empty( $return_items ) ? reset( $return_items ) : null;
+		$return_item_id = $return_item instanceof WC_Order_Item_Product ? $return_item->get_id() : 0;
+		$return_idempotency = 'chat-e2e-return-' . $stamp;
+		$mail_count_before_return = count( $captured_mail );
+		$product_before_return = wc_get_product( $return_product_id );
+		$stock_before_return = $product_before_return ? $product_before_return->get_stock_quantity() : null;
+		$managing_stock_before_return = $product_before_return ? $product_before_return->managing_stock() : null;
+		$return_chat = $chat(
+			'请为订单 #' . $return_order_id
+			. ' 创建退货申请：订单商品项 ID ' . $return_item_id
+			. '，数量 1，类型 return，处理方案 review，原因“包装破损”，幂等键 '
+			. $return_idempotency
+			. '。只记录申请，不退款、不补发、不发邮件、不改库存。'
+		);
+		$return_chat_data = (array) ( $return_chat['data'] ?? [] );
+		$debug['multilingual_return_request_chat'] = $compact( $return_chat_data );
+
+		$assert( $return_product_id > 0 && $return_order_id > 0 && $return_item_id > 0, 'Multilingual return acceptance requires an exact temporary order item.' );
+		$assert( 200 === (int) ( $return_chat['status'] ?? 0 ), 'Multilingual return request chat must return HTTP 200.' );
+		$assert_confirm( $return_chat_data, 'Multilingual return request chat', 'orders.create_return_request' );
+
+		$return_execution = $execute( $return_chat_data, true );
+		$return_execution_data = (array) ( $return_execution['data'] ?? [] );
+		$return_result = (array) ( $return_execution_data['result'] ?? [] );
+		$request_id = sanitize_text_field( $return_result['request_id'] ?? '' );
+		$debug['multilingual_return_request_execute'] = [
+			'status' => $return_execution['status'] ?? 0,
+			'data'   => $compact( $return_execution_data ),
+		];
+
+		$assert( 200 === (int) ( $return_execution['status'] ?? 0 ), 'Multilingual return request execution must return HTTP 200.' );
+		$assert( true === (bool) ( $return_execution_data['success'] ?? false ) && '' !== $request_id, 'Multilingual return request must be recorded.' );
+		$assert( 0.0 === (float) wc_get_order( $return_order_id )->get_total_refunded(), 'Recording a return request must not refund the order.' );
+		$assert( count( $captured_mail ) === $mail_count_before_return, 'Recording a return request must not send email.' );
+		$product_after_return = wc_get_product( $return_product_id );
+		$assert( $product_after_return && $stock_before_return === $product_after_return->get_stock_quantity(), 'Recording a return request must not change stock quantity.' );
+		$assert( $product_after_return && $managing_stock_before_return === $product_after_return->managing_stock(), 'Recording a return request must not change stock management.' );
+
+		$lifecycle_chat = $chat(
+			'وافق على طلب الإرجاع ' . $request_id
+			. ' للطلب #' . $return_order_id
+			. ' بالحالة approved ومفتاح عدم التكرار chat-e2e-approve-' . $stamp
+			. '، وأضف ملاحظة داخلية "تمت مراجعة الصور". لا تنفذ استرداداً أو استبدالاً ولا ترسل بريداً ولا تغيّر المخزون.'
+		);
+		$lifecycle_chat_data = (array) ( $lifecycle_chat['data'] ?? [] );
+		$debug['multilingual_return_lifecycle_chat'] = $compact( $lifecycle_chat_data );
+
+		$assert( 200 === (int) ( $lifecycle_chat['status'] ?? 0 ), 'Multilingual return lifecycle chat must return HTTP 200.' );
+		$assert_confirm( $lifecycle_chat_data, 'Multilingual return lifecycle chat', 'orders.update_return_request' );
+
+		$lifecycle_execution = $execute( $lifecycle_chat_data, true );
+		$lifecycle_execution_data = (array) ( $lifecycle_execution['data'] ?? [] );
+		$debug['multilingual_return_lifecycle_execute'] = [
+			'status' => $lifecycle_execution['status'] ?? 0,
+			'data'   => $compact( $lifecycle_execution_data ),
+		];
+		$stored_returns = (array) wc_get_order( $return_order_id )->get_meta( YoRo_Order_Return_Service::REQUESTS_META_KEY, true );
+
+		$assert( 200 === (int) ( $lifecycle_execution['status'] ?? 0 ), 'Multilingual return lifecycle execution must return HTTP 200.' );
+		$assert( true === (bool) ( $lifecycle_execution_data['success'] ?? false ), 'Multilingual return lifecycle execution must complete successfully.' );
+		$assert( 'approved' === ( $stored_returns[0]['status'] ?? '' ), 'Multilingual lifecycle execution must persist the canonical approved status.' );
+		$assert( 0.0 === (float) wc_get_order( $return_order_id )->get_total_refunded(), 'Lifecycle approval must not refund the order.' );
+		$assert( count( $captured_mail ) === $mail_count_before_return, 'Lifecycle approval must not send email.' );
 	}
 
 	if ( in_array( $scenario, [ 'coupon', 'all' ], true ) ) {
@@ -824,7 +906,9 @@ try {
 }
 
 if ( $failures ) {
-	fwrite( STDERR, "DEBUG=" . wp_json_encode( $debug ) . "\n" );
+	if ( '1' === (string) getenv( 'YORO_CHAT_E2E_DEBUG' ) ) {
+		fwrite( STDERR, "DEBUG=" . wp_json_encode( $debug ) . "\n" );
+	}
 
 	foreach ( $failures as $failure ) {
 		fwrite( STDERR, "FAIL: {$failure}\n" );

@@ -17,6 +17,13 @@ class YoRo_Commerce_Intelligence_Service {
 			return new WP_Error( 'invalid_inventory_risk_window', __( 'Please provide a valid inventory risk time window.', 'yoro-ai-core' ) );
 		}
 
+		if ( self::has_explicit_time_window( $params ) && 'today' !== $window_key ) {
+			return new WP_Error(
+				'historical_inventory_risk_unsupported',
+				__( 'Inventory risk currently supports only a live snapshot. Choose the current view or use a historical inventory provider.', 'yoro-ai-core' )
+			);
+		}
+
 		$queue  = YoRo_Store_Inventory_Service::get_inventory_queue( $params );
 
 		if ( is_wp_error( $queue ) ) {
@@ -78,6 +85,10 @@ class YoRo_Commerce_Intelligence_Service {
 				'forecasted' => false,
 			],
 			'coverage_contract' => [
+				'schema_version'     => 1,
+				'coverage_mode'      => 'live_snapshot',
+				'time_window_support'=> 'current_only',
+				'evidence_mode'      => 'live_inventory_thresholds',
 				'requested_window'   => YoRo_Date_Helper::build_window_payload( $requested_window ),
 				'observation_kind'   => 'live_snapshot',
 				'historical_evidence' => false,
@@ -174,6 +185,16 @@ class YoRo_Commerce_Intelligence_Service {
 				'new_customer_claimed'    => false,
 				'at_risk_claimed'         => false,
 			],
+			'coverage_contract' => [
+				'schema_version'      => 1,
+				'coverage_mode'       => 'bounded_history',
+				'time_window_support' => 'canonical_windows',
+				'evidence_mode'       => 'order_history',
+				'requested_window'    => YoRo_Date_Helper::build_window_payload( $window ),
+				'observation_kind'    => 'historical_window',
+				'historical_evidence'=> true,
+				'observed_at'         => gmdate( DATE_ATOM ),
+			],
 			'read_only'     => true,
 			'changes_store' => false,
 			'processed'     => [],
@@ -207,6 +228,8 @@ class YoRo_Commerce_Intelligence_Service {
 		$requests = [];
 		$by_type = [];
 		$by_resolution = [];
+		$by_status = [];
+		$event_count = 0;
 
 		foreach ( $orders as $order ) {
 			if ( ! $order instanceof WC_Order ) {
@@ -222,15 +245,23 @@ class YoRo_Commerce_Intelligence_Service {
 
 				$type       = sanitize_key( $request['type'] ?? 'return' );
 				$resolution = sanitize_key( $request['resolution'] ?? 'review' );
+				$status     = sanitize_key( $request['status'] ?? 'requested' );
+				$events     = array_values( array_filter( (array) ( $request['events'] ?? [] ), 'is_array' ) );
 				$by_type[ $type ] = ( $by_type[ $type ] ?? 0 ) + 1;
 				$by_resolution[ $resolution ] = ( $by_resolution[ $resolution ] ?? 0 ) + 1;
+				$by_status[ $status ] = ( $by_status[ $status ] ?? 0 ) + 1;
+				$event_count += count( $events );
 				$requests[] = [
 					'request_id'   => sanitize_text_field( $request['request_id'] ?? '' ),
 					'order_id'     => $order->get_id(),
 					'type'         => $type,
 					'resolution'   => $resolution,
+					'status'       => $status,
 					'item_count'   => count( (array) ( $request['line_items'] ?? [] ) ),
+					'event_count'  => count( $events ),
+					'latest_event' => empty( $events ) ? null : end( $events ),
 					'requested_at' => gmdate( DATE_ATOM, $timestamp ),
+					'updated_at'   => sanitize_text_field( $request['updated_at'] ?? $request['requested_at'] ?? '' ),
 				];
 			}
 		}
@@ -251,8 +282,20 @@ class YoRo_Commerce_Intelligence_Service {
 				'request_count' => count( $requests ),
 				'by_type'       => $by_type,
 				'by_resolution' => $by_resolution,
+				'by_status'     => $by_status,
+				'event_count'   => $event_count,
 			],
 			'requests'      => array_slice( $requests, 0, 20 ),
+			'coverage_contract' => [
+				'schema_version'      => 1,
+				'coverage_mode'       => 'bounded_history',
+				'time_window_support' => 'canonical_windows',
+				'evidence_mode'       => 'return_request_events',
+				'requested_window'    => YoRo_Date_Helper::build_window_payload( $window ),
+				'observation_kind'    => 'historical_window',
+				'historical_evidence'=> true,
+				'observed_at'         => gmdate( DATE_ATOM ),
+			],
 			'read_only'     => true,
 			'changes_store' => false,
 			'processed'     => [],
@@ -297,5 +340,10 @@ class YoRo_Commerce_Intelligence_Service {
 		} while ( ! empty( $batch ) && count( $orders ) < self::MAX_ORDERS && ( ! is_object( $result ) || $page <= absint( $result->max_num_pages ?? 0 ) ) );
 
 		return array_slice( $orders, 0, self::MAX_ORDERS );
+	}
+
+	private static function has_explicit_time_window( $params ) {
+		return is_array( $params )
+			&& ( ! empty( $params['time_window'] ) || ! empty( $params['window'] ) || ! empty( $params['date_window'] ) );
 	}
 }

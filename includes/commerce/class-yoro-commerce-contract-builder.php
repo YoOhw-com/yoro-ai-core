@@ -51,6 +51,7 @@ class YoRo_Commerce_Contract_Builder {
 			'expires_at'             => gmdate( 'c', $captured_at + self::MANIFEST_TTL ),
 			'actions'                => $actions,
 			'extensions'             => [
+				'yoro.adapters' => YoRo_Integration_Registry::registry_contract(),
 				'woocommerce.runtime' => [
 					'plugin_version' => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
 					'execution_boundary' => 'plugin_executor',

@@ -66,6 +66,7 @@ class YoRo_Action_Catalog_Builder {
 			'orders.refund_preview'           => 'order_refund',
 			'orders.create_refund'            => 'order_refund',
 			'orders.create_return_request'     => 'return_request',
+			'orders.update_return_request'     => 'return_request_lifecycle',
 			'orders.add_tracking'             => 'order_tracking',
 			'customers.lookup'                => 'customer_lookup',
 			'orders.find_by_customer'         => 'customer_orders',
@@ -347,7 +348,18 @@ class YoRo_Action_Catalog_Builder {
 	private static function value_catalogs_for_action( $action ) {
 		$action = sanitize_text_field( $action );
 
-		if ( 'orders.create_return_request' === $action ) {
+		if ( in_array( $action, [ 'orders.create_return_request', 'orders.update_return_request' ], true ) ) {
+			if ( 'orders.update_return_request' === $action ) {
+				return [
+					'return_request_statuses' => [
+						[ 'key' => 'approved', 'label' => __( 'Approved', 'yoro-ai-core' ) ],
+						[ 'key' => 'rejected', 'label' => __( 'Rejected', 'yoro-ai-core' ) ],
+						[ 'key' => 'cancelled', 'label' => __( 'Cancelled', 'yoro-ai-core' ) ],
+						[ 'key' => 'completed', 'label' => __( 'Completed', 'yoro-ai-core' ) ],
+					],
+				];
+			}
+
 			return [
 				'return_types' => [
 					[ 'key' => 'return', 'label' => __( 'Return', 'yoro-ai-core' ) ],
@@ -680,6 +692,7 @@ class YoRo_Action_Catalog_Builder {
 			'store.get_returns_intelligence'                 => 'returns_report',
 			'subscriptions.get_summary'                       => 'subscriptions_report',
 			'orders.create_return_request'                    => 'return_request',
+			'orders.update_return_request'                    => 'return_request_lifecycle',
 			'store.get_daily_briefing'                      => 'store_report',
 			'operations.get_summary'                        => 'operations_report',
 			'store.get_insights'                            => 'store_signals',
@@ -726,6 +739,7 @@ class YoRo_Action_Catalog_Builder {
 			'customer_lifecycle_report' => 'Use for customer identity and repeat-order behavior in a structured time window without claiming unsupported lifetime status.',
 			'returns_report' => 'Use for recorded return and exchange request volume, requested resolutions, and safe drilldowns.',
 			'return_request' => 'Use for recording one exact return or exchange request. Preserve the user-provided reason and never imply that refund, replacement, contact, or stock change was executed.',
+			'return_request_lifecycle' => 'Use for approving, rejecting, cancelling, or completing one existing return request. This updates only the request lifecycle; refund, replacement, customer contact, and stock changes remain separate confirmed operations.',
 			'subscriptions_report' => 'Use only for the live adapter-backed subscription status and recurring total summary exposed by the canonical manifest.',
 			'operations_attention' => 'Use for urgent, manual review, or needs-attention queue requests.',
 			'fulfillment_review' => 'Use for shipping blockers, fulfillment backlog, or waiting-to-ship queue requests.',
@@ -796,6 +810,11 @@ class YoRo_Action_Catalog_Builder {
 				'topic'          => 'inventory',
 				'role'           => 'Best for live inventory pressure and guarded reorder proposals.',
 				'metric_domains' => [ 'inventory', 'products' ],
+				'coverage_mode'   => 'live_snapshot',
+				'time_window_support' => 'current_only',
+				'evidence_mode'   => 'live_inventory_thresholds',
+				'coverage_contract_version' => 1,
+				'unsupported_window_behavior' => 'clarify',
 			],
 			'store.get_customer_lifecycle' => [
 				'user_surface'   => 'store_report',
@@ -803,6 +822,11 @@ class YoRo_Action_Catalog_Builder {
 				'topic'          => 'customers',
 				'role'           => 'Best for customer identity and repeat-order behavior in the selected window.',
 				'metric_domains' => [ 'customers', 'orders', 'revenue' ],
+				'coverage_mode'   => 'bounded_history',
+				'time_window_support' => 'canonical_windows',
+				'evidence_mode'   => 'order_history',
+				'coverage_contract_version' => 1,
+				'unsupported_window_behavior' => 'clarify',
 			],
 			'store.get_returns_intelligence' => [
 				'user_surface'   => 'store_report',
@@ -810,6 +834,11 @@ class YoRo_Action_Catalog_Builder {
 				'topic'          => 'returns',
 				'role'           => 'Best for recorded return and exchange request volume and requested resolutions.',
 				'metric_domains' => [ 'returns', 'exchanges', 'orders' ],
+				'coverage_mode'   => 'bounded_history',
+				'time_window_support' => 'canonical_windows',
+				'evidence_mode'   => 'return_request_events',
+				'coverage_contract_version' => 1,
+				'unsupported_window_behavior' => 'clarify',
 			],
 			'subscriptions.get_summary' => [
 				'user_surface'   => 'store_report',
@@ -817,6 +846,11 @@ class YoRo_Action_Catalog_Builder {
 				'topic'          => 'subscriptions',
 				'role'           => 'Best for live adapter-backed subscription status and recurring totals.',
 				'metric_domains' => [ 'subscriptions', 'revenue' ],
+				'coverage_mode'   => 'live_snapshot',
+				'time_window_support' => 'current_only',
+				'evidence_mode'   => 'adapter_snapshot',
+				'coverage_contract_version' => 1,
+				'unsupported_window_behavior' => 'clarify',
 			],
 			'operations.get_summary'     => [
 				'user_surface'   => 'store_report',

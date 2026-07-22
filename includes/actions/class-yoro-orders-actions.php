@@ -1354,6 +1354,69 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
+			'orders.update_return_request',
+			[
+				'label'                 => __( 'Review return request', 'yoro-ai-core' ),
+				'description'           => __( 'Approve, reject, cancel, or complete one recorded return request without performing its requested resolution.', 'yoro-ai-core' ),
+				'category'              => 'orders',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'update_return_request' ],
+				'preview_callback'      => [ __CLASS__, 'preview_update_return_request' ],
+				'risk_level'            => 'medium',
+				'write_action'          => true,
+				'requires_confirmation' => true,
+				'effect'                => 'mutate',
+				'reversibility'         => 'partial',
+				'external_side_effect'  => false,
+				'target_type'           => 'order',
+				'input_schema'          => [
+					'order_id'       => 'integer',
+					'request_id'     => 'string',
+					'status'         => 'string',
+					'note'           => 'string',
+					'idempotency_key'=> 'string',
+				],
+				'max_items'             => 1,
+				'ai_description'        => __( 'Update one exact return request to approved, rejected, cancelled, or completed after confirmation. The transition is validated against its current state and does not issue a refund, create a replacement, contact the customer, or change inventory.', 'yoro-ai-core' ),
+				'ai_examples'           => [
+					'Approve return request 5c19 on order #1234',
+					'رفض طلب الإرجاع المحدد للطلب #1234',
+					'完成订单 #1234 的退货申请',
+				],
+				'required_params'       => [ 'order_id', 'request_id', 'status', 'idempotency_key' ],
+				'param_hints'           => [
+					'order_id'       => __( 'Use the exact order ID that owns the request.', 'yoro-ai-core' ),
+					'request_id'     => __( 'Use the exact immutable return request ID from live connector data.', 'yoro-ai-core' ),
+					'status'         => __( 'Use approved, rejected, cancelled, or completed from the language-independent value catalog.', 'yoro-ai-core' ),
+					'note'           => __( 'Optional internal operator note. Never treat it as a customer message.', 'yoro-ai-core' ),
+					'idempotency_key'=> __( 'Use one stable unique key for this exact lifecycle decision.', 'yoro-ai-core' ),
+				],
+				'clarification_hints'   => [
+					'order_id'   => __( 'Ask which order owns the return request.', 'yoro-ai-core' ),
+					'request_id' => __( 'Ask which exact return request should be reviewed.', 'yoro-ai-core' ),
+					'status'     => __( 'Ask whether the request should be approved, rejected, cancelled, or completed.', 'yoro-ai-core' ),
+				],
+				'slot_contract'         => [
+					'target_slots' => [
+						[ 'field' => 'order_id', 'aliases' => [ 'order_ids' ], 'kind' => 'order_target' ],
+						[ 'field' => 'request_id', 'aliases' => [], 'kind' => 'return_request_target' ],
+					],
+					'user_content_slots' => [
+						[
+							'field'              => 'note',
+							'kind'               => 'internal_note',
+							'source'             => 'user_literal',
+							'prompt_priority'    => 'content_first',
+							'placeholder_policy' => 'reject_placeholders',
+							'max_length'         => 2000,
+						],
+					],
+				],
+				'capabilities'          => [ 'orders', 'returns', 'exchanges', 'write' ],
+			]
+		);
+
+		YoRo_Action_Registry::register(
 			'orders.email_customer_preview',
 			[
 				'label'            => __( 'Preview customer email', 'yoro-ai-core' ),
@@ -2214,6 +2277,10 @@ class YoRo_Orders_Actions {
 		return YoRo_Order_Return_Service::create_return_request( $params );
 	}
 
+	public static function update_return_request( $params ) {
+		return YoRo_Order_Return_Service::update_return_request_status( $params );
+	}
+
 	public static function email_customer_preview( $params ) {
 		return YoRo_Orders_Email_Service::email_customer_preview( $params );
 	}
@@ -2392,6 +2459,10 @@ class YoRo_Orders_Actions {
 
 	public static function preview_create_return_request( $params ) {
 		return YoRo_Order_Return_Service::preview_create_return_request( $params );
+	}
+
+	public static function preview_update_return_request( $params ) {
+		return YoRo_Order_Return_Service::preview_update_return_request_status( $params );
 	}
 
 	public static function preview_email_customer_preview( $params ) {
