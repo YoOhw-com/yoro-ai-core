@@ -118,7 +118,7 @@ $sdk_adapter = YoRo_Integration_Registry::define_adapter(
 	]
 );
 $registry_contract = $manifest['extensions']['yoro.adapters'] ?? [];
-$assert( 3 === YoRo_Integration_Registry::REGISTRY_VERSION, 'Integration registry must publish version 3.' );
+$assert( 4 === YoRo_Integration_Registry::REGISTRY_VERSION, 'Integration registry must publish version 4.' );
 $assert( 'yoro.connector.adapter_registry' === ( $registry_contract['contract_type'] ?? '' ), 'Manifest must publish the connector-neutral adapter registry contract.' );
 $assert( 1 === (int) ( $registry_contract['schema_version'] ?? 0 ), 'Adapter registry must use canonical schema v1.' );
 $assert( is_array( $sdk_adapter ) && 'test.conformant' === ( $sdk_adapter['key'] ?? '' ), 'Adapter SDK must accept a complete connector-neutral adapter definition.' );
@@ -127,6 +127,8 @@ foreach ( (array) ( $registry_contract['adapters'] ?? [] ) as $adapter ) {
 	$assert( 'yoro.connector.adapter_descriptor' === ( $adapter['contract_type'] ?? '' ), 'Every adapter must publish a canonical descriptor contract.' );
 	$assert( 'conformant' === ( $adapter['conformance']['status'] ?? '' ), 'Only conformant adapters may be published.' );
 	$assert( true === ( $adapter['conformance']['callback_coverage_complete'] ?? false ), 'Published adapter callback coverage must be complete.' );
+	$assert( 1 === (int) ( $adapter['conformance']['action_factory_contract_version'] ?? 0 ), 'Published adapters must bind to action factory contract v1.' );
+	$assert( true === ( $adapter['conformance']['manifest_action_coverage_complete'] ?? false ), 'Published adapters must declare complete manifest action coverage.' );
 }
 $assert( ! isset( $adapters['test.invalid'] ), 'Adapter with incomplete callback coverage must fail closed.' );
 

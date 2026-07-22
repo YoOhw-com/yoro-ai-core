@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Integration_Registry {
 
-	const REGISTRY_VERSION = 3;
+	const REGISTRY_VERSION = 4;
 	const REGISTRY_CONTRACT_TYPE = 'yoro.connector.adapter_registry';
 	const ADAPTER_CONTRACT_TYPE = 'yoro.connector.adapter_descriptor';
 	const CONTRACT_SCHEMA_VERSION = 1;
@@ -52,9 +52,15 @@ class YoRo_Integration_Registry {
 				'domain'       => 'subscriptions',
 				'version'      => 1,
 				'active'       => true,
-				'capabilities' => [ 'subscriptions.get_summary' ],
-				'callbacks'    => [
-					'subscriptions.get_summary' => [ __CLASS__, 'read_subscription_summary' ],
+					'capabilities' => [
+						'subscriptions.get_summary',
+						'subscriptions.get_details',
+						'subscriptions.update_status',
+					],
+					'callbacks'    => [
+						'subscriptions.get_summary'  => [ __CLASS__, 'read_subscription_summary' ],
+						'subscriptions.get_details'  => [ __CLASS__, 'read_subscription_details' ],
+						'subscriptions.update_status'=> [ __CLASS__, 'update_subscription_status' ],
 				],
 				'source'       => 'woocommerce_extension',
 			];
@@ -100,6 +106,8 @@ class YoRo_Integration_Registry {
 							'status'                     => 'conformant',
 							'callback_coverage_complete' => true,
 							'capabilities_unique'        => true,
+							'action_factory_contract_version' => YoRo_Action_Definition_Factory::SCHEMA_VERSION,
+							'manifest_action_coverage_complete' => true,
 						],
 					];
 				},
@@ -353,6 +361,78 @@ class YoRo_Integration_Registry {
 			],
 			'read_only'       => true,
 			'changes_store'   => false,
+		];
+	}
+
+	public static function read_subscription_details( $params ) {
+		$params          = is_array( $params ) ? $params : [];
+		$subscription_id = absint( $params['subscription_id'] ?? 0 );
+
+		if ( ! function_exists( 'wcs_get_subscription' ) || $subscription_id <= 0 ) {
+			return new WP_Error( 'yoro_invalid_subscription_target', __( 'A valid subscription ID is required.', 'yoro-ai-core' ) );
+		}
+
+		$subscription = wcs_get_subscription( $subscription_id );
+
+		if ( ! is_object( $subscription ) || ! method_exists( $subscription, 'get_status' ) ) {
+			return new WP_Error( 'yoro_subscription_not_found', __( 'I could not find that subscription.', 'yoro-ai-core' ) );
+		}
+
+		return [
+			'success'       => true,
+			'action'        => 'subscriptions.get_details',
+			'subscription'  => self::subscription_result( $subscription ),
+			'count'         => 1,
+			'read_only'     => true,
+			'changes_store' => false,
+		];
+	}
+
+	public static function update_subscription_status( $params ) {
+		$params          = is_array( $params ) ? $params : [];
+		$subscription_id = absint( $params['subscription_id'] ?? 0 );
+		$status          = sanitize_key( $params['status'] ?? '' );
+		$allowed         = [ 'active', 'on-hold', 'cancelled' ];
+
+		if ( ! function_exists( 'wcs_get_subscription' ) || $subscription_id <= 0 ) {
+			return new WP_Error( 'yoro_invalid_subscription_target', __( 'A valid subscription ID is required.', 'yoro-ai-core' ) );
+		}
+
+		if ( ! in_array( $status, $allowed, true ) ) {
+			return new WP_Error( 'yoro_invalid_subscription_status', __( 'Choose an advertised subscription lifecycle status.', 'yoro-ai-core' ) );
+		}
+
+		$subscription = wcs_get_subscription( $subscription_id );
+
+		if ( ! is_object( $subscription ) || ! method_exists( $subscription, 'update_status' ) ) {
+			return new WP_Error( 'yoro_subscription_not_found', __( 'I could not find that subscription.', 'yoro-ai-core' ) );
+		}
+
+		$before = sanitize_key( $subscription->get_status() );
+
+		if ( $before !== $status ) {
+			$subscription->update_status( $status, __( '[YoRo] Subscription lifecycle updated after confirmation.', 'yoro-ai-core' ) );
+		}
+
+		return [
+			'success'       => true,
+			'action'        => 'subscriptions.update_status',
+			'before_status' => $before,
+			'subscription'  => self::subscription_result( $subscription ),
+			'count'         => 1,
+			'read_only'     => false,
+			'changes_store' => $before !== $status,
+		];
+	}
+
+	private static function subscription_result( $subscription ) {
+		return [
+			'subscription_id' => absint( method_exists( $subscription, 'get_id' ) ? $subscription->get_id() : 0 ),
+			'status'          => sanitize_key( method_exists( $subscription, 'get_status' ) ? $subscription->get_status() : '' ),
+			'customer_id'     => absint( method_exists( $subscription, 'get_customer_id' ) ? $subscription->get_customer_id() : 0 ),
+			'currency'        => sanitize_text_field( method_exists( $subscription, 'get_currency' ) ? $subscription->get_currency() : '' ),
+			'total'           => method_exists( $subscription, 'get_total' ) ? wc_format_decimal( $subscription->get_total(), 2 ) : '0.00',
+			'next_payment_at' => method_exists( $subscription, 'get_date' ) ? sanitize_text_field( $subscription->get_date( 'next_payment' ) ) : '',
 		];
 	}
 

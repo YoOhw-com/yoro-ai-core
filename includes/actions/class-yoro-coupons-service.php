@@ -6,6 +6,40 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Coupons_Service {
 
+	public static function get_promotions_summary( $params ) {
+		$limit = min( max( absint( is_array( $params ) ? ( $params['limit'] ?? 20 ) : 20 ), 1 ), 100 );
+		$ids   = get_posts(
+			[
+				'post_type'      => 'shop_coupon',
+				'post_status'    => [ 'publish', 'draft' ],
+				'posts_per_page' => $limit,
+				'orderby'        => 'date',
+				'order'          => 'DESC',
+				'fields'         => 'ids',
+			]
+		);
+		$coupons = [];
+
+		foreach ( $ids as $coupon_id ) {
+			$coupon = self::get_coupon( $coupon_id );
+
+			if ( $coupon instanceof WC_Coupon ) {
+				$coupons[] = self::coupon_result_item( $coupon );
+			}
+		}
+
+		return [
+			'success'       => true,
+			'action'        => 'promotions.get_summary',
+			'coupons_enabled'=> self::coupons_enabled(),
+			'active_count'  => count( array_filter( $coupons, static fn( $coupon ) => ! empty( $coupon['enabled'] ) ) ),
+			'coupons'       => $coupons,
+			'count'         => count( $coupons ),
+			'read_only'     => true,
+			'changes_store' => false,
+		];
+	}
+
 	public static function lookup_coupon( $params ) {
 		if ( ! class_exists( 'WC_Coupon' ) ) {
 			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
@@ -129,6 +163,12 @@ class YoRo_Coupons_Service {
 			if ( method_exists( $coupon, 'set_free_shipping' ) ) {
 				$coupon->set_free_shipping( $contract['free_shipping'] );
 			}
+
+			$coupon->set_minimum_amount( null === $contract['minimum_amount'] ? '' : $contract['minimum_amount'] );
+			$coupon->set_maximum_amount( null === $contract['maximum_amount'] ? '' : $contract['maximum_amount'] );
+			$coupon->set_exclude_sale_items( $contract['exclude_sale_items'] );
+			$coupon->set_product_ids( $contract['product_ids'] );
+			$coupon->set_excluded_product_ids( $contract['excluded_product_ids'] );
 
 			$coupon_id = $coupon->save();
 		} catch ( Exception $exception ) {
@@ -455,6 +495,11 @@ class YoRo_Coupons_Service {
 			'usage_limit_per_user' => self::nullable_positive_int( $params['usage_limit_per_user'] ?? null ),
 			'individual_use'       => self::normalize_boolean( $params['individual_use'] ?? false ),
 			'free_shipping'        => self::normalize_boolean( $params['free_shipping'] ?? false ),
+			'minimum_amount'       => self::nullable_amount( $params['minimum_amount'] ?? null ),
+			'maximum_amount'       => self::nullable_amount( $params['maximum_amount'] ?? null ),
+			'exclude_sale_items'   => self::normalize_boolean( $params['exclude_sale_items'] ?? false ),
+			'product_ids'          => self::normalize_id_list( $params['product_ids'] ?? [] ),
+			'excluded_product_ids' => self::normalize_id_list( $params['excluded_product_ids'] ?? [] ),
 		];
 	}
 
@@ -464,7 +509,7 @@ class YoRo_Coupons_Service {
 		$coupon  = self::get_coupon( $target['coupon_id'] ?? 0 );
 		$changes = [];
 
-		foreach ( [ 'discount_type', 'discount_amount', 'description', 'usage_limit', 'usage_limit_per_user', 'individual_use', 'free_shipping', 'enabled' ] as $field ) {
+		foreach ( [ 'discount_type', 'discount_amount', 'description', 'usage_limit', 'usage_limit_per_user', 'individual_use', 'free_shipping', 'enabled', 'minimum_amount', 'maximum_amount', 'exclude_sale_items', 'product_ids', 'excluded_product_ids' ] as $field ) {
 			if ( ! array_key_exists( $field, $params ) ) {
 				continue;
 			}
@@ -483,7 +528,16 @@ class YoRo_Coupons_Service {
 				case 'individual_use':
 				case 'free_shipping':
 				case 'enabled':
+				case 'exclude_sale_items':
 					$changes[ $field ] = self::normalize_boolean( $params[ $field ] );
+					break;
+				case 'minimum_amount':
+				case 'maximum_amount':
+					$changes[ $field ] = self::nullable_amount( $params[ $field ] );
+					break;
+				case 'product_ids':
+				case 'excluded_product_ids':
+					$changes[ $field ] = self::normalize_id_list( $params[ $field ] );
 					break;
 				default:
 					$changes[ $field ] = sanitize_textarea_field( $params[ $field ] );
@@ -543,6 +597,13 @@ class YoRo_Coupons_Service {
 			return new WP_Error( 'invalid_expiry_date', __( 'Please provide a valid coupon expiry date.', 'yoro-ai-core' ) );
 		}
 
+		$minimum_amount = array_key_exists( 'minimum_amount', $changes ) ? $changes['minimum_amount'] : self::nullable_amount( $contract['coupon']->get_minimum_amount() );
+		$maximum_amount = array_key_exists( 'maximum_amount', $changes ) ? $changes['maximum_amount'] : self::nullable_amount( $contract['coupon']->get_maximum_amount() );
+
+		if ( null !== $minimum_amount && null !== $maximum_amount && $maximum_amount < $minimum_amount ) {
+			return new WP_Error( 'invalid_coupon_amount_range', __( 'The maximum spend must be greater than or equal to the minimum spend.', 'yoro-ai-core' ) );
+		}
+
 		return true;
 	}
 
@@ -579,6 +640,26 @@ class YoRo_Coupons_Service {
 
 		if ( array_key_exists( 'free_shipping', $changes ) ) {
 			$coupon->set_free_shipping( $changes['free_shipping'] );
+		}
+
+		if ( array_key_exists( 'minimum_amount', $changes ) ) {
+			$coupon->set_minimum_amount( null === $changes['minimum_amount'] ? '' : $changes['minimum_amount'] );
+		}
+
+		if ( array_key_exists( 'maximum_amount', $changes ) ) {
+			$coupon->set_maximum_amount( null === $changes['maximum_amount'] ? '' : $changes['maximum_amount'] );
+		}
+
+		if ( array_key_exists( 'exclude_sale_items', $changes ) ) {
+			$coupon->set_exclude_sale_items( $changes['exclude_sale_items'] );
+		}
+
+		if ( array_key_exists( 'product_ids', $changes ) ) {
+			$coupon->set_product_ids( $changes['product_ids'] );
+		}
+
+		if ( array_key_exists( 'excluded_product_ids', $changes ) ) {
+			$coupon->set_excluded_product_ids( $changes['excluded_product_ids'] );
 		}
 
 		if ( array_key_exists( 'enabled', $changes ) && method_exists( $coupon, 'set_status' ) ) {
@@ -618,6 +699,10 @@ class YoRo_Coupons_Service {
 				'invalid_discount_amount',
 				__( 'Percentage coupons cannot be greater than 100%.', 'yoro-ai-core' )
 			);
+		}
+
+		if ( null !== $contract['minimum_amount'] && null !== $contract['maximum_amount'] && $contract['maximum_amount'] < $contract['minimum_amount'] ) {
+			return new WP_Error( 'invalid_coupon_amount_range', __( 'The maximum spend must be greater than or equal to the minimum spend.', 'yoro-ai-core' ) );
 		}
 
 		return true;
@@ -662,6 +747,9 @@ class YoRo_Coupons_Service {
 			'usage_limit_per_user'    => method_exists( $coupon, 'get_usage_limit_per_user' ) ? self::nullable_absint( $coupon->get_usage_limit_per_user() ) : null,
 			'individual_use'          => method_exists( $coupon, 'get_individual_use' ) ? (bool) $coupon->get_individual_use() : false,
 			'free_shipping'           => method_exists( $coupon, 'get_free_shipping' ) ? (bool) $coupon->get_free_shipping() : false,
+			'exclude_sale_items'      => method_exists( $coupon, 'get_exclude_sale_items' ) ? (bool) $coupon->get_exclude_sale_items() : false,
+			'product_ids'             => method_exists( $coupon, 'get_product_ids' ) ? array_values( array_map( 'absint', $coupon->get_product_ids() ) ) : [],
+			'excluded_product_ids'    => method_exists( $coupon, 'get_excluded_product_ids' ) ? array_values( array_map( 'absint', $coupon->get_excluded_product_ids() ) ) : [],
 			'minimum_amount'          => method_exists( $coupon, 'get_minimum_amount' ) ? sanitize_text_field( $coupon->get_minimum_amount() ) : '',
 			'maximum_amount'          => method_exists( $coupon, 'get_maximum_amount' ) ? sanitize_text_field( $coupon->get_maximum_amount() ) : '',
 			'date_expires'            => self::format_date( $date_expires ),
@@ -688,6 +776,14 @@ class YoRo_Coupons_Service {
 		return '' !== $code && function_exists( 'wc_format_coupon_code' )
 			? wc_format_coupon_code( $code )
 			: $code;
+	}
+
+	private static function nullable_amount( $value ) {
+		return '' === $value || null === $value ? null : ( is_numeric( $value ) ? max( 0.0, (float) $value ) : null );
+	}
+
+	private static function normalize_id_list( $value ) {
+		return array_values( array_unique( array_filter( array_map( 'absint', is_array( $value ) ? $value : [] ) ) ) );
 	}
 
 	private static function discount_types() {

@@ -64,14 +64,17 @@ class YoRo_AI_Core {
 	}
 
 	private static function include_actions() {
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-action-definition-factory.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-action-registry.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-action-catalog-builder.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-order-presenter.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-report-builder.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-operations-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-customer-service.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-customer-lifecycle-action-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-fulfillment-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-fulfillment-write-service.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-fulfillment-lifecycle-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-inventory-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-catalog-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-briefing-service.php';
@@ -80,6 +83,7 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-order-refund-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-refund-intelligence-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-commerce-intelligence-service.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-finance-reconciliation-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-order-return-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-coupons-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-email-service.php';

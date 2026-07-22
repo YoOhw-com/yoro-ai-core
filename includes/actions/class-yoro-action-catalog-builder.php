@@ -47,6 +47,7 @@ class YoRo_Action_Catalog_Builder {
 
 		return [
 			'version'                  => 1,
+			'operation_key'            => self::operation_key_for_action( $name ),
 			'language_contract'        => self::language_contract(),
 			'intent_family'            => self::canonical_intent_family( $name, $item['intent_family'] ?? '' ),
 			'slot_contract'            => is_array( $item['slot_contract'] ?? null ) ? $item['slot_contract'] : [],
@@ -56,23 +57,100 @@ class YoRo_Action_Catalog_Builder {
 			'reporting_contract'        => is_array( $item['reporting_contract'] ?? null ) ? $item['reporting_contract'] : [],
 			'target_type'              => sanitize_key( $item['target_type'] ?? '' ),
 			'supports_bulk'            => ! empty( $item['supports_bulk'] ),
+			'action_contract'          => YoRo_Action_Definition_Factory::with_semantic_schema(
+				is_array( $action['action_contract'] ?? null ) ? $action['action_contract'] : [],
+				[
+					'operation_key' => self::operation_key_for_action( $name ),
+					'intent_family' => self::canonical_intent_family( $name, $item['intent_family'] ?? '' ),
+				]
+			),
 		];
+	}
+
+	private static function operation_key_for_action( $action ) {
+		$keys = [
+			'orders.search'                       => 'search',
+			'orders.get_details'                  => 'get_details',
+			'orders.find_by_identity'             => 'get_details',
+			'orders.find_by_customer'             => 'find_by_customer',
+			'orders.refund_preview'               => 'refund_preview',
+			'orders.create_refund'                => 'refund_actual',
+			'orders.create_return_request'        => 'create_return_request',
+			'orders.update_return_request'        => 'update_return_request',
+			'orders.add_tracking'                 => 'add_tracking',
+			'orders.get_fulfillment'              => 'get_fulfillment',
+			'orders.update_fulfillment'           => 'update_fulfillment',
+			'customers.get_segments'              => 'get_segments',
+			'customers.create_followup_task'      => 'create_customer_followup_task',
+			'promotions.get_summary'              => 'get_promotions_summary',
+			'subscriptions.get_details'           => 'get_subscription_details',
+			'subscriptions.update_status'         => 'update_subscription_status',
+			'finance.get_reconciliation_summary'  => 'report',
+			'orders.update_status'                => 'update_status',
+			'orders.add_note'                     => 'add_note',
+			'orders.remove_note'                  => 'remove_note',
+			'orders.restore_statuses'             => 'restore_statuses',
+			'orders.compose_customer_email'       => 'compose_email',
+			'orders.email_customer_preview'       => 'email_customer_preview',
+			'orders.render_customer_email_preview'=> 'email_customer_preview',
+			'orders.email_customer_template'      => 'email_customer_template',
+			'orders.use_email_template'           => 'email_customer_template',
+			'orders.save_customer_email_draft'    => 'save_customer_email_draft',
+			'orders.get_customer_email_drafts'    => 'get_customer_email_drafts',
+			'orders.update_customer_email_draft'  => 'update_customer_email_draft',
+			'orders.delete_customer_email_draft'  => 'delete_customer_email_draft',
+			'orders.send_customer_email'          => 'send_customer_email',
+			'orders.add_private_note_template'    => 'add_private_note_template',
+			'customers.lookup'                    => 'customer_lookup',
+			'customers.get_service_queue'         => 'get_service_queue',
+			'coupons.lookup'                      => 'coupon_lookup',
+			'coupons.create'                      => 'create_coupon',
+			'coupons.update'                      => 'update_coupon',
+			'products.get_details'                => 'product_details',
+			'products.get_inventory_queue'        => 'get_inventory_queue',
+			'products.update_stock'               => 'update_stock',
+			'products.update_stock_status'        => 'update_stock_status',
+			'products.update_catalog'             => 'update_catalog',
+			'products.update_catalog_batch'       => 'update_catalog_batch',
+			'operations.get_summary'              => 'report',
+			'operations.get_attention_queue'      => 'get_attention_queue',
+			'operations.get_fulfillment_queue'    => 'get_fulfillment_queue',
+			'store.get_business_summary'          => 'report',
+			'store.get_refund_intelligence'       => 'report',
+			'store.get_inventory_risk'            => 'report',
+			'store.get_customer_lifecycle'        => 'report',
+			'store.get_returns_intelligence'      => 'report',
+			'subscriptions.get_summary'           => 'report',
+			'store.get_daily_briefing'            => 'report',
+			'store.get_insights'                  => 'report',
+			'email_templates.list'                => 'list_email_templates',
+			'email_templates.save'                => 'save_email_template',
+			'email_templates.delete'              => 'delete_email_template',
+		];
+
+		return sanitize_key( $keys[ sanitize_text_field( $action ) ] ?? self::infer_intent_family( $action ) );
 	}
 
 	private static function canonical_intent_family( $action, $fallback ) {
 		$families = [
 			'orders.search'                  => 'orders_search',
 			'orders.get_details'             => 'order_details',
+			'orders.find_by_identity'         => 'order_details',
 			'orders.refund_preview'           => 'order_refund',
 			'orders.create_refund'            => 'order_refund',
 			'orders.create_return_request'     => 'return_request',
 			'orders.update_return_request'     => 'return_request_lifecycle',
 			'orders.add_tracking'             => 'order_tracking',
+			'orders.get_fulfillment'          => 'order_fulfillment',
+			'orders.update_fulfillment'       => 'order_fulfillment_update',
 			'customers.lookup'                => 'customer_lookup',
+			'customers.get_segments'          => 'customer_segments',
+			'customers.create_followup_task'  => 'customer_followup_task',
 			'orders.find_by_customer'         => 'customer_orders',
 			'coupons.lookup'                  => 'coupon_lookup',
 			'coupons.create'                  => 'coupon_create',
 			'coupons.update'                  => 'coupon_update',
+			'promotions.get_summary'          => 'promotions_summary',
 			'orders.update_status'            => 'update_order_status',
 			'products.get_details'            => 'product_details',
 			'products.update_catalog'         => 'update_product_catalog',
@@ -80,8 +158,19 @@ class YoRo_Action_Catalog_Builder {
 			'products.update_stock'           => 'update_product_stock',
 			'products.update_stock_status'    => 'update_product_stock_status',
 			'orders.add_note'                 => 'add_note',
+			'orders.add_private_note_template'=> 'add_note',
 			'orders.remove_note'              => 'remove_note',
 			'orders.restore_statuses'         => 'update_order_status',
+			'orders.compose_customer_email'   => 'customer_email',
+			'orders.email_customer_preview'   => 'customer_email',
+			'orders.render_customer_email_preview' => 'customer_email',
+			'orders.email_customer_template'  => 'customer_email',
+			'orders.use_email_template'       => 'customer_email',
+			'orders.save_customer_email_draft'=> 'customer_email',
+			'orders.get_customer_email_drafts'=> 'customer_email',
+			'orders.update_customer_email_draft' => 'customer_email',
+			'orders.delete_customer_email_draft' => 'customer_email',
+			'orders.send_customer_email'      => 'customer_email',
 			'operations.get_summary'          => 'operations_report',
 			'store.get_business_summary'      => 'sales_report',
 			'store.get_refund_intelligence'   => 'refund_report',
@@ -89,16 +178,23 @@ class YoRo_Action_Catalog_Builder {
 			'store.get_customer_lifecycle'     => 'customer_lifecycle_report',
 			'store.get_returns_intelligence'   => 'returns_report',
 			'subscriptions.get_summary'         => 'subscriptions_report',
+			'subscriptions.get_details'         => 'subscription_details',
+			'subscriptions.update_status'       => 'subscription_status_update',
+			'finance.get_reconciliation_summary'=> 'finance_report',
 			'store.get_daily_briefing'        => 'store_report',
 			'store.get_insights'              => 'store_signals',
 			'operations.get_attention_queue'  => 'operations_attention',
 			'operations.get_fulfillment_queue' => 'fulfillment_review',
 			'customers.get_service_queue'     => 'customer_service_review',
 			'products.get_inventory_queue'    => 'inventory_review',
+			'email_templates.list'            => 'email_template',
+			'email_templates.save'            => 'email_template',
+			'email_templates.delete'          => 'email_template',
 		];
 		$action = sanitize_text_field( $action );
+		$family = sanitize_key( $families[ $action ] ?? $fallback );
 
-		return sanitize_key( $families[ $action ] ?? $fallback );
+		return '' !== $family ? $family : self::infer_intent_family( $action );
 	}
 
 	public static function build_router_hints( $command = '', $context = [], $catalog = null ) {
@@ -159,7 +255,7 @@ class YoRo_Action_Catalog_Builder {
 	private static function report_topic_from_context( $context ) {
 		$topic = sanitize_key( $context['report_topic'] ?? '' );
 
-		return in_array( $topic, [ 'overview', 'sales', 'operations', 'signals', 'refunds', 'inventory', 'customers', 'returns', 'subscriptions' ], true ) ? $topic : '';
+		return in_array( $topic, [ 'overview', 'sales', 'operations', 'signals', 'refunds', 'inventory', 'customers', 'returns', 'subscriptions', 'finance' ], true ) ? $topic : '';
 	}
 
 	private static function is_report_provider_catalog( $catalog ) {
@@ -276,6 +372,13 @@ class YoRo_Action_Catalog_Builder {
 			'value_catalogs'        => self::value_catalogs_for_action( $name ),
 			'clarification_hints'   => isset( $action['clarification_hints'] ) && is_array( $action['clarification_hints'] ) ? $action['clarification_hints'] : [],
 			'reporting_contract'    => self::reporting_contract_for_action( $name ),
+			'action_contract'       => YoRo_Action_Definition_Factory::with_semantic_schema(
+				is_array( $action['action_contract'] ?? null ) ? $action['action_contract'] : [],
+				[
+					'operation_key' => self::operation_key_for_action( $name ),
+					'intent_family' => $intent_family,
+				]
+			),
 			'examples'              => self::examples_for_action( $name, $action ),
 			'write_action'          => ! empty( $action['write_action'] ),
 			'requires_confirmation' => ! empty( $action['requires_confirmation'] ) || ! empty( $action['write_action'] ),
@@ -347,6 +450,25 @@ class YoRo_Action_Catalog_Builder {
 
 	private static function value_catalogs_for_action( $action ) {
 		$action = sanitize_text_field( $action );
+
+		if ( 'orders.update_fulfillment' === $action ) {
+			return [
+				'fulfillment_statuses' => array_map(
+					static fn( $status ) => [ 'key' => $status, 'label' => ucwords( str_replace( '_', ' ', $status ) ) ],
+					YoRo_Fulfillment_Lifecycle_Service::statuses()
+				),
+			];
+		}
+
+		if ( 'subscriptions.update_status' === $action ) {
+			return [
+				'subscription_statuses' => [
+					[ 'key' => 'active', 'label' => __( 'Active', 'yoro-ai-core' ) ],
+					[ 'key' => 'on-hold', 'label' => __( 'On hold', 'yoro-ai-core' ) ],
+					[ 'key' => 'cancelled', 'label' => __( 'Cancelled', 'yoro-ai-core' ) ],
+				],
+			];
+		}
 
 		if ( in_array( $action, [ 'orders.create_return_request', 'orders.update_return_request' ], true ) ) {
 			if ( 'orders.update_return_request' === $action ) {
@@ -647,6 +769,11 @@ class YoRo_Action_Catalog_Builder {
 			'orders.refund_preview'                => [ 'order_id' ],
 			'orders.create_refund'                 => [ 'order_id', 'amount', 'refund_payment' ],
 			'orders.add_tracking'                  => [ 'order_id', 'tracking_number' ],
+			'orders.get_fulfillment'               => [ 'order_id' ],
+			'orders.update_fulfillment'            => [ 'order_id', 'status' ],
+			'customers.create_followup_task'       => [ 'customer_id', 'instruction', 'idempotency_key' ],
+			'subscriptions.get_details'            => [ 'subscription_id' ],
+			'subscriptions.update_status'          => [ 'subscription_id', 'status' ],
 			'orders.email_customer_preview'        => [ 'order_id', 'template' ],
 			'orders.email_customer_template'       => [ 'order_id', 'template' ],
 			'orders.use_email_template'            => [ 'order_id', 'template_id' ],
@@ -691,6 +818,14 @@ class YoRo_Action_Catalog_Builder {
 			'store.get_customer_lifecycle'                   => 'customer_lifecycle_report',
 			'store.get_returns_intelligence'                 => 'returns_report',
 			'subscriptions.get_summary'                       => 'subscriptions_report',
+			'subscriptions.get_details'                       => 'subscription_details',
+			'subscriptions.update_status'                     => 'subscription_status_update',
+			'finance.get_reconciliation_summary'              => 'finance_report',
+			'orders.get_fulfillment'                          => 'order_fulfillment',
+			'orders.update_fulfillment'                       => 'order_fulfillment_update',
+			'customers.get_segments'                          => 'customer_segments',
+			'customers.create_followup_task'                  => 'customer_followup_task',
+			'promotions.get_summary'                          => 'promotions_summary',
 			'orders.create_return_request'                    => 'return_request',
 			'orders.update_return_request'                    => 'return_request_lifecycle',
 			'store.get_daily_briefing'                      => 'store_report',
@@ -723,7 +858,7 @@ class YoRo_Action_Catalog_Builder {
 			'orders.send_customer_email'                    => 'customer_email',
 		];
 
-		return sanitize_key( $map[ $action ] ?? '' );
+		return sanitize_key( $map[ $action ] ?? str_replace( '.', '_', $action ) );
 	}
 
 	private static function family_policy_for_action( $action, $intent_family ) {
@@ -741,6 +876,14 @@ class YoRo_Action_Catalog_Builder {
 			'return_request' => 'Use for recording one exact return or exchange request. Preserve the user-provided reason and never imply that refund, replacement, contact, or stock change was executed.',
 			'return_request_lifecycle' => 'Use for approving, rejecting, cancelling, or completing one existing return request. This updates only the request lifecycle; refund, replacement, customer contact, and stock changes remain separate confirmed operations.',
 			'subscriptions_report' => 'Use only for the live adapter-backed subscription status and recurring total summary exposed by the canonical manifest.',
+			'finance_report' => 'Use for bounded order-ledger reconciliation of revenue, refunds, tax, shipping, and payment methods. Never claim payout evidence unless an adapter supplies it.',
+			'order_fulfillment' => 'Use for reading connector-owned fulfillment and shipment lifecycle for one exact order.',
+			'order_fulfillment_update' => 'Use for updating only the connector-owned fulfillment lifecycle. Tracking and order status remain separate confirmed operations.',
+			'customer_segments' => 'Use for window-scoped customer cohorts grounded in order evidence. Do not infer unsupported lifetime or churn labels.',
+			'customer_followup_task' => 'Use for an internal follow-up task only; never imply that the customer was contacted.',
+			'promotions_summary' => 'Use for a read-only summary of coupons, restrictions, expiry, and usage evidence.',
+			'subscription_details' => 'Use for one exact adapter-backed subscription record.',
+			'subscription_status_update' => 'Use for one explicit adapter-backed subscription lifecycle change after confirmation.',
 			'operations_attention' => 'Use for urgent, manual review, or needs-attention queue requests.',
 			'fulfillment_review' => 'Use for shipping blockers, fulfillment backlog, or waiting-to-ship queue requests.',
 			'inventory_review' => 'Use for stock pressure, low-stock, restock, backorder, or inventory queue requests.',
@@ -849,6 +992,18 @@ class YoRo_Action_Catalog_Builder {
 				'coverage_mode'   => 'live_snapshot',
 				'time_window_support' => 'current_only',
 				'evidence_mode'   => 'adapter_snapshot',
+				'coverage_contract_version' => 1,
+				'unsupported_window_behavior' => 'clarify',
+			],
+			'finance.get_reconciliation_summary' => [
+				'user_surface'   => 'store_report',
+				'report_type'    => 'finance_reconciliation',
+				'topic'          => 'finance',
+				'role'           => 'Best for revenue, refund, tax, shipping, payment-method, and payout-coverage reconciliation.',
+				'metric_domains' => [ 'revenue', 'refunds', 'tax', 'shipping', 'payments', 'payouts' ],
+				'coverage_mode'  => 'bounded_history',
+				'time_window_support' => 'canonical_windows',
+				'evidence_mode'  => 'woocommerce_order_ledger',
 				'coverage_contract_version' => 1,
 				'unsupported_window_behavior' => 'clarify',
 			],

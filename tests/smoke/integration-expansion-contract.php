@@ -151,6 +151,11 @@ $expected_actions = [
 			'individual_use'       => 'boolean',
 			'free_shipping'        => 'boolean',
 			'enabled'              => 'boolean',
+			'minimum_amount'       => 'number',
+			'maximum_amount'       => 'number',
+			'exclude_sale_items'   => 'boolean',
+			'product_ids'          => 'array',
+			'excluded_product_ids' => 'array',
 		],
 	],
 ];

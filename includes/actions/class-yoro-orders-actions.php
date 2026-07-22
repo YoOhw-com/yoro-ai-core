@@ -590,6 +590,11 @@ class YoRo_Orders_Actions {
 					'usage_limit_per_user' => 'integer',
 					'individual_use'       => 'boolean',
 					'free_shipping'        => 'boolean',
+					'minimum_amount'       => 'number',
+					'maximum_amount'       => 'number',
+					'exclude_sale_items'   => 'boolean',
+					'product_ids'          => 'array<int>',
+					'excluded_product_ids' => 'array<int>',
 				],
 				'preview_callback'      => [ __CLASS__, 'preview_create_coupon' ],
 				'max_items'             => 1,
@@ -642,6 +647,11 @@ class YoRo_Orders_Actions {
 					'individual_use'       => 'boolean',
 					'free_shipping'        => 'boolean',
 					'enabled'              => 'boolean',
+					'minimum_amount'       => 'number',
+					'maximum_amount'       => 'number',
+					'exclude_sale_items'   => 'boolean',
+					'product_ids'          => 'array<int>',
+					'excluded_product_ids' => 'array<int>',
 				],
 				'preview_callback'      => [ __CLASS__, 'preview_update_coupon' ],
 				'max_items'             => 1,
@@ -677,6 +687,25 @@ class YoRo_Orders_Actions {
 					'promotions',
 					'write',
 				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'promotions.get_summary',
+			[
+				'label'            => __( 'Get promotions summary', 'yoro-ai-core' ),
+				'description'      => __( 'Read current coupon and promotion programs with restrictions and usage evidence.', 'yoro-ai-core' ),
+				'category'         => 'coupons',
+				'permission'       => 'manage_woocommerce',
+				'callback'         => [ __CLASS__, 'get_promotions_summary' ],
+				'preview_callback' => [ __CLASS__, 'preview_get_promotions_summary' ],
+				'risk_level'       => 'low',
+				'write_action'     => false,
+				'input_schema'     => [ 'limit' => 'integer' ],
+				'required_params'  => [],
+				'max_items'        => 100,
+				'ai_description'   => __( 'Read enabled and draft promotion programs, discount rules, product restrictions, spend limits, expiry, and usage evidence without changing them.', 'yoro-ai-core' ),
+				'capabilities'     => [ 'coupons', 'discounts', 'promotions', 'read' ],
 			]
 		);
 
@@ -1037,6 +1066,72 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
+			'customers.get_segments',
+			[
+				'label'            => __( 'Get customer segments', 'yoro-ai-core' ),
+				'description'      => __( 'Read window-scoped customer cohorts from order evidence.', 'yoro-ai-core' ),
+				'category'         => 'customers',
+				'permission'       => 'manage_woocommerce',
+				'callback'         => [ __CLASS__, 'get_customer_segments' ],
+				'preview_callback' => [ __CLASS__, 'preview_get_customer_segments' ],
+				'risk_level'       => 'low',
+				'write_action'     => false,
+				'input_schema'     => [
+					'window'         => 'string',
+					'time_window'    => 'object',
+					'high_value_min' => 'number',
+				],
+				'required_params'  => [],
+				'ai_description'   => __( 'Read single-order, repeat-in-window, and optional high-value-in-window cohorts without making unsupported lifetime or churn claims.', 'yoro-ai-core' ),
+				'capabilities'     => [ 'customers', 'orders', 'segmentation', 'read' ],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'customers.create_followup_task',
+			[
+				'label'                 => __( 'Create customer follow-up task', 'yoro-ai-core' ),
+				'description'           => __( 'Create one internal follow-up task for a registered customer.', 'yoro-ai-core' ),
+				'category'              => 'customers',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'create_customer_followup_task' ],
+				'preview_callback'      => [ __CLASS__, 'preview_customer_followup_task' ],
+				'risk_level'            => 'medium',
+				'write_action'          => true,
+				'requires_confirmation' => true,
+				'input_schema'          => [
+					'customer_id'    => 'integer',
+					'instruction'    => 'string',
+					'due_at'         => 'string',
+					'idempotency_key'=> 'string',
+				],
+				'required_params'       => [ 'customer_id', 'instruction', 'idempotency_key' ],
+				'slot_contract'         => [
+					'target_slots' => [
+						[
+							'field'   => 'customer_id',
+							'aliases' => [],
+							'kind'    => 'customer_target',
+						],
+					],
+					'user_content_slots' => [
+						[
+							'field'              => 'instruction',
+							'kind'               => 'internal_task_instruction',
+							'source'             => 'user_goal',
+							'prompt_priority'    => 'content_first',
+							'placeholder_policy' => 'reject_request_placeholders',
+							'max_length'         => 2000,
+						],
+					],
+				],
+				'target_type'           => 'customer',
+				'ai_description'        => __( 'Create an internal customer follow-up task after confirmation. This action does not send email or contact the customer.', 'yoro-ai-core' ),
+				'capabilities'          => [ 'customers', 'customer_service', 'tasks', 'write' ],
+			]
+		);
+
+		YoRo_Action_Registry::register(
 			'orders.find_by_customer',
 			[
 				'label'       => __( 'Find orders by customer', 'yoro-ai-core' ),
@@ -1202,6 +1297,52 @@ class YoRo_Orders_Actions {
 					'tracking',
 					'write',
 				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'orders.get_fulfillment',
+			[
+				'label'            => __( 'Get order fulfillment lifecycle', 'yoro-ai-core' ),
+				'description'      => __( 'Read connector-owned fulfillment, shipment, and tracking lifecycle for one order.', 'yoro-ai-core' ),
+				'category'         => 'orders',
+				'permission'       => 'manage_woocommerce',
+				'callback'         => [ __CLASS__, 'get_fulfillment' ],
+				'preview_callback' => [ __CLASS__, 'preview_get_fulfillment' ],
+				'risk_level'       => 'low',
+				'write_action'     => false,
+				'input_schema'     => [ 'order_id' => 'integer' ],
+				'required_params'  => [ 'order_id' ],
+				'target_type'      => 'order',
+				'ai_description'   => __( 'Read the current fulfillment lifecycle and tracking evidence for one exact order.', 'yoro-ai-core' ),
+				'capabilities'     => [ 'orders', 'fulfillment', 'tracking', 'read' ],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'orders.update_fulfillment',
+			[
+				'label'                 => __( 'Update order fulfillment lifecycle', 'yoro-ai-core' ),
+				'description'           => __( 'Update connector-owned fulfillment status without changing order status or tracking.', 'yoro-ai-core' ),
+				'category'              => 'orders',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'update_fulfillment' ],
+				'preview_callback'      => [ __CLASS__, 'preview_update_fulfillment' ],
+				'risk_level'            => 'medium',
+				'write_action'          => true,
+				'requires_confirmation' => true,
+				'input_schema'          => [
+					'order_id' => 'integer',
+					'status'   => 'string',
+				],
+				'required_params'       => [ 'order_id', 'status' ],
+				'target_type'           => 'order',
+				'reversibility'         => 'partial',
+				'param_hints'           => [
+					'status' => __( 'Use one status from the live fulfillment_statuses value catalog.', 'yoro-ai-core' ),
+				],
+				'ai_description'        => __( 'Update only the connector fulfillment lifecycle. Adding tracking or changing the WooCommerce order status remains a separate confirmed operation.', 'yoro-ai-core' ),
+				'capabilities'          => [ 'orders', 'fulfillment', 'write' ],
 			]
 		);
 
@@ -2125,6 +2266,27 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		YoRo_Action_Registry::register(
+			'finance.get_reconciliation_summary',
+			[
+				'label'            => __( 'Get finance reconciliation summary', 'yoro-ai-core' ),
+				'description'      => __( 'Read order-ledger revenue, refund, tax, shipping, and payment-method reconciliation.', 'yoro-ai-core' ),
+				'category'         => 'finance',
+				'permission'       => 'manage_woocommerce',
+				'callback'         => [ __CLASS__, 'get_finance_reconciliation_summary' ],
+				'preview_callback' => [ __CLASS__, 'preview_finance_reconciliation_summary' ],
+				'risk_level'       => 'low',
+				'write_action'     => false,
+				'input_schema'     => [
+					'window'      => 'string',
+					'time_window' => 'object',
+				],
+				'required_params'  => [],
+				'ai_description'   => __( 'Read a bounded WooCommerce order-ledger reconciliation. Payout data is explicitly unavailable unless a registered payout adapter supplies it.', 'yoro-ai-core' ),
+				'capabilities'     => [ 'finance', 'sales', 'tax', 'reconciliation', 'read', 'reporting' ],
+			]
+		);
+
 		if ( YoRo_Integration_Registry::supports( 'subscriptions.get_summary', YoRo_Integration_Registry::WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER ) ) {
 			YoRo_Action_Registry::register(
 				'subscriptions.get_summary',
@@ -2157,6 +2319,49 @@ class YoRo_Orders_Actions {
 					'capabilities'        => [ 'subscriptions', 'read', 'reporting', 'integrations' ],
 				]
 			);
+
+			YoRo_Action_Registry::register(
+				'subscriptions.get_details',
+				[
+					'label'                 => __( 'Get subscription details', 'yoro-ai-core' ),
+					'description'           => __( 'Read one subscription through the live registered adapter.', 'yoro-ai-core' ),
+					'category'              => 'subscriptions',
+					'permission'            => 'manage_woocommerce',
+					'callback'              => [ __CLASS__, 'get_subscription_details' ],
+					'preview_callback'      => [ __CLASS__, 'preview_get_subscription_details' ],
+					'risk_level'            => 'low',
+					'write_action'          => false,
+					'input_schema'          => [ 'subscription_id' => 'integer' ],
+					'required_params'       => [ 'subscription_id' ],
+					'target_type'           => 'subscription',
+					'ai_description'        => __( 'Read one exact subscription only when the live adapter advertises this capability.', 'yoro-ai-core' ),
+					'capabilities'          => [ 'subscriptions', 'read', 'integrations' ],
+				]
+			);
+
+			YoRo_Action_Registry::register(
+				'subscriptions.update_status',
+				[
+					'label'                 => __( 'Update subscription status', 'yoro-ai-core' ),
+					'description'           => __( 'Update one subscription lifecycle status through the live registered adapter.', 'yoro-ai-core' ),
+					'category'              => 'subscriptions',
+					'permission'            => 'manage_woocommerce',
+					'callback'              => [ __CLASS__, 'update_subscription_status' ],
+					'preview_callback'      => [ __CLASS__, 'preview_update_subscription_status' ],
+					'risk_level'            => 'high',
+					'write_action'          => true,
+					'requires_confirmation' => true,
+					'reversibility'         => 'partial',
+					'input_schema'          => [
+						'subscription_id' => 'integer',
+						'status'          => 'string',
+					],
+					'required_params'       => [ 'subscription_id', 'status' ],
+					'target_type'           => 'subscription',
+					'ai_description'        => __( 'Change one subscription to an advertised lifecycle status after explicit confirmation.', 'yoro-ai-core' ),
+					'capabilities'          => [ 'subscriptions', 'write', 'integrations' ],
+				]
+			);
 		}
 	}
 
@@ -2178,6 +2383,39 @@ class YoRo_Orders_Actions {
 			'will_execute'  => YoRo_Integration_Registry::supports( 'subscriptions.get_summary', YoRo_Integration_Registry::WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER ),
 			'action'        => 'subscriptions.get_summary',
 			'changes_store' => false,
+		];
+	}
+
+	public static function get_subscription_details( $params ) {
+		return YoRo_Integration_Registry::execute( 'subscriptions.get_details', $params, YoRo_Integration_Registry::WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER );
+	}
+
+	public static function update_subscription_status( $params ) {
+		return YoRo_Integration_Registry::execute( 'subscriptions.update_status', $params, YoRo_Integration_Registry::WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER );
+	}
+
+	public static function preview_get_subscription_details( $params ) {
+		return [
+			'type'          => 'read',
+			'will_execute'  => YoRo_Integration_Registry::supports( 'subscriptions.get_details', YoRo_Integration_Registry::WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER ) && absint( $params['subscription_id'] ?? 0 ) > 0,
+			'action'        => 'subscriptions.get_details',
+			'changes_store' => false,
+		];
+	}
+
+	public static function preview_update_subscription_status( $params ) {
+		$status  = sanitize_key( $params['status'] ?? '' );
+		$blocked = ! YoRo_Integration_Registry::supports( 'subscriptions.update_status', YoRo_Integration_Registry::WOOCOMMERCE_SUBSCRIPTIONS_ADAPTER )
+			|| absint( $params['subscription_id'] ?? 0 ) <= 0
+			|| ! in_array( $status, [ 'active', 'on-hold', 'cancelled' ], true );
+
+		return [
+			'type'          => 'write',
+			'will_execute'  => false,
+			'action'        => 'subscriptions.update_status',
+			'blocked'       => $blocked,
+			'block_reason'  => $blocked ? 'invalid_subscription_status_update' : '',
+			'changes_store' => ! $blocked,
 		];
 	}
 
@@ -2233,6 +2471,43 @@ class YoRo_Orders_Actions {
 		return YoRo_Coupons_Service::update_coupon( $params );
 	}
 
+	public static function get_promotions_summary( $params ) {
+		return YoRo_Coupons_Service::get_promotions_summary( $params );
+	}
+
+	public static function preview_get_promotions_summary( $params ) {
+		return [
+			'type'          => 'read',
+			'will_execute'  => class_exists( 'WC_Coupon' ),
+			'action'        => 'promotions.get_summary',
+			'changes_store' => false,
+		];
+	}
+
+	public static function get_customer_segments( $params ) {
+		return YoRo_Customer_Lifecycle_Action_Service::get_segments( $params );
+	}
+
+	public static function preview_get_customer_segments( $params ) {
+		return YoRo_Commerce_Intelligence_Service::preview_read( 'customers.get_segments', $params );
+	}
+
+	public static function create_customer_followup_task( $params ) {
+		return YoRo_Customer_Lifecycle_Action_Service::create_followup_task( $params );
+	}
+
+	public static function preview_customer_followup_task( $params ) {
+		return YoRo_Customer_Lifecycle_Action_Service::preview_followup_task( $params );
+	}
+
+	public static function get_finance_reconciliation_summary( $params ) {
+		return YoRo_Finance_Reconciliation_Service::get_summary( $params );
+	}
+
+	public static function preview_finance_reconciliation_summary( $params ) {
+		return YoRo_Finance_Reconciliation_Service::preview( $params );
+	}
+
 	public static function get_store_insights( $params ) {
 		return YoRo_Orders_Read_Service::get_store_insights( $params );
 	}
@@ -2267,6 +2542,14 @@ class YoRo_Orders_Actions {
 
 	public static function add_tracking( $params ) {
 		return YoRo_Fulfillment_Write_Service::add_tracking( $params );
+	}
+
+	public static function get_fulfillment( $params ) {
+		return YoRo_Fulfillment_Lifecycle_Service::get( $params );
+	}
+
+	public static function update_fulfillment( $params ) {
+		return YoRo_Fulfillment_Lifecycle_Service::update( $params );
 	}
 
 	public static function create_refund( $params ) {
@@ -2451,6 +2734,19 @@ class YoRo_Orders_Actions {
 
 	public static function preview_add_tracking( $params ) {
 		return YoRo_Fulfillment_Write_Service::preview_add_tracking( $params );
+	}
+
+	public static function preview_get_fulfillment( $params ) {
+		return [
+			'type'          => 'read',
+			'will_execute'  => absint( $params['order_id'] ?? 0 ) > 0,
+			'action'        => 'orders.get_fulfillment',
+			'changes_store' => false,
+		];
+	}
+
+	public static function preview_update_fulfillment( $params ) {
+		return YoRo_Fulfillment_Lifecycle_Service::preview_update( $params );
 	}
 
 	public static function preview_create_refund( $params ) {

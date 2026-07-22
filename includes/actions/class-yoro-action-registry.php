@@ -66,6 +66,7 @@ class YoRo_Action_Registry {
 		$action['target_type'] = sanitize_key( $action['target_type'] );
 		$action['supports_bulk'] = ! empty( $action['supports_bulk'] ) || self::has_bulk_schema( $action['input_schema'] );
 		$action['max_targets'] = max( 1, absint( $action['max_targets'] ?: $action['max_items'] ) );
+		$action = YoRo_Action_Definition_Factory::prepare( $name, $action );
 
 		$action['ai_exposed'] = ! empty( $action['ai_exposed'] );
 		$action['ai_description'] = sanitize_text_field( $action['ai_description'] );
