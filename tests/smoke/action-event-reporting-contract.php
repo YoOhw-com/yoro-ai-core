@@ -121,6 +121,10 @@ $pending_token   = 'pending-step-smoke';
 $api_url         = 'http://yoro-ai-smoke.local/api/v1';
 $captured_http   = [];
 
+if ( ! defined( 'YORO_AI_API_SITE_KEY' ) ) {
+	define( 'YORO_AI_API_SITE_KEY', 'yoro_ai_smoke_site_key' );
+}
+
 $old_options = [
 	YoRo_AI_Settings::OPTION_AI_API_URL      => get_option( YoRo_AI_Settings::OPTION_AI_API_URL, null ),
 	YoRo_AI_Settings::OPTION_AI_API_SITE_KEY => get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, null ),
