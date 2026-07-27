@@ -41,7 +41,7 @@ jobs:
         with:
           repository: yoohwz/yoro-ai-api
           ref: main
-          token: ${{ secrets.YORO_PLUGIN_REPOSITORY_TOKEN || github.token }}
+          ssh-key: ${{ secrets.YORO_API_DEPLOY_KEY }}
           path: _shared/yoro-ai-api
           persist-credentials: false
 
