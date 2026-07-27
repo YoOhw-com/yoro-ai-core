@@ -40,6 +40,9 @@ if ( function_exists( 'rest_get_server' ) && ! did_action( 'rest_api_init' ) ) {
 }
 
 $failures = [];
+$original_ai_api_status = class_exists( 'YoRo_AI_Settings' )
+	? get_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, null )
+	: null;
 
 $assert = static function ( $condition, $message ) use ( &$failures ) {
 	if ( ! $condition ) {
@@ -66,6 +69,42 @@ $assert( $admin_id > 0, 'A WordPress administrator user is required for REST per
 if ( $admin_id > 0 ) {
 	wp_set_current_user( $admin_id );
 	delete_transient( 'yoro_rate_execute_' . $admin_id );
+}
+
+if ( class_exists( 'YoRo_AI_Settings' ) ) {
+	$installation_uuid = YoRo_AI_Settings::get_installation_uuid();
+
+	YoRo_AI_Settings::update_ai_api_status(
+		[
+			'account_connection' => [
+				'connected' => true,
+				'status'    => 'active',
+			],
+			'organization' => [
+				'id'   => 1,
+				'name' => 'REST Smoke Organization',
+			],
+			'site' => [
+				'id'     => 1,
+				'name'   => 'REST Smoke Site',
+				'url'    => home_url(),
+				'status' => 'active',
+				'plan'   => 'test',
+			],
+			'connection' => [
+				'id'                => 1,
+				'installation_uuid' => $installation_uuid,
+				'status'            => 'active',
+				'plugin_version'    => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+			],
+			'credential' => [
+				'id'                 => 1,
+				'type'               => 'wordpress_connection',
+				'site_connection_id' => 1,
+				'expires_at'         => gmdate( 'c', time() + HOUR_IN_SECONDS ),
+			],
+		]
+	);
 }
 
 $dispatch_rest = static function ( $method, $route, $params = [] ) {
@@ -206,6 +245,14 @@ $assert( true === (bool) ( $confirm_data['result']['requires_confirmation'] ?? f
 $assert( true === (bool) ( $confirm_data['result']['read_only'] ?? false ), 'Confirmation result must be read_only.' );
 $assert( 'confirmation' === ( $confirm_data['result']['display_type'] ?? '' ), 'Confirmation result must render as display_type=confirmation.' );
 $assert( false !== strpos( (string) ( $confirm_data['message'] ?? '' ), 'Nothing has changed yet' ), 'Unapproved write response must state that nothing has changed yet.' );
+
+if ( class_exists( 'YoRo_AI_Settings' ) ) {
+	if ( null === $original_ai_api_status ) {
+		delete_option( YoRo_AI_Settings::OPTION_AI_API_STATUS );
+	} else {
+		update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $original_ai_api_status, false );
+	}
+}
 
 if ( $failures ) {
 	foreach ( $failures as $failure ) {
