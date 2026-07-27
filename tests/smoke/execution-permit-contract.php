@@ -15,15 +15,55 @@ $assert = static function ( $condition, $message ) use ( &$failures ) {
 	}
 };
 $api_url = 'http://yoro-safety.local/api/v1';
+
+if ( ! defined( 'YORO_AI_API_SITE_KEY' ) ) {
+	define( 'YORO_AI_API_SITE_KEY', 'permit-contract-key' );
+}
+
 $old_options = [
 	YoRo_AI_Settings::OPTION_AI_API_URL => get_option( YoRo_AI_Settings::OPTION_AI_API_URL, null ),
 	YoRo_AI_Settings::OPTION_AI_API_SITE_KEY => get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, null ),
 	YoRo_AI_Settings::OPTION_AI_API_ENABLED => get_option( YoRo_AI_Settings::OPTION_AI_API_ENABLED, null ),
+	YoRo_AI_Settings::OPTION_AI_API_STATUS => get_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, null ),
 ];
 
 update_option( YoRo_AI_Settings::OPTION_AI_API_URL, $api_url, false );
 update_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, 'permit-contract-key', false );
 update_option( YoRo_AI_Settings::OPTION_AI_API_ENABLED, 'yes', false );
+
+$installation_uuid = YoRo_AI_Settings::get_installation_uuid();
+
+YoRo_AI_Settings::update_ai_api_status(
+	[
+		'account_connection' => [
+			'connected' => true,
+			'status'    => 'active',
+		],
+		'organization' => [
+			'id'   => 1,
+			'name' => 'Execution Permit Contract Organization',
+		],
+		'site' => [
+			'id'     => 1,
+			'name'   => 'Execution Permit Contract Site',
+			'url'    => home_url(),
+			'status' => 'active',
+			'plan'   => 'test',
+		],
+		'connection' => [
+			'id'                => 1,
+			'installation_uuid' => $installation_uuid,
+			'status'            => 'active',
+			'plugin_version'    => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+		],
+		'credential' => [
+			'id'                 => 1,
+			'type'               => 'wordpress_connection',
+			'site_connection_id' => 1,
+			'expires_at'         => gmdate( 'c', time() + HOUR_IN_SECONDS ),
+		],
+	]
+);
 
 $captured = [];
 $http_filter = static function ( $preempt, $args, $url ) use ( &$captured ) {
