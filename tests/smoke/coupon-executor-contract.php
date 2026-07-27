@@ -83,6 +83,45 @@ if ( $admin_id > 0 ) {
 	delete_transient( 'yoro_rate_execute_' . $admin_id );
 }
 
+$original_ai_api_status = null;
+
+if ( class_exists( 'YoRo_AI_Settings' ) ) {
+	$original_ai_api_status = get_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, null );
+	$installation_uuid      = YoRo_AI_Settings::get_installation_uuid();
+
+	YoRo_AI_Settings::update_ai_api_status(
+		[
+			'account_connection' => [
+				'connected' => true,
+				'status'    => 'active',
+			],
+			'organization' => [
+				'id'   => 1,
+				'name' => 'Coupon Smoke Organization',
+			],
+			'site' => [
+				'id'     => 1,
+				'name'   => 'Coupon Smoke Site',
+				'url'    => home_url(),
+				'status' => 'active',
+				'plan'   => 'test',
+			],
+			'connection' => [
+				'id'                => 1,
+				'installation_uuid' => $installation_uuid,
+				'status'            => 'active',
+				'plugin_version'    => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+			],
+			'credential' => [
+				'id'                 => 1,
+				'type'               => 'wordpress_connection',
+				'site_connection_id' => 1,
+				'expires_at'         => gmdate( 'c', time() + HOUR_IN_SECONDS ),
+			],
+		]
+	);
+}
+
 $assert( class_exists( 'WooCommerce' ), 'WooCommerce must be active.' );
 $assert( class_exists( 'YoRo_Action_Registry' ), 'YoRo action registry must be loaded.' );
 $assert( function_exists( 'wc_get_coupon_id_by_code' ), 'WooCommerce coupon lookup helper must be available.' );
@@ -199,6 +238,14 @@ $assert( false === (bool) ( $missing_preview['execution_required'] ?? false ), '
 
 if ( $created_coupon_id > 0 ) {
 	wp_delete_post( $created_coupon_id, true );
+}
+
+if ( class_exists( 'YoRo_AI_Settings' ) ) {
+	if ( null === $original_ai_api_status ) {
+		delete_option( YoRo_AI_Settings::OPTION_AI_API_STATUS );
+	} else {
+		update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $original_ai_api_status, false );
+	}
 }
 
 if ( $failures ) {
