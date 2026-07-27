@@ -209,6 +209,25 @@ try {
 		'An unknown opaque subject must never resolve to a local WordPress user.'
 	);
 
+	YoRo_Action_Registry::register(
+		'test.list_result_count',
+		[
+			'label'        => 'List result count test',
+			'write_action' => false,
+			'callback'     => static function() {
+				return [
+					'success' => true,
+					'data'    => [
+						[ 'id' => 1 ],
+						[ 'id' => 2 ],
+					],
+				];
+			},
+		]
+	);
+	$list_result = YoRo_Action_Executor::execute( 'test.list_result_count' );
+	$assert( 2 === ( $list_result['count'] ?? 0 ), 'Normalized list data must expose an accurate item count.' );
+
 	$client = new YoRo_Connector_Smoke_Client();
 	$publisher = new YoRo_Connector_Snapshot_Publisher( $client );
 	$published = $publisher->publish();

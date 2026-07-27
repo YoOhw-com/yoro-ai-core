@@ -288,6 +288,8 @@ class YoRo_Action_Executor {
 				$result['count'] = count( $result['processed'] );
 			} elseif ( ! empty( $result['orders'] ) && is_array( $result['orders'] ) ) {
 				$result['count'] = count( $result['orders'] );
+			} elseif ( self::is_list_array( $result['data'] ) ) {
+				$result['count'] = count( $result['data'] );
 			}
 		}
 
@@ -316,6 +318,14 @@ class YoRo_Action_Executor {
 		$result = self::attach_assistant_response_metadata( $action_name, $result, $action );
 
 		return $result;
+	}
+
+	private static function is_list_array( $value ) {
+		if ( ! is_array( $value ) ) {
+			return false;
+		}
+
+		return [] === $value || array_keys( $value ) === range( 0, count( $value ) - 1 );
 	}
 
 	private static function attach_assistant_response_metadata( $action_name, $result, $action = null ) {
