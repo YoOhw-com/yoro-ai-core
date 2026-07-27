@@ -125,11 +125,46 @@ $old_options = [
 	YoRo_AI_Settings::OPTION_AI_API_URL      => get_option( YoRo_AI_Settings::OPTION_AI_API_URL, null ),
 	YoRo_AI_Settings::OPTION_AI_API_SITE_KEY => get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, null ),
 	YoRo_AI_Settings::OPTION_AI_API_ENABLED  => get_option( YoRo_AI_Settings::OPTION_AI_API_ENABLED, null ),
+	YoRo_AI_Settings::OPTION_AI_API_STATUS   => get_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, null ),
 ];
 
 update_option( YoRo_AI_Settings::OPTION_AI_API_URL, $api_url, false );
 update_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, 'yoro_ai_smoke_site_key', false );
 update_option( YoRo_AI_Settings::OPTION_AI_API_ENABLED, 'yes', false );
+
+$installation_uuid = YoRo_AI_Settings::get_installation_uuid();
+
+YoRo_AI_Settings::update_ai_api_status(
+	[
+		'account_connection' => [
+			'connected' => true,
+			'status'    => 'active',
+		],
+		'organization' => [
+			'id'   => 1,
+			'name' => 'Action Event Smoke Organization',
+		],
+		'site' => [
+			'id'     => 1,
+			'name'   => 'Action Event Smoke Site',
+			'url'    => home_url(),
+			'status' => 'active',
+			'plan'   => 'test',
+		],
+		'connection' => [
+			'id'                => 1,
+			'installation_uuid' => $installation_uuid,
+			'status'            => 'active',
+			'plugin_version'    => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+		],
+		'credential' => [
+			'id'                 => 1,
+			'type'               => 'wordpress_connection',
+			'site_connection_id' => 1,
+			'expires_at'         => gmdate( 'c', time() + HOUR_IN_SECONDS ),
+		],
+	]
+);
 
 $http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http, $conversation_id, $pending_token ) {
 	$method = strtoupper( (string) ( $args['method'] ?? 'GET' ) );
