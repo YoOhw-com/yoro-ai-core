@@ -227,7 +227,7 @@ class YoRo_WordPress_Content_Actions {
 
 		$trashed = wp_trash_post( $post->ID );
 
-		return $trashed instanceof WP_Post ? self::success( self::present_post( $trashed ), 'Content moved to trash.' ) : new WP_Error( 'yoro_content_trash_failed', 'The content could not be moved to trash.' );
+		return $trashed instanceof WP_Post ? self::success( self::present_post( get_post( $trashed->ID ) ), 'Content moved to trash.' ) : new WP_Error( 'yoro_content_trash_failed', 'The content could not be moved to trash.' );
 	}
 
 	public static function restore( $params ) {
@@ -241,7 +241,7 @@ class YoRo_WordPress_Content_Actions {
 
 		$restored = wp_untrash_post( $post->ID );
 
-		return $restored instanceof WP_Post ? self::success( self::present_post( $restored ), 'Content restored.' ) : new WP_Error( 'yoro_content_restore_failed', 'The content could not be restored.' );
+		return $restored instanceof WP_Post ? self::success( self::present_post( get_post( $restored->ID ) ), 'Content restored.' ) : new WP_Error( 'yoro_content_restore_failed', 'The content could not be restored.' );
 	}
 
 	public static function list_revisions( $params ) {

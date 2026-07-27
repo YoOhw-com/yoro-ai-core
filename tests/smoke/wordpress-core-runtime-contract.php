@@ -67,6 +67,35 @@ $original_user_id = get_current_user_id();
 
 if ( ! empty( $admin_ids ) ) {
 	wp_set_current_user( absint( $admin_ids[0] ) );
+	$lifecycle_post_id = wp_insert_post(
+		[
+			'post_type'    => 'post',
+			'post_status'  => 'draft',
+			'post_title'   => 'YoRo trash lifecycle smoke',
+			'post_content' => 'Temporary smoke content.',
+		]
+	);
+	$lifecycle_current = YoRo_WordPress_Content_Actions::get_content( [ 'content_id' => $lifecycle_post_id ] );
+	$lifecycle_version = $lifecycle_current['data']['version'] ?? '';
+	$lifecycle_trashed = YoRo_WordPress_Content_Actions::trash(
+		[
+			'content_id'      => $lifecycle_post_id,
+			'expected_version' => $lifecycle_version,
+		]
+	);
+	$trashed_version = $lifecycle_trashed['data']['version'] ?? '';
+	$assert( 'trash' === ( $lifecycle_trashed['data']['status'] ?? '' ), 'Content trash must return the refreshed trash status.' );
+	$assert( '' !== $trashed_version && $lifecycle_version !== $trashed_version, 'Content trash must return a refreshed optimistic version.' );
+	$lifecycle_restored = YoRo_WordPress_Content_Actions::restore(
+		[
+			'content_id'      => $lifecycle_post_id,
+			'expected_version' => $trashed_version,
+		]
+	);
+	$assert( 'trash' !== ( $lifecycle_restored['data']['status'] ?? 'trash' ), 'Content restore must return the refreshed post status.' );
+	$assert( $trashed_version !== ( $lifecycle_restored['data']['version'] ?? '' ), 'Content restore must return a refreshed optimistic version.' );
+	wp_delete_post( $lifecycle_post_id, true );
+
 	$missing_option = 'yoro_smoke_option_missing';
 	$policy_before = get_option( YoRo_WordPress_Admin_Actions::POLICY_OPTION, $missing_option );
 	$backup_before = get_option( YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION, $missing_option );
