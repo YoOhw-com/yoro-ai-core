@@ -33,6 +33,7 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-rate-limiter.php';
 		require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-date-helper.php';
 		require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-response-ux-formatter.php';
+		require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-result-presentation-contract.php';
 		require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-product-helper.php';
 		require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-order-helper.php';
 		require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-integration-registry.php';

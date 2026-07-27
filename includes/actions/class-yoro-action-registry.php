@@ -27,7 +27,8 @@ class YoRo_Action_Registry {
 				'callback'              => null,
 				'preview_callback'      => null,
 				'input_schema'          => [],
-				'output_schema'         => [],
+				'output_schema'         => self::canonical_result_schema(),
+				'result_contract'       => [],
 				'requires_confirmation' => false,
 				'risk_level'            => 'low',
 				'write_action'          => false,
@@ -67,6 +68,7 @@ class YoRo_Action_Registry {
 		$action['supports_bulk'] = ! empty( $action['supports_bulk'] ) || self::has_bulk_schema( $action['input_schema'] );
 		$action['max_targets'] = max( 1, absint( $action['max_targets'] ?: $action['max_items'] ) );
 		$action = YoRo_Action_Definition_Factory::prepare( $name, $action );
+		$action['result_contract'] = YoRo_Result_Presentation_Contract::for_action( $name, $action );
 
 		$action['ai_exposed'] = ! empty( $action['ai_exposed'] );
 		$action['ai_description'] = sanitize_text_field( $action['ai_description'] );
@@ -80,6 +82,41 @@ class YoRo_Action_Registry {
 			: [];
 
 		self::$actions[ $name ] = $action;
+	}
+
+	private static function canonical_result_schema() {
+		return [
+			'type'       => 'object',
+			'properties' => [
+				'contract_type' => [ 'type' => 'string', 'enum' => [ 'yoro.commerce.action_result' ] ],
+				'schema_version' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 1 ],
+				'action'         => [ 'type' => 'string', 'minLength' => 3, 'maxLength' => 160 ],
+				'success'        => [ 'type' => 'boolean' ],
+				'summary'        => [ 'type' => 'string', 'maxLength' => 500 ],
+				'message'        => [ 'type' => 'string', 'maxLength' => 1000 ],
+				'read_only'      => [ 'type' => 'boolean' ],
+				'count'          => [ 'type' => 'integer', 'minimum' => 0 ],
+				'result_type'    => [ 'type' => 'string', 'minLength' => 1, 'maxLength' => 120 ],
+				'display_type'   => [ 'type' => 'string', 'minLength' => 1, 'maxLength' => 120 ],
+				'presentation'   => [ 'type' => 'object' ],
+				'payload'        => [ 'type' => 'object' ],
+			],
+			'required' => [
+				'contract_type',
+				'schema_version',
+				'action',
+				'success',
+				'summary',
+				'message',
+				'read_only',
+				'count',
+				'result_type',
+				'display_type',
+				'presentation',
+				'payload',
+			],
+			'additionalProperties' => false,
+		];
 	}
 
 	public static function get( $name ) {

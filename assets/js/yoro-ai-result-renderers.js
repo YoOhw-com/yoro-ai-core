@@ -32,6 +32,9 @@
 			renderResult: function(data) {
 				return renderResult(data, h);
 			},
+			renderEmbeddedResult: function(data) {
+				return renderEmbeddedResult(data, h);
+			},
 			renderAssistantText: function(text) {
 				return renderAssistantText(text, h);
 			},
@@ -42,6 +45,82 @@
 					return renderDebugJson(data, h);
 				}
 			};
+	}
+
+	function presentationRendererKeys(data) {
+		data = data && typeof data === 'object' ? data : {};
+
+		const result = data.result && typeof data.result === 'object' ? data.result : {};
+		const presentation = result.presentation && typeof result.presentation === 'object'
+			? result.presentation
+			: {};
+		const keys = [
+			presentation.renderer_key,
+			result.display_type || data.display_type,
+			result.result_type || data.result_type
+		];
+
+		return keys.map(function(key) {
+			return String(key || '').trim();
+		}).filter(function(key, index, items) {
+			return !!key && key !== 'generic' && items.indexOf(key) === index;
+		});
+	}
+
+	function registeredResultRenderer(data, h) {
+		const renderers = {
+			orders_list: h.renderOrdersResult,
+			customer_summary: h.renderCustomerSummaryResult,
+			order_details: h.renderOrderDetailsResult,
+			operations_attention_queue: h.renderOperationsAttentionQueueResult,
+			fulfillment_queue: h.renderFulfillmentQueueResult,
+			inventory_queue: h.renderInventoryQueueResult,
+			customer_service_queue: h.renderCustomerServiceQueueResult,
+			customer_email_preview: h.renderCustomerEmailPreviewResult,
+			refund_preview: h.renderRefundPreviewResult,
+			email_templates_list: h.renderEmailTemplatesResult,
+			customer_email_drafts: h.renderCustomerEmailDraftsResult,
+			product: function(payload) {
+				return renderProductResult(payload, h);
+			},
+			fulfillment_lifecycle: function(payload) {
+				return renderFulfillmentLifecycleResult(payload, h);
+			},
+			tracking: function(payload) {
+				return renderTrackingResult(payload, h);
+			}
+		};
+		const keys = presentationRendererKeys(data);
+
+		for (let index = 0; index < keys.length; index++) {
+			const renderer = renderers[keys[index]];
+
+			if (typeof renderer === 'function') {
+				return renderer(data);
+			}
+		}
+
+		const displayType = String(
+			(data && data.result && data.result.display_type)
+			|| (data && data.display_type)
+			|| ''
+		);
+
+		if (isReportDisplayType(displayType) && typeof h.renderReportResult === 'function') {
+			return h.renderReportResult(data);
+		}
+
+		return null;
+	}
+
+	function renderEmbeddedResult(data, h) {
+		const registered = registeredResultRenderer(data, h);
+
+		if (typeof registered === 'string' && registered.trim()) {
+			return registered;
+		}
+
+		return renderStructuredFallback(data, h);
 	}
 
 	function formatAgeHours(value) {
@@ -124,6 +203,16 @@
 			.replace(/\b\w/g, function(chr) {
 				return chr.toUpperCase();
 			});
+	}
+
+	function displayLabel(value, options) {
+		const labels = typeof window !== 'undefined' ? window.YoRoAIDisplayLabels : null;
+
+		if (labels && typeof labels.labelFor === 'function') {
+			return labels.labelFor(value, options);
+		}
+
+		return String(value || '').replace(/[_-]+/g, ' ');
 	}
 
 	function orderIdsFromParams(params) {
@@ -383,6 +472,11 @@
 		const result = data.result || {};
 		const displayType = result.display_type || data.display_type || '';
 		const resultType = result.result_type || data.result_type || '';
+		const registered = registeredResultRenderer(data, h);
+
+		if (typeof registered === 'string' && registered.trim()) {
+			return finish(registered);
+		}
 
 		if (result.report && typeof h.renderReportResult === 'function') {
 			return finish(h.renderReportResult(data));
@@ -511,18 +605,247 @@
 		return finish(renderUnknownResult(data, h));
 	}
 
-	function renderUnknownResult(data, h) {
+	function safeResultHref(value) {
+		const href = String(value || '').trim();
+
+		return /^(https?:)?\/\//i.test(href) || href.indexOf('/') === 0
+			? href
+			: '';
+	}
+
+	function renderProductResult(data, h) {
+		const result = data && data.result ? data.result : {};
+		const product = firstObjectWithKeys(
+			result.product,
+			Array.isArray(result.products) ? result.products[0] : {}
+		);
+		const summary = String(result.summary || result.message || 'Product details').trim();
+		const currency = String(product.currency || '').trim();
+		const currentPrice = String(product.price || product.sale_price || product.regular_price || '').trim();
+		const regularPrice = String(product.regular_price || '').trim();
+		const stockQuantity = product.stock_quantity === null || typeof product.stock_quantity === 'undefined'
+			? 'Not quantity-managed'
+			: String(product.stock_quantity);
+		const editUrl = safeResultHref(product.edit_url || product.permalink || '');
+
+		let html = '<div class="yoro-result-summary yoro-rich-result-intro">';
+		html += '<strong>' + h.escapeHtml(summary) + '</strong>';
+		html += '<span class="yoro-result-subtle">Current product snapshot</span>';
+		html += '</div>';
+		html += '<div class="yoro-order-detail-card yoro-rich-result-surface">';
+		html += '<div class="yoro-order-detail-header">';
+		html += '<div>';
+		html += '<strong class="yoro-order-detail-title">' + h.escapeHtml(product.name || 'Product') + '</strong>';
+		html += '<div class="yoro-result-subtle">Product #' + h.escapeHtml(product.product_id || result.product_id || '') + '</div>';
+		html += '</div>';
+		html += '<span class="yoro-status-badge">' + h.escapeHtml(displayLabel(product.status || '')) + '</span>';
+		html += '</div>';
+		html += '<div class="yoro-order-detail-metrics">';
+		html += '<div><span>Current price</span><strong>' + h.escapeHtml(currentPrice || '—') + (currency ? ' ' + h.escapeHtml(currency) : '') + '</strong></div>';
+		html += '<div><span>Regular price</span><strong>' + h.escapeHtml(regularPrice || '—') + (currency ? ' ' + h.escapeHtml(currency) : '') + '</strong></div>';
+		html += '<div><span>Stock</span><strong>' + h.escapeHtml(stockQuantity) + '</strong></div>';
+		html += '</div>';
+		html += '<div class="yoro-order-detail-section">';
+		html += '<h4>Product identity</h4>';
+		html += '<p><strong>SKU:</strong> <code>' + h.escapeHtml(product.sku || '—') + '</code></p>';
+		html += '<p><strong>Type:</strong> ' + h.escapeHtml(displayLabel(product.type || '—')) + '</p>';
+		html += '<p><strong>Stock status:</strong> ' + h.escapeHtml(displayLabel(product.stock_status || '—')) + '</p>';
+		html += '<p><strong>Catalog visibility:</strong> ' + h.escapeHtml(displayLabel(product.catalog_visibility || '—')) + '</p>';
+		html += '</div>';
+
+		if (editUrl) {
+			html += '<div class="yoro-order-actions">';
+			html += '<a class="button" href="' + h.escapeHtml(editUrl) + '">Open product</a>';
+			html += '</div>';
+		}
+
+		html += '</div>';
+
+		return html;
+	}
+
+	function renderFulfillmentLifecycleResult(data, h) {
+		const result = data && data.result ? data.result : {};
+		const order = result.order || {};
+		const fulfillment = result.fulfillment || {};
+		const history = Array.isArray(fulfillment.history) ? fulfillment.history : [];
+		const summary = String(result.summary || result.message || 'Fulfillment details').trim();
+		const editUrl = safeResultHref(order.edit_url || '');
+		const trackingUrl = safeResultHref(fulfillment.tracking_url || '');
+
+		let html = '<div class="yoro-result-summary yoro-rich-result-intro">';
+		html += '<strong>' + h.escapeHtml(summary) + '</strong>';
+		html += '<span class="yoro-result-subtle">Fulfillment and shipment snapshot</span>';
+		html += '</div>';
+		html += '<div class="yoro-order-detail-card yoro-rich-result-surface">';
+		html += '<div class="yoro-order-detail-header">';
+		html += '<div>';
+		html += '<strong class="yoro-order-detail-title">Order #' + h.escapeHtml(order.number || order.id || result.order_id || '') + '</strong>';
+		html += '<div class="yoro-result-subtle">' + h.escapeHtml(order.status_label || displayLabel(order.status || '')) + '</div>';
+		html += '</div>';
+		html += '<span class="yoro-status-badge">' + h.escapeHtml(displayLabel(fulfillment.status || 'unfulfilled')) + '</span>';
+		html += '</div>';
+		html += '<div class="yoro-order-detail-section">';
+		html += '<h4>Shipment</h4>';
+		html += '<p><strong>Shipping method:</strong> ' + h.escapeHtml(fulfillment.shipping_method || '—') + '</p>';
+		html += '<p><strong>Carrier:</strong> ' + h.escapeHtml(fulfillment.carrier || '—') + '</p>';
+		html += '<p><strong>Tracking number:</strong> <code>' + h.escapeHtml(fulfillment.tracking_number || '—') + '</code></p>';
+		html += '<p><strong>Shipped at:</strong> ' + h.escapeHtml(fulfillment.shipped_at || '—') + '</p>';
+		html += '</div>';
+
+		if (history.length) {
+			html += '<div class="yoro-order-detail-section">';
+			html += '<h4>Lifecycle history</h4>';
+			html += '<table class="yoro-orders-table"><thead><tr><th>From</th><th>To</th><th>When</th></tr></thead><tbody>';
+			history.slice(-10).forEach(function(item) {
+				item = item || {};
+				html += '<tr>';
+				html += '<td>' + h.escapeHtml(displayLabel(item.from || '—')) + '</td>';
+				html += '<td>' + h.escapeHtml(displayLabel(item.to || '—')) + '</td>';
+				html += '<td>' + h.escapeHtml(item.occurred_at || '—') + '</td>';
+				html += '</tr>';
+			});
+			html += '</tbody></table></div>';
+		}
+
+		if (trackingUrl || editUrl) {
+			html += '<div class="yoro-order-actions">';
+			if (trackingUrl) {
+				html += '<a class="button button-primary" href="' + h.escapeHtml(trackingUrl) + '" target="_blank" rel="noopener noreferrer">Track shipment</a>';
+			}
+			if (editUrl) {
+				html += '<a class="button" href="' + h.escapeHtml(editUrl) + '">Open order</a>';
+			}
+			html += '</div>';
+		}
+
+		html += '</div>';
+
+		return html;
+	}
+
+	function renderTrackingResult(data, h) {
+		const result = data && data.result ? data.result : {};
+		const tracking = result.tracking || {};
+		const trackingUrl = safeResultHref(tracking.tracking_url || '');
+		const summary = String(result.summary || result.message || 'Shipment tracking').trim();
+
+		let html = '<div class="yoro-result-summary yoro-rich-result-intro">';
+		html += '<strong>' + h.escapeHtml(summary) + '</strong>';
+		html += '<span class="yoro-result-subtle">Shipment tracking</span>';
+		html += '</div>';
+		html += '<div class="yoro-order-detail-card yoro-rich-result-surface">';
+		html += '<div class="yoro-order-detail-header">';
+		html += '<strong class="yoro-order-detail-title">Order #' + h.escapeHtml(result.order_number || result.order_id || '') + '</strong>';
+		html += '<span class="yoro-status-badge">' + h.escapeHtml(result.success === false ? 'Needs attention' : 'Saved') + '</span>';
+		html += '</div>';
+		html += '<div class="yoro-order-detail-section">';
+		html += '<p><strong>Carrier:</strong> ' + h.escapeHtml(tracking.carrier || '—') + '</p>';
+		html += '<p><strong>Tracking number:</strong> <code>' + h.escapeHtml(tracking.tracking_number || '—') + '</code></p>';
+		html += '<p><strong>Shipped at:</strong> ' + h.escapeHtml(tracking.shipped_at || '—') + '</p>';
+		html += '</div>';
+
+		if (trackingUrl) {
+			html += '<div class="yoro-order-actions">';
+			html += '<a class="button button-primary" href="' + h.escapeHtml(trackingUrl) + '" target="_blank" rel="noopener noreferrer">Track shipment</a>';
+			html += '</div>';
+		}
+
+		html += '</div>';
+
+		return html;
+	}
+
+	function structuredFallbackFacts(result) {
+		const excluded = [
+			'action',
+			'assistant_summary',
+			'count',
+			'display_type',
+			'errors',
+			'message',
+			'meta',
+			'presentation',
+			'processed',
+			'read_only',
+			'result_type',
+			'skipped',
+			'success',
+			'summary',
+			'undo_plan',
+			'undoable'
+		];
+		const primaryKeys = ['product', 'order', 'customer', 'fulfillment', 'coupon', 'email'];
+		const facts = [];
+		const addFacts = function(source) {
+			Object.keys(source || {}).forEach(function(key) {
+				const value = source[key];
+
+				if (excluded.indexOf(key) !== -1 || value === '' || value === null || typeof value === 'undefined') {
+					return;
+				}
+
+				if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+					facts.push({ key: key, value: value });
+				}
+			});
+		};
+
+		primaryKeys.some(function(key) {
+			const value = result && result[key];
+
+			if (value && typeof value === 'object' && !Array.isArray(value)) {
+				addFacts(value);
+				return true;
+			}
+
+			return false;
+		});
+
+		addFacts(result || {});
+
+		return facts.filter(function(fact, index, items) {
+			return items.findIndex(function(candidate) {
+				return candidate.key === fact.key;
+			}) === index;
+		}).slice(0, 12);
+	}
+
+	function renderStructuredFallback(data, h) {
 		const result = data && data.result ? data.result : {};
 		const message =
 			(result.summary || result.message || (data && data.message)) ||
 			'I completed that request.';
+		const facts = structuredFallbackFacts(result);
 
 		let html = '<div class="yoro-single-action-result">';
-			html += '<div class="yoro-assistant-message-result">';
-			html += '<p>' + h.escapeHtml(message) + '</p>';
-			html += '</div>';
-			html += renderDebugJson(data, h);
+		html += '<div class="yoro-assistant-message-result">';
+		html += '<p>' + h.escapeHtml(message) + '</p>';
 		html += '</div>';
+
+		if (facts.length) {
+			html += '<div class="yoro-assistant-fact-grid yoro-rich-result-surface">';
+			facts.forEach(function(fact) {
+				html += '<div class="yoro-assistant-fact-card">';
+				html += '<span class="yoro-assistant-fact-label">' + h.escapeHtml(displayLabel(fact.key, { key: true })) + '</span>';
+				html += '<span class="yoro-assistant-fact-value">' + h.escapeHtml(String(fact.value)) + '</span>';
+				html += '</div>';
+			});
+			html += '</div>';
+		}
+
+		html += '</div>';
+
+		return html;
+	}
+
+	function renderUnknownResult(data, h) {
+		const result = data && data.result ? data.result : {};
+		let html = renderStructuredFallback(data, h);
+
+		if (result && Object.keys(result).length) {
+			html += renderDebugJson(data, h);
+		}
 
 		return html;
 	}
@@ -922,7 +1245,7 @@
 			return false;
 		}
 
-		if (/[_-]/.test(raw) || /[a-z][A-Z]/.test(raw)) {
+		if (/_/.test(raw) || /[a-z][A-Z]/.test(raw)) {
 			return true;
 		}
 
@@ -1019,7 +1342,7 @@
 			return null;
 		}
 
-		if (/^[\s.,!?;:-]+$/.test(rawLabel) || rawLabel.split(/\s+/).length > 14) {
+		if (/^[\s.,!?;:-]+$/.test(rawLabel) || assistantLabelWordCount(rawLabel) > 7) {
 			return null;
 		}
 
@@ -1027,8 +1350,12 @@
 			return null;
 		}
 
+		if (/-/.test(rawLabel)) {
+			return null;
+		}
+
 		if (!isAssistantOperationalFactLabel(rawLabel)) {
-			if (isAssistantSpeakerLabel(rawLabel) || isAssistantQuotedSpeech(value)) {
+			if (/_/.test(rawLabel) || isAssistantSpeakerLabel(rawLabel) || isAssistantQuotedSpeech(value)) {
 				return null;
 			}
 
@@ -1861,10 +2188,27 @@
 		return groups.map(function(group) {
 			group = group || {};
 			const label = String(group.label || group.id || '').replace(/_/g, ' ').trim();
-			const targetCount = parseInt(group.target_count || 0, 10) || 0;
+			const operationCount = parseInt(
+				group.operation_count
+				|| (Array.isArray(group.operation_ids) ? group.operation_ids.length : 0)
+				|| (Array.isArray(group.actions) ? group.actions.length : 0),
+				10
+			) || 0;
+			const targetCount = parseInt(
+				group.unique_target_count
+				|| group.target_count
+				|| 0,
+				10
+			) || 0;
 
 			if (!label) {
 				return '';
+			}
+
+			if (operationCount > 0 && targetCount > 0) {
+				return 'Approval scope: ' + label + ' — '
+					+ operationCount + ' change' + (operationCount === 1 ? '' : 's')
+					+ ' on ' + targetCount + ' target' + (targetCount === 1 ? '' : 's') + '.';
 			}
 
 			return 'Approval scope: ' + label + (targetCount > 0 ? ' (' + targetCount + ' target' + (targetCount === 1 ? '' : 's') + ')' : '');

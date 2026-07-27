@@ -1141,6 +1141,25 @@ class YoRo_Orders_Read_Service {
 		$total          = (float) $order->get_total();
 		$total_refunded = (float) $order->get_total_refunded();
 		$remaining      = max( 0, $total - $total_refunded );
+		$amount_input         = is_array( $params ) && isset( $params['amount'] ) && is_scalar( $params['amount'] )
+			? trim( (string) $params['amount'] )
+			: '';
+		$has_requested_amount = '' !== $amount_input;
+		$requested_amount     = $has_requested_amount && is_numeric( $amount_input ) ? (float) $amount_input : null;
+
+		if ( $has_requested_amount && ( null === $requested_amount || $requested_amount <= 0 ) ) {
+			return new WP_Error(
+				'invalid_refund_preview_amount',
+				__( 'Choose a positive refund amount to preview.', 'yoro-ai-core' )
+			);
+		}
+
+		if ( null !== $requested_amount && $requested_amount > $remaining ) {
+			return new WP_Error(
+				'refund_preview_amount_exceeds_remaining',
+				__( 'The preview amount is greater than the remaining refundable amount.', 'yoro-ai-core' )
+			);
+		}
 
 		$items = [];
 
@@ -1197,15 +1216,26 @@ class YoRo_Orders_Read_Service {
 
 		$order_date_created = $order->get_date_created();
 
-		return [
-			'success' => true,
-			'action'  => 'orders.refund_preview',
-			'summary' => sprintf(
-				'Order #%s has %s %s remaining refundable.',
+		$summary = null !== $requested_amount
+			? sprintf(
+				/* translators: 1: refund amount, 2: currency, 3: order number */
+				__( 'Previewed a %1$s %2$s refund for order #%3$s without issuing it.', 'yoro-ai-core' ),
+				wc_format_decimal( $requested_amount, 2 ),
+				$order->get_currency(),
+				$order->get_order_number()
+			)
+			: sprintf(
+				/* translators: 1: order number, 2: remaining refundable amount, 3: currency */
+				__( 'Order #%1$s has %2$s %3$s remaining refundable.', 'yoro-ai-core' ),
 				$order->get_order_number(),
 				wc_format_decimal( $remaining, 2 ),
 				$order->get_currency()
-			),
+			);
+
+		return [
+			'success' => true,
+			'action'  => 'orders.refund_preview',
+			'summary' => $summary,
 
 			'result_type'  => 'refund',
 			'display_type' => 'refund_preview',
@@ -1240,6 +1270,14 @@ class YoRo_Orders_Read_Service {
 
 			'items'      => $items,
 			'refunds'    => $refunds,
+			'requested_refund' => null !== $requested_amount
+				? [
+					'amount'          => wc_format_decimal( $requested_amount, 2 ),
+					'currency'        => $order->get_currency(),
+					'remaining_after' => wc_format_decimal( $remaining - $requested_amount, 2 ),
+					'will_execute'    => false,
+				]
+				: null,
 			'can_refund' => $remaining > 0,
 			'read_only'  => true,
 		];
@@ -1836,6 +1874,11 @@ class YoRo_Orders_Read_Service {
 	public static function preview_refund_preview( $params ) {
 		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
 		$order = $order_id ? wc_get_order( $order_id ) : false;
+		$amount_input = is_array( $params ) && isset( $params['amount'] ) && is_scalar( $params['amount'] )
+			? trim( (string) $params['amount'] )
+			: '';
+		$has_amount = '' !== $amount_input;
+		$amount = $has_amount && is_numeric( $amount_input ) ? (float) $amount_input : 0;
 		$block_reason = '';
 		$message = __( 'This refund preview lookup is ready.', 'yoro-ai-core' );
 
@@ -1849,6 +1892,12 @@ class YoRo_Orders_Read_Service {
 				__( 'I could not find order %d. Choose an existing order before continuing.', 'yoro-ai-core' ),
 				$order_id
 			);
+		} elseif ( $has_amount && $amount <= 0 ) {
+			$block_reason = 'invalid_refund_preview_amount';
+			$message = __( 'Choose a positive refund amount to preview.', 'yoro-ai-core' );
+		} elseif ( $has_amount && $amount > ( (float) $order->get_total() - (float) $order->get_total_refunded() ) ) {
+			$block_reason = 'refund_preview_amount_exceeds_remaining';
+			$message = __( 'The preview amount is greater than the remaining refundable amount.', 'yoro-ai-core' );
 		}
 
 		return [
@@ -1861,6 +1910,7 @@ class YoRo_Orders_Read_Service {
 			'block_reason'  => $block_reason,
 			'order_id'      => $order_id,
 			'order_exists'  => (bool) $order,
+			'amount'        => $has_amount ? wc_format_decimal( $amount, 2 ) : '',
 			'changes_store' => false,
 		];
 	}

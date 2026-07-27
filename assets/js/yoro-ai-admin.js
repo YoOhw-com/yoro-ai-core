@@ -199,6 +199,7 @@
 		let protectedWorkCount = 0;
 		let unloadGuardEnabled = false;
 		let conversationHydrationInFlight = false;
+		let conversationHydrationAttempted = false;
 		let conversationHydrationDirty = false;
 		let latestJumpPending = false;
 		let isSending = false;
@@ -1401,6 +1402,7 @@
 			const hasQuota = remaining === null || remaining === undefined || Number(remaining) > 0;
 			accessHydrationPending = false;
 			applyAccountConnectionState(accountConnection, actorAccess, entitlements, usage);
+			hydrateStoredConversation();
 			const accessActive = isYoRoAccessActive();
 			const stateClass = accessActive && hasQuota && serviceAvailable ? 'is-connected' : (connected ? 'is-warning' : 'is-error');
 			const provider = data && data.resolved_provider ? data.resolved_provider : '';
@@ -3172,7 +3174,11 @@
 		}
 
 		function hydrateStoredConversation() {
-			if (!isYoRoAccessActive()) {
+			if (
+				!isYoRoAccessActive() ||
+				conversationHydrationInFlight ||
+				conversationHydrationAttempted
+			) {
 				return;
 			}
 
@@ -3183,6 +3189,7 @@
 				return;
 			}
 
+			conversationHydrationAttempted = true;
 			conversationHydrationInFlight = true;
 			conversationHydrationDirty = false;
 
@@ -3204,6 +3211,8 @@
 						conversationState.pending_operation_token = '';
 						clearStoredConversationId();
 						refreshAiApiStatusConversationLink();
+					} else {
+						conversationHydrationAttempted = false;
 					}
 				})
 				.finally(function() {
@@ -5422,6 +5431,7 @@
 
 			if (conversationId) {
 				conversationState.conversation_id = String(conversationId);
+				conversationHydrationAttempted = true;
 				saveStoredConversationId(conversationState.conversation_id);
 				refreshAiApiStatusConversationLink();
 			}
@@ -6001,7 +6011,23 @@
 							renderJson: renderJsonProxy,
 							renderCustomerEmailPreviewResult: emailUI
 								? emailUI.renderCustomerEmailPreviewResult
-								: null
+								: null,
+							renderStepResult: function(action, stepResult) {
+								if (!resultUI || typeof resultUI.renderEmbeddedResult !== 'function') {
+									return '';
+								}
+
+								return resultUI.renderEmbeddedResult({
+									success: !stepResult || stepResult.success !== false,
+									stage: 'done',
+									parsed: {
+										action: action || ''
+									},
+									result: Object.assign({
+										action: action || ''
+									}, stepResult || {})
+								});
+							}
 						});
 					}
 					: null,

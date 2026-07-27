@@ -76,15 +76,6 @@
 		vi_VN: 'Vietnamese (Vietnam)'
 	};
 
-	const COMPACT_TOKEN_LABELS = {
-		outofstock: 'Out of stock',
-		onbackorder: 'On backorder',
-		instock: 'In stock',
-		b2c: 'B2C',
-		b2b: 'B2B',
-		woocommerce: 'WooCommerce'
-	};
-
 	function normalizeToken(value) {
 		return String(value || '')
 			.trim()
@@ -142,6 +133,15 @@
 			return raw;
 		}
 
+		if (
+			/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)
+			|| /^(?:https?:)?\/\//i.test(raw)
+			|| /^(?=.*\d)[A-Za-z0-9]+(?:[-_.:][A-Za-z0-9]+)+$/.test(raw)
+			|| /^[A-Z0-9]+(?:[-_][A-Z0-9]+)+$/.test(raw)
+		) {
+			return raw;
+		}
+
 		if (/^[A-Za-z]+\/[A-Za-z_]+$/.test(raw)) {
 			return raw.replace(/_/g, ' ');
 		}
@@ -158,34 +158,7 @@
 	}
 
 	function formatText(value) {
-		let text = String(value || '');
-
-		if (!text) {
-			return '';
-		}
-
-		const directLabel = /\s/.test(text) ? text : labelFor(text);
-		if (directLabel !== text) {
-			return directLabel;
-		}
-
-		Object.keys(LOCALE_LABELS).forEach(function(locale) {
-			text = text.replace(new RegExp('\\b' + escapeRegExp(locale) + '\\b', 'g'), LOCALE_LABELS[locale]);
-		});
-
-		Object.keys(COMPACT_TOKEN_LABELS).forEach(function(token) {
-			text = text.replace(new RegExp('\\b' + escapeRegExp(token) + '\\b', 'gi'), COMPACT_TOKEN_LABELS[token]);
-		});
-
-		text = text.replace(/\b[A-Za-z]+\/[A-Za-z_]+\b/g, function(match) {
-			return labelFor(match);
-		});
-
-		text = text.replace(/\b[a-z][a-z0-9]{1,}(?:[_-][a-z0-9]{2,})+\b/gi, function(match) {
-			return labelFor(match);
-		});
-
-		return text;
+		return String(value || '');
 	}
 
 	function formatFactPart(value) {
@@ -206,10 +179,6 @@
 		}
 
 		return formatText(text);
-	}
-
-	function escapeRegExp(value) {
-		return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 	}
 
 	window.YoRoAIDisplayLabels = {

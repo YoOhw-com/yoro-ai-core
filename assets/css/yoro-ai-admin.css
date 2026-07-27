@@ -5637,6 +5637,16 @@ body.toplevel_page_yoro-ai-core {
 	margin-top: 0;
 }
 
+.yoro-workflow-embedded-result {
+	margin-top: 14px;
+	padding-top: 14px;
+	border-top: 1px solid #edf0f2;
+}
+
+.yoro-workflow-embedded-result > .yoro-result-summary {
+	margin-top: 0;
+}
+
 .yoro-workflow-rollback-trace {
 	margin-top: 14px;
 	padding: 14px;

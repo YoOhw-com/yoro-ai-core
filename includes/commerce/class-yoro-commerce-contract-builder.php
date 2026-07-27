@@ -188,12 +188,31 @@ class YoRo_Commerce_Contract_Builder {
 				'woocommerce.action' => [
 					'registry_action' => $name,
 				],
+				'yoro.result' => [
+					'contract_type'  => 'yoro.commerce.action_result',
+					'schema_version' => 1,
+					'action'         => $name,
+					'payload_field'  => 'payload',
+				],
 				'yoro.conversation' => $conversation_semantics,
+				'yoro.presentation' => YoRo_Result_Presentation_Contract::for_action( $name, $action ),
 			],
 		];
 	}
 
 	private static function object_schema( $schema, $required ) {
+		if ( is_array( $schema )
+			&& 'object' === ( $schema['type'] ?? '' )
+			&& is_array( $schema['properties'] ?? null )
+			&& is_array( $schema['required'] ?? null )
+			&& array_key_exists( 'additionalProperties', $schema ) ) {
+			$required = $schema['required'];
+			$additional_properties = (bool) $schema['additionalProperties'];
+			$schema = $schema['properties'];
+		} else {
+			$additional_properties = false;
+		}
+
 		$properties = [];
 
 		foreach ( (array) $schema as $field => $definition ) {
@@ -220,7 +239,7 @@ class YoRo_Commerce_Contract_Builder {
 			'type'                 => 'object',
 			'properties'           => $properties,
 			'required'             => $required,
-			'additionalProperties' => false,
+			'additionalProperties' => $additional_properties,
 		];
 	}
 

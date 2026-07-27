@@ -52,10 +52,15 @@ $contract_keys = [ 'contract_type', 'schema_version', 'capability', 'semantic_sc
 
 foreach ( $actions as $action_name => $action ) {
 	$contract = $action['extensions']['yoro.conversation']['action_contract'] ?? [];
+	$presentation = $action['extensions']['yoro.presentation'] ?? [];
 	$assert( $contract_keys === array_keys( $contract ), sprintf( '%s must publish the exact action factory root schema.', $action_name ) );
 	$assert( '' !== ( $contract['semantic_schema']['operation_key'] ?? '' ), sprintf( '%s must publish a canonical operation key.', $action_name ) );
 	$assert( '' !== ( $contract['semantic_schema']['intent_family'] ?? '' ), sprintf( '%s must publish a canonical intent family.', $action_name ) );
 	$assert( $action_name === ( $contract['capability'] ?? '' ), sprintf( '%s action contract must bind to its manifest capability.', $action_name ) );
+	$assert( 'yoro.presentation.result' === ( $presentation['contract_type'] ?? '' ), sprintf( '%s must publish the namespaced result presentation contract.', $action_name ) );
+	$assert( 1 === (int) ( $presentation['schema_version'] ?? 0 ), sprintf( '%s must publish presentation schema version 1.', $action_name ) );
+	$assert( 'registry' === ( $presentation['compound_rendering'] ?? '' ), sprintf( '%s must publish registry-based compound rendering.', $action_name ) );
+	$assert( 'preserve_exact' === ( $presentation['identifier_policy'] ?? '' ), sprintf( '%s must publish exact identifier preservation.', $action_name ) );
 }
 
 foreach ( (array) ( $manifest['extensions']['yoro.adapters']['adapters'] ?? [] ) as $adapter ) {

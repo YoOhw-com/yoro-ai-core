@@ -82,12 +82,32 @@ if ( class_exists( 'YoRo_Action_Catalog_Builder' ) && class_exists( 'YoRo_Contex
 		}
 	}
 
+	foreach ( $by_name as $action_name => $item ) {
+		$result_contract = (array) ( $item['result_contract'] ?? [] );
+		$output_schema = (array) ( $item['output_schema'] ?? [] );
+
+		$assert( 'yoro.presentation.result' === ( $result_contract['contract_type'] ?? '' ), sprintf( '%s must declare the canonical result presentation contract.', $action_name ) );
+		$assert( 1 === (int) ( $result_contract['schema_version'] ?? 0 ), sprintf( '%s must declare result presentation schema version 1.', $action_name ) );
+		$assert( '' !== (string) ( $result_contract['result_type'] ?? '' ), sprintf( '%s must declare a result type.', $action_name ) );
+		$assert( '' !== (string) ( $result_contract['display_type'] ?? '' ), sprintf( '%s must declare a display type.', $action_name ) );
+		$assert( 'registry' === ( $result_contract['compound_rendering'] ?? '' ), sprintf( '%s must opt into registry-based compound rendering.', $action_name ) );
+		$assert( 'preserve_exact' === ( $result_contract['identifier_policy'] ?? '' ), sprintf( '%s must preserve identifiers exactly.', $action_name ) );
+		$assert( ! empty( $result_contract['structured_fallback'] ), sprintf( '%s must declare a structured fallback.', $action_name ) );
+		$assert( 'object' === ( $output_schema['type'] ?? '' ), sprintf( '%s must declare an object output schema.', $action_name ) );
+		$assert( false === ( $output_schema['additionalProperties'] ?? null ), sprintf( '%s output schema must fail closed.', $action_name ) );
+		$assert( 'yoro.commerce.action_result' === ( $item['result_wire_contract']['contract_type'] ?? '' ), sprintf( '%s must declare action result wire contract v1.', $action_name ) );
+		$assert( 1 === (int) ( $item['result_wire_contract']['schema_version'] ?? 0 ), sprintf( '%s must declare action result schema version 1.', $action_name ) );
+		$assert( $action_name === ( $item['result_wire_contract']['action'] ?? '' ), sprintf( '%s result wire contract must bind the exact action.', $action_name ) );
+	}
+
 	$required_actions = [
 		'orders.search',
 		'orders.get_details',
 		'orders.add_note',
 		'orders.compose_customer_email',
 		'orders.update_status',
+		'orders.refund_preview',
+		'orders.get_fulfillment',
 		'operations.get_summary',
 		'store.get_daily_briefing',
 		'store.get_business_summary',
@@ -98,6 +118,7 @@ if ( class_exists( 'YoRo_Action_Catalog_Builder' ) && class_exists( 'YoRo_Contex
 		'customers.lookup',
 		'customers.get_service_queue',
 		'products.get_inventory_queue',
+		'products.get_details',
 		'products.update_stock',
 		'products.update_stock_status',
 	];
@@ -109,6 +130,22 @@ if ( class_exists( 'YoRo_Action_Catalog_Builder' ) && class_exists( 'YoRo_Contex
 	$assert( ! isset( $by_name['orders.bulk_update_status_with_note'] ), 'Legacy bundled status+note action must not be exposed.' );
 	$assert( ! isset( $by_name['orders.hold'] ), 'Duplicate hold action must not be exposed; use orders.update_status with status=on-hold.' );
 	$assert( ! isset( $by_name['customers.get_summary'] ), 'Deprecated customers.get_summary action must not be exposed.' );
+
+	if ( isset( $by_name['orders.find_by_identity'] ) ) {
+		$identity_contract = (array) ( $by_name['orders.find_by_identity']['action_contract']['semantic_schema'] ?? [] );
+
+		$assert( 'find_by_identity' === ( $identity_contract['operation_key'] ?? '' ), 'orders.find_by_identity must not collide with the get_details semantic operation.' );
+	}
+
+	if ( isset( $by_name['orders.email_customer_preview'], $by_name['orders.email_customer_template'], $by_name['orders.use_email_template'] ) ) {
+		$assert( 'preview_email_template' === ( $by_name['orders.email_customer_preview']['action_contract']['semantic_schema']['operation_key'] ?? '' ), 'Email template preview must use the read-only preview semantic operation.' );
+		$assert( 'send_email_template' === ( $by_name['orders.email_customer_template']['action_contract']['semantic_schema']['operation_key'] ?? '' ), 'Email template transmission must use the send semantic operation.' );
+		$assert( 'apply_email_template' === ( $by_name['orders.use_email_template']['action_contract']['semantic_schema']['operation_key'] ?? '' ), 'Reusable template application must remain distinct from preview and transmission.' );
+	}
+
+	if ( isset( $by_name['products.update_catalog_batch'] ) ) {
+		$assert( 'update_catalog' === ( $by_name['products.update_catalog_batch']['action_contract']['semantic_schema']['operation_key'] ?? '' ), 'Catalog batch transport must preserve canonical update_catalog semantics.' );
+	}
 
 	if ( isset( $by_name['orders.add_note'] ) ) {
 		$add_note = $by_name['orders.add_note'];
@@ -139,6 +176,21 @@ if ( class_exists( 'YoRo_Action_Catalog_Builder' ) && class_exists( 'YoRo_Contex
 		$assert( ! empty( $update_status['requires_confirmation'] ), 'orders.update_status must require confirmation.' );
 		$assert( in_array( 'order_ids', (array) ( $update_status['required_params'] ?? [] ), true ), 'orders.update_status must require order_ids.' );
 		$assert( in_array( 'status', (array) ( $update_status['required_params'] ?? [] ), true ), 'orders.update_status must require status.' );
+	}
+
+	if ( isset( $by_name['orders.refund_preview'] ) ) {
+		$refund_preview = $by_name['orders.refund_preview'];
+
+		$assert( 'number' === ( $refund_preview['input_schema']['amount'] ?? '' ), 'orders.refund_preview must expose an optional numeric amount.' );
+		$assert( 'refund_preview' === ( $refund_preview['result_contract']['display_type'] ?? '' ), 'orders.refund_preview must declare its refund preview renderer.' );
+	}
+
+	if ( isset( $by_name['products.get_details'] ) ) {
+		$assert( 'product' === ( $by_name['products.get_details']['result_contract']['display_type'] ?? '' ), 'products.get_details must declare its product renderer.' );
+	}
+
+	if ( isset( $by_name['orders.get_fulfillment'] ) ) {
+		$assert( 'fulfillment_lifecycle' === ( $by_name['orders.get_fulfillment']['result_contract']['display_type'] ?? '' ), 'orders.get_fulfillment must declare its fulfillment lifecycle renderer.' );
 	}
 
 	if ( isset( $by_name['products.update_stock'] ) ) {
@@ -224,8 +276,13 @@ if ( class_exists( 'YoRo_Action_Catalog_Builder' ) && class_exists( 'YoRo_Contex
 
 		if ( isset( $by_name['subscriptions.get_summary'] ) ) {
 			$expected_report_actions[] = 'subscriptions.get_summary';
-			sort( $expected_report_actions );
 		}
+
+		if ( isset( $by_name['finance.get_reconciliation_summary'] ) ) {
+			$expected_report_actions[] = 'finance.get_reconciliation_summary';
+		}
+
+		sort( $expected_report_actions );
 
 		$assert( $expected_report_actions === $report_actions, 'Report-provider catalog scope must expose only live store report providers.' );
 		$assert( 'report_provider_catalog' === ( $report_hints['catalog_scope'] ?? '' ), 'Report-provider catalog scope must be exposed in router hints.' );
@@ -243,6 +300,8 @@ if ( class_exists( 'YoRo_Action_Catalog_Builder' ) && class_exists( 'YoRo_Contex
 	}
 
 if ( class_exists( 'YoRo_Store_Knowledge_Provider' ) ) {
+	$knowledge_cache_key = YoRo_Store_Knowledge_Provider::CACHE_PREFIX . md5( 'conversation|' . home_url() . '|' . get_locale() );
+	delete_transient( $knowledge_cache_key );
 	$knowledge = YoRo_Store_Knowledge_Provider::get_context( 'conversation' );
 
 	$assert( 9 === (int) ( $knowledge['schema_version'] ?? 0 ), 'Store knowledge schema version must be 9.' );

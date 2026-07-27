@@ -557,13 +557,6 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			);
 		}
 
-		if ( ! YoRo_AI_Settings::ai_api_has_quota_remaining() ) {
-			return new WP_Error(
-				'yoro_ai_api_quota_exhausted',
-				__( 'The current YoRo AI API monthly request quota is exhausted.', 'yoro-ai-core' )
-			);
-		}
-
 		$started_at = microtime( true );
 		$response = wp_remote_post(
 			$this->build_conversation_message_endpoint_url( $api_url ),
@@ -591,7 +584,8 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 
 			return new WP_Error(
 				$error_code,
-				$this->public_response_message( $json, $default_message )
+				$this->public_response_message( $json, $default_message ),
+				$this->conversation_error_data( $response, $json, $code )
 			);
 		}
 
@@ -996,7 +990,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			absint(
 				apply_filters(
 					'yoro_ai_api_request_timeout',
-					75,
+					95,
 					sanitize_key( $operation ),
 					$payload
 				)
@@ -1431,7 +1425,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		);
 		$safety = isset( $response['safety'] ) && is_array( $response['safety'] ) ? $response['safety'] : [];
 
-		if ( ! in_array( $mode, [ 'task_request', 'clarify', 'chat_only', 'unsupported_request', 'out_of_scope' ], true ) ) {
+		if ( ! in_array( $mode, [ 'task_request', 'clarify', 'chat_only', 'unsupported_request', 'out_of_scope', 'system_error' ], true ) ) {
 			$mode = 'clarify';
 		}
 
@@ -1458,6 +1452,8 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 					'notes'               => 'YoRo AI API route response.',
 				],
 			'semantic_frame'         => isset( $response['semantic_frame'] ) && is_array( $response['semantic_frame'] ) ? $response['semantic_frame'] : [],
+			'semantic_request_set'   => $this->normalize_semantic_request_set( $response['semantic_request_set'] ?? [] ),
+			'response_outcome'       => $this->normalize_response_outcome( $response['response_outcome'] ?? [] ),
 			'operation_graph'        => $operation_graph,
 			'operations'             => isset( $operation_graph['operations'] ) && is_array( $operation_graph['operations'] ) ? $operation_graph['operations'] : [],
 			'requested_operations'   => $requested_operations,
@@ -1486,15 +1482,108 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 					'yoro_ai_api_request_id'      => sanitize_text_field( $usage['request_id'] ?? '' ),
 					'yoro_ai_api_plan'            => sanitize_key( $usage['plan'] ?? '' ),
 					'yoro_ai_api_usage_period'    => sanitize_text_field( $usage['period'] ?? '' ),
-					'yoro_ai_api_usage_limit'     => isset( $usage['limit'] ) ? absint( $usage['limit'] ) : null,
-					'yoro_ai_api_usage_used'      => isset( $usage['used'] ) ? absint( $usage['used'] ) : null,
-					'yoro_ai_api_usage_remaining' => isset( $usage['remaining'] ) ? absint( $usage['remaining'] ) : null,
+					'yoro_ai_api_usage_limit'     => isset( $usage['credit_limit'] ) ? (float) $usage['credit_limit'] : ( isset( $usage['limit'] ) ? (float) $usage['limit'] : null ),
+					'yoro_ai_api_usage_used'      => isset( $usage['credits_used'] ) ? (float) $usage['credits_used'] : ( isset( $usage['used'] ) ? (float) $usage['used'] : null ),
+					'yoro_ai_api_usage_remaining' => isset( $usage['credits_remaining'] ) ? (float) $usage['credits_remaining'] : ( isset( $usage['remaining'] ) ? (float) $usage['remaining'] : null ),
 					'conversation_id'             => sanitize_text_field( $response['conversation_id'] ?? ( $response_meta['conversation_id'] ?? '' ) ),
 					'conversation_stage'          => sanitize_key( $response['stage'] ?? ( $response_meta['conversation_stage'] ?? '' ) ),
 					'pending_operation_token'     => sanitize_text_field( $response['pending_operation_token'] ?? ( $response_meta['pending_operation_token'] ?? '' ) ),
 				]
 			),
 		];
+	}
+
+	private function conversation_error_data( $response, $json, $status ) {
+		$json = is_array( $json ) ? $json : [];
+		$retry_after = absint( wp_remote_retrieve_header( $response, 'retry-after' ) );
+		$request_id = sanitize_text_field(
+			$json['request_id']
+				?? ( $json['usage']['request_id'] ?? wp_remote_retrieve_header( $response, 'x-request-id' ) )
+		);
+
+		return array_filter(
+			[
+				'status'      => absint( $status ),
+				'error'       => sanitize_key( $json['error'] ?? ( $json['code'] ?? '' ) ),
+				'retry_after' => $retry_after,
+				'request_id'  => $request_id,
+			],
+			static fn ( $value ) => null !== $value && '' !== $value && 0 !== $value
+		);
+	}
+
+	private function normalize_response_outcome( $outcome ) {
+		if (
+			! is_array( $outcome )
+			|| 'yoro.response_outcome' !== ( $outcome['contract_type'] ?? '' )
+			|| 1 !== absint( $outcome['schema_version'] ?? 0 )
+		) {
+			return [];
+		}
+
+		return [
+			'contract_type'        => 'yoro.response_outcome',
+			'schema_version'       => 1,
+			'outcome'              => sanitize_key( $outcome['outcome'] ?? '' ),
+			'status'               => sanitize_key( $outcome['status'] ?? '' ),
+			'speech_act'           => sanitize_key( $outcome['speech_act'] ?? '' ),
+			'changed'              => ! empty( $outcome['changed'] ),
+			'execution_required'   => ! empty( $outcome['execution_required'] ),
+			'requires_confirmation' => ! empty( $outcome['requires_confirmation'] ),
+			'retryable'            => ! empty( $outcome['retryable'] ),
+			'language'             => sanitize_text_field( $outcome['language'] ?? 'und' ),
+			'intent_class'         => sanitize_key( $outcome['intent_class'] ?? '' ),
+			'response_goal'        => sanitize_textarea_field( $outcome['response_goal'] ?? '' ),
+			'source_response'      => sanitize_textarea_field( $outcome['source_response'] ?? '' ),
+			'reason_codes'         => array_values( array_filter( array_map( 'sanitize_key', is_array( $outcome['reason_codes'] ?? null ) ? $outcome['reason_codes'] : [] ) ) ),
+		];
+	}
+
+	private function normalize_semantic_request_set( $request_set ) {
+		if (
+			! is_array( $request_set )
+			|| 'yoro.semantic_request_set' !== ( $request_set['contract_type'] ?? '' )
+			|| 2 !== absint( $request_set['schema_version'] ?? 0 )
+		) {
+			return [];
+		}
+
+		return [
+			'contract_type'         => 'yoro.semantic_request_set',
+			'schema_version'        => 2,
+			'mode'                  => sanitize_key( $request_set['mode'] ?? '' ),
+			'language'              => $this->sanitize_public_contract_value( $request_set['language'] ?? [] ),
+			'conversation_relation' => sanitize_key( $request_set['conversation_relation'] ?? '' ),
+			'conversation_act'      => sanitize_key( $request_set['conversation_act'] ?? '' ),
+			'conversation_subject'  => sanitize_key( $request_set['conversation_subject'] ?? '' ),
+			'question_scope'        => sanitize_key( $request_set['question_scope'] ?? '' ),
+			'semantic_units'        => $this->sanitize_public_contract_value( $request_set['semantic_units'] ?? [] ),
+			'requests'              => $this->sanitize_public_contract_value( $request_set['requests'] ?? [] ),
+			'entity_references'     => $this->sanitize_public_contract_value( $request_set['entity_references'] ?? [] ),
+			'context_dependencies'  => $this->sanitize_public_contract_value( $request_set['context_dependencies'] ?? [] ),
+			'ambiguities'           => $this->sanitize_public_contract_value( $request_set['ambiguities'] ?? [] ),
+			'response_goal'         => sanitize_textarea_field( $request_set['response_goal'] ?? '' ),
+			'confidence'            => isset( $request_set['confidence'] ) ? (float) $request_set['confidence'] : 0,
+		];
+	}
+
+	private function sanitize_public_contract_value( $value ) {
+		if ( is_array( $value ) ) {
+			$sanitized = [];
+
+			foreach ( $value as $key => $item ) {
+				$sanitized_key = is_int( $key ) ? $key : sanitize_key( (string) $key );
+				$sanitized[ $sanitized_key ] = $this->sanitize_public_contract_value( $item );
+			}
+
+			return $sanitized;
+		}
+
+		if ( is_string( $value ) ) {
+			return sanitize_textarea_field( $value );
+		}
+
+		return is_scalar( $value ) || null === $value ? $value : null;
 	}
 
 	private function normalize_assistant_response( $assistant ) {
@@ -2056,9 +2145,9 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		$status['service_status'] = 'available';
 		$status['usage'] = [
 			'period'    => sanitize_text_field( $usage['period'] ?? '' ),
-			'limit'     => isset( $usage['limit'] ) ? absint( $usage['limit'] ) : null,
-			'used'      => isset( $usage['used'] ) ? absint( $usage['used'] ) : null,
-			'remaining' => isset( $usage['remaining'] ) ? absint( $usage['remaining'] ) : null,
+			'limit'     => isset( $usage['credit_limit'] ) ? (float) $usage['credit_limit'] : ( isset( $usage['limit'] ) ? (float) $usage['limit'] : null ),
+			'used'      => isset( $usage['credits_used'] ) ? (float) $usage['credits_used'] : ( isset( $usage['used'] ) ? (float) $usage['used'] : null ),
+			'remaining' => isset( $usage['credits_remaining'] ) ? (float) $usage['credits_remaining'] : ( isset( $usage['remaining'] ) ? (float) $usage['remaining'] : null ),
 		];
 
 		if ( ! empty( $usage['plan'] ) && empty( $status['site']['plan'] ) ) {

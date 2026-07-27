@@ -76,8 +76,27 @@ try {
 	$assert( empty( $tracking_preview['blocked'] ), 'Valid core tracking preview must be executable after approval.' );
 	$assert( ! empty( $tracking_confirmation['requires_confirmation'] ), 'Tracking write must require confirmation.' );
 	$assert( ! empty( $tracking_result['success'] ), 'Confirmed tracking write must succeed.' );
+	$assert( 'tracking' === ( $tracking_result['presentation']['renderer_key'] ?? '' ), 'Tracking execution must carry the canonical tracking presentation DTO.' );
 	$assert( 'YORO-TRACK-001' === $order->get_meta( '_yoro_tracking_number', true ), 'Tracking write must persist only the namespaced YoRo tracking record.' );
 	$assert( ! empty( $presented['tracking_detected'] ), 'Order presenter must detect the namespaced tracking record.' );
+
+	$fulfillment_result = YoRo_Action_Executor::execute( 'orders.get_fulfillment', [ 'order_id' => $order_id ], false, false );
+	$refund_amount_preview = YoRo_Action_Executor::execute(
+		'orders.refund_preview',
+		[
+			'order_id' => $order_id,
+			'amount'   => 25,
+		],
+		false,
+		false
+	);
+
+	$assert( 'fulfillment_lifecycle' === ( $fulfillment_result['presentation']['renderer_key'] ?? '' ), 'Fulfillment reads must carry the canonical lifecycle presentation DTO.' );
+	$assert( 'YORO-TRACK-001' === ( $fulfillment_result['fulfillment']['tracking_number'] ?? '' ), 'Fulfillment reads must expose the connector-owned tracking evidence.' );
+	$assert( ! empty( $refund_amount_preview['success'] ), 'A valid amount-specific refund preview must succeed.' );
+	$assert( '25.00' === ( $refund_amount_preview['requested_refund']['amount'] ?? '' ), 'Refund preview must preserve the requested amount.' );
+	$assert( false === (bool) ( $refund_amount_preview['requested_refund']['will_execute'] ?? true ), 'Refund amount preview must explicitly remain read-only.' );
+	$assert( 'refund_preview' === ( $refund_amount_preview['presentation']['renderer_key'] ?? '' ), 'Refund amount preview must carry the canonical refund renderer DTO.' );
 
 	$duplicate_tracking = YoRo_Fulfillment_Write_Service::preview_add_tracking( $tracking_params );
 	$assert( 'tracking_already_exists' === ( $duplicate_tracking['block_reason'] ?? '' ), 'Duplicate tracking must block before execution.' );

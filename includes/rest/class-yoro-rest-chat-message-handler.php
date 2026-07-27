@@ -346,15 +346,35 @@ class YoRo_REST_Chat_Message_Handler {
 					$decision = $payload;
 				}
 
+				if (
+					[] === $decision &&
+					(
+						'assistant_message' === sanitize_key( $payload['type'] ?? '' ) ||
+						'action_event' === sanitize_key( $payload['stage'] ?? '' )
+					)
+				) {
+					$decision = $payload;
+				}
+
 				if ( [] !== $decision ) {
 					$pending_token = sanitize_text_field( $payload['pending_operation_token'] ?? '' );
 					$stage = sanitize_key( $payload['stage'] ?? ( $decision['stage'] ?? '' ) );
+					$is_action_event = 'action_event' === sanitize_key( $payload['stage'] ?? '' );
+					$is_flattened_assistant_message = 'assistant_message' === sanitize_key( $payload['type'] ?? '' );
 					$pending_state = '' !== $pending_token && isset( $pending_operation_states[ $pending_token ] )
 						? $pending_operation_states[ $pending_token ]
 						: [];
 					$pending_active = '' !== $pending_token
 						&& ! empty( $pending_state )
 						&& self::is_pending_operation_active( $pending_state );
+
+					if ( $is_flattened_assistant_message && ! $pending_active ) {
+						$stage = 'done';
+						$decision['execution_required'] = false;
+						$decision['requires_confirmation'] = false;
+						$decision['confirm_required'] = false;
+					}
+
 					$decision['conversation_id'] = $conversation_id;
 					$decision['stage'] = '' !== $stage ? $stage : ( $decision['stage'] ?? '' );
 					$decision['pending_operation_token'] = $pending_active
@@ -373,6 +393,27 @@ class YoRo_REST_Chat_Message_Handler {
 						]
 					);
 					$item['ui'] = self::format_response( $decision, '' );
+
+					if ( $is_action_event ) {
+						$action_result = isset( $payload['result'] ) && is_array( $payload['result'] )
+							? $payload['result']
+							: [];
+						$action        = sanitize_text_field( $payload['action'] ?? ( $action_result['action'] ?? '' ) );
+
+						$action_result['action'] = $action;
+						$item['ui']['stage'] = 'done';
+						$item['ui']['execution_required'] = false;
+						$item['ui']['requires_confirmation'] = false;
+						$item['ui']['confirm_required'] = false;
+						$item['ui']['pending_operation_token'] = '';
+						$item['ui']['pending_operation_active'] = false;
+						$item['ui']['result'] = $action_result;
+						$item['ui']['parsed']['stage'] = 'done';
+						$item['ui']['parsed']['action'] = $action;
+						$item['ui']['parsed']['params'] = isset( $payload['params'] ) && is_array( $payload['params'] )
+							? $payload['params']
+							: [];
+					}
 				}
 			}
 

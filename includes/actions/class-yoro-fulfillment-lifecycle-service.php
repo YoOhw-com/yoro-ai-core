@@ -16,15 +16,27 @@ class YoRo_Fulfillment_Lifecycle_Service {
 			return $order;
 		}
 
+		$fulfillment = self::snapshot( $order );
+		$summary     = sprintf(
+			/* translators: 1: order number, 2: fulfillment status */
+			__( 'Order #%1$s fulfillment is %2$s.', 'yoro-ai-core' ),
+			$order->get_order_number(),
+			self::status_label( $fulfillment['status'] )
+		);
+
 		return [
 			'success'       => true,
 			'action'        => 'orders.get_fulfillment',
 			'order_id'      => $order->get_id(),
-			'fulfillment'   => self::snapshot( $order ),
+			'summary'       => $summary,
+			'message'       => $summary,
+			'order'         => self::order_summary( $order ),
+			'fulfillment'   => $fulfillment,
 			'count'         => 1,
 			'read_only'     => true,
 			'changes_store' => false,
 			'result_type'   => 'fulfillment_lifecycle',
+			'display_type'  => 'fulfillment_lifecycle',
 		];
 	}
 
@@ -59,17 +71,29 @@ class YoRo_Fulfillment_Lifecycle_Service {
 			$order->save();
 		}
 
+		$fulfillment = self::snapshot( $order );
+		$summary     = sprintf(
+			/* translators: 1: order number, 2: fulfillment status */
+			__( 'Order #%1$s fulfillment is now %2$s.', 'yoro-ai-core' ),
+			$order->get_order_number(),
+			self::status_label( $fulfillment['status'] )
+		);
+
 		return [
 			'success'       => true,
 			'action'        => 'orders.update_fulfillment',
 			'order_id'      => $order->get_id(),
+			'summary'       => $summary,
+			'message'       => $summary,
+			'order'         => self::order_summary( $order ),
 			'before_status' => $before,
-			'fulfillment'   => self::snapshot( $order ),
+			'fulfillment'   => $fulfillment,
 			'count'         => 1,
 			'read_only'     => false,
 			'changes_store' => $before !== $status,
 			'undoable'      => false,
 			'result_type'   => 'fulfillment_lifecycle',
+			'display_type'  => 'fulfillment_lifecycle',
 		];
 	}
 
@@ -122,7 +146,27 @@ class YoRo_Fulfillment_Lifecycle_Service {
 			'status'          => '' !== $status ? $status : 'unfulfilled',
 			'tracking_number' => sanitize_text_field( $order->get_meta( '_yoro_tracking_number', true ) ),
 			'carrier'         => sanitize_text_field( $order->get_meta( '_yoro_tracking_carrier', true ) ),
+			'tracking_url'    => esc_url_raw( $order->get_meta( '_yoro_tracking_url', true ) ),
+			'shipped_at'      => sanitize_text_field( $order->get_meta( '_yoro_tracking_shipped_at', true ) ),
+			'shipping_method' => sanitize_text_field( $order->get_shipping_method() ),
+			'requires_shipping' => $order->needs_shipping_address(),
 			'history'         => array_values( is_array( $history ) ? $history : [] ),
 		];
+	}
+
+	private static function order_summary( WC_Order $order ) {
+		return [
+			'id'           => $order->get_id(),
+			'number'       => $order->get_order_number(),
+			'status'       => $order->get_status(),
+			'status_label' => YoRo_Order_Helper::get_order_status_label( $order->get_status() ),
+			'edit_url'     => method_exists( $order, 'get_edit_order_url' )
+				? $order->get_edit_order_url()
+				: admin_url( 'post.php?post=' . $order->get_id() . '&action=edit' ),
+		];
+	}
+
+	private static function status_label( $status ) {
+		return ucwords( str_replace( '_', ' ', sanitize_key( $status ) ) );
 	}
 }

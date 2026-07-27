@@ -17,7 +17,8 @@
 			renderJson: helpers.renderJson || function(data) {
 				return '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
 			},
-			renderCustomerEmailPreviewResult: helpers.renderCustomerEmailPreviewResult || null
+			renderCustomerEmailPreviewResult: helpers.renderCustomerEmailPreviewResult || null,
+			renderStepResult: helpers.renderStepResult || null
 		};
 	}
 
@@ -411,35 +412,13 @@
 		item = item || {};
 
 		const result = item.result || {};
-		const action = item.action || result.action || '';
 		const skipped = !!item.skipped || result.skipped === true;
-		const failed = !!item.failed || result.success === false;
 
 		if (skipped) {
 			return false;
 		}
 
-		if (failed) {
-			return true;
-		}
-
-		if (hasPendingEmail) {
-			return [
-				'orders.compose_customer_email',
-				'orders.render_customer_email_preview'
-			].indexOf(action) !== -1;
-		}
-
-			return [
-				'orders.add_note',
-			'orders.add_private_note_template',
-			'orders.update_status',
-			'orders.save_customer_email_draft',
-			'orders.send_customer_email',
-			'orders.refund_preview',
-			'orders.compose_customer_email',
-			'orders.render_customer_email_preview'
-		].indexOf(action) !== -1;
+		return true;
 	}
 
 	function containsWorkflowPlaceholder(value) {
@@ -1331,6 +1310,15 @@
 					return;
 				}
 
+				if (typeof h.renderStepResult === 'function') {
+					const renderedStep = h.renderStepResult(action, stepResult, item);
+
+					if (renderedStep) {
+						html += '<div class="yoro-workflow-embedded-result">' + renderedStep + '</div>';
+						return;
+					}
+				}
+
 				html += renderWorkflowStepCard(
 					humanWorkflowActionLabel(action),
 					renderWorkflowRawJsonDetails(stepResult, h),
@@ -1363,6 +1351,15 @@
 				if (typeof renderer === 'function') {
 					html += renderer(stepResult, item, h);
 					return;
+				}
+
+				if (typeof h.renderStepResult === 'function') {
+					const renderedStep = h.renderStepResult(action, stepResult, item);
+
+					if (renderedStep) {
+						html += '<div class="yoro-workflow-embedded-result">' + renderedStep + '</div>';
+						return;
+					}
 				}
 
 				html += renderWorkflowStepCard(

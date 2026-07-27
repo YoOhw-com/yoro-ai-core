@@ -1225,6 +1225,7 @@ class YoRo_Orders_Actions {
 				'write_action'     => false,
 				'input_schema'     => [
 					'order_id' => 'integer',
+					'amount'   => 'number',
 				],
 				'preview_callback' => [ __CLASS__, 'preview_refund_preview' ],
 				'max_items'        => 1,
@@ -1236,6 +1237,7 @@ class YoRo_Orders_Actions {
 				'required_params'     => [ 'order_id' ],
 				'param_hints'         => [
 					'order_id' => __( 'Use the target order ID for refund review.', 'yoro-ai-core' ),
+					'amount'   => __( 'Optionally simulate one positive refund amount without issuing or recording a refund.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [
 					'order_id' => __( 'Ask which order should be reviewed for refund context when no order target is clear.', 'yoro-ai-core' ),

@@ -32,6 +32,8 @@ function functionSource(startMarker, endMarker) {
 
 const accessGateSource = functionSource('function renderAccountAccessGate()', 'function accessGateLink');
 const primaryControlsSource = functionSource('function registerPrimaryControls()', 'commandField.addEventListener');
+const statusSource = functionSource('function renderAiApiStatus(data)', 'function getConversationDashboardUrl');
+const hydrationSource = functionSource('function hydrateStoredConversation()', 'function addLoadingMessage');
 
 assert(accessGateSource.includes("actorAccessState.status === 'seat_required'"), 'Access gate must handle a pending operator request explicitly.');
 assert(accessGateSource.includes('Access request sent'), 'Pending access must confirm that the request was sent.');
@@ -41,6 +43,9 @@ assert(accessGateSource.includes("accessGateCheckAction('Request access'"), 'Unr
 assert(!accessGateSource.includes('Open YoRo account'), 'WordPress operator access gate must not redirect users to a YoRo account login.');
 assert(primaryControlsSource.includes('[data-yoro-operator-access-check]'), 'Operator access action must trigger an in-plugin access check.');
 assert(primaryControlsSource.includes('loadAiApiStatus(true)'), 'Operator access action must refresh the signed WordPress actor handshake.');
+assert(statusSource.includes('hydrateStoredConversation();'), 'Conversation hydration must retry after signed operator access becomes active.');
+assert(hydrationSource.includes('conversationHydrationAttempted'), 'Conversation hydration must be guarded against duplicate requests.');
+assert(hydrationSource.includes('conversationHydrationAttempted = true;'), 'Conversation hydration must mark its first authenticated attempt.');
 
 if (failures.length) {
 	failures.forEach((failure) => {

@@ -3890,6 +3890,17 @@
 		html += '<div><span>Remaining</span><strong>' + h.escapeHtml(order.remaining || '0') + ' ' + h.escapeHtml(order.currency || '') + '</strong></div>';
 		html += '</div>';
 
+		if (result.requested_refund && typeof result.requested_refund === 'object') {
+			const requestedRefund = result.requested_refund;
+
+			html += '<div class="yoro-order-detail-section">';
+			html += '<h4>Requested refund preview</h4>';
+			html += '<p><strong>Amount:</strong> ' + h.escapeHtml(requestedRefund.amount || '0') + ' ' + h.escapeHtml(requestedRefund.currency || order.currency || '') + '</p>';
+			html += '<p><strong>Remaining after:</strong> ' + h.escapeHtml(requestedRefund.remaining_after || '0') + ' ' + h.escapeHtml(requestedRefund.currency || order.currency || '') + '</p>';
+			html += '<p class="yoro-result-subtle">Preview only. No refund will be issued.</p>';
+			html += '</div>';
+		}
+
 		html += '<div class="yoro-order-detail-section">';
 		html += '<h4>Payment</h4>';
 		html += '<p><strong>Method:</strong> ' + h.escapeHtml(order.payment_title || order.payment_method || '—') + '</p>';

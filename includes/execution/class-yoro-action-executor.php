@@ -222,7 +222,9 @@ class YoRo_Action_Executor {
 		$is_write_action = ! empty( $action['write_action'] );
 
 		if ( ! is_array( $result ) ) {
-			return [
+			return YoRo_Result_Presentation_Contract::attach_to_result(
+				$action_name,
+				[
 				'success'      => true,
 				'action'       => $action_name,
 				'summary'      => '',
@@ -239,7 +241,9 @@ class YoRo_Action_Executor {
 				'result_type'  => 'raw',
 				'display_type' => 'raw',
 				'raw'          => $result,
-			];
+				],
+				$action
+			);
 		}
 
 		$has_explicit_read_only = array_key_exists( 'read_only', $result );
@@ -313,6 +317,7 @@ class YoRo_Action_Executor {
 			$result['display_type'] = $result['result_type'];
 		}
 
+		$result = YoRo_Result_Presentation_Contract::attach_to_result( $action_name, $result, $action );
 		$result = self::attach_assistant_response_metadata( $action_name, $result, $action );
 
 		return $result;
@@ -904,7 +909,9 @@ class YoRo_Action_Executor {
 		$is_write_action = ! empty( $action['write_action'] );
 		$message         = $error->get_error_message();
 
-		return [
+		return YoRo_Result_Presentation_Contract::attach_to_result(
+			$action_name,
+			[
 			'success'      => false,
 			'action'       => $action_name,
 			'summary'      => $message,
@@ -930,7 +937,9 @@ class YoRo_Action_Executor {
 			'undo_plan'    => [],
 			'result_type'  => self::infer_error_result_type( $action_name ),
 			'display_type' => 'error',
-		];
+			],
+			$action
+		);
 	}
 
 	private static function infer_error_result_type( $action_name ) {

@@ -375,6 +375,39 @@ if (typeof instance.renderResult === 'function') {
 	assert(couponCreateHtml.includes('Approve change'), 'Coupon confirmation must render approve action.');
 	assert(!couponCreateHtml.includes('Got it. I’ll create coupon SUMMER10'), 'Coupon confirmation must not repeat assistant prose above the structured card.');
 
+	const sparseCouponCreateHtml = instance.renderResult({
+		success: true,
+		stage: 'confirm',
+		confirm_required: true,
+		requires_confirmation: true,
+		pending_operation_active: true,
+		pending_operation_token: 'pending-sparse-coupon-create',
+		parsed: {
+			action: 'coupons.create',
+			params: {
+				coupon_code: 'YORO-QA-01',
+				discount_type: 'percent',
+				discount_amount: 10,
+				expiry_date: '2026-07-30'
+			}
+		},
+		result: {
+			display_type: 'confirmation',
+			action: 'coupons.create',
+			params: {
+				coupon_code: 'YORO-QA-01',
+				discount_type: 'percent',
+				discount_amount: 10,
+				expiry_date: '2026-07-30'
+			},
+			requires_confirmation: true
+		}
+	});
+
+	assert(sparseCouponCreateHtml.includes('Coupon code: YORO-QA-01'), 'Sparse coupon confirmation must render without optional display labels.');
+	assert(sparseCouponCreateHtml.includes('Discount: 10% off'), 'Sparse coupon confirmation must preserve the percentage.');
+	assert(sparseCouponCreateHtml.includes('Type: percent'), 'Sparse coupon confirmation must derive a safe fallback label.');
+
 	const couponResultHtml = instance.renderResult({
 		success: true,
 		stage: 'done',

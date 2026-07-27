@@ -312,6 +312,11 @@ try {
 	$assert( 1 === count( $client->results ), 'Pull runtime must publish one canonical execution result.' );
 	$assert( 'operation.claimed' === ( $client->events[0]['payload']['event_type'] ?? '' ), 'Pull runtime acknowledgement must use operation.claimed.' );
 	$assert( 'executed' === ( $client->results[0]['payload']['status'] ?? '' ), 'The safe read smoke operation must finish as executed.' );
+	$action_result = $client->results[0]['payload']['result'] ?? [];
+	$assert( 'yoro.commerce.action_result' === ( $action_result['contract_type'] ?? '' ), 'Executed operations must publish action result contract v1.' );
+	$assert( 1 === ( $action_result['schema_version'] ?? 0 ), 'Executed operations must publish action result schema version 1.' );
+	$assert( 'orders.search' === ( $action_result['action'] ?? '' ), 'Action results must bind the exact claimed action.' );
+	$assert( is_array( $action_result['payload'] ?? null ), 'Action results must retain connector detail under the typed payload field.' );
 	$execution_telemetry = $client->results[0]['payload']['extensions']['yoro.execution'] ?? [];
 	$assert( 1 === ( $execution_telemetry['version'] ?? 0 ), 'Execution results must publish the connector-neutral yoro.execution v1 extension.' );
 	$assert( isset( $execution_telemetry['started_at'], $execution_telemetry['completed_at'] ), 'Execution telemetry must contain precise executor boundaries.' );

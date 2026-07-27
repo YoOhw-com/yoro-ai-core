@@ -311,13 +311,36 @@ class YoRo_Connector_Runtime {
 			[
 				'status'      => 'executed',
 				'summary'     => '' !== $summary ? $summary : 'The local operation completed.',
-				'result'      => $execution,
+				'result'      => $this->canonical_action_result( $operation, $execution ),
 				'occurred_at' => $execution_telemetry['completed_at'],
 				'extensions'  => [
 					'yoro.execution' => $execution_telemetry,
 				],
 			]
 		);
+	}
+
+	private function canonical_action_result( array $operation, array $execution ) {
+		$action = sanitize_text_field( $operation['action'] ?? ( $execution['action'] ?? '' ) );
+		$summary = sanitize_text_field( $execution['summary'] ?? '' );
+		$message = sanitize_text_field( $execution['message'] ?? $summary );
+		$result_type = sanitize_key( $execution['result_type'] ?? 'generic' );
+		$display_type = sanitize_key( $execution['display_type'] ?? $result_type );
+
+		return [
+			'contract_type'  => 'yoro.commerce.action_result',
+			'schema_version' => 1,
+			'action'         => $action,
+			'success'        => ! empty( $execution['success'] ),
+			'summary'        => $summary,
+			'message'        => $message,
+			'read_only'      => ! empty( $execution['read_only'] ),
+			'count'          => absint( $execution['count'] ?? 0 ),
+			'result_type'    => '' !== $result_type ? $result_type : 'generic',
+			'display_type'   => '' !== $display_type ? $display_type : 'generic',
+			'presentation'   => is_array( $execution['presentation'] ?? null ) ? $execution['presentation'] : [],
+			'payload'        => $execution,
+		];
 	}
 
 	private function failed_result( array $operation, $code, $message, array $execution_telemetry = [] ) {

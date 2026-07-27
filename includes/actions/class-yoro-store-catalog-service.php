@@ -44,7 +44,7 @@ class YoRo_Store_Catalog_Service {
 			'undoable'     => false,
 			'undo_plan'    => [],
 			'result_type'  => 'product',
-			'display_type' => 'generic',
+			'display_type' => 'product',
 			'meta'         => [
 				'changes_store' => false,
 			],
@@ -133,7 +133,7 @@ class YoRo_Store_Catalog_Service {
 			'undoable'     => false,
 			'undo_plan'    => [],
 			'result_type'  => 'product',
-			'display_type' => 'generic',
+			'display_type' => 'product',
 			'meta'         => [
 				'changes_store' => true,
 				'changed_fields' => $contract['changed_fields'],
