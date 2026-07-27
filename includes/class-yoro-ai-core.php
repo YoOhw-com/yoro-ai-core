@@ -78,6 +78,7 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-coupons-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-email-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-actions.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-wordpress-content-actions.php';
 	}
 
 	private static function include_execution() {
@@ -93,6 +94,7 @@ class YoRo_AI_Core {
 
 	private static function include_commerce() {
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-commerce-contract-builder.php';
+		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-commerce-contract-validator.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-client.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-snapshot-publisher.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-execution-journal.php';
@@ -122,6 +124,7 @@ class YoRo_AI_Core {
 		YoRo_Action_Registry::init();
 
 		YoRo_Orders_Actions::register();
+		YoRo_WordPress_Content_Actions::register();
 
 		do_action( 'yoro_register_actions' );
 

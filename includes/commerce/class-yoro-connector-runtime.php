@@ -122,7 +122,6 @@ class YoRo_Connector_Runtime {
 				return $published;
 			}
 
-			YoRo_Connector_Execution_Journal::clear( $operation );
 			$accepted[] = $published;
 
 			if ( 'executed' !== sanitize_key( $result['status'] ?? '' ) ) {
@@ -242,6 +241,12 @@ class YoRo_Connector_Runtime {
 	}
 
 	private function validate_operation( array $operation ) {
+		$contract_validation = YoRo_Commerce_Contract_Validator::validate_operation_envelope( $operation );
+
+		if ( is_wp_error( $contract_validation ) ) {
+			return $contract_validation;
+		}
+
 		$runtime = YoRo_Connector_Snapshot_Publisher::runtime();
 		$manifest = YoRo_Connector_Snapshot_Publisher::current_manifest_state();
 		$action_name = sanitize_text_field( $operation['action'] ?? '' );
@@ -255,6 +260,9 @@ class YoRo_Connector_Runtime {
 		$permit_expires_at = sanitize_text_field( $authorization['permit_expires_at'] ?? '' );
 		$expires = '' !== $expires_at ? strtotime( $expires_at ) : false;
 		$permit_expires = '' !== $permit_expires_at ? strtotime( $permit_expires_at ) : false;
+		$requires_permit = ! empty( $action['write_action'] )
+			|| ! empty( $action['requires_confirmation'] )
+			|| ! in_array( sanitize_key( $action['effect'] ?? '' ), [ 'read', 'draft' ], true );
 
 		if ( ! is_array( $runtime )
 			|| 'woocommerce' !== sanitize_key( $operation['connector_key'] ?? '' )
@@ -265,11 +273,10 @@ class YoRo_Connector_Runtime {
 			|| empty( $action['ai_exposed'] )
 			|| 1 !== absint( $wordpress_identity['subject_version'] ?? 0 )
 			|| sanitize_text_field( $actor['connector_connection_id'] ?? '' ) !== sanitize_text_field( $runtime['connector_connection_id'] ?? '' )
-			|| '' === sanitize_text_field( $authorization['execution_permit'] ?? '' )
 			|| false === $expires
 			|| $expires <= time()
-			|| false === $permit_expires
-			|| $permit_expires <= time()
+			|| ( $requires_permit && '' === sanitize_text_field( $authorization['execution_permit'] ?? '' ) )
+			|| ( $requires_permit && ( false === $permit_expires || $permit_expires <= time() ) )
 			|| $user_id < 1 ) {
 			return new WP_Error( 'connector_operation_authority_invalid', 'The connector operation authority is invalid or stale.' );
 		}

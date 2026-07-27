@@ -24,6 +24,7 @@ if ( class_exists( 'YoRo_AI_Core' ) && ! class_exists( 'YoRo_Connector_Runtime' 
 if ( class_exists( 'YoRo_Action_Registry' ) && 0 === count( YoRo_Action_Registry::all() ) ) {
 	YoRo_Action_Registry::init();
 	YoRo_Orders_Actions::register();
+	YoRo_WordPress_Content_Actions::register();
 }
 
 $failures = [];
@@ -243,6 +244,16 @@ try {
 	$get_details_schema = $actions['orders.get_details']['input_schema']['properties'] ?? [];
 	$search_action = YoRo_Action_Registry::get( 'orders.search' );
 	$assert( isset( $actions['orders.search'] ), 'Capability manifest must expose orders.search.' );
+	foreach ( [ 'content.search', 'content.get', 'content.create_draft', 'content.update_draft', 'content.preview_changes', 'content.publish', 'comments.list', 'comments.reply', 'comments.update_status', 'media.search', 'media.upload' ] as $managed_action ) {
+		$assert( isset( $actions[ $managed_action ] ), sprintf( 'Capability manifest must expose %s.', $managed_action ) );
+	}
+	$assert( empty( $actions['content.search']['write_action'] ), 'Content reads must remain permitless read operations.' );
+	$assert( ! empty( $actions['content.publish']['requires_confirmation'] ), 'Publishing must require confirmation.' );
+	$assert(
+		in_array( 'expected_version', (array) ( $actions['content.publish']['required_params'] ?? [] ), true )
+		&& in_array( 'expected_preview_hash', (array) ( $actions['content.publish']['required_params'] ?? [] ), true ),
+		'Publishing must bind confirmation to the exact version and preview hash.'
+	);
 	$search_semantics = $actions['orders.search']['extensions']['yoro.conversation'] ?? [];
 	$assert( 1 === ( $search_semantics['version'] ?? 0 ), 'Capability manifest actions must publish yoro.conversation v1 semantics.' );
 	$assert( 'orders_search' === ( $search_semantics['intent_family'] ?? '' ), 'Canonical conversation semantics must retain the connector-owned intent family.' );
@@ -279,8 +290,17 @@ try {
 		'action'                 => 'orders.search',
 		'params'                 => [ 'limit' => 1 ],
 		'actor'                  => [
+			'contract_type'          => 'yoro.commerce.actor_context',
+			'schema_version'         => 1,
+			'actor_type'             => 'user',
+			'subject'                => $actor_payload['subject'],
+			'operator_id'            => 'operator_smoke_1',
+			'workspace_id'           => 'workspace_smoke_1',
 			'connector_connection_id' => $connection_id,
+			'role'                   => 'store_admin',
 			'permissions'             => [ $search_action['permission'] ],
+			'authenticated_at'        => gmdate( 'c' ),
+			'assertion_id'            => 'assertion_smoke_1',
 			'extensions'              => [
 				'wordpress.identity' => [
 					'subject_version'  => 1,
@@ -288,10 +308,13 @@ try {
 				],
 			],
 		],
+		'plan_hash'              => hash( 'sha256', 'woocommerce-runtime-smoke-plan' ),
+		'preview_hash'           => hash( 'sha256', 'woocommerce-runtime-smoke-preview' ),
 		'authorization'          => [
 			'execution_permit' => 'permit_' . hash( 'sha256', 'woocommerce-runtime-smoke-permit' ),
 			'permit_expires_at' => $expires_at,
 		],
+		'requested_at'           => gmdate( 'c' ),
 		'expires_at'             => $expires_at,
 		'trace_id'               => 'trace_' . hash( 'sha256', 'woocommerce-runtime-smoke-trace' ),
 	];
@@ -317,7 +340,7 @@ try {
 	$assert( $admin_id === get_current_user_id(), 'Connector execution must restore the original WordPress user.' );
 
 	$journal_after_publish = YoRo_Connector_Execution_Journal::begin( $operation );
-	$assert( 'new' === ( $journal_after_publish['state'] ?? '' ), 'Accepted results must clear the local execution journal.' );
+	$assert( 'completed' === ( $journal_after_publish['state'] ?? '' ), 'Accepted results must retain the durable local execution receipt.' );
 	YoRo_Connector_Execution_Journal::clear( $operation );
 } finally {
 	foreach ( $original_options as $option_name => $original_value ) {
