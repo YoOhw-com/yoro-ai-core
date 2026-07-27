@@ -1,28 +1,30 @@
-=== YoRo AI Core ===
+=== YoRo Connector for WordPress ===
 Contributors: yoohw
-Tags: woocommerce, ai, operations, orders, automation
+Tags: wordpress, ai, content, site-management, woocommerce
 Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.4
-Requires Plugins: woocommerce
-Stable tag: 0.1.9
+Stable tag: 0.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Connect WooCommerce to YoRo AI API for guarded store chat, action previews, local execution, and customer email drafting.
+Connect WordPress to YoRo for guarded site inspection, content management, local execution, and optional WooCommerce assistance.
 
 == Description ==
 
-YoRo AI Core is the WordPress and WooCommerce runtime for YoRo AI.
+YoRo Connector for WordPress is the local WordPress runtime for YoRo. WooCommerce is an optional module.
 
 The plugin does not accept direct third-party AI provider keys. Conversation reasoning, multilingual semantic routing, action planning, memory, debug traces, capability boundaries, and customer email composition are handled by YoRo AI API through a site API key.
 
-The plugin is intentionally not the conversation brain. It provides structured WooCommerce store data, exposes an action catalog, renders structured assistant responses, executes approved actions locally, and reports execution events back to YoRo AI API.
+The plugin is intentionally not the conversation brain. It provides structured WordPress data, exposes a capability catalog, renders structured assistant responses, executes approved actions locally, and reports execution events back to YoRo. When WooCommerce is active, existing store-assistant capabilities continue to load.
 
 Core capabilities:
 
 * Send YoRo Chat messages to YoRo AI API conversation brain.
-* Provide structured store context, WooCommerce settings, statuses, and action capabilities.
+* Provide WordPress site, content, taxonomy, comment, media, plugin, theme, and update context.
+* Execute guarded content workflows with optimistic versions, confirmation, and idempotency.
+* Expose policy-gated WordPress administration actions that require a recent backup attestation.
+* Provide structured WooCommerce settings, statuses, and store capabilities when WooCommerce is active.
 * Search and inspect store orders.
 * Prepare guarded order actions with preview and confirmation flows.
 * Draft customer emails through YoRo AI API.
@@ -33,19 +35,19 @@ Core capabilities:
 
 * WordPress 6.4 or newer.
 * PHP 7.4 or newer.
-* WooCommerce installed and active.
 * A YoRo AI API base URL.
 * A site API key issued by YoRo AI API.
+
+WooCommerce is optional and is required only for YoRo store-management features.
 
 == Installation ==
 
 1. Upload the `yoro-ai-core` plugin folder to `/wp-content/plugins/`.
 2. Activate the plugin in WordPress.
-3. Make sure WooCommerce is installed and active.
-4. Open `YoRo AI > Settings`.
-5. Enter the YoRo AI API base URL and site API key.
-6. Click `Test YoRo AI API Connection`.
-7. Save settings after the connection is verified.
+3. Open `YoRo AI > Settings`.
+4. Start the YoRo account connection flow or enter the YoRo API base URL and site key.
+5. Click `Test YoRo AI API Connection`.
+6. Save settings after the connection is verified.
 
 == Configuration ==
 
@@ -66,7 +68,7 @@ YoRo AI Core connects to the YoRo AI API URL configured by an administrator. No 
 
 The configured YoRo AI API service is used to understand chat requests, create guarded action plans, draft customer emails, connect and sync optional shop mailboxes, store conversation history, and return structured responses to WordPress.
 
-Depending on the request, the plugin may send the site URL, plugin version, language settings, WooCommerce settings, order status data, order details, product data, customer names and email addresses, customer email content, mailbox connection details entered by an administrator, chat instructions, approved action metadata, and execution results to the configured YoRo AI API service.
+Depending on the granted capability and request, the plugin may send the site URL, plugin version, language settings, WordPress site and update metadata, content, taxonomies, comments, media metadata, installed plugin and theme metadata, acting-user permissions, approved action metadata, and execution results. If WooCommerce is active and a store capability is used, WooCommerce settings, orders, products, customer information, and email content may also be sent.
 
 YoRo AI service information is available at https://yorohq.com/.
 
@@ -78,7 +80,7 @@ The site owner is responsible for configuring a YoRo AI API endpoint that matche
 
 == Privacy ==
 
-YoRo AI Core stores its service URL, saved site key option, connection status, local action history, safety settings, email templates, and email draft metadata in the WordPress database. The plugin also adds suggested privacy policy text in WordPress under Settings > Privacy when available.
+YoRo Connector for WordPress stores its service URL, encrypted site credential, connection and module status, local action history, safety settings, idempotency records, and optional email draft metadata in the WordPress database. The plugin also adds suggested privacy policy text in WordPress under Settings > Privacy when available.
 
 == Frequently Asked Questions ==
 
@@ -88,13 +90,23 @@ No. The plugin connects only to YoRo AI API. Provider keys and prompts are manag
 
 = What happens if WooCommerce is not active? =
 
-YoRo AI Core will not boot its runtime. Administrators will see a notice explaining that WooCommerce is required.
+The WordPress connector, content, media, comment, and site-management runtime continues to work. WooCommerce-specific actions are simply omitted from the capability manifest.
+
+= Can AI clients run arbitrary code or change any WordPress option? =
+
+No. The connector does not expose arbitrary PHP, SQL, WP-CLI, file editing, or unrestricted option writes. Every operation must exist in the current capability manifest and pass WordPress capability checks.
 
 = Can development test files be excluded from release packages? =
 
 Yes. The repository includes `.distignore` rules for omitting development docs, generated archives, and debug test fixtures from release packages.
 
 == Changelog ==
+
+= 0.2.0 =
+* Made WordPress the primary connector and WooCommerce an optional module.
+* Added WordPress site, health, update, taxonomy, revision, media, plugin, theme, and user capabilities.
+* Added guarded content lifecycle and bounded administration actions.
+* Added module discovery while preserving legacy WooCommerce-keyed connections.
 
 = 0.1.9 =
 * Added canonical WooCommerce capability manifest and context-pack publication.

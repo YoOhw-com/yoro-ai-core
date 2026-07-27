@@ -11,6 +11,72 @@ permissions:
   contents: read
 
 jobs:
+  wordpress-core:
+    name: Plain WordPress Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: wordpress
+          MYSQL_USER: wordpress
+          MYSQL_PASSWORD: wordpress
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          coverage: none
+          extensions: curl, fileinfo, mbstring, mysqli, zip
+
+      - name: Install disposable plain WordPress
+        run: |
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/wp-cli.phar" \
+            https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+          php "$RUNNER_TEMP/wp-cli.phar" core download \
+            --path="$RUNNER_TEMP/wordpress" \
+            --quiet
+          php "$RUNNER_TEMP/wp-cli.phar" config create \
+            --path="$RUNNER_TEMP/wordpress" \
+            --dbname=wordpress \
+            --dbuser=wordpress \
+            --dbpass=wordpress \
+            --dbhost=127.0.0.1:3306 \
+            --skip-check
+          php "$RUNNER_TEMP/wp-cli.phar" core install \
+            --path="$RUNNER_TEMP/wordpress" \
+            --url=http://yoro-wordpress-smoke.test \
+            --title="YoRo WordPress Smoke" \
+            --admin_user=yoro_admin \
+            --admin_password=yoro_smoke_password \
+            --admin_email=smoke@example.test \
+            --skip-email
+          ln -s "$GITHUB_WORKSPACE" \
+            "$RUNNER_TEMP/wordpress/wp-content/plugins/yoro-ai-core"
+          php "$RUNNER_TEMP/wp-cli.phar" plugin activate yoro-ai-core \
+            --path="$RUNNER_TEMP/wordpress"
+
+      - name: Run WordPress-first contract
+        run: |
+          php "$RUNNER_TEMP/wp-cli.phar" eval-file \
+            "$GITHUB_WORKSPACE/tests/smoke/wordpress-core-runtime-contract.php" \
+            --path="$RUNNER_TEMP/wordpress"
+
   smoke:
     name: WordPress and WooCommerce Smoke
     runs-on: ubuntu-latest

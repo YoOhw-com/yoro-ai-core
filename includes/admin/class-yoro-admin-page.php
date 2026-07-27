@@ -939,6 +939,8 @@ class YoRo_Admin_Page {
 		$ai_api_plan_label = $ai_api_entitlements['plan_label'] ?? ( $ai_api_entitlements['usage_plan'] ?? ( $ai_api_site['plan'] ?? '' ) );
 		$ai_api_subscription_status = $ai_api_entitlements['subscription_status'] ?? '';
 		$show_ai_api_url_editor = ! $ai_api_url_locked && defined( 'WP_DEBUG' ) && WP_DEBUG;
+		$connector_admin_actions_enabled = 'yes' === get_option( YoRo_WordPress_Admin_Actions::POLICY_OPTION, 'no' );
+		$connector_backup_attested_at = absint( get_option( YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION, 0 ) );
 
 		?>
 		<div class="wrap yoro-ai-wrap">
@@ -1118,6 +1120,42 @@ class YoRo_Admin_Page {
 						</div>
 					</div>
 				</div>
+
+				<?php if ( current_user_can( YoRo_Capabilities::MANAGE_POLICIES ) ) : ?>
+					<div class="yoro-ai-card">
+						<h2><?php esc_html_e( 'WordPress Administration Safety', 'yoro-ai-core' ); ?></h2>
+						<table class="form-table" role="presentation">
+							<tr>
+								<th scope="row"><?php esc_html_e( 'Administration actions', 'yoro-ai-core' ); ?></th>
+								<td>
+									<label>
+										<input type="checkbox" name="yoro_connector_admin_actions_enabled" value="yes" <?php checked( $connector_admin_actions_enabled ); ?> />
+										<?php esc_html_e( 'Allow confirmed plugin, theme, core, settings, and bounded user-role actions.', 'yoro-ai-core' ); ?>
+									</label>
+									<p class="description"><?php esc_html_e( 'These actions remain blocked unless the acting WordPress administrator has the native capability and a backup was attested in the last 24 hours.', 'yoro-ai-core' ); ?></p>
+								</td>
+							</tr>
+							<tr>
+								<th scope="row"><?php esc_html_e( 'Backup attestation', 'yoro-ai-core' ); ?></th>
+								<td>
+									<label>
+										<input type="checkbox" name="yoro_connector_backup_attested_now" value="yes" />
+										<?php esc_html_e( 'I confirm that a restorable backup of this site completed successfully now.', 'yoro-ai-core' ); ?>
+									</label>
+									<p class="description">
+										<?php
+										echo esc_html(
+											$connector_backup_attested_at > 0
+												? sprintf( __( 'Last attested: %s', 'yoro-ai-core' ), wp_date( 'Y-m-d H:i:s T', $connector_backup_attested_at ) )
+												: __( 'No backup has been attested.', 'yoro-ai-core' )
+										);
+										?>
+									</p>
+								</td>
+							</tr>
+						</table>
+					</div>
+				<?php endif; ?>
 
 				<div class="yoro-ai-card">
 					<h2><?php esc_html_e( 'Local Store Controls', 'yoro-ai-core' ); ?></h2>
@@ -1599,6 +1637,18 @@ class YoRo_Admin_Page {
 		}
 
 		$settings_result = YoRo_AI_Settings::save_admin_settings( $_POST );
+
+		if ( current_user_can( YoRo_Capabilities::MANAGE_POLICIES ) ) {
+			update_option(
+				YoRo_WordPress_Admin_Actions::POLICY_OPTION,
+				! empty( $_POST['yoro_connector_admin_actions_enabled'] ) ? 'yes' : 'no',
+				false
+			);
+
+			if ( ! empty( $_POST['yoro_connector_backup_attested_now'] ) ) {
+				update_option( YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION, time(), false );
+			}
+		}
 
 		$connection_result = is_array( $settings_result )
 			? ( $settings_result['ai_api_connection_result'] ?? null )

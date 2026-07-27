@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Commerce_Contract_Builder {
 
-	const CONNECTOR_KEY = 'woocommerce';
+	const CONNECTOR_KEY = 'wordpress';
 	const SCHEMA_VERSION = 1;
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
@@ -40,22 +40,31 @@ class YoRo_Commerce_Contract_Builder {
 			}
 		);
 
+		$connector_key = self::connector_key( $runtime );
+		$extensions = [
+			'wordpress.runtime' => [
+				'plugin_version'     => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+				'execution_boundary' => 'plugin_executor',
+				'modules'            => YoRo_WordPress_Site_Actions::modules(),
+			],
+		];
+		if ( yoro_ai_core_has_woocommerce() ) {
+			$extensions['woocommerce.runtime'] = [
+				'active' => true,
+			];
+		}
+
 		return [
 			'contract_type'          => 'yoro.commerce.capability_manifest',
 			'schema_version'         => self::SCHEMA_VERSION,
 			'manifest_id'            => self::manifest_id( $connection_id ),
 			'revision'               => max( 1, absint( $revision ) ),
-			'connector_key'          => self::CONNECTOR_KEY,
+			'connector_key'          => $connector_key,
 			'connector_connection_id' => $connection_id,
 			'generated_at'           => gmdate( 'c', $captured_at ),
 			'expires_at'             => gmdate( 'c', $captured_at + self::MANIFEST_TTL ),
 			'actions'                => $actions,
-			'extensions'             => [
-				'woocommerce.runtime' => [
-					'plugin_version' => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
-					'execution_boundary' => 'plugin_executor',
-				],
-			],
+			'extensions'             => $extensions,
 		];
 	}
 
@@ -72,12 +81,14 @@ class YoRo_Commerce_Contract_Builder {
 		$woocommerce = is_array( $context['woocommerce'] ?? null ) ? $context['woocommerce'] : [];
 		$wordpress = is_array( $context['wordpress'] ?? null ) ? $context['wordpress'] : [];
 
+		$connector_key = self::connector_key( $runtime );
+
 		return [
 			'contract_type'          => 'yoro.commerce.context_pack',
 			'schema_version'         => self::SCHEMA_VERSION,
 			'context_pack_id'        => self::context_pack_id( $connection_id ),
 			'revision'               => max( 1, absint( $revision ) ),
-			'connector_key'          => self::CONNECTOR_KEY,
+			'connector_key'          => $connector_key,
 			'connector_connection_id' => $connection_id,
 			'manifest_id'            => sanitize_text_field( $manifest['manifest_id'] ?? '' ),
 			'manifest_revision'      => max( 1, absint( $manifest['revision'] ?? 0 ) ),
@@ -86,7 +97,7 @@ class YoRo_Commerce_Contract_Builder {
 			'domains'                => [
 				[
 					'name'        => 'store',
-					'source'      => 'woocommerce_live_settings',
+					'source'      => ! empty( $woocommerce['active'] ) ? 'wordpress_with_woocommerce_settings' : 'wordpress_live_settings',
 					'captured_at' => gmdate( 'c', $captured_at ),
 					'data'        => [
 						'name'              => sanitize_text_field( $store['name'] ?? get_bloginfo( 'name' ) ),
@@ -128,11 +139,11 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function manifest_id( $connection_id ) {
-		return 'manifest_woocommerce_' . substr( hash( 'sha256', (string) $connection_id ), 0, 40 );
+		return 'manifest_wordpress_' . substr( hash( 'sha256', (string) $connection_id ), 0, 40 );
 	}
 
 	public static function context_pack_id( $connection_id ) {
-		return 'context_woocommerce_' . substr( hash( 'sha256', (string) $connection_id ), 0, 40 );
+		return 'context_wordpress_' . substr( hash( 'sha256', (string) $connection_id ), 0, 40 );
 	}
 
 	private static function canonical_action( $name, array $action ) {
@@ -175,7 +186,7 @@ class YoRo_Commerce_Contract_Builder {
 			'required_params'       => $input_schema['required'],
 			'required_permissions'  => [ $permission ],
 			'extensions'            => [
-				'woocommerce.action' => [
+				'wordpress.action' => [
 					'registry_action' => $name,
 				],
 				'yoro.conversation' => $conversation_semantics,
@@ -271,7 +282,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function connection_id( array $runtime ) {
 		$connection_id = sanitize_text_field( $runtime['connector_connection_id'] ?? '' );
 
-		if ( 'woocommerce' !== sanitize_key( $runtime['connector_key'] ?? '' )
+		if ( ! in_array( self::connector_key( $runtime ), [ 'wordpress', 'woocommerce' ], true )
 			|| 'remote_agent' !== sanitize_key( $runtime['execution_mode'] ?? '' )
 			|| 1 !== absint( $runtime['protocol_version'] ?? 0 )
 			|| '' === $connection_id ) {
@@ -279,6 +290,12 @@ class YoRo_Commerce_Contract_Builder {
 		}
 
 		return $connection_id;
+	}
+
+	private static function connector_key( array $runtime ) {
+		$connector_key = sanitize_key( $runtime['connector_key'] ?? '' );
+
+		return in_array( $connector_key, [ 'wordpress', 'woocommerce' ], true ) ? $connector_key : self::CONNECTOR_KEY;
 	}
 
 	private static function safe_list( $items ) {
