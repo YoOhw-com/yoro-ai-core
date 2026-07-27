@@ -88,11 +88,43 @@ $restore_options = static function () use ( $original_options ) {
 
 register_shutdown_function( $restore_options );
 
+if ( ! defined( 'YORO_AI_API_SITE_KEY' ) ) {
+	define( 'YORO_AI_API_SITE_KEY', 'site-key-test' );
+}
+
 update_option( 'yoro_ai_api_url', 'http://yoro-ai-api.test/api/v1', false );
 update_option( 'yoro_ai_api_site_key', 'site-key-test', false );
 update_option( 'yoro_ai_api_enabled', 'yes', false );
 update_option( 'woocommerce_email_from_address', 'support@example.test', false );
 $connected_status                 = YoRo_AI_Settings::get_ai_api_status();
+$installation_uuid               = YoRo_AI_Settings::get_installation_uuid();
+$connected_status['account_connection'] = [
+	'connected' => true,
+	'status'    => 'active',
+];
+$connected_status['organization'] = [
+	'id'   => 1,
+	'name' => 'Mailbox Smoke Organization',
+];
+$connected_status['site'] = [
+	'id'     => 1,
+	'name'   => 'Mailbox Smoke Site',
+	'url'    => home_url(),
+	'status' => 'active',
+	'plan'   => 'test',
+];
+$connected_status['connection'] = [
+	'id'                => 1,
+	'installation_uuid' => $installation_uuid,
+	'status'            => 'active',
+	'plugin_version'    => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+];
+$connected_status['credential'] = [
+	'id'                 => 1,
+	'type'               => 'wordpress_connection',
+	'site_connection_id' => 1,
+	'expires_at'         => gmdate( 'c', time() + HOUR_IN_SECONDS ),
+];
 $connected_status['entitlements'] = array_merge(
 	(array) ( $connected_status['entitlements'] ?? [] ),
 	[
