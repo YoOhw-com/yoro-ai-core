@@ -64,6 +64,8 @@ if ( ! yoro_ai_core_has_woocommerce() ) {
 	$runtime = [
 		'connector_key'           => 'wordpress',
 		'connector_connection_id' => 'connection_wordpress_core_smoke',
+		'execution_mode'          => 'remote_agent',
+		'protocol_version'        => 1,
 	];
 	$manifest = YoRo_Commerce_Contract_Builder::build_capability_manifest( $runtime, time() );
 	$context_pack = YoRo_Commerce_Contract_Builder::build_context_pack( $runtime, $manifest, time() );
