@@ -1,11 +1,10 @@
 <?php
 /**
- * Plugin Name: YoRo AI Core
- * Description: AI operations assistant runtime for online stores.
- * Version: 0.1.9
+ * Plugin Name: YoRo Connector for WordPress
+ * Description: Securely connect WordPress to YoRo and supported AI clients.
+ * Version: 0.2.0
  * Requires at least: 6.4
  * Requires PHP: 7.4
- * Requires Plugins: woocommerce
  * Author: YoOhw
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -64,26 +63,7 @@ function yoro_ai_core_has_woocommerce() {
 	return class_exists( 'WooCommerce' ) && function_exists( 'WC' );
 }
 
-function yoro_ai_core_missing_woocommerce_notice() {
-	if ( ! current_user_can( 'activate_plugins' ) ) {
-		return;
-	}
-
-	?>
-	<div class="notice notice-error">
-		<p>
-			<?php esc_html_e( 'YoRo AI Core requires WooCommerce to be installed and active.', 'yoro-ai-core' ); ?>
-		</p>
-	</div>
-	<?php
-}
-
 function yoro_ai_core_boot() {
-	if ( ! yoro_ai_core_has_woocommerce() ) {
-		add_action( 'admin_notices', 'yoro_ai_core_missing_woocommerce_notice' );
-		return;
-	}
-
 	YoRo_AI_Core::init();
 }
 

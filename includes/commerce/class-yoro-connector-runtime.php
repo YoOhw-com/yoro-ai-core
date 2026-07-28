@@ -163,12 +163,13 @@ class YoRo_Connector_Runtime {
 		$identity = hash( 'sha256', $delivery_id . '|' . $lease_generation . '|claimed' );
 		$runtime = YoRo_Connector_Snapshot_Publisher::runtime();
 		$connection_id = is_array( $runtime ) ? sanitize_text_field( $runtime['connector_connection_id'] ?? '' ) : '';
+		$connector_key = is_array( $runtime ) ? sanitize_key( $runtime['connector_key'] ?? '' ) : '';
 
 		return [
 			'contract_type'          => 'yoro.commerce.connector_event',
 			'schema_version'         => 1,
 			'event_id'               => 'event_' . $identity,
-			'connector_key'          => 'woocommerce',
+			'connector_key'          => in_array( $connector_key, [ 'wordpress', 'woocommerce' ], true ) ? $connector_key : 'wordpress',
 			'connector_connection_id' => $connection_id,
 			'event_type'             => 'operation.claimed',
 			'idempotency_key'        => 'event_' . $identity,
@@ -265,7 +266,7 @@ class YoRo_Connector_Runtime {
 			|| ! in_array( sanitize_key( $action['effect'] ?? '' ), [ 'read', 'draft' ], true );
 
 		if ( ! is_array( $runtime )
-			|| 'woocommerce' !== sanitize_key( $operation['connector_key'] ?? '' )
+			|| sanitize_key( $operation['connector_key'] ?? '' ) !== sanitize_key( $runtime['connector_key'] ?? '' )
 			|| sanitize_text_field( $operation['connector_connection_id'] ?? '' ) !== sanitize_text_field( $runtime['connector_connection_id'] ?? '' )
 			|| sanitize_text_field( $operation['manifest_id'] ?? '' ) !== sanitize_text_field( $manifest['manifest_id'] ?? '' )
 			|| absint( $operation['manifest_revision'] ?? 0 ) !== absint( $manifest['revision'] ?? 0 )

@@ -66,6 +66,14 @@ class YoRo_AI_Core {
 	private static function include_actions() {
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-action-registry.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-action-catalog-builder.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-wordpress-site-actions.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-wordpress-admin-actions.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-wordpress-content-actions.php';
+
+		if ( ! yoro_ai_core_has_woocommerce() ) {
+			return;
+		}
+
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-order-presenter.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-report-builder.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-operations-service.php';
@@ -78,7 +86,6 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-coupons-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-email-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-actions.php';
-		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-wordpress-content-actions.php';
 	}
 
 	private static function include_execution() {
@@ -123,7 +130,12 @@ class YoRo_AI_Core {
 
 		YoRo_Action_Registry::init();
 
-		YoRo_Orders_Actions::register();
+		if ( yoro_ai_core_has_woocommerce() ) {
+			YoRo_Orders_Actions::register();
+		}
+
+		YoRo_WordPress_Site_Actions::register();
+		YoRo_WordPress_Admin_Actions::register();
 		YoRo_WordPress_Content_Actions::register();
 
 		do_action( 'yoro_register_actions' );
@@ -143,9 +155,9 @@ class YoRo_AI_Core {
 			return;
 		}
 
-		$content = '<p>' . esc_html__( 'YoRo AI Core connects this site to the configured YoRo AI API service when an authorized store manager sends a chat request, tests the connection, connects a mailbox, syncs mailbox data, drafts an email, or approves an action that reports execution status. The plugin sends the site URL, plugin version, language settings, WooCommerce store context, requested order/product/customer data needed for the request, mailbox connection details entered by an administrator, chat instructions, approved action metadata, and execution results to the configured service. Customer email addresses, names, order details, message snippets, and email body text may be included when they are needed to answer the request or draft a reply.', 'yoro-ai-core' ) . '</p>';
-		$content .= '<p>' . esc_html__( 'YoRo AI Core stores service credentials, connection status, local action history, safety settings, email templates, and draft metadata in this WordPress database. The plugin does not contact the YoRo AI API until an administrator configures the service URL and site key or starts the account connection flow.', 'yoro-ai-core' ) . '</p>';
+		$content = '<p>' . esc_html__( 'YoRo Connector for WordPress connects this site to the configured YoRo service when an authorized administrator starts the connection flow or asks an approved AI client to read or manage site content. Depending on the granted capabilities, the plugin may send WordPress site information, update status, content, taxonomies, comments, media metadata, installed plugin and theme metadata, the acting WordPress user permissions, approved action parameters, and execution results. WooCommerce data is included only when WooCommerce is active and the relevant store capability is used.', 'yoro-ai-core' ) . '</p>';
+		$content .= '<p>' . esc_html__( 'The connector stores encrypted service credentials, connection and module status, local action history, safety settings, and idempotency records in this WordPress database. Write actions require an authorized WordPress actor and explicit confirmation; high-impact administration actions also require an enabled administration policy and a recent backup attestation. The plugin does not expose arbitrary PHP, SQL, WP-CLI, file editing, or unrestricted WordPress option writes.', 'yoro-ai-core' ) . '</p>';
 
-		wp_add_privacy_policy_content( __( 'YoRo AI Core', 'yoro-ai-core' ), wp_kses_post( $content ) );
+		wp_add_privacy_policy_content( __( 'YoRo Connector for WordPress', 'yoro-ai-core' ), wp_kses_post( $content ) );
 	}
 }
