@@ -9,6 +9,8 @@ class YoRo_Connector_Runtime {
 	const CRON_HOOK = 'yoro_connector_runtime_tick';
 	const CRON_SCHEDULE = 'yoro_connector_minute';
 	const LOCK_KEY = 'yoro_connector_runtime_lock';
+	const MAX_DELIVERIES_PER_TICK = 5;
+	const MAX_TICK_SECONDS = 45;
 
 	private $client;
 
@@ -59,11 +61,41 @@ class YoRo_Connector_Runtime {
 			$publisher->publish_if_due();
 
 			if ( self::live_cutover_allowed() ) {
-				( new self( $client ) )->run_once();
+				( new self( $client ) )->run_batch();
 			}
 		} finally {
 			delete_transient( self::LOCK_KEY );
 		}
+	}
+
+	public function run_batch( $limit = self::MAX_DELIVERIES_PER_TICK, $time_budget = self::MAX_TICK_SECONDS ) {
+		$limit       = max( 1, min( self::MAX_DELIVERIES_PER_TICK, absint( $limit ) ) );
+		$time_budget = max( 1, min( self::MAX_TICK_SECONDS, absint( $time_budget ) ) );
+		$started_at  = microtime( true );
+		$deliveries  = [];
+		$drained     = false;
+
+		while ( count( $deliveries ) < $limit && ( microtime( true ) - $started_at ) < $time_budget ) {
+			$result = $this->run_once();
+
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
+
+			if ( ! is_array( $result ) || ! empty( $result['empty'] ) || ! empty( $result['skipped'] ) ) {
+				$drained = ! empty( $result['empty'] );
+				break;
+			}
+
+			$deliveries[] = $result;
+		}
+
+		return [
+			'success'    => true,
+			'processed'  => count( $deliveries ),
+			'drained'    => $drained,
+			'deliveries' => $deliveries,
+		];
 	}
 
 	public function run_once() {

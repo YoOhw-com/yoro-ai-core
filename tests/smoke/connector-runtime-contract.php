@@ -85,6 +85,7 @@ class YoRo_Connector_Smoke_Client extends YoRo_Connector_Client {
 	public $manifest_publications = 0;
 	public $context_publications = 0;
 	public $claim = [];
+	public $claims = [];
 	public $events = [];
 	public $renewals = [];
 	public $results = [];
@@ -104,6 +105,10 @@ class YoRo_Connector_Smoke_Client extends YoRo_Connector_Client {
 	}
 
 	public function claim_delivery() {
+		if ( ! empty( $this->claims ) ) {
+			return array_shift( $this->claims );
+		}
+
 		return $this->claim;
 	}
 
@@ -361,6 +366,39 @@ try {
 	$journal_after_publish = YoRo_Connector_Execution_Journal::begin( $operation );
 	$assert( 'completed' === ( $journal_after_publish['state'] ?? '' ), 'Accepted results must retain the durable local execution receipt.' );
 	YoRo_Connector_Execution_Journal::clear( $operation );
+
+	$batch_client = new YoRo_Connector_Smoke_Client();
+	$batch_operations = [];
+
+	foreach ( range( 1, 6 ) as $batch_position ) {
+		$batch_operation = $operation;
+		$batch_operation['envelope_id'] = 'envelope_' . hash( 'sha256', 'bounded-drain-envelope-' . $batch_position );
+		$batch_operation['workflow_id'] = 'workflow_' . hash( 'sha256', 'bounded-drain-workflow-' . $batch_position );
+		$batch_operation['idempotency_key'] = 'operation_' . hash( 'sha256', 'bounded-drain-idempotency-' . $batch_position );
+		$batch_operation['trace_id'] = 'trace_' . hash( 'sha256', 'bounded-drain-trace-' . $batch_position );
+		$batch_operations[] = $batch_operation;
+		$batch_client->claims[] = [
+			'success'  => true,
+			'delivery' => [
+				'delivery_id'      => 'delivery_' . hash( 'sha256', 'bounded-drain-delivery-' . $batch_position ),
+				'claim_token'      => 'claim_' . hash( 'sha256', 'bounded-drain-token-' . $batch_position ),
+				'lease_generation' => 1,
+				'operations'       => [ $batch_operation ],
+			],
+		];
+	}
+
+	$batch_client->claims[] = [ 'success' => true, 'empty' => true ];
+	$batch_result = ( new YoRo_Connector_Runtime( $batch_client ) )->run_batch( 3, 45 );
+	$assert( ! is_wp_error( $batch_result ) && ! empty( $batch_result['success'] ), 'Bounded runtime drain must complete safely.' );
+	$assert( 3 === ( $batch_result['processed'] ?? 0 ), 'Bounded runtime drain must process the requested delivery limit.' );
+	$assert( empty( $batch_result['drained'] ), 'A capped runtime drain must not claim the queue is empty.' );
+	$assert( 3 === count( $batch_client->results ), 'Bounded runtime drain must publish one result per claimed delivery.' );
+	$assert( 4 === count( $batch_client->claims ), 'Bounded runtime drain must leave later deliveries for the next tick.' );
+
+	foreach ( $batch_operations as $batch_operation ) {
+		YoRo_Connector_Execution_Journal::clear( $batch_operation );
+	}
 } finally {
 	foreach ( $original_options as $option_name => $original_value ) {
 		if ( $original_value === $missing_option ) {
