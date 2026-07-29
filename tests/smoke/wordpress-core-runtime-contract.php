@@ -60,6 +60,28 @@ $assert( ! array_key_exists( 'content_base64', $media_upload['input_schema'] ?? 
 
 if ( ! yoro_ai_core_has_woocommerce() ) {
 	$assert( ! isset( $actions['orders.search'] ), 'WooCommerce actions must not load on plain WordPress.' );
+
+	$runtime = [
+		'connector_key'           => 'wordpress',
+		'connector_connection_id' => 'connection_wordpress_core_smoke',
+		'execution_mode'          => 'remote_agent',
+		'protocol_version'        => 1,
+	];
+	$manifest = YoRo_Commerce_Contract_Builder::build_capability_manifest( $runtime, time() );
+	$context_pack = YoRo_Commerce_Contract_Builder::build_context_pack( $runtime, $manifest, time() );
+	$domains = [];
+
+	foreach ( (array) ( $context_pack['domains'] ?? [] ) as $domain ) {
+		if ( is_array( $domain ) && ! empty( $domain['name'] ) ) {
+			$domains[ $domain['name'] ] = $domain;
+		}
+	}
+
+	$store_data = is_array( $domains['store']['data'] ?? null ) ? $domains['store']['data'] : [];
+	$integration_data = is_array( $domains['integrations']['data'] ?? null ) ? $domains['integrations']['data'] : [];
+	$assert( ! array_key_exists( 'currency', $store_data ), 'Plain WordPress context must omit an unavailable currency.' );
+	$assert( ! array_key_exists( 'currency_symbol', $store_data ), 'Plain WordPress context must omit an unavailable currency symbol.' );
+	$assert( ! array_key_exists( 'commerce_platform_version', $integration_data ), 'Plain WordPress context must omit an unavailable commerce platform version.' );
 }
 
 $admin_ids = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ] );

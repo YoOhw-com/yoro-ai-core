@@ -2,7 +2,7 @@
 /**
  * Plugin Name: YoRo Connector for WordPress
  * Description: Securely connect WordPress to YoRo and supported AI clients.
- * Version: 0.2.0
+ * Version: 0.2.1
  * Requires at least: 6.4
  * Requires PHP: 7.4
  * Author: YoOhw

@@ -82,6 +82,34 @@ class YoRo_Commerce_Contract_Builder {
 		$wordpress = is_array( $context['wordpress'] ?? null ) ? $context['wordpress'] : [];
 
 		$connector_key = self::connector_key( $runtime );
+		$store_data = [
+			'name'            => sanitize_text_field( $store['name'] ?? get_bloginfo( 'name' ) ),
+			'timezone'        => sanitize_text_field( $store['timezone'] ?? wp_timezone_string() ),
+			'locale'          => sanitize_text_field( $store['locale'] ?? get_locale() ),
+			'order_statuses'  => self::safe_list( $woocommerce['order_statuses'] ?? [] ),
+			'payment_methods' => self::safe_list( $woocommerce['payment_gateways'] ?? [] ),
+		];
+		$currency = sanitize_text_field( $woocommerce['currency'] ?? '' );
+		$currency_symbol = sanitize_text_field( $woocommerce['currency_symbol'] ?? '' );
+
+		if ( '' !== $currency ) {
+			$store_data['currency'] = $currency;
+		}
+
+		if ( '' !== $currency_symbol ) {
+			$store_data['currency_symbol'] = $currency_symbol;
+		}
+
+		$integration_data = [
+			'connector_version'        => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
+			'platform_version'         => sanitize_text_field( $wordpress['version'] ?? '' ),
+			'commerce_platform_active' => ! empty( $woocommerce['active'] ),
+		];
+		$commerce_platform_version = sanitize_text_field( $woocommerce['version'] ?? '' );
+
+		if ( '' !== $commerce_platform_version ) {
+			$integration_data['commerce_platform_version'] = $commerce_platform_version;
+		}
 
 		return [
 			'contract_type'          => 'yoro.commerce.context_pack',
@@ -99,15 +127,7 @@ class YoRo_Commerce_Contract_Builder {
 					'name'        => 'store',
 					'source'      => ! empty( $woocommerce['active'] ) ? 'wordpress_with_woocommerce_settings' : 'wordpress_live_settings',
 					'captured_at' => gmdate( 'c', $captured_at ),
-					'data'        => [
-						'name'              => sanitize_text_field( $store['name'] ?? get_bloginfo( 'name' ) ),
-						'timezone'          => sanitize_text_field( $store['timezone'] ?? wp_timezone_string() ),
-						'locale'            => sanitize_text_field( $store['locale'] ?? get_locale() ),
-						'currency'          => sanitize_text_field( $woocommerce['currency'] ?? '' ),
-						'currency_symbol'   => sanitize_text_field( $woocommerce['currency_symbol'] ?? '' ),
-						'order_statuses'    => self::safe_list( $woocommerce['order_statuses'] ?? [] ),
-						'payment_methods'   => self::safe_list( $woocommerce['payment_gateways'] ?? [] ),
-					],
+					'data'        => $store_data,
 					'extensions'  => [
 						'woocommerce.settings' => [
 							'source_version' => 1,
@@ -119,12 +139,7 @@ class YoRo_Commerce_Contract_Builder {
 					'name'        => 'integrations',
 					'source'      => 'connector_runtime',
 					'captured_at' => gmdate( 'c', $captured_at ),
-					'data'        => [
-						'connector_version'        => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
-						'platform_version'         => sanitize_text_field( $wordpress['version'] ?? '' ),
-						'commerce_platform_active' => ! empty( $woocommerce['active'] ),
-						'commerce_platform_version' => sanitize_text_field( $woocommerce['version'] ?? '' ),
-					],
+					'data'        => $integration_data,
 					'extensions'  => [
 						'wordpress.runtime' => [
 							'installation_uuid' => YoRo_AI_Settings::get_installation_uuid(),
