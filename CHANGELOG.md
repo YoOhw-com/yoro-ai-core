@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 - 2026-07-29
+
+### Fixed
+- Future content scheduling now preserves the requested WordPress publication date instead of clearing it while updating a new draft.
+- Newly created drafts now return a valid RFC 3339 `modified_at` value when WordPress has not populated `post_modified_gmt` yet.
+
 ## 0.2.2 - 2026-07-29
 
 ### Changed
