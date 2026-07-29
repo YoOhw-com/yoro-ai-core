@@ -209,6 +209,7 @@ class YoRo_WordPress_Content_Actions {
 				'post_status'   => 'future',
 				'post_date_gmt' => gmdate( 'Y-m-d H:i:s', $publish_at ),
 				'post_date'     => get_date_from_gmt( gmdate( 'Y-m-d H:i:s', $publish_at ) ),
+				'edit_date'     => true,
 			],
 			true
 		);
@@ -587,9 +588,19 @@ class YoRo_WordPress_Content_Actions {
 			'title'      => $post->post_title,
 			'content'    => $post->post_content,
 			'version'    => self::post_version( $post ),
-			'modified_at'=> mysql_to_rfc3339( $post->post_modified_gmt ),
+			'modified_at' => self::post_modified_at( $post ),
 			'url'        => get_permalink( $post ),
 		];
+	}
+
+	private static function post_modified_at( $post ) {
+		$modified_gmt = (string) $post->post_modified_gmt;
+
+		if ( '' === $modified_gmt || 0 === strpos( $modified_gmt, '0000-00-00' ) ) {
+			$modified_gmt = get_gmt_from_date( (string) $post->post_modified );
+		}
+
+		return mysql_to_rfc3339( $modified_gmt );
 	}
 
 	public static function present_comment( $comment ) {

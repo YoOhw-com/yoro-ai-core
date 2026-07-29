@@ -99,6 +99,21 @@ if ( ! empty( $admin_ids ) ) {
 	);
 	$lifecycle_current = YoRo_WordPress_Content_Actions::get_content( [ 'content_id' => $lifecycle_post_id ] );
 	$lifecycle_version = $lifecycle_current['data']['version'] ?? '';
+	$modified_at = (string) ( $lifecycle_current['data']['modified_at'] ?? '' );
+	$assert( 1 === preg_match( '/^\d{4}-/', $modified_at ), 'New draft timestamps must use a valid RFC 3339 year.' );
+	$publish_at = time() + HOUR_IN_SECONDS;
+	$lifecycle_scheduled = YoRo_WordPress_Content_Actions::schedule(
+		[
+			'content_id'      => $lifecycle_post_id,
+			'expected_version' => $lifecycle_version,
+			'publish_at'       => gmdate( DATE_RFC3339, $publish_at ),
+		]
+	);
+	$assert( is_array( $lifecycle_scheduled ), 'Content schedule must return a successful result.' );
+	$lifecycle_version = is_array( $lifecycle_scheduled ) ? ( $lifecycle_scheduled['data']['version'] ?? '' ) : $lifecycle_version;
+	$scheduled_post = get_post( $lifecycle_post_id );
+	$assert( is_array( $lifecycle_scheduled ) && 'future' === ( $lifecycle_scheduled['data']['status'] ?? '' ), 'Content schedule must keep a future post in the future state.' );
+	$assert( $scheduled_post instanceof WP_Post && gmdate( 'Y-m-d H:i:s', $publish_at ) === $scheduled_post->post_date_gmt, 'Content schedule must preserve the requested UTC publication time.' );
 	$lifecycle_trashed = YoRo_WordPress_Content_Actions::trash(
 		[
 			'content_id'      => $lifecycle_post_id,
