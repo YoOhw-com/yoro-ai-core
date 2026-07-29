@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 - 2026-07-29
+
+### Changed
+- Connector runtime ticks now drain up to five deliveries within a 45-second budget while preserving per-delivery leases, acknowledgements, idempotency, and canonical results.
+
 ## Unreleased
 
 ### Added

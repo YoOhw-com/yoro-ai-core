@@ -4,7 +4,7 @@ Tags: wordpress, ai, content, site-management, woocommerce
 Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.2.1
+Stable tag: 0.2.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -101,6 +101,9 @@ No. The connector does not expose arbitrary PHP, SQL, WP-CLI, file editing, or u
 Yes. The repository includes `.distignore` rules for omitting development docs, generated archives, and debug test fixtures from release packages.
 
 == Changelog ==
+
+= 0.2.2 =
+* Drain up to five connector deliveries within a bounded 45-second runtime tick.
 
 = 0.2.1 =
 * Omit unavailable WooCommerce-only context fields on plain WordPress sites.
