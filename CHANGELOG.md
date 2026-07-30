@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4 - 2026-07-30
+
+### Fixed
+- Connector polling now uses a dedicated minute-aligned WordPress cron event instead of depending on the Action Scheduler queue runner cadence.
+
 ## 0.2.3 - 2026-07-29
 
 ### Fixed
