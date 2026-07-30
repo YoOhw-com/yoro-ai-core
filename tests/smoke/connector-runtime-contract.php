@@ -47,6 +47,31 @@ foreach (
 	$assert( class_exists( $class_name ), sprintf( '%s is not loaded.', $class_name ) );
 }
 
+$runtime_schedules = YoRo_Connector_Runtime::register_cron_schedule( [] );
+$assert(
+	MINUTE_IN_SECONDS === ( $runtime_schedules[ YoRo_Connector_Runtime::CRON_SCHEDULE ]['interval'] ?? 0 ),
+	'The connector runtime cron schedule must run every minute.'
+);
+
+YoRo_Connector_Runtime::schedule();
+$runtime_event = wp_get_scheduled_event( YoRo_Connector_Runtime::CRON_HOOK );
+$assert( $runtime_event instanceof stdClass, 'The connector runtime must register a WordPress cron event.' );
+$assert(
+	YoRo_Connector_Runtime::CRON_SCHEDULE === ( $runtime_event->schedule ?? '' ),
+	'The connector runtime must use its dedicated WordPress cron schedule.'
+);
+$assert(
+	0 === (int) ( ( $runtime_event->timestamp ?? 0 ) % MINUTE_IN_SECONDS ),
+	'The connector runtime cron event must align with the minute boundary.'
+);
+
+if ( function_exists( 'as_next_scheduled_action' ) ) {
+	$assert(
+	! as_next_scheduled_action( YoRo_Connector_Runtime::CRON_HOOK, [], 'yoro-ai-core' ),
+	'The connector runtime must not depend on the Action Scheduler queue runner.'
+	);
+}
+
 $admin_ids = get_users(
 	[
 		'role'   => 'administrator',

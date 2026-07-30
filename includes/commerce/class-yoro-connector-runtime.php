@@ -8,6 +8,8 @@ class YoRo_Connector_Runtime {
 
 	const CRON_HOOK = 'yoro_connector_runtime_tick';
 	const CRON_SCHEDULE = 'yoro_connector_minute';
+	const CRON_SCHEDULE_OPTION = 'yoro_connector_runtime_schedule_version';
+	const CRON_SCHEDULE_VERSION = 2;
 	const LOCK_KEY = 'yoro_connector_runtime_lock';
 	const MAX_DELIVERIES_PER_TICK = 5;
 	const MAX_TICK_SECONDS = 45;
@@ -35,16 +37,21 @@ class YoRo_Connector_Runtime {
 	}
 
 	public static function schedule() {
-		if ( function_exists( 'as_next_scheduled_action' ) && function_exists( 'as_schedule_recurring_action' ) ) {
-			if ( ! as_next_scheduled_action( self::CRON_HOOK, [], 'yoro-ai-core' ) ) {
-				as_schedule_recurring_action( time() + MINUTE_IN_SECONDS, MINUTE_IN_SECONDS, self::CRON_HOOK, [], 'yoro-ai-core' );
-			}
+		if ( self::CRON_SCHEDULE_VERSION > absint( get_option( self::CRON_SCHEDULE_OPTION, 0 ) ) ) {
+			wp_clear_scheduled_hook( self::CRON_HOOK );
 
-			return;
+			if ( function_exists( 'as_unschedule_all_actions' ) ) {
+				as_unschedule_all_actions( self::CRON_HOOK, [], 'yoro-ai-core' );
+			}
 		}
 
 		if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
-			wp_schedule_event( time() + MINUTE_IN_SECONDS, self::CRON_SCHEDULE, self::CRON_HOOK );
+			$next_minute = ( (int) floor( time() / MINUTE_IN_SECONDS ) + 1 ) * MINUTE_IN_SECONDS;
+			wp_schedule_event( $next_minute, self::CRON_SCHEDULE, self::CRON_HOOK );
+		}
+
+		if ( wp_next_scheduled( self::CRON_HOOK ) ) {
+			update_option( self::CRON_SCHEDULE_OPTION, self::CRON_SCHEDULE_VERSION, false );
 		}
 	}
 

@@ -102,6 +102,9 @@ Yes. The repository includes `.distignore` rules for omitting development docs, 
 
 == Changelog ==
 
+= 0.2.4 =
+* Run connector delivery polling on a dedicated minute-aligned WordPress cron event.
+
 = 0.2.2 =
 * Drain up to five connector deliveries within a bounded 45-second runtime tick.
 
