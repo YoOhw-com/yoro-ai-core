@@ -304,42 +304,14 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	}
 
 	public function download_media_reference( $reference_id, $destination ) {
-		$api_url  = YoRo_AI_Settings::get_ai_api_url();
-		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
-		$reference_id = sanitize_text_field( (string) $reference_id );
+		return $this->connector_media_client()->download_media_reference( $reference_id, $destination );
+	}
 
-		if ( '' === $api_url || '' === $site_key || '' === $reference_id || '' === $destination ) {
-			return new WP_Error( 'yoro_media_reference_missing', __( 'The staged YoRo media reference is unavailable.', 'yoro-ai-core' ) );
-		}
-
-		$response = wp_remote_get(
-			$this->build_media_reference_endpoint_url( $api_url, $reference_id ),
-			[
-				'timeout'             => 30,
-				'redirection'         => 0,
-				'headers'             => $this->authenticated_headers( $site_key ),
-				'stream'              => true,
-				'filename'            => $destination,
-				'limit_response_size' => ( 10 * MB_IN_BYTES ) + 1,
-			]
-		);
-
-		if ( is_wp_error( $response ) ) {
-			@unlink( $destination );
-			return $response;
-		}
-
-		$code = wp_remote_retrieve_response_code( $response );
-		if ( 200 !== $code || ! file_exists( $destination ) ) {
-			@unlink( $destination );
-			return new WP_Error( 'yoro_media_reference_download_failed', __( 'YoRo could not download the staged media file.', 'yoro-ai-core' ) );
-		}
-
-		return [
-			'sha256'   => sanitize_text_field( wp_remote_retrieve_header( $response, 'x-yoro-content-sha256' ) ),
-			'mime_type'=> sanitize_mime_type( wp_remote_retrieve_header( $response, 'content-type' ) ),
-			'byte_size'=> (int) filesize( $destination ),
-		];
+	/**
+	 * @return YoRo_Connector_Media_Client_Interface
+	 */
+	protected function connector_media_client() {
+		return new YoRo_Connector_Media_Client();
 	}
 
 	public function create_gmail_mailbox_connect_intent( array $payload ) {
@@ -1356,12 +1328,6 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		}
 
 		return $api_url . '/sites/credentials/rotate';
-	}
-
-	private function build_media_reference_endpoint_url( $api_url, $reference_id ) {
-		$api_url = $this->build_api_base_url( $api_url );
-
-		return $api_url . '/connectors/media-references/' . rawurlencode( $reference_id );
 	}
 
 	private function build_api_base_url( $api_url ) {
