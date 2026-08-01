@@ -155,9 +155,9 @@ class YoRo_AI_Core {
 			return;
 		}
 
-		$content = '<p>' . esc_html__( 'YoRo Connector for WordPress connects this site to the configured YoRo service when an authorized administrator starts the connection flow or asks an approved AI client to read or manage site content. Depending on the granted capabilities, the plugin may send WordPress site information, update status, content, taxonomies, comments, media metadata, installed plugin and theme metadata, the acting WordPress user permissions, approved action parameters, and execution results. WooCommerce data is included only when WooCommerce is active and the relevant store capability is used.', 'yoro-ai-core' ) . '</p>';
+		$content = '<p>' . esc_html__( 'YoRo AI connects this site to the configured YoRo AI service when an authorized administrator uses YoRo chat or asks an approved AI client to read or manage site content. Depending on the granted capabilities, the plugin may send WordPress site information, update status, content, taxonomies, comments, media metadata, installed plugin and theme metadata, the acting WordPress user permissions, approved action parameters, and execution results. WooCommerce data is included only when WooCommerce is active and the relevant store capability is used.', 'yoro-ai-core' ) . '</p>';
 		$content .= '<p>' . esc_html__( 'The connector stores encrypted service credentials, connection and module status, local action history, safety settings, and idempotency records in this WordPress database. Write actions require an authorized WordPress actor and explicit confirmation; high-impact administration actions also require an enabled administration policy and a recent backup attestation. The plugin does not expose arbitrary PHP, SQL, WP-CLI, file editing, or unrestricted WordPress option writes.', 'yoro-ai-core' ) . '</p>';
 
-		wp_add_privacy_policy_content( __( 'YoRo Connector for WordPress', 'yoro-ai-core' ), wp_kses_post( $content ) );
+		wp_add_privacy_policy_content( __( 'YoRo AI', 'yoro-ai-core' ), wp_kses_post( $content ) );
 	}
 }

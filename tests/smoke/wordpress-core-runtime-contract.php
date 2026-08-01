@@ -19,7 +19,15 @@ $assert = static function ( $condition, $message ) use ( &$failures ) {
 };
 $actions = YoRo_Action_Registry::all();
 $modules = YoRo_WordPress_Site_Actions::modules();
+$plugin_data = get_file_data(
+	YORO_AI_CORE_FILE,
+	[
+		'Name' => 'Plugin Name',
+	],
+	'plugin'
+);
 
+$assert( 'YoRo AI' === ( $plugin_data['Name'] ?? '' ), 'The public WordPress plugin name must be YoRo AI.' );
 $assert( class_exists( 'YoRo_Connector_Runtime' ), 'The connector runtime did not boot.' );
 $assert( in_array( 'wordpress.core', $modules, true ), 'The WordPress core module is missing.' );
 $assert( in_array( 'wordpress.content', $modules, true ), 'The WordPress content module is missing.' );

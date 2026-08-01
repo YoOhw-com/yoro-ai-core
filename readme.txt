@@ -1,4 +1,4 @@
-=== YoRo Connector for WordPress ===
+=== YoRo AI ===
 Contributors: yoohw
 Tags: wordpress, ai, content, site-management, woocommerce
 Requires at least: 6.4
@@ -8,11 +8,11 @@ Stable tag: 0.2.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Connect WordPress to YoRo for guarded site inspection, content management, local execution, and optional WooCommerce assistance.
+Bring YoRo AI to WordPress for conversational assistance, guarded site management, secure AI-client connections, and optional WooCommerce workflows.
 
 == Description ==
 
-YoRo Connector for WordPress is the local WordPress runtime for YoRo. WooCommerce is an optional module.
+YoRo AI is the local WordPress runtime for the broader YoRo AI platform. It supports YoRo's own conversational experience and secure connections to approved AI clients. WooCommerce is an optional module.
 
 The plugin does not accept direct third-party AI provider keys. Conversation reasoning, multilingual semantic routing, action planning, memory, debug traces, capability boundaries, and customer email composition are handled by YoRo AI API through a site API key.
 
@@ -80,7 +80,7 @@ The site owner is responsible for configuring a YoRo AI API endpoint that matche
 
 == Privacy ==
 
-YoRo Connector for WordPress stores its service URL, encrypted site credential, connection and module status, local action history, safety settings, idempotency records, and optional email draft metadata in the WordPress database. The plugin also adds suggested privacy policy text in WordPress under Settings > Privacy when available.
+YoRo AI stores its service URL, encrypted site credential, connection and module status, local action history, safety settings, idempotency records, and optional email draft metadata in the WordPress database. The plugin also adds suggested privacy policy text in WordPress under Settings > Privacy when available.
 
 == Frequently Asked Questions ==
 
