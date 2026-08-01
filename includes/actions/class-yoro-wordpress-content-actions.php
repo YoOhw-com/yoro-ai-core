@@ -507,7 +507,7 @@ class YoRo_WordPress_Content_Actions {
 		}
 
 		if ( ! empty( $params['media_reference_id'] ) ) {
-			$download = ( new YoRo_AI_API_Client() )->download_media_reference( $params['media_reference_id'], $tmp );
+			$download = static::connector_media_client()->download_media_reference( $params['media_reference_id'], $tmp );
 			if ( is_wp_error( $download ) ) {
 				@unlink( $tmp );
 				return $download;
@@ -552,6 +552,13 @@ class YoRo_WordPress_Content_Actions {
 		}
 
 		return self::success( self::present_media( get_post( $media_id ) ), 'Media uploaded.' );
+	}
+
+	/**
+	 * @return YoRo_Connector_Media_Client_Interface
+	 */
+	protected static function connector_media_client() {
+		return new YoRo_Connector_Media_Client();
 	}
 
 	public static function update_media_metadata( $params ) {

@@ -21,6 +21,8 @@ $actions = YoRo_Action_Registry::all();
 $modules = YoRo_WordPress_Site_Actions::modules();
 
 $assert( class_exists( 'YoRo_Connector_Runtime' ), 'The connector runtime did not boot.' );
+$assert( interface_exists( 'YoRo_Connector_Media_Client_Interface' ), 'The connector media client interface did not boot.' );
+$assert( class_exists( 'YoRo_Connector_Media_Client' ), 'The connector media client did not boot.' );
 $assert( in_array( 'wordpress.core', $modules, true ), 'The WordPress core module is missing.' );
 $assert( in_array( 'wordpress.content', $modules, true ), 'The WordPress content module is missing.' );
 $assert( yoro_ai_core_has_woocommerce() === in_array( 'woocommerce', $modules, true ), 'WooCommerce module detection is inconsistent.' );

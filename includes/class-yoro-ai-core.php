@@ -102,6 +102,8 @@ class YoRo_AI_Core {
 	private static function include_commerce() {
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-commerce-contract-builder.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-commerce-contract-validator.php';
+		require_once YORO_AI_CORE_PATH . 'includes/commerce/interface-yoro-connector-media-client.php';
+		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-media-client.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-client.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-snapshot-publisher.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-execution-journal.php';
