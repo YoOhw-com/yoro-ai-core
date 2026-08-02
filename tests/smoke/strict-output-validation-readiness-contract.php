@@ -131,12 +131,9 @@ foreach ( $sources as $source => $actions ) {
 		$strict_actions[] = $action_name;
 		$output_schema     = $action['output_schema'] ?? null;
 		$data_schema       = is_array( $output_schema ) ? ( $output_schema['properties']['data'] ?? null ) : null;
-		$data_types        = is_array( $data_schema['type'] ?? null )
-			? array_values( $data_schema['type'] )
-			: [ $data_schema['type'] ?? '' ];
 		$action_violations = $schema_violations( $output_schema );
 
-		if ( ! in_array( 'object', $data_types, true ) ) {
+		if ( 'object' !== ( $data_schema['type'] ?? null ) ) {
 			$action_violations[] = 'output_schema.properties.data must declare an object contract.';
 		}
 

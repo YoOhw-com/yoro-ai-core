@@ -243,11 +243,8 @@ class YoRo_Commerce_Contract_Builder {
 	public static function strict_output_validation_ready( $action_name ) {
 		$output_schema = self::execution_output_schema( $action_name );
 		$data_schema   = $output_schema['properties']['data'] ?? null;
-		$data_types    = is_array( $data_schema['type'] ?? null )
-			? array_values( $data_schema['type'] )
-			: [ $data_schema['type'] ?? '' ];
 
-		return in_array( 'object', $data_types, true )
+		return 'object' === ( $data_schema['type'] ?? null )
 			&& self::is_strict_schema_node( $output_schema );
 	}
 
