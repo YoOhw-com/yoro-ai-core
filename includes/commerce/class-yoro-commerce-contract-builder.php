@@ -260,7 +260,7 @@ class YoRo_Commerce_Contract_Builder {
 		return [
 			'execution_payload'              => 'canonical_action_result',
 			'execution_payload_version'      => self::EXECUTION_PAYLOAD_VERSION,
-			'fixture_revision'               => 2,
+			'fixture_revision'               => 3,
 			'strict_output_validation_ready' => self::strict_output_validation_ready( $action_name ),
 		];
 	}
@@ -409,7 +409,7 @@ class YoRo_Commerce_Contract_Builder {
 		if ( 'orders.get_details' === $action_name ) {
 			return self::closed_object_schema(
 				[
-					'orders' => self::array_schema( self::canonical_order_schema() ),
+					'orders' => self::array_schema( self::canonical_order_schema( true ) ),
 					'count'  => [ 'type' => 'integer', 'minimum' => 0 ],
 				],
 				[ 'orders', 'count' ]
@@ -577,7 +577,106 @@ class YoRo_Commerce_Contract_Builder {
 		return [ 'type' => 'object' ];
 	}
 
-	private static function canonical_order_schema() {
+	private static function canonical_order_schema( $include_details = false ) {
+		$properties = [
+				'id'           => [ 'type' => [ 'string', 'integer' ] ],
+				'number'       => [ 'type' => 'string' ],
+				'status'       => [ 'type' => 'string' ],
+				'status_label' => [ 'type' => 'string' ],
+				'total'        => [ 'type' => [ 'string', 'number' ] ],
+				'currency'     => [ 'type' => 'string' ],
+				'created_at'   => [ 'type' => 'string' ],
+				'version'      => [ 'type' => 'string' ],
+				'payment'      => self::canonical_payment_schema(),
+				'fulfillment'  => self::canonical_fulfillment_schema(),
+				'signals'      => self::array_schema( self::canonical_signal_schema() ),
+				'suggested_next_steps' => self::array_schema( self::canonical_suggested_next_step_schema() ),
+				'extensions'   => [ 'type' => 'object' ],
+			];
+		$required = [ 'id', 'number', 'status', 'status_label', 'total', 'currency', 'created_at', 'version', 'payment', 'fulfillment', 'signals', 'suggested_next_steps', 'extensions' ];
+
+		if ( $include_details ) {
+			$properties['customer'] = self::closed_object_schema(
+				[
+					'id'    => [ 'type' => [ 'string', 'integer', 'null' ] ],
+					'name'  => [ 'type' => 'string' ],
+					'email' => [ 'type' => 'string' ],
+					'phone' => [ 'type' => 'string' ],
+				],
+				[ 'id', 'name', 'email', 'phone' ]
+			);
+			$properties['line_items'] = self::array_schema(
+				self::closed_object_schema(
+					[
+						'name'     => [ 'type' => 'string' ],
+						'quantity' => [ 'type' => 'integer' ],
+						'sku'      => [ 'type' => 'string' ],
+						'total'    => [ 'type' => [ 'string', 'number' ] ],
+					],
+					[ 'name', 'quantity', 'sku', 'total' ]
+				)
+			);
+			$properties['timeline'] = self::array_schema( self::canonical_investigation_timeline_event_schema() );
+			$properties['related_orders'] = self::array_schema( self::canonical_related_order_schema() );
+			$properties['support_context'] = self::canonical_support_context_schema();
+			$required = array_merge( $required, [ 'customer', 'line_items', 'timeline', 'related_orders', 'support_context' ] );
+		}
+
+		return self::closed_object_schema( $properties, $required );
+	}
+
+	private static function canonical_payment_schema() {
+		return self::closed_object_schema(
+			[
+				'status'   => [ 'type' => 'string' ],
+				'paid'     => [ 'type' => 'boolean' ],
+				'failed'   => [ 'type' => 'boolean' ],
+				'refunded' => [ 'type' => 'boolean' ],
+				'amount'   => [ 'type' => [ 'string', 'number' ] ],
+				'currency' => [ 'type' => 'string' ],
+			],
+			[ 'status', 'paid', 'failed', 'refunded', 'amount', 'currency' ]
+		);
+	}
+
+	private static function canonical_fulfillment_schema() {
+		return self::closed_object_schema(
+			[
+				'status'            => [ 'type' => 'string' ],
+				'fulfilled'         => [ 'type' => 'boolean' ],
+				'requires_shipping' => [ 'type' => 'boolean' ],
+				'tracking_count'    => [ 'type' => 'integer', 'minimum' => 0 ],
+			],
+			[ 'status', 'fulfilled', 'requires_shipping', 'tracking_count' ]
+		);
+	}
+
+	private static function canonical_signal_schema() {
+		return self::closed_object_schema(
+			[
+				'code'     => [ 'type' => 'string' ],
+				'severity' => [ 'type' => 'string', 'enum' => [ 'low', 'medium', 'high', 'critical' ] ],
+				'summary'  => [ 'type' => 'string' ],
+				'evidence' => [ 'type' => 'string' ],
+			],
+			[ 'code', 'severity', 'summary', 'evidence' ]
+		);
+	}
+
+	private static function canonical_suggested_next_step_schema() {
+		return self::closed_object_schema(
+			[
+				'code'           => [ 'type' => 'string' ],
+				'summary'        => [ 'type' => 'string' ],
+				'reason'         => [ 'type' => 'string' ],
+				'requires_write' => [ 'type' => 'boolean' ],
+				'risk_level'     => [ 'type' => 'string', 'enum' => [ 'low', 'medium', 'high', 'critical' ] ],
+			],
+			[ 'code', 'summary', 'reason', 'requires_write', 'risk_level' ]
+		);
+	}
+
+	private static function canonical_related_order_schema() {
 		return self::closed_object_schema(
 			[
 				'id'           => [ 'type' => [ 'string', 'integer' ] ],
@@ -588,28 +687,33 @@ class YoRo_Commerce_Contract_Builder {
 				'currency'     => [ 'type' => 'string' ],
 				'created_at'   => [ 'type' => 'string' ],
 				'version'      => [ 'type' => 'string' ],
-				'customer'     => self::closed_object_schema(
-					[
-						'name'  => [ 'type' => 'string' ],
-						'email' => [ 'type' => 'string' ],
-						'phone' => [ 'type' => 'string' ],
-					],
-					[ 'name', 'email', 'phone' ]
-				),
-				'line_items'   => self::array_schema(
-					self::closed_object_schema(
-						[
-							'name'     => [ 'type' => 'string' ],
-							'quantity' => [ 'type' => 'integer' ],
-							'sku'      => [ 'type' => 'string' ],
-							'total'    => [ 'type' => [ 'string', 'number' ] ],
-						],
-						[ 'name', 'quantity', 'sku', 'total' ]
-					)
-				),
-				'extensions'   => [ 'type' => 'object' ],
 			],
 			[ 'id', 'number', 'status', 'status_label', 'total', 'currency', 'created_at', 'version' ]
+		);
+	}
+
+	private static function canonical_investigation_timeline_event_schema() {
+		return self::closed_object_schema(
+			[
+				'type'        => [ 'type' => 'string' ],
+				'occurred_at' => [ 'type' => 'string' ],
+				'summary'     => [ 'type' => 'string' ],
+				'visibility'  => [ 'type' => 'string', 'enum' => [ 'system', 'internal', 'customer' ] ],
+				'extensions'  => [ 'type' => 'object' ],
+			],
+			[ 'type', 'occurred_at', 'summary', 'visibility', 'extensions' ]
+		);
+	}
+
+	private static function canonical_support_context_schema() {
+		return self::closed_object_schema(
+			[
+				'available'           => [ 'type' => 'boolean' ],
+				'interaction_count'   => [ 'type' => 'integer', 'minimum' => 0 ],
+				'last_interaction_at' => [ 'type' => 'string' ],
+				'summary'             => [ 'type' => 'string' ],
+			],
+			[ 'available', 'interaction_count', 'last_interaction_at', 'summary' ]
 		);
 	}
 
@@ -628,9 +732,13 @@ class YoRo_Commerce_Contract_Builder {
 				'last_order_at'  => [ 'type' => 'string' ],
 				'segments'       => self::array_schema( [ 'type' => 'string' ] ),
 				'risk_flags'     => self::array_schema( [ 'type' => 'string' ] ),
+				'related_orders' => self::array_schema( self::canonical_related_order_schema() ),
+				'signals'        => self::array_schema( self::canonical_signal_schema() ),
+				'support_context' => self::canonical_support_context_schema(),
+				'suggested_next_steps' => self::array_schema( self::canonical_suggested_next_step_schema() ),
 				'extensions'     => [ 'type' => 'object' ],
 			],
-			[ 'id', 'name', 'email', 'phone', 'status', 'orders_count', 'lifetime_value', 'currency', 'segments', 'risk_flags' ]
+			[ 'id', 'name', 'email', 'phone', 'status', 'orders_count', 'lifetime_value', 'currency', 'created_at', 'last_order_at', 'segments', 'risk_flags', 'related_orders', 'signals', 'support_context', 'suggested_next_steps', 'extensions' ]
 		);
 	}
 
@@ -1221,7 +1329,11 @@ class YoRo_Commerce_Contract_Builder {
 
 			foreach ( $raw_customers as $customer ) {
 				if ( is_array( $customer ) ) {
-					$customers[] = self::canonical_customer( $customer );
+					$customers[] = self::canonical_customer(
+						$customer,
+						$execution['related']['recent_orders'] ?? ( $execution['orders'] ?? [] ),
+						$execution['related']['recent_notes'] ?? []
+					);
 				}
 			}
 
@@ -1282,9 +1394,14 @@ class YoRo_Commerce_Contract_Builder {
 					],
 				],
 			];
+			$item['payment'] = self::canonical_order_payment( $order, $item );
+			$item['fulfillment'] = self::canonical_order_fulfillment( $order );
+			$item['signals'] = self::canonical_order_signals( $item, $order );
+			$item['suggested_next_steps'] = self::canonical_suggested_next_steps( $item['signals'] );
 
 			if ( array_key_exists( 'line_items', $order ) ) {
 				$item['customer'] = [
+					'id'    => ! empty( $order['customer_id'] ) ? absint( $order['customer_id'] ) : null,
 					'name'  => sanitize_text_field( $order['customer_name'] ?? '' ),
 					'email' => sanitize_text_field( $order['billing_email'] ?? '' ),
 					'phone' => sanitize_text_field( $order['billing_phone'] ?? '' ),
@@ -1301,6 +1418,10 @@ class YoRo_Commerce_Contract_Builder {
 						];
 					}
 				}
+
+				$item['timeline'] = self::canonical_order_investigation_timeline( $order );
+				$item['related_orders'] = self::canonical_related_orders( $order['related_orders'] ?? [], $item['id'] );
+				$item['support_context'] = self::canonical_support_context( $order['notes'] ?? [] );
 			}
 
 			$canonical[] = $item;
@@ -1309,7 +1430,216 @@ class YoRo_Commerce_Contract_Builder {
 		return $canonical;
 	}
 
-	private static function canonical_customer( array $customer ) {
+	private static function canonical_order_payment( array $order, array $canonical_order ) {
+		$status = sanitize_key( $order['payment_status'] ?? ( $canonical_order['status'] ?? 'unknown' ) );
+
+		return [
+			'status'   => $status ?: 'unknown',
+			'paid'     => ! empty( $order['date_paid'] ) || in_array( $status, [ 'processing', 'completed' ], true ),
+			'failed'   => 'failed' === $status,
+			'refunded' => 'refunded' === $status || (float) ( $order['totals']['refunded_total'] ?? 0 ) > 0,
+			'amount'   => $canonical_order['total'],
+			'currency' => $canonical_order['currency'],
+		];
+	}
+
+	private static function canonical_order_fulfillment( array $order ) {
+		$status = sanitize_key( $order['status'] ?? 'unknown' );
+
+		return [
+			'status'            => $status ?: 'unknown',
+			'fulfilled'         => 'completed' === $status,
+			'requires_shipping' => ! empty( $order['requires_shipping'] ),
+			'tracking_count'    => ! empty( $order['tracking_detected'] ) ? 1 : 0,
+		];
+	}
+
+	private static function canonical_order_signals( array $order, array $raw_order ) {
+		$signals = [];
+
+		if ( ! empty( $order['payment']['failed'] ) ) {
+			$signals[] = self::canonical_signal( 'failed_payment', 'high', 'Payment failed', 'The connector reports a failed order payment status.' );
+		}
+
+		if ( ! empty( $order['payment']['refunded'] ) ) {
+			$signals[] = self::canonical_signal( 'refunded_order', 'medium', 'Order was refunded', 'The connector reports a refunded order payment status.' );
+		}
+
+		if ( ! empty( $order['fulfillment']['requires_shipping'] ) && empty( $order['fulfillment']['fulfilled'] ) && absint( $raw_order['age_hours'] ?? 0 ) >= 72 ) {
+			$signals[] = self::canonical_signal( 'delayed_fulfillment', 'high', 'Fulfillment is delayed', 'A shippable order has remained unfulfilled for at least 72 hours.' );
+		}
+
+		$related = self::canonical_related_orders( $raw_order['related_orders'] ?? [], $order['id'] );
+		if ( self::has_duplicate_order_candidate( $order, $related ) ) {
+			$signals[] = self::canonical_signal( 'duplicate_order_candidate', 'high', 'Possible duplicate order', 'Another customer order has the same total and currency within 15 minutes.' );
+		}
+
+		if ( self::cancelled_order_count( $related ) >= 2 ) {
+			$signals[] = self::canonical_signal( 'repeated_cancellation', 'medium', 'Repeated cancellations detected', 'At least two related customer orders are cancelled.' );
+		}
+
+		return $signals;
+	}
+
+	private static function canonical_signal( $code, $severity, $summary, $evidence ) {
+		return compact( 'code', 'severity', 'summary', 'evidence' );
+	}
+
+	private static function canonical_suggested_next_steps( array $signals ) {
+		$steps = [
+			'failed_payment' => [ 'review_payment', 'Review the payment failure', 'Confirm the provider status and payment evidence before contacting the customer.' ],
+			'failed_payment_history' => [ 'review_payment_history', 'Review prior payment failures', 'Compare failed orders before choosing a support response.' ],
+			'refunded_order' => [ 'review_refund_context', 'Review refund context', 'Verify the refund and customer history before taking another action.' ],
+			'delayed_fulfillment' => [ 'review_fulfillment', 'Review fulfillment status', 'Check fulfillment and tracking evidence before escalating.' ],
+			'duplicate_order_candidate' => [ 'compare_duplicate_orders', 'Compare possible duplicate orders', 'Confirm products, totals, and timestamps before changing either order.' ],
+			'repeated_cancellation' => [ 'review_cancellation_history', 'Review cancellation history', 'Inspect related cancelled orders before deciding the next support step.' ],
+			'repeat_customer' => [ 'review_customer_history', 'Review customer history', 'Use the related order history to prepare a consistent response.' ],
+		];
+		$result = [];
+
+		foreach ( $signals as $signal ) {
+			$definition = $steps[ $signal['code'] ?? '' ] ?? null;
+			if ( ! is_array( $definition ) ) {
+				continue;
+			}
+
+			$result[ $definition[0] ] = [
+				'code'           => $definition[0],
+				'summary'        => $definition[1],
+				'reason'         => $definition[2],
+				'requires_write' => false,
+				'risk_level'     => 'low',
+			];
+		}
+
+		return array_values( $result );
+	}
+
+	private static function canonical_related_orders( $orders, $exclude_id = '' ) {
+		$result = [];
+
+		foreach ( (array) $orders as $order ) {
+			if ( ! is_array( $order ) || (string) ( $order['id'] ?? '' ) === (string) $exclude_id ) {
+				continue;
+			}
+
+			$result[] = [
+				'id'           => is_numeric( $order['id'] ?? null ) ? absint( $order['id'] ) : sanitize_text_field( $order['id'] ?? '' ),
+				'number'       => sanitize_text_field( $order['number'] ?? ( $order['id'] ?? '' ) ),
+				'status'       => sanitize_key( $order['status'] ?? '' ),
+				'status_label' => sanitize_text_field( $order['status_label'] ?? ( $order['status'] ?? '' ) ),
+				'total'        => is_scalar( $order['total'] ?? null ) ? (string) $order['total'] : '0',
+				'currency'     => sanitize_text_field( $order['currency'] ?? '' ),
+				'created_at'   => sanitize_text_field( $order['created_at'] ?? ( $order['date_created'] ?? '' ) ),
+				'version'      => sanitize_text_field( $order['version'] ?? '' ),
+			];
+		}
+
+		return $result;
+	}
+
+	private static function canonical_order_investigation_timeline( array $order ) {
+		$events = [];
+		foreach ( [
+			[ 'order_created', $order['date_created'] ?? '', 'Order created' ],
+			[ 'payment_recorded', $order['date_paid'] ?? '', 'Payment recorded' ],
+			[ 'order_completed', $order['date_completed'] ?? '', 'Order completed' ],
+		] as $definition ) {
+			if ( '' !== trim( (string) $definition[1] ) ) {
+				$events[] = self::canonical_timeline_item( $definition[0], $definition[1], $definition[2], 'system' );
+			}
+		}
+
+		foreach ( (array) ( $order['notes'] ?? [] ) as $note ) {
+			if ( ! is_array( $note ) || '' === trim( (string) ( $note['date'] ?? '' ) ) ) {
+				continue;
+			}
+			$customer_visible = ! empty( $note['customer'] );
+			$events[] = self::canonical_timeline_item(
+				'order_note',
+				$note['date'],
+				$customer_visible ? 'Customer-visible order note added' : 'Internal order note added',
+				$customer_visible ? 'customer' : 'internal'
+			);
+		}
+
+		usort( $events, static function ( $left, $right ) {
+			return strcmp( $left['occurred_at'], $right['occurred_at'] );
+		} );
+
+		return $events;
+	}
+
+	private static function canonical_timeline_item( $type, $occurred_at, $summary, $visibility ) {
+		return [
+			'type'        => sanitize_key( $type ),
+			'occurred_at' => sanitize_text_field( $occurred_at ),
+			'summary'     => sanitize_text_field( $summary ),
+			'visibility'  => sanitize_key( $visibility ),
+			'extensions'  => [ 'woocommerce.timeline' => [] ],
+		];
+	}
+
+	private static function canonical_support_context( $notes ) {
+		$notes = array_values( array_filter( (array) $notes, 'is_array' ) );
+		$last = reset( $notes );
+		$customer_visible = count( array_filter( $notes, static function ( $note ) {
+			return ! empty( $note['customer'] );
+		} ) );
+
+		return [
+			'available'           => ! empty( $notes ),
+			'interaction_count'   => count( $notes ),
+			'last_interaction_at' => is_array( $last ) ? sanitize_text_field( $last['date'] ?? '' ) : '',
+			'summary'             => empty( $notes )
+				? 'No support history is available from this connector.'
+				: sprintf( '%1$d order notes are available; %2$d are customer-visible.', count( $notes ), $customer_visible ),
+		];
+	}
+
+	private static function cancelled_order_count( array $orders ) {
+		return count( array_filter( $orders, static function ( $order ) {
+			return in_array( sanitize_key( $order['status'] ?? '' ), [ 'cancelled', 'canceled' ], true );
+		} ) );
+	}
+
+	private static function has_duplicate_order_candidate( array $order, array $related_orders ) {
+		$current_timestamp = strtotime( (string) ( $order['created_at'] ?? '' ) );
+		if ( false === $current_timestamp ) {
+			return false;
+		}
+
+		foreach ( $related_orders as $candidate ) {
+			$candidate_timestamp = strtotime( (string) ( $candidate['created_at'] ?? '' ) );
+			if ( false !== $candidate_timestamp
+				&& (string) $candidate['total'] === (string) $order['total']
+				&& (string) $candidate['currency'] === (string) $order['currency']
+				&& abs( $candidate_timestamp - $current_timestamp ) <= 900
+			) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static function canonical_customer( array $customer, array $related_orders = [], array $support_items = [] ) {
+		$raw_related_orders = $related_orders;
+		$related_orders = self::canonical_related_orders( $related_orders );
+		$signals = [];
+		if ( absint( $customer['orders_count'] ?? count( $related_orders ) ) > 1 ) {
+			$signals[] = self::canonical_signal( 'repeat_customer', 'low', 'Repeat customer', 'The customer has more than one order.' );
+		}
+		if ( self::cancelled_order_count( $related_orders ) >= 2 ) {
+			$signals[] = self::canonical_signal( 'repeated_cancellation', 'medium', 'Repeated cancellations detected', 'At least two related customer orders are cancelled.' );
+		}
+		foreach ( $raw_related_orders as $related_order ) {
+			if ( is_array( $related_order ) && 'failed' === sanitize_key( $related_order['status'] ?? '' ) ) {
+				$signals[] = self::canonical_signal( 'failed_payment_history', 'medium', 'Failed payment in order history', 'A related order has a failed payment status.' );
+				break;
+			}
+		}
+
 		return [
 			'id'             => is_numeric( $customer['id'] ?? null ) ? absint( $customer['id'] ) : sanitize_text_field( $customer['id'] ?? '' ),
 			'name'           => sanitize_text_field( $customer['name'] ?? '' ),
@@ -1323,6 +1653,10 @@ class YoRo_Commerce_Contract_Builder {
 			'last_order_at'  => sanitize_text_field( $customer['last_order_at'] ?? '' ),
 			'segments'       => array_values( array_map( 'sanitize_key', (array) ( $customer['segments'] ?? [] ) ) ),
 			'risk_flags'     => array_values( array_map( 'sanitize_key', (array) ( $customer['risk_flags'] ?? [] ) ) ),
+			'related_orders' => $related_orders,
+			'signals'        => $signals,
+			'support_context' => self::canonical_support_context( $support_items ),
+			'suggested_next_steps' => self::canonical_suggested_next_steps( $signals ),
 			'extensions'     => [
 				'woocommerce.customer' => [
 					'meta' => is_array( $customer['meta'] ?? null ) ? $customer['meta'] : [],

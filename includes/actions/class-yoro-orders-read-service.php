@@ -1301,6 +1301,7 @@ class YoRo_Orders_Read_Service {
 		$latest_order_id  = 0;
 		$latest_order_no  = '';
 		$data             = [];
+		$recent_notes     = [];
 
 		foreach ( $orders as $order ) {
 			if ( ! $order instanceof WC_Order ) {
@@ -1351,6 +1352,7 @@ class YoRo_Orders_Read_Service {
 			}
 
 			$data[] = YoRo_Order_Presenter::format_order_summary( $order );
+			$recent_notes = array_merge( $recent_notes, self::customer_order_note_context( $order ) );
 		}
 
 		$masked_email = YoRo_Order_Presenter::mask_email( $email );
@@ -1401,7 +1403,7 @@ class YoRo_Orders_Read_Service {
 			'related'          => [
 				'recent_orders' => $data,
 				'open_orders'   => [],
-				'recent_notes'  => [],
+				'recent_notes'  => array_slice( $recent_notes, 0, 10 ),
 				'draft_emails'  => [],
 			],
 			'customer_name'    => $resolved_name,
@@ -1427,6 +1429,35 @@ class YoRo_Orders_Read_Service {
 			'skipped'          => [],
 			'errors'           => [],
 		];
+	}
+
+	private static function customer_order_note_context( WC_Order $order ) {
+		if ( ! function_exists( 'wc_get_order_notes' ) ) {
+			return [];
+		}
+
+		$context = [];
+		foreach ( wc_get_order_notes( [
+			'order_id' => $order->get_id(),
+			'limit'    => 2,
+			'orderby'  => 'date_created',
+			'order'    => 'DESC',
+		] ) as $note ) {
+			if ( ! is_object( $note ) ) {
+				continue;
+			}
+
+			$date_created = ! empty( $note->date_created ) && is_object( $note->date_created )
+				? $note->date_created
+				: null;
+			$context[] = [
+				'order_id' => $order->get_id(),
+				'date'     => $date_created ? YoRo_Date_Helper::format_wc_datetime( $date_created ) : '',
+				'customer' => ! empty( $note->customer_note ),
+			];
+		}
+
+		return $context;
 	}
 
 	public static function get_customer_service_queue( $params ) {
