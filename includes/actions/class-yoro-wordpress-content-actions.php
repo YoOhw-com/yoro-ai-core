@@ -7,7 +7,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_WordPress_Content_Actions {
 
 	public static function register() {
-		self::register_action( 'content.search', 'Search content', 'read', false, [ 'query' => 'string', 'post_type' => 'string', 'limit' => 'integer' ], [], 'search_content', 50 );
+		self::register_action(
+			'content.search',
+			'Search content',
+			'read',
+			false,
+			[ 'query' => 'string', 'post_type' => 'string', 'limit' => 'integer' ],
+			[],
+			'search_content',
+			50,
+			'',
+			[
+				'post_type' => __( 'Use only a post type published by this connector when the user explicitly requests one; omit this optional field for a broad content search.', 'yoro-ai-core' ),
+			]
+		);
 		self::register_action( 'content.get', 'Get content', 'read', false, [ 'content_id' => 'integer' ], [ 'content_id' ], 'get_content' );
 		self::register_action( 'content.create_draft', 'Create content draft', 'mutate', true, [ 'title' => 'string', 'content' => 'string', 'post_type' => 'string' ], [ 'title', 'content' ], 'create_draft', 1, 'create_only' );
 		self::register_action( 'content.update_draft', 'Update content draft', 'mutate', true, [ 'content_id' => 'integer', 'expected_version' => 'string', 'title' => 'string', 'content' => 'string' ], [ 'content_id', 'expected_version' ], 'update_draft' );
@@ -31,7 +44,7 @@ class YoRo_WordPress_Content_Actions {
 		self::register_action( 'media.update_metadata', 'Update media metadata', 'mutate', true, [ 'media_id' => 'integer', 'expected_version' => 'string', 'title' => 'string', 'caption' => 'string', 'description' => 'string', 'alt_text' => 'string' ], [ 'media_id', 'expected_version' ], 'update_media_metadata' );
 	}
 
-	private static function register_action( $name, $label, $effect, $write, $schema, $required, $callback, $max_targets = 1, $concurrency_strategy = '' ) {
+	private static function register_action( $name, $label, $effect, $write, $schema, $required, $callback, $max_targets = 1, $concurrency_strategy = '', $param_hints = [] ) {
 		YoRo_Action_Registry::register(
 			$name,
 			[
@@ -54,6 +67,7 @@ class YoRo_WordPress_Content_Actions {
 				'ai_exposed'            => true,
 				'ai_description'        => __( $label, 'yoro-ai-core' ),
 				'required_params'       => $required,
+				'param_hints'           => $param_hints,
 				'capabilities'          => [ 'wordpress_content', $write ? 'write' : 'read' ],
 			]
 		);
@@ -668,16 +682,28 @@ class YoRo_WordPress_Content_Actions {
 		return self::is_allowed_post_type( $post_type ) ? $post_type : '';
 	}
 
-	private static function is_allowed_post_type( $post_type ) {
-		$post_type = sanitize_key( $post_type );
+	public static function allowed_post_types() {
 		$allowed = apply_filters( 'yoro_connector_allowed_post_types', [ 'post', 'page' ] );
 		$allowed = array_values( array_unique( array_filter( array_map( 'sanitize_key', (array) $allowed ) ) ) );
-		$object = get_post_type_object( $post_type );
 
-		return in_array( $post_type, $allowed, true )
-			&& $object
-			&& ! empty( $object->show_ui )
-			&& ! empty( $object->show_in_rest );
+		return array_values(
+			array_filter(
+				$allowed,
+				static function ( $post_type ) {
+					$object = get_post_type_object( $post_type );
+
+					return $object
+						&& ! empty( $object->show_ui )
+						&& ! empty( $object->show_in_rest );
+				}
+			)
+		);
+	}
+
+	private static function is_allowed_post_type( $post_type ) {
+		$post_type = sanitize_key( $post_type );
+
+		return in_array( $post_type, self::allowed_post_types(), true );
 	}
 
 	private static function post_version( $post ) {

@@ -173,6 +173,14 @@ class YoRo_Commerce_Contract_Builder {
 		$catalog_input_schema = is_array( $action['canonical_input_schema'] ?? null )
 			? $action['canonical_input_schema']
 			: ( $action['input_schema'] ?? [] );
+
+		if ( 'content.search' === $name && array_key_exists( 'post_type', $catalog_input_schema ) ) {
+			$catalog_input_schema['post_type'] = [
+				'type' => 'string',
+				'enum' => YoRo_WordPress_Content_Actions::allowed_post_types(),
+			];
+		}
+
 		$input_schema = self::object_schema(
 			$catalog_input_schema,
 			$action['required_params'] ?? []

@@ -307,6 +307,18 @@ try {
 		$assert( isset( $actions[ $managed_action ] ), sprintf( 'Capability manifest must expose %s.', $managed_action ) );
 	}
 	$assert( empty( $actions['content.search']['write_action'] ), 'Content reads must remain permitless read operations.' );
+	$assert(
+		YoRo_WordPress_Content_Actions::allowed_post_types() === ( $actions['content.search']['input_schema']['properties']['post_type']['enum'] ?? [] ),
+		'Content search must publish the exact connector-owned post type allowlist as an input enum.'
+	);
+	$assert(
+		! in_array( 'post_type', (array) ( $actions['content.search']['input_schema']['required'] ?? [] ), true ),
+		'Content search post_type must remain optional for broad searches.'
+	);
+	$assert(
+		false !== strpos( (string) ( $actions['content.search']['extensions']['yoro.conversation']['param_hints']['post_type'] ?? '' ), 'omit' ),
+		'Content search must tell the conversation brain to omit an unspecified post type.'
+	);
 	$assert( 'mutate' === ( $actions['content.create_draft']['effect'] ?? '' ) && ! empty( $actions['content.create_draft']['write_action'] ), 'Persisted content drafts must remain canonical writes.' );
 	$assert( ! empty( $actions['content.publish']['requires_confirmation'] ), 'Publishing must require confirmation.' );
 	$assert( false === ( $actions['content.publish']['output_schema']['additionalProperties'] ?? true ), 'Canonical action outputs must fail closed.' );

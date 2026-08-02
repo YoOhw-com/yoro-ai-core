@@ -91,6 +91,12 @@ $original_user_id = get_current_user_id();
 
 if ( ! empty( $admin_ids ) ) {
 	wp_set_current_user( absint( $admin_ids[0] ) );
+	$broad_content_search = YoRo_WordPress_Content_Actions::search_content( [ 'limit' => 1 ] );
+	$allowed_content_search = YoRo_WordPress_Content_Actions::search_content( [ 'post_type' => 'post', 'limit' => 1 ] );
+	$invalid_content_search = YoRo_WordPress_Content_Actions::search_content( [ 'post_type' => 'wordpress_content', 'limit' => 1 ] );
+	$assert( is_array( $broad_content_search ) && ! empty( $broad_content_search['success'] ), 'Broad content search must use the connector default when post_type is omitted.' );
+	$assert( is_array( $allowed_content_search ) && ! empty( $allowed_content_search['success'] ), 'Content search must accept a post type from the published connector allowlist.' );
+	$assert( is_wp_error( $invalid_content_search ) && 'yoro_content_type_not_allowed' === $invalid_content_search->get_error_code(), 'Content search must reject post types outside the published connector allowlist.' );
 	$lifecycle_post_id = wp_insert_post(
 		[
 			'post_type'    => 'post',
