@@ -30,48 +30,90 @@ $admin_ids = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 
 $assert( ! empty( $admin_ids ), 'An administrator is required for the read-only discovery smoke.' );
 wp_set_current_user( absint( $admin_ids[0] ) );
 
-$product_ids = function_exists( 'wc_get_products' ) ? wc_get_products( [ 'limit' => 1, 'return' => 'ids' ] ) : [];
-$order_ids = function_exists( 'wc_get_orders' ) ? wc_get_orders( [ 'limit' => 1, 'return' => 'ids' ] ) : [];
+global $wpdb;
 
-$assert( ! empty( $product_ids ), 'A WooCommerce product fixture is required.' );
-$assert( ! empty( $order_ids ), 'A WooCommerce order fixture is required.' );
+$wpdb->query( 'START TRANSACTION' );
+$product_id = 0;
+$order_id = 0;
 
-$product_id = absint( $product_ids[0] );
-$order_id = absint( $order_ids[0] );
-$product = wc_get_product( $product_id );
-$sku = $product instanceof WC_Product ? (string) $product->get_sku() : '';
+try {
+	$fixture_key = strtolower( wp_generate_uuid4() );
+	$product = new WC_Product_Simple();
+	$product->set_name( 'YoRo discovery smoke ' . $fixture_key );
+	$product->set_sku( 'yoro-discovery-' . $fixture_key );
+	$product->set_status( 'draft' );
+	$product->set_regular_price( '10' );
+	$product->set_manage_stock( true );
+	$product->set_stock_quantity( 4 );
+	$product->set_stock_status( 'instock' );
+	$product_id = $product->save();
 
-$search = YoRo_Commerce_Discovery_Service::search_products( '' !== $sku ? [ 'sku' => $sku, 'limit' => 1 ] : [ 'limit' => 1 ] );
-$assert( is_array( $search ) && ! empty( $search['success'] ), 'Product search must execute as a read.' );
-$assert( ! empty( $search['products'][0]['version'] ), 'Product search must return an optimistic version token.' );
+	$order = wc_create_order( [ 'status' => 'processing', 'customer_id' => 0 ] );
+	$assert( $order instanceof WC_Order, 'The discovery smoke must create an order fixture.' );
+	$order_id = $order->get_id();
+	$order->add_order_note( 'YoRo discovery internal note.', false );
+	$order->add_order_note( 'YoRo discovery customer note.', true );
+	$order->update_meta_data(
+		'_wc_shipment_tracking_items',
+		[
+			[
+				'tracking_number'  => 'YORO-' . substr( str_replace( '-', '', $fixture_key ), 0, 12 ),
+				'tracking_provider' => 'YoRo Smoke Carrier',
+				'custom_tracking_link' => 'https://example.test/tracking',
+			],
+		]
+	);
+	$order->save();
 
-$details = YoRo_Commerce_Discovery_Service::get_product_details( [ 'product_ids' => [ $product_id ] ] );
-$assert( is_array( $details ) && $product_id === ( $details['products'][0]['id'] ?? 0 ), 'Product details must return the requested product.' );
+	$product = wc_get_product( $product_id );
+	$assert( $product instanceof WC_Product, 'The discovery smoke must create a product fixture.' );
+	$sku = (string) $product->get_sku();
 
-$timeline = YoRo_Commerce_Discovery_Service::get_order_timeline( [ 'order_id' => $order_id, 'limit' => 20 ] );
-$assert( is_array( $timeline ) && ! empty( $timeline['success'] ), 'Order timeline must execute as a read.' );
+	$search = YoRo_Commerce_Discovery_Service::search_products( [ 'sku' => $sku, 'limit' => 1 ] );
+	$assert( is_array( $search ) && ! empty( $search['success'] ), 'Product search must execute as a read.' );
+	$assert( ! empty( $search['products'][0]['version'] ), 'Product search must return an optimistic version token.' );
 
-foreach ( (array) ( $timeline['events'] ?? [] ) as $event ) {
-	$assert( in_array( $event['visibility'] ?? '', [ 'system', 'internal', 'customer' ], true ), 'Timeline notes must have an explicit visibility boundary.' );
+	$details = YoRo_Commerce_Discovery_Service::get_product_details( [ 'product_ids' => [ $product_id ] ] );
+	$assert( is_array( $details ) && $product_id === ( $details['products'][0]['id'] ?? 0 ), 'Product details must return the requested product.' );
+
+	$timeline = YoRo_Commerce_Discovery_Service::get_order_timeline( [ 'order_id' => $order_id, 'limit' => 20 ] );
+	$assert( is_array( $timeline ) && ! empty( $timeline['success'] ), 'Order timeline must execute as a read.' );
+
+	foreach ( (array) ( $timeline['events'] ?? [] ) as $event ) {
+		$assert( in_array( $event['visibility'] ?? '', [ 'system', 'internal', 'customer' ], true ), 'Timeline notes must have an explicit visibility boundary.' );
+	}
+
+	$tracking = YoRo_Commerce_Discovery_Service::get_fulfillment_tracking( [ 'order_id' => $order_id ] );
+	$assert( is_array( $tracking ) && 'available' === ( $tracking['status'] ?? '' ), 'Tracking reads must return the stored fixture.' );
+	$assert( 1 === ( $tracking['count'] ?? 0 ), 'Tracking reads must return exactly one self-contained fixture.' );
+
+	foreach ( [
+		'products.search' => $search,
+		'products.get_details' => $details,
+		'orders.get_timeline' => $timeline,
+		'fulfillment.get_tracking' => $tracking,
+	] as $action => $result ) {
+		$payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $result, $action );
+		$schema = YoRo_Commerce_Contract_Builder::execution_output_schema( $action );
+		$assert( array_keys( $payload['data'] ) === ( $schema['properties']['data']['required'] ?? [] ), sprintf( '%s must match its exact canonical data roots.', $action ) );
+	}
+
+	$missing_product = YoRo_Commerce_Discovery_Service::get_product_details( [ 'product_ids' => [] ] );
+	$missing_order = YoRo_Commerce_Discovery_Service::get_order_timeline( [ 'order_id' => 0 ] );
+	$assert( is_wp_error( $missing_product ), 'Missing product targets must fail closed.' );
+	$assert( is_wp_error( $missing_order ), 'Missing order targets must fail closed.' );
+} finally {
+	$wpdb->query( 'ROLLBACK' );
+
+	if ( $product_id > 0 ) {
+		clean_post_cache( $product_id );
+	}
+
+	if ( $order_id > 0 ) {
+		clean_post_cache( $order_id );
+	}
+
+	wp_cache_flush();
 }
-
-$tracking = YoRo_Commerce_Discovery_Service::get_fulfillment_tracking( [ 'order_id' => $order_id ] );
-$assert( is_array( $tracking ) && in_array( $tracking['status'] ?? '', [ 'available', 'unavailable' ], true ), 'Tracking reads must return an explicit availability state.' );
-
-foreach ( [
-	'products.search' => $search,
-	'products.get_details' => $details,
-	'orders.get_timeline' => $timeline,
-	'fulfillment.get_tracking' => $tracking,
-] as $action => $result ) {
-	$payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $result, $action );
-	$schema = YoRo_Commerce_Contract_Builder::execution_output_schema( $action );
-	$assert( array_keys( $payload['data'] ) === ( $schema['properties']['data']['required'] ?? [] ), sprintf( '%s must match its exact canonical data roots.', $action ) );
-}
-
-$missing_product = YoRo_Commerce_Discovery_Service::get_product_details( [ 'product_ids' => [] ] );
-$missing_order = YoRo_Commerce_Discovery_Service::get_order_timeline( [ 'order_id' => 0 ] );
-$assert( is_wp_error( $missing_product ), 'Missing product targets must fail closed.' );
-$assert( is_wp_error( $missing_order ), 'Missing order targets must fail closed.' );
 
 echo "YoRo commerce discovery: PASS\n";
