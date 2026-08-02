@@ -297,11 +297,98 @@ try {
 	$get_details_schema = $actions['orders.get_details']['input_schema']['properties'] ?? [];
 	$search_action = YoRo_Action_Registry::get( 'orders.search' );
 	$assert( isset( $actions['orders.search'] ), 'Capability manifest must expose orders.search.' );
-	foreach ( [ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ] as $canonical_read ) {
+	foreach ( [ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ] as $canonical_read ) {
 		$assert( false === ( $actions[ $canonical_read ]['output_schema']['properties']['data']['additionalProperties'] ?? true ), sprintf( '%s must publish a closed action-level data schema.', $canonical_read ) );
 		$assert( 1 === ( $actions[ $canonical_read ]['extensions']['yoro.contracts']['execution_payload_version'] ?? 0 ), sprintf( '%s must publish the canonical execution payload marker.', $canonical_read ) );
 		$assert( ! empty( $actions[ $canonical_read ]['extensions']['yoro.contracts']['strict_output_validation_ready'] ), sprintf( '%s must publish accurate action-level strict validation readiness.', $canonical_read ) );
 	}
+	$brief_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload(
+		[
+			'success'          => true,
+			'action'           => 'store.get_daily_briefing',
+			'summary'          => 'Morning operations fixture.',
+			'read_only'        => true,
+			'window'           => [
+				'key'      => 'today',
+				'label'    => 'Today',
+				'start'    => '2026-07-21 00:00:00',
+				'end'      => '2026-07-21 23:59:59',
+				'timezone' => 'UTC',
+			],
+			'metrics'          => [
+				'order_count'         => 1,
+				'gross_sales'         => '99.00',
+				'average_order_value' => '99.00',
+				'currency'            => 'USD',
+				'is_complete'         => true,
+			],
+			'comparison'       => [
+				'window'  => [
+					'key'      => 'previous_equivalent_window',
+					'label'    => 'Previous period',
+					'start'    => '2026-07-20 00:00:00',
+					'end'      => '2026-07-20 23:59:59',
+					'timezone' => 'UTC',
+				],
+				'metrics' => [
+					'order_count'         => [ 'current' => 1, 'previous' => 0, 'trend' => 'up', 'delta' => 'new vs previous' ],
+					'gross_sales'         => [ 'current' => '99.00', 'previous' => '0.00', 'trend' => 'up', 'delta' => 'new vs previous' ],
+					'average_order_value' => [ 'current' => '99.00', 'previous' => '0.00', 'trend' => 'up', 'delta' => 'new vs previous' ],
+				],
+			],
+			'counts'           => [ 'attention' => 1, 'fulfillment' => 0, 'customer_followups' => 0, 'inventory' => 0 ],
+			'attention_items'  => [
+				[
+					'order_id'       => 91,
+					'order_number'   => '91',
+					'status'         => 'pending',
+					'status_label'   => 'Pending',
+					'total'          => '99.00',
+					'currency'       => 'USD',
+					'created_at'     => '2026-07-19T01:00:00+00:00',
+					'age_hours'      => 49,
+					'reason'         => 'pending_payment_older_than_24h',
+					'severity'       => 'high',
+					'priority_score' => 169,
+					'version'        => str_repeat( '1', 64 ),
+					'extensions'     => [],
+				],
+			],
+			'inventory_items'  => [],
+			'priorities'       => [],
+		],
+		'store.get_daily_briefing'
+	);
+	$assert( [ 'window', 'metrics', 'comparison', 'counts', 'attention_items', 'inventory_items', 'priorities' ] === array_keys( $brief_payload['data'] ?? [] ), 'Daily briefing runtime data must use the exact canonical roots.' );
+	$assert( 91 === ( $brief_payload['data']['attention_items'][0]['order_id'] ?? 0 ), 'Daily briefing runtime data must preserve ranked order attention.' );
+	$assert( ! empty( $brief_payload['extensions']['wordpress.execution']['legacy_data'] ), 'Daily briefing legacy detail must remain under wordpress.execution.' );
+	$attention_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload(
+		[
+			'success'          => true,
+			'action'           => 'operations.get_attention_queue',
+			'summary'          => 'Attention fixture.',
+			'read_only'        => true,
+			'orders'           => [
+				[
+					'id'                  => 91,
+					'number'              => '91',
+					'status'              => 'pending',
+					'status_label'        => 'Pending',
+					'total'               => '99.00',
+					'currency'            => 'USD',
+					'date_created'        => '2026-07-19T01:00:00+00:00',
+					'age_hours'           => 49,
+					'queue_topic'         => 'pending_payment_older_than_24h',
+					'case_priority_score' => 169,
+					'version'             => str_repeat( '1', 64 ),
+				],
+			],
+			'queue_item_count' => 3,
+		],
+		'operations.get_attention_queue'
+	);
+	$assert( 1 === ( $attention_payload['data']['count'] ?? 0 ), 'Attention queue count must represent visible canonical items.' );
+	$assert( 3 === ( $attention_payload['data']['total_matches'] ?? 0 ), 'Attention queue must preserve the total number of matching queue entries.' );
 	$media_item_schema = $actions['media.get']['output_schema']['properties']['data']['properties']['item'] ?? [];
 	$assert( false === ( $media_item_schema['additionalProperties'] ?? true ), 'Canonical media items must reject undeclared root metadata.' );
 	$assert( ! isset( $media_item_schema['properties']['metadata'] ), 'Provider-owned media metadata must not remain a canonical root field.' );

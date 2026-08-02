@@ -48,7 +48,7 @@ $expected_fixture_count      = count( $expected_contracts ) + ( $has_action_resu
 
 $assert(
 	$expected_fixture_count === count( $fixtures ),
-	'The shared fixture set must contain exactly seven wire contracts plus the optional action-result conformance set during the revision 1 to 2 cutover.'
+	'The shared fixture set must contain exactly seven wire contracts plus the optional action-result conformance set.'
 );
 $assert( 1 === YoRo_Commerce_Contract_Builder::SCHEMA_VERSION, 'The connector must remain on canonical commerce schema v1.' );
 

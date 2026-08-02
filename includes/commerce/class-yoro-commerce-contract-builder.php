@@ -174,6 +174,23 @@ class YoRo_Commerce_Contract_Builder {
 			? $action['canonical_input_schema']
 			: ( $action['input_schema'] ?? [] );
 
+		if ( 'store.get_daily_briefing' === $name ) {
+			$catalog_input_schema = [
+				'window'       => [ 'type' => 'string', 'maxLength' => 120 ],
+				'time_window'  => self::resolved_time_window_input_schema(),
+				'answer_shape' => [ 'type' => 'string', 'enum' => [ 'business_overview' ] ],
+				'limit'        => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 10 ],
+			];
+		}
+
+		if ( 'operations.get_attention_queue' === $name ) {
+			$catalog_input_schema = [
+				'limit'                => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 20 ],
+				'high_value_threshold' => [ 'type' => 'number', 'minimum' => 0 ],
+				'answer_shape'         => [ 'type' => 'string', 'enum' => [ 'attention_queue' ] ],
+			];
+		}
+
 		if ( 'content.search' === $name && array_key_exists( 'post_type', $catalog_input_schema ) ) {
 			$catalog_input_schema['post_type'] = [
 				'type' => 'string',
@@ -410,6 +427,33 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
+		if ( 'store.get_daily_briefing' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'window'          => self::canonical_reporting_window_schema(),
+					'metrics'         => self::canonical_briefing_metrics_schema(),
+					'comparison'      => self::canonical_briefing_comparison_schema(),
+					'counts'          => self::canonical_briefing_counts_schema(),
+					'attention_items' => self::array_schema( self::canonical_attention_item_schema() ),
+					'inventory_items' => self::array_schema( self::canonical_inventory_item_schema() ),
+					'priorities'      => self::array_schema( self::canonical_briefing_priority_schema() ),
+				],
+				[ 'window', 'metrics', 'comparison', 'counts', 'attention_items', 'inventory_items', 'priorities' ]
+			);
+		}
+
+		if ( 'operations.get_attention_queue' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'items'         => self::array_schema( self::canonical_attention_item_schema() ),
+					'page_info'     => self::canonical_page_info_schema(),
+					'count'         => [ 'type' => 'integer', 'minimum' => 0 ],
+					'total_matches' => [ 'type' => 'integer', 'minimum' => 0 ],
+				],
+				[ 'items', 'page_info', 'count', 'total_matches' ]
+			);
+		}
+
 		if ( 'products.get_inventory_queue' === $action_name ) {
 			return self::closed_object_schema(
 				[
@@ -606,6 +650,105 @@ class YoRo_Commerce_Contract_Builder {
 		);
 	}
 
+	private static function canonical_reporting_window_schema() {
+		return self::closed_object_schema(
+			[
+				'key'      => [ 'type' => 'string' ],
+				'label'    => [ 'type' => 'string' ],
+				'start'    => [ 'type' => 'string' ],
+				'end'      => [ 'type' => 'string' ],
+				'timezone' => [ 'type' => 'string' ],
+			],
+			[ 'key', 'label', 'start', 'end', 'timezone' ]
+		);
+	}
+
+	private static function canonical_briefing_metrics_schema() {
+		return self::closed_object_schema(
+			[
+				'order_count'         => [ 'type' => 'integer', 'minimum' => 0 ],
+				'gross_sales'         => [ 'type' => [ 'string', 'number' ] ],
+				'average_order_value' => [ 'type' => [ 'string', 'number' ] ],
+				'currency'            => [ 'type' => 'string' ],
+				'is_complete'         => [ 'type' => 'boolean' ],
+			],
+			[ 'order_count', 'gross_sales', 'average_order_value', 'currency', 'is_complete' ]
+		);
+	}
+
+	private static function canonical_briefing_comparison_schema() {
+		$metric = self::closed_object_schema(
+			[
+				'current'  => [ 'type' => [ 'string', 'number' ] ],
+				'previous' => [ 'type' => [ 'string', 'number' ] ],
+				'trend'    => [ 'type' => 'string', 'enum' => [ 'up', 'down', 'flat' ] ],
+				'delta'    => [ 'type' => 'string' ],
+			],
+			[ 'current', 'previous', 'trend', 'delta' ]
+		);
+
+		return self::closed_object_schema(
+			[
+				'window'  => self::canonical_reporting_window_schema(),
+				'metrics' => self::closed_object_schema(
+					[
+						'order_count'         => $metric,
+						'gross_sales'         => $metric,
+						'average_order_value' => $metric,
+					],
+					[ 'order_count', 'gross_sales', 'average_order_value' ]
+				),
+			],
+			[ 'window', 'metrics' ]
+		);
+	}
+
+	private static function canonical_briefing_counts_schema() {
+		return self::closed_object_schema(
+			[
+				'attention'          => [ 'type' => 'integer', 'minimum' => 0 ],
+				'fulfillment'        => [ 'type' => 'integer', 'minimum' => 0 ],
+				'customer_followups' => [ 'type' => 'integer', 'minimum' => 0 ],
+				'inventory'          => [ 'type' => 'integer', 'minimum' => 0 ],
+			],
+			[ 'attention', 'fulfillment', 'customer_followups', 'inventory' ]
+		);
+	}
+
+	private static function canonical_attention_item_schema() {
+		return self::closed_object_schema(
+			[
+				'order_id'       => [ 'type' => [ 'string', 'integer' ] ],
+				'order_number'   => [ 'type' => 'string' ],
+				'status'         => [ 'type' => 'string' ],
+				'status_label'   => [ 'type' => 'string' ],
+				'total'          => [ 'type' => [ 'string', 'number' ] ],
+				'currency'       => [ 'type' => 'string' ],
+				'created_at'     => [ 'type' => 'string' ],
+				'age_hours'      => [ 'type' => 'integer', 'minimum' => 0 ],
+				'reason'         => [ 'type' => 'string' ],
+				'severity'       => [ 'type' => 'string', 'enum' => [ 'low', 'medium', 'high', 'critical' ] ],
+				'priority_score' => [ 'type' => 'number', 'minimum' => 0 ],
+				'version'        => [ 'type' => 'string' ],
+				'extensions'     => [ 'type' => 'object' ],
+			],
+			[ 'order_id', 'order_number', 'status', 'status_label', 'total', 'currency', 'created_at', 'age_hours', 'reason', 'severity', 'priority_score', 'version', 'extensions' ]
+		);
+	}
+
+	private static function canonical_briefing_priority_schema() {
+		return self::closed_object_schema(
+			[
+				'domain'   => [ 'type' => 'string' ],
+				'title'    => [ 'type' => 'string' ],
+				'reason'   => [ 'type' => 'string' ],
+				'severity' => [ 'type' => 'string', 'enum' => [ 'low', 'medium', 'high', 'critical' ] ],
+				'score'    => [ 'type' => 'number', 'minimum' => 0 ],
+			],
+			[ 'domain', 'title', 'reason', 'severity', 'score' ]
+		);
+	}
+
 	private static function canonical_content_item_schema() {
 		return self::closed_object_schema(
 			[
@@ -792,6 +935,83 @@ class YoRo_Commerce_Contract_Builder {
 		);
 	}
 
+	private static function resolved_time_window_input_schema() {
+		$comparison = self::closed_object_schema(
+			[
+				'kind'          => [ 'type' => 'string' ],
+				'canonical_key' => [ 'type' => 'string' ],
+				'start'         => [ 'type' => 'string' ],
+				'end'           => [ 'type' => 'string' ],
+				'start_date'    => [ 'type' => 'string' ],
+				'end_date'      => [ 'type' => 'string' ],
+				'timezone'      => [ 'type' => 'string' ],
+			],
+			[]
+		);
+		$debug = self::closed_object_schema(
+			[
+				'source_text'                          => [ 'type' => 'string' ],
+				'input_key'                            => [ 'type' => 'string' ],
+				'reconciled_from_key'                  => [ 'type' => 'string' ],
+				'structured_parse_applied'             => [ 'type' => 'boolean' ],
+				'structured_parse_key'                 => [ 'type' => 'string' ],
+				'command_anchor_applied'               => [ 'type' => 'boolean' ],
+				'command_anchor_key'                   => [ 'type' => 'string' ],
+				'command_anchor_source_text'           => [ 'type' => 'string' ],
+				'command_anchor_reconciled_from_key'   => [ 'type' => 'string' ],
+				'canonical_key'                        => [ 'type' => 'string' ],
+				'timezone'                             => [ 'type' => 'string' ],
+				'start'                                => [ 'type' => 'string' ],
+				'end'                                  => [ 'type' => 'string' ],
+				'comparison_canonical_key'             => [ 'type' => 'string' ],
+				'comparison_start'                     => [ 'type' => 'string' ],
+				'comparison_end'                       => [ 'type' => 'string' ],
+			],
+			[]
+		);
+		$calendar_parse = self::closed_object_schema(
+			[
+				'source_language'  => [ 'type' => 'string' ],
+				'calendar_intent'  => [ 'type' => 'string' ],
+				'start_date'       => [ 'type' => 'string' ],
+				'end_date'         => [ 'type' => 'string' ],
+				'year'             => [ 'type' => 'integer' ],
+				'month'            => [ 'type' => 'integer' ],
+				'quarter'          => [ 'type' => 'integer' ],
+				'relative_anchor'  => [ 'type' => 'string' ],
+				'confidence'       => [ 'type' => 'number' ],
+			],
+			[]
+		);
+		$calendar_parse['type'] = [ 'object', 'null' ];
+
+		return [
+			'type'                 => 'object|null',
+			'properties'           => [
+				'kind'                => [ 'type' => 'string' ],
+				'canonical_key'       => [ 'type' => 'string' ],
+				'key'                 => [ 'type' => 'string' ],
+				'label'               => [ 'type' => 'string' ],
+				'start'               => [ 'type' => 'string' ],
+				'end'                 => [ 'type' => 'string' ],
+				'start_date'          => [ 'type' => 'string' ],
+				'end_date'            => [ 'type' => 'string' ],
+				'timezone'            => [ 'type' => 'string' ],
+				'granularity'         => [ 'type' => 'string' ],
+				'date_field'          => [ 'type' => 'string' ],
+				'surface'             => [ 'type' => 'string' ],
+				'source_text'         => [ 'type' => 'string' ],
+				'confidence'          => [ 'type' => 'number' ],
+				'needs_clarification' => [ 'type' => 'boolean' ],
+				'calendar_parse'      => $calendar_parse,
+				'comparison'          => $comparison,
+				'debug'               => $debug,
+			],
+			'required'             => [],
+			'additionalProperties' => false,
+		];
+	}
+
 	private static function closed_object_schema( array $properties, array $required ) {
 		return [
 			'type'                 => 'object',
@@ -854,7 +1074,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_read_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ],
+			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ],
 			true
 		);
 	}
@@ -1012,6 +1232,14 @@ class YoRo_Commerce_Contract_Builder {
 			];
 		}
 
+		if ( 'store.get_daily_briefing' === $action_name ) {
+			return self::canonical_daily_briefing_data( $execution );
+		}
+
+		if ( 'operations.get_attention_queue' === $action_name ) {
+			return self::canonical_attention_queue_data( $execution );
+		}
+
 		$items = [];
 
 		foreach ( (array) ( $execution['products'] ?? ( $execution['items'] ?? [] ) ) as $item ) {
@@ -1126,6 +1354,199 @@ class YoRo_Commerce_Contract_Builder {
 					'edit_url' => esc_url_raw( $item['edit_url'] ?? '' ),
 				],
 			],
+		];
+	}
+
+	private static function canonical_daily_briefing_data( array $execution ) {
+		$business        = is_array( $execution['business_summary'] ?? null ) ? $execution['business_summary'] : [];
+		$business_metrics = is_array( $execution['metrics'] ?? null )
+			? $execution['metrics']
+			: ( is_array( $business['business_metrics'] ?? null ) ? $business['business_metrics'] : [] );
+		$comparison      = is_array( $execution['comparison'] ?? null )
+			? $execution['comparison']
+			: ( is_array( $business['comparison'] ?? null ) ? $business['comparison'] : [] );
+		$comparison_metrics = is_array( $comparison['metrics'] ?? null ) ? $comparison['metrics'] : [];
+		$attention       = is_array( $execution['attention_queue'] ?? null ) ? $execution['attention_queue'] : [];
+		$inventory       = is_array( $execution['inventory_queue'] ?? null ) ? $execution['inventory_queue'] : [];
+		$attention_items = self::canonical_attention_items(
+			$execution['attention_items'] ?? ( $attention['items'] ?? ( $attention['orders'] ?? [] ) )
+		);
+		$inventory_items = [];
+
+		foreach ( (array) ( $execution['inventory_items'] ?? ( $inventory['items'] ?? ( $inventory['products'] ?? [] ) ) ) as $item ) {
+			if ( is_array( $item ) ) {
+				$inventory_items[] = self::canonical_inventory_item( $item );
+			}
+		}
+
+		$order_count         = absint( $business_metrics['order_count'] ?? ( $execution['briefing_context']['window_orders'] ?? 0 ) );
+		$gross_sales         = is_scalar( $business_metrics['gross_sales'] ?? null ) ? $business_metrics['gross_sales'] : '0';
+		$average_order_value = is_scalar( $business_metrics['average_order_value'] ?? null )
+			? $business_metrics['average_order_value']
+			: ( $order_count > 0 ? (float) $gross_sales / $order_count : 0 );
+		$priorities          = [];
+
+		foreach ( (array) ( $execution['priorities'] ?? ( $execution['priority_items'] ?? [] ) ) as $priority ) {
+			if ( is_array( $priority ) ) {
+				$priorities[] = self::canonical_briefing_priority( $priority );
+			}
+		}
+
+		$counts = is_array( $execution['counts'] ?? null ) ? $execution['counts'] : [];
+
+		return [
+			'window'          => self::canonical_reporting_window( $execution['window'] ?? [], __( 'Current period', 'yoro-ai-core' ) ),
+			'metrics'         => [
+				'order_count'         => $order_count,
+				'gross_sales'         => is_scalar( $gross_sales ) ? $gross_sales : '0',
+				'average_order_value' => is_scalar( $average_order_value ) ? $average_order_value : '0',
+				'currency'            => sanitize_text_field( $business_metrics['currency'] ?? ( function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : '' ) ),
+				'is_complete'         => array_key_exists( 'is_complete', $business_metrics ) ? (bool) $business_metrics['is_complete'] : true,
+			],
+			'comparison'      => [
+				'window'  => self::canonical_reporting_window( $comparison['window'] ?? [], __( 'Previous period', 'yoro-ai-core' ), 'previous_equivalent_window' ),
+				'metrics' => [
+					'order_count'         => self::canonical_metric_comparison( $comparison_metrics['order_count'] ?? [], $order_count ),
+					'gross_sales'         => self::canonical_metric_comparison( $comparison_metrics['gross_sales'] ?? [], $gross_sales ),
+					'average_order_value' => self::canonical_metric_comparison( $comparison_metrics['average_order_value'] ?? [], $average_order_value ),
+				],
+			],
+			'counts'          => [
+				'attention'          => absint( $counts['attention'] ?? ( $attention['queue_item_count'] ?? ( $attention['count'] ?? count( $attention_items ) ) ) ),
+				'fulfillment'        => absint( $counts['fulfillment'] ?? ( $execution['fulfillment_queue']['count'] ?? 0 ) ),
+				'customer_followups' => absint( $counts['customer_followups'] ?? ( $execution['customer_service_queue']['count'] ?? 0 ) ),
+				'inventory'          => absint( $counts['inventory'] ?? ( $inventory['count'] ?? count( $inventory_items ) ) ),
+			],
+			'attention_items' => $attention_items,
+			'inventory_items' => $inventory_items,
+			'priorities'      => array_values( array_filter( $priorities ) ),
+		];
+	}
+
+	private static function canonical_attention_queue_data( array $execution ) {
+		$items = self::canonical_attention_items( $execution['items'] ?? ( $execution['orders'] ?? [] ) );
+
+		return [
+			'items'         => $items,
+			'page_info'     => self::canonical_page_info( $execution['page_info'] ?? [] ),
+			'count'         => count( $items ),
+			'total_matches' => absint( $execution['total_matches'] ?? ( $execution['queue_item_count'] ?? ( $execution['count'] ?? count( $items ) ) ) ),
+		];
+	}
+
+	private static function canonical_attention_items( $items ) {
+		$canonical = [];
+
+		foreach ( (array) $items as $item ) {
+			if ( is_array( $item ) ) {
+				$canonical[] = self::canonical_attention_item( $item );
+			}
+		}
+
+		usort(
+			$canonical,
+			static function( $left, $right ) {
+				return (float) ( $right['priority_score'] ?? 0 ) <=> (float) ( $left['priority_score'] ?? 0 );
+			}
+		);
+
+		return $canonical;
+	}
+
+	private static function canonical_attention_item( array $item ) {
+		$reason   = sanitize_key( $item['reason'] ?? ( $item['queue_topic'] ?? 'open_order_review' ) );
+		$severity = sanitize_key( $item['severity'] ?? ( $item['tone'] ?? '' ) );
+
+		if ( ! in_array( $severity, [ 'low', 'medium', 'high', 'critical' ], true ) ) {
+			$severity = in_array( $reason, [ 'pending_payment_older_than_24h', 'recent_failed_orders' ], true )
+				? 'high'
+				: ( 'open_order_review' === $reason ? 'low' : 'medium' );
+		}
+
+		return [
+			'order_id'       => is_numeric( $item['order_id'] ?? ( $item['id'] ?? null ) )
+				? absint( $item['order_id'] ?? $item['id'] )
+				: sanitize_text_field( $item['order_id'] ?? ( $item['id'] ?? '' ) ),
+			'order_number'   => sanitize_text_field( $item['order_number'] ?? ( $item['number'] ?? ( $item['id'] ?? '' ) ) ),
+			'status'         => sanitize_key( $item['status'] ?? '' ),
+			'status_label'   => sanitize_text_field( $item['status_label'] ?? ( $item['status'] ?? '' ) ),
+			'total'          => is_scalar( $item['total'] ?? null ) ? $item['total'] : '0',
+			'currency'       => sanitize_text_field( $item['currency'] ?? '' ),
+			'created_at'     => sanitize_text_field( $item['created_at'] ?? ( $item['date_created'] ?? '' ) ),
+			'age_hours'      => absint( $item['age_hours'] ?? 0 ),
+			'reason'         => $reason,
+			'severity'       => $severity,
+			'priority_score' => (float) ( $item['priority_score'] ?? ( $item['case_priority_score'] ?? 0 ) ),
+			'version'        => sanitize_text_field( $item['version'] ?? '' ),
+			'extensions'     => is_array( $item['extensions'] ?? null )
+				? $item['extensions']
+				: [ 'woocommerce.order' => [ 'edit_url' => esc_url_raw( $item['edit_url'] ?? '' ) ] ],
+		];
+	}
+
+	private static function canonical_briefing_priority( array $priority ) {
+		$topic    = sanitize_key( $priority['topic'] ?? ( $priority['domain'] ?? 'orders' ) );
+		$severity = sanitize_key( $priority['severity'] ?? ( $priority['tone'] ?? '' ) );
+
+		if ( ! in_array( $severity, [ 'low', 'medium', 'high', 'critical' ], true ) ) {
+			$severity = 'warning' === $severity ? 'high' : ( 'watch' === $severity ? 'medium' : 'low' );
+		}
+
+		$domain = sanitize_key( $priority['domain'] ?? '' );
+
+		if ( '' === $domain ) {
+			$domain = false !== strpos( $topic, 'inventory' )
+				? 'inventory'
+				: ( false !== strpos( $topic, 'business' ) || false !== strpos( $topic, 'sales' ) ? 'business' : 'orders' );
+		}
+
+		return [
+			'domain'   => $domain,
+			'title'    => sanitize_text_field( $priority['title'] ?? '' ),
+			'reason'   => sanitize_text_field( $priority['reason'] ?? ( $priority['message'] ?? '' ) ),
+			'severity' => $severity,
+			'score'    => (float) ( $priority['score'] ?? 0 ),
+		];
+	}
+
+	private static function canonical_reporting_window( $window, $fallback_label, $fallback_key = 'current_period' ) {
+		$window = is_array( $window ) ? $window : [];
+
+		return [
+			'key'      => sanitize_text_field( $window['canonical_key'] ?? ( $window['key'] ?? $fallback_key ) ),
+			'label'    => sanitize_text_field( $window['label'] ?? $fallback_label ),
+			'start'    => sanitize_text_field( $window['start'] ?? '' ),
+			'end'      => sanitize_text_field( $window['end'] ?? '' ),
+			'timezone' => sanitize_text_field( $window['timezone'] ?? ( function_exists( 'wp_timezone_string' ) ? wp_timezone_string() : 'UTC' ) ),
+		];
+	}
+
+	private static function canonical_metric_comparison( $metric, $current ) {
+		$metric   = is_array( $metric ) ? $metric : [];
+		$current  = is_scalar( $metric['current'] ?? null ) ? $metric['current'] : ( is_scalar( $current ) ? $current : 0 );
+		$previous = is_scalar( $metric['previous'] ?? null ) ? $metric['previous'] : 0;
+		$trend    = sanitize_key( $metric['trend'] ?? '' );
+
+		if ( ! in_array( $trend, [ 'up', 'down', 'flat' ], true ) ) {
+			$difference = (float) $current - (float) $previous;
+			$trend      = abs( $difference ) < 0.00001 ? 'flat' : ( $difference > 0 ? 'up' : 'down' );
+		}
+
+		$delta = sanitize_text_field( $metric['delta'] ?? '' );
+
+		if ( '' === $delta ) {
+			$previous_number = (float) $previous;
+			$percentage      = abs( $previous_number ) < 0.00001
+				? ( (float) $current > 0 ? null : 0.0 )
+				: ( ( (float) $current - $previous_number ) / abs( $previous_number ) ) * 100;
+			$delta           = null === $percentage ? 'new vs previous' : sprintf( '%+.1f%% vs previous', $percentage );
+		}
+
+		return [
+			'current'  => $current,
+			'previous' => $previous,
+			'trend'    => $trend,
+			'delta'    => $delta,
 		];
 	}
 
