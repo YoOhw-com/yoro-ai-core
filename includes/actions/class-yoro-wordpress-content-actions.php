@@ -646,8 +646,12 @@ class YoRo_WordPress_Content_Actions {
 			'alt_text'    => get_post_meta( $post->ID, '_wp_attachment_image_alt', true ),
 			'mime_type'   => $post->post_mime_type,
 			'url'         => wp_get_attachment_url( $post->ID ),
-			'metadata'    => wp_get_attachment_metadata( $post->ID ),
 			'version'     => self::post_version( $post ),
+			'extensions'  => [
+				'wordpress.media' => [
+					'metadata' => wp_get_attachment_metadata( $post->ID ),
+				],
+			],
 		];
 	}
 

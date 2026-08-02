@@ -298,11 +298,34 @@ try {
 	$search_action = YoRo_Action_Registry::get( 'orders.search' );
 	$assert( isset( $actions['orders.search'] ), 'Capability manifest must expose orders.search.' );
 	foreach ( [ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ] as $canonical_read ) {
-		$expected_strict_readiness = ! in_array( $canonical_read, [ 'media.search', 'media.get' ], true );
 		$assert( false === ( $actions[ $canonical_read ]['output_schema']['properties']['data']['additionalProperties'] ?? true ), sprintf( '%s must publish a closed action-level data schema.', $canonical_read ) );
 		$assert( 1 === ( $actions[ $canonical_read ]['extensions']['yoro.contracts']['execution_payload_version'] ?? 0 ), sprintf( '%s must publish the canonical execution payload marker.', $canonical_read ) );
-		$assert( $expected_strict_readiness === ! empty( $actions[ $canonical_read ]['extensions']['yoro.contracts']['strict_output_validation_ready'] ), sprintf( '%s must publish accurate action-level strict validation readiness.', $canonical_read ) );
+		$assert( ! empty( $actions[ $canonical_read ]['extensions']['yoro.contracts']['strict_output_validation_ready'] ), sprintf( '%s must publish accurate action-level strict validation readiness.', $canonical_read ) );
 	}
+	$media_item_schema = $actions['media.get']['output_schema']['properties']['data']['properties']['item'] ?? [];
+	$assert( false === ( $media_item_schema['additionalProperties'] ?? true ), 'Canonical media items must reject undeclared root metadata.' );
+	$assert( ! isset( $media_item_schema['properties']['metadata'] ), 'Provider-owned media metadata must not remain a canonical root field.' );
+	$assert( isset( $media_item_schema['properties']['extensions'] ), 'Canonical media items must expose a provider-owned extension boundary.' );
+	$media_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload(
+		[
+			'success' => true,
+			'action'  => 'media.get',
+			'data'    => [
+				'media_id'   => 44,
+				'title'      => 'Product photo',
+				'mime_type'  => 'image/jpeg',
+				'url'        => 'https://example.test/uploads/product.jpg',
+				'extensions' => [
+					'wordpress.media' => [
+						'metadata' => [ 'width' => 1200, 'height' => 800 ],
+					],
+				],
+			],
+		],
+		'media.get'
+	);
+	$assert( ! isset( $media_payload['data']['item']['metadata'] ), 'Canonical media runtime data must not leak provider metadata at the root.' );
+	$assert( 1200 === ( $media_payload['data']['item']['extensions']['wordpress.media']['metadata']['width'] ?? 0 ), 'Canonical media runtime data must preserve provider metadata under wordpress.media.' );
 	foreach ( [ 'content.search', 'content.get', 'content.create_draft', 'content.update_draft', 'content.preview_changes', 'content.publish', 'comments.list', 'comments.reply', 'comments.update_status', 'media.search', 'media.upload' ] as $managed_action ) {
 		$assert( isset( $actions[ $managed_action ] ), sprintf( 'Capability manifest must expose %s.', $managed_action ) );
 	}

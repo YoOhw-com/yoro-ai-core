@@ -649,7 +649,6 @@ class YoRo_Commerce_Contract_Builder {
 				'alt_text'    => [ 'type' => 'string' ],
 				'mime_type'   => [ 'type' => 'string' ],
 				'url'         => [ 'type' => [ 'string', 'boolean' ] ],
-				'metadata'    => [ 'type' => [ 'object', 'array', 'boolean' ] ],
 				'version'     => [ 'type' => 'string' ],
 				'extensions'  => [ 'type' => 'object' ],
 			],

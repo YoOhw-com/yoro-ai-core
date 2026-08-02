@@ -97,6 +97,23 @@ if ( ! empty( $admin_ids ) ) {
 	$assert( is_array( $broad_content_search ) && ! empty( $broad_content_search['success'] ), 'Broad content search must use the connector default when post_type is omitted.' );
 	$assert( is_array( $allowed_content_search ) && ! empty( $allowed_content_search['success'] ), 'Content search must accept a post type from the published connector allowlist.' );
 	$assert( is_wp_error( $invalid_content_search ) && 'yoro_content_type_not_allowed' === $invalid_content_search->get_error_code(), 'Content search must reject post types outside the published connector allowlist.' );
+	$media_id = wp_insert_attachment(
+		[
+			'post_mime_type' => 'image/jpeg',
+			'post_status'    => 'inherit',
+			'post_title'     => 'YoRo strict media smoke',
+		]
+	);
+	update_post_meta( $media_id, '_wp_attachment_metadata', [ 'width' => 1200, 'height' => 800 ] );
+	$media_result = YoRo_WordPress_Content_Actions::get_media( [ 'media_id' => $media_id ] );
+	$canonical_media_result = is_array( $media_result )
+		? YoRo_Commerce_Contract_Builder::canonical_execution_payload( $media_result, 'media.get' )
+		: [];
+	$media_item = $canonical_media_result['data']['item'] ?? [];
+	$assert( is_array( $media_result ) && ! empty( $media_result['success'] ), 'Media details must execute for a readable attachment.' );
+	$assert( ! isset( $media_item['metadata'] ), 'Canonical media details must not expose provider metadata at the item root.' );
+	$assert( 1200 === ( $media_item['extensions']['wordpress.media']['metadata']['width'] ?? 0 ), 'Canonical media details must preserve provider metadata under wordpress.media.' );
+	wp_delete_attachment( $media_id, true );
 	$lifecycle_post_id = wp_insert_post(
 		[
 			'post_type'    => 'post',
