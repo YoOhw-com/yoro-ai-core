@@ -67,6 +67,8 @@ try {
 		$product->set_manage_stock( false );
 		$product->set_stock_status( 'instock' );
 		$product_id = $product->save();
+		$product = wc_get_product( $product_id );
+		$product_version = YoRo_Commerce_Discovery_Service::product_version( $product );
 
 		update_option( 'woocommerce_manage_stock', 'no', false );
 
@@ -74,12 +76,14 @@ try {
 			[
 				'product_id'     => $product_id,
 				'stock_quantity' => 8,
+				'expected_version' => $product_version,
 			]
 		);
 		$blocked_update  = YoRo_Store_Inventory_Service::update_product_stock(
 			[
 				'product_id'     => $product_id,
 				'stock_quantity' => 8,
+				'expected_version' => $product_version,
 			]
 		);
 
@@ -95,6 +99,7 @@ try {
 			[
 				'product_id'     => $product_id,
 				'stock_quantity' => 8,
+				'expected_version' => $product_version,
 			]
 		);
 
@@ -109,6 +114,7 @@ try {
 				'params' => [
 					'product_id'     => $product_id,
 					'stock_quantity' => 8,
+					'expected_version' => $product_version,
 				],
 			];
 			$runtime = YoRo_Runtime_Guard::prepare(
@@ -132,10 +138,12 @@ try {
 			[
 				'product_id'     => $product_id,
 				'stock_quantity' => 8,
+				'expected_version' => $product_version,
 			]
 		);
 
 		$product = wc_get_product( $product_id );
+		$product_version = YoRo_Commerce_Discovery_Service::product_version( $product );
 
 		$assert( is_array( $result ) && ! empty( $result['success'] ), 'Confirmed stock update must succeed when global stock management is enabled.' );
 		$assert( false === (bool) ( $result['previous_manage_stock'] ?? true ), 'Stock update result must expose previous_manage_stock=false.' );
@@ -149,6 +157,7 @@ try {
 			[
 				'product_id'   => $product_id,
 				'stock_status' => 'outofstock',
+				'expected_version' => $product_version,
 			]
 		);
 
@@ -158,21 +167,26 @@ try {
 		$product->set_manage_stock( false );
 		$product->set_stock_status( 'instock' );
 		$product->save();
+		$product = wc_get_product( $product_id );
+		$product_version = YoRo_Commerce_Discovery_Service::product_version( $product );
 
 		$status_preview = YoRo_Store_Inventory_Service::preview_update_product_stock_status(
 			[
 				'product_id'   => $product_id,
 				'stock_status' => 'outofstock',
+				'expected_version' => $product_version,
 			]
 		);
 		$status_result  = YoRo_Store_Inventory_Service::update_product_stock_status(
 			[
 				'product_id'   => $product_id,
 				'stock_status' => 'outofstock',
+				'expected_version' => $product_version,
 			]
 		);
 
 		$product = wc_get_product( $product_id );
+		$product_version = YoRo_Commerce_Discovery_Service::product_version( $product );
 
 		$assert( empty( $status_preview['blocked'] ), 'Stock status preview must be allowed for products without stock management.' );
 		$assert( 'manual' === ( $status_preview['products'][0]['stock_status_source'] ?? '' ), 'Stock status preview must expose manual source for unmanaged products.' );
@@ -186,12 +200,14 @@ try {
 			[
 				'product_id'   => $product_id,
 				'stock_status' => 'preorder',
+				'expected_version' => $product_version,
 			]
 		);
 		$custom_status_result  = YoRo_Store_Inventory_Service::update_product_stock_status(
 			[
 				'product_id'   => $product_id,
 				'stock_status' => 'preorder',
+				'expected_version' => $product_version,
 			]
 		);
 

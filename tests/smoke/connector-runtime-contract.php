@@ -88,6 +88,8 @@ $option_names = [
 	YoRo_Connector_Snapshot_Publisher::OPTION_MANIFEST_STATE,
 	YoRo_Connector_Snapshot_Publisher::OPTION_CONTEXT_STATE,
 	YoRo_Connector_Snapshot_Publisher::OPTION_SYNC_STATE,
+	YoRo_WordPress_Admin_Actions::POLICY_OPTION,
+	YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION,
 ];
 $missing_option = new stdClass();
 $original_options = [];
@@ -99,6 +101,8 @@ foreach ( $option_names as $option_name ) {
 delete_option( YoRo_Connector_Snapshot_Publisher::OPTION_MANIFEST_STATE );
 delete_option( YoRo_Connector_Snapshot_Publisher::OPTION_CONTEXT_STATE );
 delete_option( YoRo_Connector_Snapshot_Publisher::OPTION_SYNC_STATE );
+update_option( YoRo_WordPress_Admin_Actions::POLICY_OPTION, 'no', false );
+delete_option( YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION );
 
 $original_subject = $admin_id > 0
 	? get_user_meta( $admin_id, YoRo_WordPress_Actor::SUBJECT_META_KEY, true )
@@ -293,11 +297,44 @@ try {
 	$get_details_schema = $actions['orders.get_details']['input_schema']['properties'] ?? [];
 	$search_action = YoRo_Action_Registry::get( 'orders.search' );
 	$assert( isset( $actions['orders.search'] ), 'Capability manifest must expose orders.search.' );
+	foreach ( [ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ] as $canonical_read ) {
+		$expected_strict_readiness = ! in_array( $canonical_read, [ 'media.search', 'media.get' ], true );
+		$assert( false === ( $actions[ $canonical_read ]['output_schema']['properties']['data']['additionalProperties'] ?? true ), sprintf( '%s must publish a closed action-level data schema.', $canonical_read ) );
+		$assert( 1 === ( $actions[ $canonical_read ]['extensions']['yoro.contracts']['execution_payload_version'] ?? 0 ), sprintf( '%s must publish the canonical execution payload marker.', $canonical_read ) );
+		$assert( $expected_strict_readiness === ! empty( $actions[ $canonical_read ]['extensions']['yoro.contracts']['strict_output_validation_ready'] ), sprintf( '%s must publish accurate action-level strict validation readiness.', $canonical_read ) );
+	}
 	foreach ( [ 'content.search', 'content.get', 'content.create_draft', 'content.update_draft', 'content.preview_changes', 'content.publish', 'comments.list', 'comments.reply', 'comments.update_status', 'media.search', 'media.upload' ] as $managed_action ) {
 		$assert( isset( $actions[ $managed_action ] ), sprintf( 'Capability manifest must expose %s.', $managed_action ) );
 	}
 	$assert( empty( $actions['content.search']['write_action'] ), 'Content reads must remain permitless read operations.' );
+	$assert( 'mutate' === ( $actions['content.create_draft']['effect'] ?? '' ) && ! empty( $actions['content.create_draft']['write_action'] ), 'Persisted content drafts must remain canonical writes.' );
 	$assert( ! empty( $actions['content.publish']['requires_confirmation'] ), 'Publishing must require confirmation.' );
+	$assert( false === ( $actions['content.publish']['output_schema']['additionalProperties'] ?? true ), 'Canonical action outputs must fail closed.' );
+	$assert( ! empty( $actions['content.publish']['output_schema']['properties']['data'] ), 'Canonical action outputs must publish the shared execution payload schema.' );
+	$assert( 'operation_journal' === ( $actions['content.publish']['extensions']['wordpress.action']['idempotency_strategy'] ?? '' ), 'Connector writes must bind to the durable operation journal.' );
+	$assert( 'optimistic_version' === ( $actions['content.publish']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Versioned connector writes must declare optimistic concurrency.' );
+	$assert( isset( $actions['orders.update_status'] ), 'Versioned WooCommerce status writes must be published.' );
+	$assert( 'per_item_optimistic_version' === ( $actions['orders.update_status']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Order status writes must publish per-item optimistic concurrency.' );
+	$assert( in_array( 'expected_versions', (array) ( $actions['orders.update_status']['required_params'] ?? [] ), true ), 'Order status writes must require exact versions for every target.' );
+	$assert( isset( $actions['products.update_stock'] ), 'Versioned WooCommerce inventory writes must be published.' );
+	$assert( 'optimistic_version' === ( $actions['products.update_stock']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Inventory writes must publish optimistic concurrency.' );
+	$assert( in_array( 'expected_version', (array) ( $actions['products.update_stock']['required_params'] ?? [] ), true ), 'Inventory writes must require the product version from the latest read.' );
+	$assert( isset( $actions['orders.add_note'] ), 'Append-only order notes may be published with journal idempotency.' );
+	$assert( 'append_only' === ( $actions['orders.add_note']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Append-only order notes must declare their concurrency strategy.' );
+	foreach ( [ 'orders.email_customer_preview', 'orders.email_customer_template', 'orders.use_email_template', 'orders.add_private_note_template' ] as $deprecated_alias ) {
+		$assert( ! isset( $actions[ $deprecated_alias ] ), sprintf( 'Deprecated alias %s must stay out of the canonical manifest.', $deprecated_alias ) );
+	}
+	$assert( ! isset( $actions['plugins.activate'] ), 'Administration actions must stay unpublished while local policy or backup attestation is unavailable.' );
+	$assert( empty( $client->manifest['extensions']['wordpress.runtime']['admin_actions_ready'] ), 'The manifest must disclose that administration actions are unavailable.' );
+
+	update_option( YoRo_WordPress_Admin_Actions::POLICY_OPTION, 'yes', false );
+	update_option( YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION, time(), false );
+	$admin_ready_manifest = YoRo_Commerce_Contract_Builder::build_capability_manifest( YoRo_Connector_Snapshot_Publisher::runtime(), time() + 1 );
+	$admin_ready_names = wp_list_pluck( (array) ( $admin_ready_manifest['actions'] ?? [] ), 'name' );
+	$assert( in_array( 'plugins.activate', $admin_ready_names, true ), 'Administration actions may publish only after policy and backup gates are ready.' );
+	$assert( ! empty( $admin_ready_manifest['extensions']['wordpress.runtime']['admin_actions_ready'] ), 'The ready manifest must disclose administration capability readiness.' );
+	update_option( YoRo_WordPress_Admin_Actions::POLICY_OPTION, 'no', false );
+	delete_option( YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION );
 	$assert(
 		in_array( 'expected_version', (array) ( $actions['content.publish']['required_params'] ?? [] ), true )
 		&& in_array( 'expected_preview_hash', (array) ( $actions['content.publish']['required_params'] ?? [] ), true ),
@@ -384,6 +421,10 @@ try {
 	$assert( 1 === count( $client->results ), 'Pull runtime must publish one canonical execution result.' );
 	$assert( 'operation.claimed' === ( $client->events[0]['payload']['event_type'] ?? '' ), 'Pull runtime acknowledgement must use operation.claimed.' );
 	$assert( 'executed' === ( $client->results[0]['payload']['status'] ?? '' ), 'The safe read smoke operation must finish as executed.' );
+	$canonical_result = $client->results[0]['payload']['result'] ?? [];
+	$assert( false === ( $actions['orders.search']['output_schema']['additionalProperties'] ?? true ), 'Read outputs must use the exact shared execution schema.' );
+	$assert( array_keys( (array) $canonical_result ) === ( $actions['orders.search']['output_schema']['required'] ?? [] ), 'Runtime result roots must exactly match the published output schema.' );
+	$assert( isset( $canonical_result['data']['orders'] ) || isset( $canonical_result['data']['items'] ), 'Canonical results must retain action data under the stable data object.' );
 	$assert( $claim_token === ( $client->results[0]['claim_token'] ?? '' ), 'Result publication must retain exact lease authority.' );
 	$assert( 1 === ( $client->results[0]['lease_generation'] ?? 0 ), 'Result publication must retain the lease generation.' );
 	$assert( $admin_id === get_current_user_id(), 'Connector execution must restore the original WordPress user.' );

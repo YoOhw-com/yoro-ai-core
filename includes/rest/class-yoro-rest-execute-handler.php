@@ -694,7 +694,9 @@ class YoRo_REST_Execute_Handler {
 			'operation_id'            => sanitize_text_field( (string) $operation_id ),
 			'summary'                 => sanitize_text_field( (string) $summary ),
 			'params'                  => is_array( $params ) ? $params : [],
-			'result'                  => is_array( $result ) ? $result : [],
+			'result'                  => is_array( $result )
+				? YoRo_Commerce_Contract_Builder::canonical_execution_payload( $result, $action )
+				: [],
 			'user_content_slots'      => self::normalize_user_content_slots_for_event( $user_content_slots ),
 			'source'                  => 'plugin',
 			'trace_id'                => sanitize_text_field( (string) $trace_id ),

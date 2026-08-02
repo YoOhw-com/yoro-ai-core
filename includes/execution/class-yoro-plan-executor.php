@@ -868,6 +868,14 @@ class YoRo_Plan_Executor {
 
 		switch ( $action ) {
 
+			case 'orders.update_status':
+			case 'products.update_stock':
+			case 'products.update_stock_status':
+				$undo_plan = is_array( $result['undo_plan'] ?? null ) ? array_values( $result['undo_plan'] ) : [];
+				$undo = $undo_plan[0] ?? null;
+
+				return is_array( $undo ) && ! empty( $undo['action'] ) ? $undo : null;
+
 			case 'orders.add_note':
 				$note_ids = ! empty( $result['note_ids'] ) && is_array( $result['note_ids'] )
 					? array_values( array_unique( array_filter( array_map( 'absint', $result['note_ids'] ) ) ) )

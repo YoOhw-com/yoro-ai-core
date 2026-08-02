@@ -350,9 +350,16 @@ class YoRo_Orders_Write_Service {
 				);
 		}
 
+		$version_validation = self::validate_order_versions( $order_ids, $params );
+
+		if ( is_wp_error( $version_validation ) ) {
+			return $version_validation;
+		}
+
 		$processed = [];
 		$skipped   = [];
 		$errors    = [];
+		$previous_statuses = [];
 
 		foreach ( $order_ids as $order_id ) {
 			$order = wc_get_order( $order_id );
@@ -366,12 +373,29 @@ class YoRo_Orders_Write_Service {
 			}
 
 			try {
+				$previous_statuses[] = [
+					'order_id' => $order_id,
+					'status'   => $order->get_status(),
+				];
 				$order->update_status( $status, $note );
 				$processed[] = $order_id;
 			} catch ( Exception $e ) {
 				$errors[] = [
 					'id'      => $order_id,
 					'message' => $e->getMessage(),
+				];
+			}
+		}
+
+		$current_versions = [];
+
+		foreach ( $processed as $order_id ) {
+			$order = wc_get_order( $order_id );
+
+			if ( $order instanceof WC_Order ) {
+				$current_versions[] = [
+					'order_id' => $order_id,
+					'expected_version' => YoRo_Order_Presenter::order_version( $order ),
 				];
 			}
 		}
@@ -390,13 +414,21 @@ class YoRo_Orders_Write_Service {
 			'status'       => $status,
 			'status_label' => YoRo_Order_Helper::get_order_status_label( $status ),
 			'count'        => count( $processed ),
+			'undo_plan'    => empty( $previous_statuses ) ? [] : [
+				[
+					'action' => 'orders.restore_statuses',
+					'params' => [
+						'statuses' => $previous_statuses,
+						'expected_versions' => $current_versions,
+					],
+				],
+			],
+			'current_versions' => $current_versions,
 		];
 	}
 
 	public static function restore_order_statuses( $params ) {
-		$statuses = isset( $params['statuses'] ) && is_array( $params['statuses'] )
-			? $params['statuses']
-			: [];
+		$statuses = self::normalize_restore_statuses( $params['statuses'] ?? [] );
 
 		if ( empty( $statuses ) ) {
 			return new WP_Error(
@@ -405,13 +437,19 @@ class YoRo_Orders_Write_Service {
 			);
 		}
 
+		$version_validation = self::validate_order_versions( wp_list_pluck( $statuses, 'order_id' ), $params );
+
+		if ( is_wp_error( $version_validation ) ) {
+			return $version_validation;
+		}
+
 		$processed = [];
 		$skipped   = [];
 		$errors    = [];
 
-		foreach ( $statuses as $order_id => $status ) {
-			$order_id = absint( $order_id );
-			$status   = sanitize_key( $status );
+		foreach ( $statuses as $status_item ) {
+			$order_id = absint( $status_item['order_id'] ?? 0 );
+			$status   = sanitize_key( $status_item['status'] ?? '' );
 
 			if ( ! $order_id || empty( $status ) ) {
 				continue;
@@ -455,17 +493,15 @@ class YoRo_Orders_Write_Service {
 	}
 
 	public static function preview_restore_order_statuses( $params ) {
-		$statuses = isset( $params['statuses'] ) && is_array( $params['statuses'] )
-			? $params['statuses']
-			: [];
+		$statuses = self::normalize_restore_statuses( $params['statuses'] ?? [] );
 
 		$orders = [];
 		$block_reason = '';
 		$message = __( 'This will restore the selected order statuses after approval.', 'yoro-ai-core' );
 
-		foreach ( $statuses as $order_id => $status ) {
-			$order_id = absint( $order_id );
-			$status = YoRo_Order_Helper::normalize_status_slug( $status );
+		foreach ( $statuses as $status_item ) {
+			$order_id = absint( $status_item['order_id'] ?? 0 );
+			$status = YoRo_Order_Helper::normalize_status_slug( $status_item['status'] ?? '' );
 
 			if ( ! $order_id || '' === $status ) {
 				continue;
@@ -573,6 +609,9 @@ class YoRo_Orders_Write_Service {
 				__( 'I could not find order %s. Choose an existing order before approving this change.', 'yoro-ai-core' ),
 				implode( ', ', $missing_order_ids )
 			);
+		} elseif ( is_wp_error( self::validate_order_versions( $order_ids, $params ) ) ) {
+			$block_reason = 'order_version_conflict';
+			$message = __( 'At least one order changed after it was read. Refresh the order details before approving this status update.', 'yoro-ai-core' );
 		}
 
 		return [
@@ -600,6 +639,74 @@ class YoRo_Orders_Write_Service {
 		return self::preview_add_order_note( $params ) + [
 			'template' => $template,
 		];
+	}
+
+	private static function validate_order_versions( $order_ids, $params ) {
+		$order_ids = array_values( array_filter( array_unique( array_map( 'absint', (array) $order_ids ) ) ) );
+		$expected_versions = is_array( $params['expected_versions'] ?? null ) ? $params['expected_versions'] : [];
+		$version_map = [];
+
+		foreach ( $expected_versions as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
+
+			$order_id = absint( $item['order_id'] ?? 0 );
+			$expected_version = sanitize_text_field( $item['expected_version'] ?? '' );
+
+			if ( $order_id < 1 || '' === $expected_version || isset( $version_map[ $order_id ] ) ) {
+				return new WP_Error( 'order_version_contract_invalid', __( 'Every target order must have one unique expected version.', 'yoro-ai-core' ) );
+			}
+
+			$version_map[ $order_id ] = $expected_version;
+		}
+
+		if ( count( $version_map ) !== count( $order_ids ) || array_diff( $order_ids, array_keys( $version_map ) ) ) {
+			return new WP_Error( 'order_version_contract_invalid', __( 'Every target order must have one expected version from the latest read.', 'yoro-ai-core' ) );
+		}
+
+		foreach ( $order_ids as $order_id ) {
+			$order = function_exists( 'wc_get_order' ) ? wc_get_order( $order_id ) : false;
+
+			if ( ! $order instanceof WC_Order ) {
+				return new WP_Error( 'order_not_found', __( 'I could not find that order.', 'yoro-ai-core' ) );
+			}
+
+			$current_version = YoRo_Order_Presenter::order_version( $order );
+
+			if ( ! hash_equals( $current_version, $version_map[ $order_id ] ) ) {
+				return new WP_Error(
+					'order_version_conflict',
+					__( 'At least one order changed after it was read. Refresh the order details before trying again.', 'yoro-ai-core' ),
+					[ 'order_id' => $order_id, 'current_version' => $current_version ]
+				);
+			}
+		}
+
+		return true;
+	}
+
+	private static function normalize_restore_statuses( $statuses ) {
+		$normalized = [];
+
+		foreach ( is_array( $statuses ) ? $statuses : [] as $key => $item ) {
+			if ( is_array( $item ) ) {
+				$order_id = absint( $item['order_id'] ?? 0 );
+				$status = sanitize_key( $item['status'] ?? '' );
+			} else {
+				$order_id = absint( $key );
+				$status = sanitize_key( $item );
+			}
+
+			if ( $order_id > 0 && '' !== $status ) {
+				$normalized[] = [
+					'order_id' => $order_id,
+					'status'   => $status,
+				];
+			}
+		}
+
+		return $normalized;
 	}
 
 	private static function get_private_note_templates() {

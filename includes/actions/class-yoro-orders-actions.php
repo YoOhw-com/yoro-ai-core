@@ -257,6 +257,85 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
+			'products.search',
+			[
+				'label'       => __( 'Search products', 'yoro-ai-core' ),
+				'description' => __( 'Search WooCommerce products by text, SKU, type, status, or stock status.', 'yoro-ai-core' ),
+				'category'    => 'products',
+				'permission'  => 'manage_woocommerce',
+				'callback'    => [ __CLASS__, 'search_products' ],
+				'risk_level'  => 'low',
+				'write_action'=> false,
+				'input_schema'=> [
+					'query'        => 'string',
+					'sku'          => 'string',
+					'status'       => 'string',
+					'type'         => 'string',
+					'stock_status' => 'string',
+					'limit'        => 'integer',
+				],
+				'max_items'    => 50,
+				'ai_description' => __( 'Find products or variations from the connected store catalog without changing them.', 'yoro-ai-core' ),
+				'required_params' => [],
+				'capabilities' => [ 'products', 'read', 'search' ],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'products.get_details',
+			[
+				'label'       => __( 'Get product details', 'yoro-ai-core' ),
+				'description' => __( 'Read details for selected WooCommerce products or variations.', 'yoro-ai-core' ),
+				'category'    => 'products',
+				'permission'  => 'manage_woocommerce',
+				'callback'    => [ __CLASS__, 'get_product_details' ],
+				'risk_level'  => 'low',
+				'write_action'=> false,
+				'input_schema'=> [ 'product_ids' => 'array<int>' ],
+				'max_items'   => 20,
+				'ai_description' => __( 'Open one or more exact products or variations by their connector catalog IDs.', 'yoro-ai-core' ),
+				'required_params' => [ 'product_ids' ],
+				'capabilities' => [ 'products', 'read' ],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'orders.get_timeline',
+			[
+				'label'       => __( 'Get order timeline', 'yoro-ai-core' ),
+				'description' => __( 'Read status milestones and order notes for one order.', 'yoro-ai-core' ),
+				'category'    => 'orders',
+				'permission'  => 'manage_woocommerce',
+				'callback'    => [ __CLASS__, 'get_order_timeline' ],
+				'risk_level'  => 'low',
+				'write_action'=> false,
+				'input_schema'=> [ 'order_id' => 'integer', 'limit' => 'integer' ],
+				'max_items'   => 50,
+				'ai_description' => __( 'Review the timeline for one specific order, keeping internal notes distinct from customer-visible notes.', 'yoro-ai-core' ),
+				'required_params' => [ 'order_id' ],
+				'capabilities' => [ 'orders', 'read', 'timeline' ],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'fulfillment.get_tracking',
+			[
+				'label'       => __( 'Get fulfillment tracking', 'yoro-ai-core' ),
+				'description' => __( 'Read available shipment tracking data for one order.', 'yoro-ai-core' ),
+				'category'    => 'fulfillment',
+				'permission'  => 'manage_woocommerce',
+				'callback'    => [ __CLASS__, 'get_fulfillment_tracking' ],
+				'risk_level'  => 'low',
+				'write_action'=> false,
+				'input_schema'=> [ 'order_id' => 'integer' ],
+				'max_items'   => 20,
+				'ai_description' => __( 'Read carrier and tracking details already stored by the WooCommerce connector for one order.', 'yoro-ai-core' ),
+				'required_params' => [ 'order_id' ],
+				'capabilities' => [ 'orders', 'fulfillment', 'tracking', 'read' ],
+			]
+		);
+
+		YoRo_Action_Registry::register(
 			'products.update_stock',
 			[
 				'label'                 => __( 'Update product stock', 'yoro-ai-core' ),
@@ -272,7 +351,16 @@ class YoRo_Orders_Actions {
 					'product_sku'    => 'string',
 					'global_unique_id' => 'string',
 					'stock_quantity' => 'integer',
+					'expected_version' => 'string',
 				],
+				'canonical_input_schema' => [
+					'product_id'       => [ 'type' => 'integer', 'minimum' => 1 ],
+					'product_sku'      => [ 'type' => 'string' ],
+					'global_unique_id' => [ 'type' => 'string' ],
+					'stock_quantity'   => [ 'type' => 'integer', 'minimum' => 0 ],
+					'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+				],
+				'concurrency_strategy' => 'optimistic_version',
 				'product_identifier_types' => self::product_identifier_types(),
 				'preview_callback'      => [ __CLASS__, 'preview_update_product_stock' ],
 				'max_items'             => 1,
@@ -285,12 +373,13 @@ class YoRo_Orders_Actions {
 					'Update stock for product 123 to 0',
 					'Cập nhật tồn kho sản phẩm #123 thành 8',
 				],
-				'required_params'       => [ 'product_id', 'stock_quantity' ],
+				'required_params'       => [ 'product_id', 'stock_quantity', 'expected_version' ],
 				'param_hints'           => [
 					'product_id'     => __( 'Use the specific WooCommerce product or variation ID when available.', 'yoro-ai-core' ),
 					'product_sku'    => __( 'Use the specific product or variation SKU when the user identifies the target by SKU.', 'yoro-ai-core' ),
 					'global_unique_id' => __( 'Use the specific product global unique ID, such as GTIN, UPC, EAN, or ISBN.', 'yoro-ai-core' ),
 					'stock_quantity' => __( 'Use the target stock quantity as a non-negative integer.', 'yoro-ai-core' ),
+					'expected_version' => __( 'Copy the opaque version token from the matching structured product context returned by the latest product read. Never invent or ask the person for this token.', 'yoro-ai-core' ),
 				],
 				'clarification_hints'   => [
 					'product_id'     => __( 'Ask which product or variation should be updated when no target is clear. For variable products, ask for the variation unless the person explicitly wants shared parent stock.', 'yoro-ai-core' ),
@@ -321,7 +410,16 @@ class YoRo_Orders_Actions {
 					'product_sku'      => 'string',
 					'global_unique_id' => 'string',
 					'stock_status'     => 'string',
+					'expected_version'  => 'string',
 				],
+				'canonical_input_schema' => [
+					'product_id'       => [ 'type' => 'integer', 'minimum' => 1 ],
+					'product_sku'      => [ 'type' => 'string' ],
+					'global_unique_id' => [ 'type' => 'string' ],
+					'stock_status'     => [ 'type' => 'string' ],
+					'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+				],
+				'concurrency_strategy' => 'optimistic_version',
 				'product_identifier_types' => self::product_identifier_types(),
 				'preview_callback'      => [ __CLASS__, 'preview_update_product_stock_status' ],
 				'max_items'             => 1,
@@ -334,12 +432,13 @@ class YoRo_Orders_Actions {
 					'Mark product 123 as on backorder',
 					'Cập nhật trạng thái tồn kho sản phẩm #123 thành hết hàng',
 				],
-				'required_params'       => [ 'product_id', 'stock_status' ],
+				'required_params'       => [ 'product_id', 'stock_status', 'expected_version' ],
 				'param_hints'           => [
 					'product_id'       => __( 'Use the specific WooCommerce product or variation ID when available.', 'yoro-ai-core' ),
 					'product_sku'      => __( 'Use the specific product or variation SKU when the user identifies the target by SKU.', 'yoro-ai-core' ),
 					'global_unique_id' => __( 'Use the specific product global unique ID, such as GTIN, UPC, EAN, or ISBN.', 'yoro-ai-core' ),
 					'stock_status'     => __( 'Use one of the store configured product stock status keys.', 'yoro-ai-core' ),
+					'expected_version' => __( 'Copy the opaque version token from the matching structured product context returned by the latest product read. Never invent or ask the person for this token.', 'yoro-ai-core' ),
 				],
 				'clarification_hints'   => [
 					'product_id'   => __( 'Ask which product or variation should be updated when no target is clear. For variable products, ask for the variation because parent stock status is derived from variation or shared stock behavior.', 'yoro-ai-core' ),
@@ -351,6 +450,38 @@ class YoRo_Orders_Actions {
 					'stock_status',
 					'write',
 				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'products.restore_stock_state',
+			[
+				'label'                 => __( 'Restore product stock state', 'yoro-ai-core' ),
+				'description'           => __( 'Restore the saved stock state during a bounded YoRo undo.', 'yoro-ai-core' ),
+				'category'              => 'products',
+				'permission'            => 'manage_woocommerce',
+				'callback'              => [ __CLASS__, 'restore_product_stock_state' ],
+				'risk_level'            => 'medium',
+				'write_action'          => true,
+				'ai_exposed'            => false,
+				'concurrency_strategy'  => 'optimistic_version',
+				'input_schema'          => [
+					'product_id'       => 'integer',
+					'expected_version'  => 'string',
+					'manage_stock'      => 'string|boolean',
+					'stock_quantity'    => 'integer|null',
+					'stock_status'      => 'string',
+				],
+				'canonical_input_schema' => [
+					'product_id'       => [ 'type' => 'integer', 'minimum' => 1 ],
+					'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+					'manage_stock'     => [ 'type' => [ 'string', 'boolean' ] ],
+					'stock_quantity'   => [ 'type' => [ 'integer', 'null' ] ],
+					'stock_status'     => [ 'type' => 'string' ],
+				],
+				'required_params'       => [ 'product_id', 'expected_version', 'manage_stock', 'stock_quantity', 'stock_status' ],
+				'max_items'             => 1,
+				'capabilities'          => [ 'products', 'inventory', 'write', 'undo' ],
 			]
 		);
 
@@ -405,6 +536,7 @@ class YoRo_Orders_Actions {
 				'callback'              => [ __CLASS__, 'create_coupon' ],
 				'risk_level'            => 'medium',
 				'write_action'          => true,
+				'concurrency_strategy'  => 'create_only',
 				'requires_confirmation' => true,
 				'input_schema'          => [
 					'coupon_code'          => 'string',
@@ -784,6 +916,7 @@ class YoRo_Orders_Actions {
 				'callback'         => [ __CLASS__, 'email_customer_preview' ],
 				'risk_level'       => 'low',
 				'write_action'     => false,
+				'ai_exposed'       => false,
 				'input_schema'     => [
 					'order_id' => 'integer',
 					'template' => 'string',
@@ -825,6 +958,7 @@ class YoRo_Orders_Actions {
 				'requires_confirmation' => true,
 				'risk_level'            => 'medium',
 				'write_action'          => true,
+				'ai_exposed'            => false,
 				'input_schema'          => [
 					'order_id' => 'integer',
 					'template' => 'string',
@@ -959,6 +1093,7 @@ class YoRo_Orders_Actions {
 				'permission'   => 'manage_woocommerce',
 				'callback'     => [ __CLASS__, 'use_email_template' ],
 				'write_action' => false,
+				'ai_exposed'   => false,
 				'input_schema' => [
 					'order_id'    => 'integer',
 					'template_id' => 'string',
@@ -1246,6 +1381,7 @@ class YoRo_Orders_Actions {
 				'requires_confirmation' => true,
 				'risk_level'            => 'medium',
 				'write_action'          => true,
+				'concurrency_strategy'  => 'external_delivery',
 				'input_schema'          => [
 					'order_id'     => 'integer',
 					'subject'      => 'string',
@@ -1292,6 +1428,7 @@ class YoRo_Orders_Actions {
 				'requires_confirmation' => false,
 				'risk_level'            => 'low',
 				'write_action'          => true,
+				'ai_exposed'            => false,
 				'input_schema'          => [
 					'order_id'  => 'integer',
 					'order_ids' => 'array<int>',
@@ -1334,6 +1471,7 @@ class YoRo_Orders_Actions {
 				'requires_confirmation' => false,
 				'risk_level'            => 'low',
 				'write_action'          => true,
+				'concurrency_strategy'  => 'append_only',
 				'input_schema' => [
 					'order_id'  => 'integer',
 					'order_ids' => 'array<int>',
@@ -1424,7 +1562,28 @@ class YoRo_Orders_Actions {
 					'order_ids' => 'array<int>',
 					'status'    => 'string',
 					'note'      => 'string',
+					'expected_versions' => 'array<object>',
 				],
+				'canonical_input_schema' => [
+					'order_ids' => [ 'type' => 'array', 'items' => [ 'type' => 'integer' ], 'minItems' => 1, 'maxItems' => 20 ],
+					'status' => [ 'type' => 'string' ],
+					'note' => [ 'type' => 'string' ],
+					'expected_versions' => [
+						'type' => 'array',
+						'minItems' => 1,
+						'maxItems' => 20,
+						'items' => [
+							'type' => 'object',
+							'properties' => [
+								'order_id' => [ 'type' => 'integer' ],
+								'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+							],
+							'required' => [ 'order_id', 'expected_version' ],
+							'additionalProperties' => false,
+						],
+					],
+				],
+				'concurrency_strategy'  => 'per_item_optimistic_version',
 				'preview_callback'      => [ __CLASS__, 'preview_update_order_status' ],
 				'max_items'             => 20,
 				'auto_resolve' => [
@@ -1445,11 +1604,12 @@ class YoRo_Orders_Actions {
 					'Update order #1234 to on hold',
 					'Chuyển đơn #1234 sang hoàn tất',
 				],
-				'required_params'     => [ 'order_ids', 'status' ],
+				'required_params'     => [ 'order_ids', 'status', 'expected_versions' ],
 				'param_hints'         => [
 					'order_ids' => __( 'Use one or more target order IDs.', 'yoro-ai-core' ),
 					'status'    => __( 'Use store order status slugs like pending, processing, completed, on-hold, cancelled, refunded, or failed.', 'yoro-ai-core' ),
 					'note'      => __( 'Use note only when the person explicitly wants a status update with an internal note.', 'yoro-ai-core' ),
+					'expected_versions' => __( 'Copy one opaque version token per matching order from structured active order context returned by the latest order read. Never invent or ask the person for these tokens.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [
 					'order_ids' => __( 'Ask which order should change status when no target order is clear.', 'yoro-ai-core' ),
@@ -1471,8 +1631,41 @@ class YoRo_Orders_Actions {
 				'write_action'          => true,
 				'ai_exposed'            => false,
 				'input_schema'          => [
-					'statuses' => 'array',
+					'statuses'          => 'array',
+					'expected_versions' => 'array<object>',
 				],
+				'canonical_input_schema' => [
+					'statuses' => [
+						'type' => 'array',
+						'minItems' => 1,
+						'maxItems' => 20,
+						'items' => [
+							'type' => 'object',
+							'properties' => [
+								'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+								'status' => [ 'type' => 'string' ],
+							],
+							'required' => [ 'order_id', 'status' ],
+							'additionalProperties' => false,
+						],
+					],
+					'expected_versions' => [
+						'type' => 'array',
+						'minItems' => 1,
+						'maxItems' => 20,
+						'items' => [
+							'type' => 'object',
+							'properties' => [
+								'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+								'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+							],
+							'required' => [ 'order_id', 'expected_version' ],
+							'additionalProperties' => false,
+						],
+					],
+				],
+				'concurrency_strategy'  => 'per_item_optimistic_version',
+				'required_params'       => [ 'statuses', 'expected_versions' ],
 				'preview_callback'      => [ __CLASS__, 'preview_restore_order_statuses' ],
 				'max_items'             => 20,
 				'capabilities' => [
@@ -1509,12 +1702,32 @@ class YoRo_Orders_Actions {
 		return YoRo_Orders_Read_Service::get_inventory_queue( $params );
 	}
 
+	public static function search_products( $params ) {
+		return YoRo_Commerce_Discovery_Service::search_products( $params );
+	}
+
+	public static function get_product_details( $params ) {
+		return YoRo_Commerce_Discovery_Service::get_product_details( $params );
+	}
+
+	public static function get_order_timeline( $params ) {
+		return YoRo_Commerce_Discovery_Service::get_order_timeline( $params );
+	}
+
+	public static function get_fulfillment_tracking( $params ) {
+		return YoRo_Commerce_Discovery_Service::get_fulfillment_tracking( $params );
+	}
+
 	public static function update_product_stock( $params ) {
 		return YoRo_Store_Inventory_Service::update_product_stock( $params );
 	}
 
 	public static function update_product_stock_status( $params ) {
 		return YoRo_Store_Inventory_Service::update_product_stock_status( $params );
+	}
+
+	public static function restore_product_stock_state( $params ) {
+		return YoRo_Store_Inventory_Service::restore_product_stock_state( $params );
 	}
 
 	public static function lookup_coupon( $params ) {

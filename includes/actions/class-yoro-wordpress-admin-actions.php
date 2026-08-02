@@ -22,6 +22,13 @@ class YoRo_WordPress_Admin_Actions {
 		self::register_action( 'users.update_role', 'Update a WordPress user role', 'update_user_role', [ 'user_id' => 'integer', 'role' => 'string', 'expected_version' => 'string' ], [ 'user_id', 'role', 'expected_version' ], 'critical' );
 	}
 
+	public static function connector_policy_ready() {
+		$attested_at = absint( get_option( self::BACKUP_ATTESTED_OPTION, 0 ) );
+
+		return 'yes' === get_option( self::POLICY_OPTION, 'no' )
+			&& $attested_at >= time() - self::BACKUP_MAX_AGE;
+	}
+
 	private static function register_action( $name, $label, $callback, $schema, $required, $risk ) {
 		YoRo_Action_Registry::register(
 			$name,
@@ -278,8 +285,7 @@ class YoRo_WordPress_Admin_Actions {
 		if ( 'yes' !== get_option( self::POLICY_OPTION, 'no' ) ) {
 			return new WP_Error( 'yoro_admin_policy_disabled', 'WordPress administration actions are disabled by policy.' );
 		}
-		$attested_at = absint( get_option( self::BACKUP_ATTESTED_OPTION, 0 ) );
-		if ( $attested_at < time() - self::BACKUP_MAX_AGE ) {
+		if ( ! self::connector_policy_ready() ) {
 			return new WP_Error( 'yoro_backup_attestation_required', 'A backup attestation from the last 24 hours is required.' );
 		}
 

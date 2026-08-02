@@ -8,6 +8,7 @@ class YoRo_Commerce_Contract_Builder {
 
 	const CONNECTOR_KEY = 'wordpress';
 	const SCHEMA_VERSION = 1;
+	const EXECUTION_PAYLOAD_VERSION = 1;
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -23,6 +24,11 @@ class YoRo_Commerce_Contract_Builder {
 
 		foreach ( YoRo_Action_Registry::all() as $name => $action ) {
 			if ( ! is_array( $action ) || empty( $action['ai_exposed'] ) ) {
+				continue;
+			}
+
+			if ( 'wordpress_admin' === sanitize_key( $action['category'] ?? '' )
+				&& ! YoRo_WordPress_Admin_Actions::connector_policy_ready() ) {
 				continue;
 			}
 
@@ -46,6 +52,7 @@ class YoRo_Commerce_Contract_Builder {
 				'plugin_version'     => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
 				'execution_boundary' => 'plugin_executor',
 				'modules'            => YoRo_WordPress_Site_Actions::modules(),
+				'admin_actions_ready' => YoRo_WordPress_Admin_Actions::connector_policy_ready(),
 			],
 		];
 		if ( yoro_ai_core_has_woocommerce() ) {
@@ -163,8 +170,11 @@ class YoRo_Commerce_Contract_Builder {
 
 	private static function canonical_action( $name, array $action ) {
 		$name = sanitize_text_field( $name );
+		$catalog_input_schema = is_array( $action['canonical_input_schema'] ?? null )
+			? $action['canonical_input_schema']
+			: ( $action['input_schema'] ?? [] );
 		$input_schema = self::object_schema(
-			$action['input_schema'] ?? [],
+			$catalog_input_schema,
 			$action['required_params'] ?? []
 		);
 
@@ -176,12 +186,21 @@ class YoRo_Commerce_Contract_Builder {
 		$risk_level = sanitize_key( $action['risk_level'] ?? 'low' );
 		$reversibility = sanitize_key( $action['reversibility'] ?? ( ! empty( $action['write_action'] ) ? 'partial' : 'full' ) );
 		$permission = sanitize_key( $action['permission'] ?? '' );
+		$is_write = ! empty( $action['write_action'] );
+		$idempotency_strategy = sanitize_key( $action['idempotency_strategy'] ?? '' );
+		$concurrency_strategy = sanitize_key( $action['concurrency_strategy'] ?? '' );
 		$conversation_semantics = YoRo_Action_Catalog_Builder::semantic_contract( $name, $action );
 
 		if ( ! in_array( $effect, [ 'read', 'draft', 'mutate', 'communicate', 'delete', 'financial' ], true )
 			|| ! in_array( $risk_level, [ 'low', 'medium', 'high', 'critical' ], true )
 			|| ! in_array( $reversibility, [ 'full', 'partial', 'none' ], true )
 			|| '' === $permission ) {
+			return null;
+		}
+
+		if ( $is_write
+			&& ( 'operation_journal' !== $idempotency_strategy
+				|| ! in_array( $concurrency_strategy, [ 'optimistic_version', 'per_item_optimistic_version', 'create_only', 'append_only', 'external_delivery', 'idempotent_set' ], true ) ) ) {
 			return null;
 		}
 
@@ -193,19 +212,924 @@ class YoRo_Commerce_Contract_Builder {
 			'risk_level'            => $risk_level,
 			'reversibility'         => $reversibility,
 			'external_side_effect'  => ! empty( $action['external_side_effect'] ),
-			'write_action'          => ! in_array( $effect, [ 'read', 'draft' ], true ),
+			'write_action'          => $is_write,
 			'requires_confirmation' => ! empty( $action['requires_confirmation'] ) || ! empty( $action['write_action'] ),
 			'max_targets'           => max( 1, absint( $action['max_targets'] ?? ( $action['max_items'] ?? 1 ) ) ),
 			'input_schema'          => $input_schema,
-			'output_schema'         => self::object_schema( $action['output_schema'] ?? [], [] ),
+			'output_schema'         => self::execution_output_schema( $name ),
 			'required_params'       => $input_schema['required'],
 			'required_permissions'  => [ $permission ],
 			'extensions'            => [
 				'wordpress.action' => [
 					'registry_action' => $name,
+					'idempotency_strategy' => $is_write ? $idempotency_strategy : 'none',
+					'concurrency_strategy' => $is_write ? $concurrency_strategy : 'none',
 				],
+				'yoro.contracts' => self::execution_contract_extension( $name ),
 				'yoro.conversation' => $conversation_semantics,
 			],
+		];
+	}
+
+	public static function execution_contract_extension( $action_name = '' ) {
+		return [
+			'execution_payload'              => 'canonical_action_result',
+			'execution_payload_version'      => self::EXECUTION_PAYLOAD_VERSION,
+			'fixture_revision'               => 2,
+			'strict_output_validation_ready' => self::strict_output_validation_ready( $action_name ),
+		];
+	}
+
+	public static function strict_output_validation_ready( $action_name ) {
+		$output_schema = self::execution_output_schema( $action_name );
+		$data_schema   = $output_schema['properties']['data'] ?? null;
+
+		return 'object' === ( $data_schema['type'] ?? null )
+			&& self::is_strict_schema_node( $output_schema );
+	}
+
+	public static function execution_output_schema( $action_name = '' ) {
+		return [
+			'type'                 => 'object',
+			'properties'           => [
+				'success'           => [ 'type' => 'boolean' ],
+				'action'            => [ 'type' => 'string' ],
+				'message'           => [ 'type' => 'string' ],
+				'summary'           => [ 'type' => 'string' ],
+				'data'              => self::execution_data_schema( $action_name ),
+				'read_only'         => [ 'type' => 'boolean' ],
+				'undoable'          => [ 'type' => 'boolean' ],
+				'result_type'       => [ 'type' => 'string' ],
+				'display_type'      => [ 'type' => 'string' ],
+				'assistant_summary' => [ 'type' => 'string' ],
+				'extensions'        => [ 'type' => 'object' ],
+			],
+			'required'             => [ 'success', 'action', 'message', 'summary', 'data', 'read_only', 'undoable', 'result_type', 'display_type', 'assistant_summary', 'extensions' ],
+			'additionalProperties' => false,
+		];
+	}
+
+	public static function canonical_execution_payload( array $execution, $action_name = '' ) {
+		$stable_keys = [ 'success', 'action', 'message', 'summary', 'data', 'read_only', 'undoable', 'result_type', 'display_type', 'assistant_summary', 'meta', 'processed', 'skipped', 'errors', 'count', 'undo_plan', 'extensions' ];
+		$action_name = sanitize_text_field( $action_name ?: ( $execution['action'] ?? '' ) );
+		$data = is_array( $execution['data'] ?? null ) ? $execution['data'] : [];
+
+		if ( self::is_list_array( $data ) && [] !== $data ) {
+			$data = [ 'items' => $data ];
+		}
+
+		foreach ( array_diff_key( $execution, array_flip( $stable_keys ) ) as $key => $value ) {
+			$key = sanitize_key( $key );
+
+			if ( '' !== $key ) {
+				$data[ $key ] = $value;
+			}
+		}
+
+		$legacy_data = $data;
+
+		if ( self::is_canonical_read_action( $action_name ) ) {
+			$data = self::canonical_read_data( $action_name, $execution );
+		} elseif ( self::is_canonical_write_action( $action_name ) ) {
+			$data = self::canonical_write_data( $action_name, $execution );
+		}
+
+		$summary = sanitize_text_field( $execution['summary'] ?? ( $execution['message'] ?? '' ) );
+		$message = sanitize_text_field( $execution['message'] ?? $summary );
+
+		return [
+			'success'           => ! empty( $execution['success'] ),
+			'action'            => $action_name,
+			'message'           => $message,
+			'summary'           => $summary,
+			'data'              => $data,
+			'read_only'         => ! empty( $execution['read_only'] ),
+			'undoable'          => ! empty( $execution['undoable'] ),
+			'result_type'       => sanitize_key( $execution['result_type'] ?? 'raw' ) ?: 'raw',
+			'display_type'      => sanitize_key( $execution['display_type'] ?? 'raw' ) ?: 'raw',
+			'assistant_summary' => sanitize_text_field( $execution['assistant_summary'] ?? $summary ),
+			'extensions'        => [
+				'wordpress.execution' => [
+					'meta'      => is_array( $execution['meta'] ?? null ) ? $execution['meta'] : [],
+					'processed' => is_array( $execution['processed'] ?? null ) ? $execution['processed'] : [],
+					'skipped'   => is_array( $execution['skipped'] ?? null ) ? $execution['skipped'] : [],
+					'errors'    => is_array( $execution['errors'] ?? null ) ? $execution['errors'] : [],
+					'count'     => absint( $execution['count'] ?? 0 ),
+					'undo_plan' => is_array( $execution['undo_plan'] ?? null ) ? $execution['undo_plan'] : [],
+					'legacy_data' => self::is_canonical_read_action( $action_name ) ? $legacy_data : [],
+				],
+			],
+		];
+	}
+
+	private static function execution_data_schema( $action_name ) {
+		$action_name = sanitize_text_field( $action_name );
+
+		if ( 'orders.update_status' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'processed' => self::array_schema( [ 'type' => 'integer' ] ),
+					'status' => [ 'type' => 'string' ],
+					'status_label' => [ 'type' => 'string' ],
+					'current_versions' => self::array_schema(
+						self::closed_object_schema(
+							[
+								'order_id' => [ 'type' => 'integer' ],
+								'expected_version' => [ 'type' => 'string' ],
+							],
+							[ 'order_id', 'expected_version' ]
+						)
+					),
+				],
+				[ 'processed', 'status', 'status_label', 'current_versions' ]
+			);
+		}
+
+		if ( 'products.update_stock' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'product_id' => [ 'type' => 'integer' ],
+					'stock_quantity' => [ 'type' => 'integer' ],
+					'stock_status' => [ 'type' => 'string' ],
+					'manage_stock' => [ 'type' => 'boolean' ],
+					'current_version' => [ 'type' => 'string' ],
+				],
+				[ 'product_id', 'stock_quantity', 'stock_status', 'manage_stock', 'current_version' ]
+			);
+		}
+
+		if ( 'products.update_stock_status' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'product_id' => [ 'type' => 'integer' ],
+					'stock_status' => [ 'type' => 'string' ],
+					'manage_stock' => [ 'type' => 'boolean' ],
+					'current_version' => [ 'type' => 'string' ],
+				],
+				[ 'product_id', 'stock_status', 'manage_stock', 'current_version' ]
+			);
+		}
+
+		if ( in_array( $action_name, [ 'orders.search', 'orders.find_by_customer' ], true ) ) {
+			return self::closed_object_schema(
+				[
+					'orders'    => self::array_schema( self::canonical_order_schema() ),
+					'page_info' => self::canonical_page_info_schema(),
+					'count'     => [ 'type' => 'integer', 'minimum' => 0 ],
+				],
+				[ 'orders', 'page_info', 'count' ]
+			);
+		}
+
+		if ( 'orders.get_details' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'orders' => self::array_schema( self::canonical_order_schema() ),
+					'count'  => [ 'type' => 'integer', 'minimum' => 0 ],
+				],
+				[ 'orders', 'count' ]
+			);
+		}
+
+		if ( 'customers.lookup' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'customers' => self::array_schema( self::canonical_customer_schema() ),
+					'page_info' => self::canonical_page_info_schema(),
+					'count'     => [ 'type' => 'integer', 'minimum' => 0 ],
+				],
+				[ 'customers', 'page_info', 'count' ]
+			);
+		}
+
+		if ( 'products.get_inventory_queue' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'items'     => self::array_schema( self::canonical_inventory_item_schema() ),
+					'page_info' => self::canonical_page_info_schema(),
+					'count'     => [ 'type' => 'integer', 'minimum' => 0 ],
+				],
+				[ 'items', 'page_info', 'count' ]
+			);
+		}
+
+		if ( 'content.search' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'items' => self::array_schema( self::canonical_content_item_schema() ),
+					'count' => [ 'type' => 'integer', 'minimum' => 0 ],
+				],
+				[ 'items', 'count' ]
+			);
+		}
+
+		if ( 'content.get' === $action_name ) {
+			return self::closed_object_schema(
+				[ 'item' => self::canonical_content_item_schema() ],
+				[ 'item' ]
+			);
+		}
+
+		if ( 'comments.list' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'items' => self::array_schema( self::canonical_comment_schema() ),
+					'count' => [ 'type' => 'integer', 'minimum' => 0 ],
+				],
+				[ 'items', 'count' ]
+			);
+		}
+
+		if ( 'media.search' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'items' => self::array_schema( self::canonical_media_item_schema() ),
+					'count' => [ 'type' => 'integer', 'minimum' => 0 ],
+				],
+				[ 'items', 'count' ]
+			);
+		}
+
+		if ( 'media.get' === $action_name ) {
+			return self::closed_object_schema(
+				[ 'item' => self::canonical_media_item_schema() ],
+				[ 'item' ]
+			);
+		}
+
+		if ( 'site.get_info' === $action_name ) {
+			return self::closed_object_schema(
+				[ 'site' => self::canonical_site_info_schema() ],
+				[ 'site' ]
+			);
+		}
+
+		if ( 'site.get_health' === $action_name ) {
+			return self::closed_object_schema(
+				[ 'health' => self::canonical_site_health_schema() ],
+				[ 'health' ]
+			);
+		}
+
+		if ( 'site.get_update_status' === $action_name ) {
+			return self::closed_object_schema(
+				[ 'updates' => self::canonical_site_update_status_schema() ],
+				[ 'updates' ]
+			);
+		}
+
+		if ( 'products.search' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'products'  => self::array_schema( self::canonical_product_schema() ),
+					'page_info' => self::canonical_page_info_schema(),
+					'count'     => [ 'type' => 'integer', 'minimum' => 0 ],
+				],
+				[ 'products', 'page_info', 'count' ]
+			);
+		}
+
+		if ( 'products.get_details' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'products' => self::array_schema( self::canonical_product_schema() ),
+					'count'    => [ 'type' => 'integer', 'minimum' => 0 ],
+				],
+				[ 'products', 'count' ]
+			);
+		}
+
+		if ( 'orders.get_timeline' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'order_id' => [ 'type' => [ 'string', 'integer' ] ],
+					'events'   => self::array_schema( self::canonical_timeline_event_schema() ),
+					'count'    => [ 'type' => 'integer', 'minimum' => 0 ],
+				],
+				[ 'order_id', 'events', 'count' ]
+			);
+		}
+
+		if ( 'fulfillment.get_tracking' === $action_name ) {
+			return self::closed_object_schema(
+				[
+					'order_id'  => [ 'type' => [ 'string', 'integer' ] ],
+					'status'    => [ 'type' => 'string' ],
+					'shipments' => self::array_schema( self::canonical_tracking_shipment_schema() ),
+					'count'     => [ 'type' => 'integer', 'minimum' => 0 ],
+				],
+				[ 'order_id', 'status', 'shipments', 'count' ]
+			);
+		}
+
+		return [ 'type' => 'object' ];
+	}
+
+	private static function canonical_order_schema() {
+		return self::closed_object_schema(
+			[
+				'id'           => [ 'type' => [ 'string', 'integer' ] ],
+				'number'       => [ 'type' => 'string' ],
+				'status'       => [ 'type' => 'string' ],
+				'status_label' => [ 'type' => 'string' ],
+				'total'        => [ 'type' => [ 'string', 'number' ] ],
+				'currency'     => [ 'type' => 'string' ],
+				'created_at'   => [ 'type' => 'string' ],
+				'version'      => [ 'type' => 'string' ],
+				'customer'     => self::closed_object_schema(
+					[
+						'name'  => [ 'type' => 'string' ],
+						'email' => [ 'type' => 'string' ],
+						'phone' => [ 'type' => 'string' ],
+					],
+					[ 'name', 'email', 'phone' ]
+				),
+				'line_items'   => self::array_schema(
+					self::closed_object_schema(
+						[
+							'name'     => [ 'type' => 'string' ],
+							'quantity' => [ 'type' => 'integer' ],
+							'sku'      => [ 'type' => 'string' ],
+							'total'    => [ 'type' => [ 'string', 'number' ] ],
+						],
+						[ 'name', 'quantity', 'sku', 'total' ]
+					)
+				),
+				'extensions'   => [ 'type' => 'object' ],
+			],
+			[ 'id', 'number', 'status', 'status_label', 'total', 'currency', 'created_at', 'version' ]
+		);
+	}
+
+	private static function canonical_customer_schema() {
+		return self::closed_object_schema(
+			[
+				'id'             => [ 'type' => [ 'string', 'integer' ] ],
+				'name'           => [ 'type' => 'string' ],
+				'email'          => [ 'type' => 'string' ],
+				'phone'          => [ 'type' => 'string' ],
+				'status'         => [ 'type' => 'string' ],
+				'orders_count'   => [ 'type' => 'integer', 'minimum' => 0 ],
+				'lifetime_value' => [ 'type' => [ 'string', 'number' ] ],
+				'currency'       => [ 'type' => 'string' ],
+				'created_at'     => [ 'type' => 'string' ],
+				'last_order_at'  => [ 'type' => 'string' ],
+				'segments'       => self::array_schema( [ 'type' => 'string' ] ),
+				'risk_flags'     => self::array_schema( [ 'type' => 'string' ] ),
+				'extensions'     => [ 'type' => 'object' ],
+			],
+			[ 'id', 'name', 'email', 'phone', 'status', 'orders_count', 'lifetime_value', 'currency', 'segments', 'risk_flags' ]
+		);
+	}
+
+	private static function canonical_inventory_item_schema() {
+		return self::closed_object_schema(
+			[
+				'id'             => [ 'type' => [ 'string', 'integer' ] ],
+				'product_id'     => [ 'type' => [ 'string', 'integer' ] ],
+				'name'           => [ 'type' => 'string' ],
+				'sku'            => [ 'type' => 'string' ],
+				'stock_quantity' => [ 'type' => [ 'integer', 'null' ] ],
+				'stock_status'   => [ 'type' => 'string' ],
+				'version'        => [ 'type' => 'string' ],
+				'extensions'     => [ 'type' => 'object' ],
+			],
+			[ 'id', 'product_id', 'name', 'sku', 'stock_quantity', 'stock_status', 'version' ]
+		);
+	}
+
+	private static function canonical_content_item_schema() {
+		return self::closed_object_schema(
+			[
+				'content_id' => [ 'type' => 'integer' ],
+				'post_type'  => [ 'type' => 'string' ],
+				'status'     => [ 'type' => 'string' ],
+				'title'      => [ 'type' => 'string' ],
+				'content'    => [ 'type' => 'string' ],
+				'version'    => [ 'type' => 'string' ],
+				'modified_at' => [ 'type' => 'string' ],
+				'url'        => [ 'type' => 'string' ],
+				'extensions' => [ 'type' => 'object' ],
+			],
+			[ 'content_id', 'post_type', 'status', 'title', 'content', 'version', 'modified_at', 'url' ]
+		);
+	}
+
+	private static function canonical_comment_schema() {
+		return self::closed_object_schema(
+			[
+				'comment_id' => [ 'type' => 'integer' ],
+				'content_id' => [ 'type' => 'integer' ],
+				'parent_id'  => [ 'type' => 'integer' ],
+				'author'     => [ 'type' => 'string' ],
+				'content'    => [ 'type' => 'string' ],
+				'status'     => [ 'type' => 'string' ],
+				'version'    => [ 'type' => 'string' ],
+				'extensions' => [ 'type' => 'object' ],
+			],
+			[ 'comment_id', 'content_id', 'parent_id', 'author', 'content', 'status', 'version' ]
+		);
+	}
+
+	private static function canonical_media_item_schema() {
+		return self::closed_object_schema(
+			[
+				'media_id'    => [ 'type' => 'integer' ],
+				'title'       => [ 'type' => 'string' ],
+				'caption'     => [ 'type' => 'string' ],
+				'description' => [ 'type' => 'string' ],
+				'alt_text'    => [ 'type' => 'string' ],
+				'mime_type'   => [ 'type' => 'string' ],
+				'url'         => [ 'type' => [ 'string', 'boolean' ] ],
+				'metadata'    => [ 'type' => [ 'object', 'array', 'boolean' ] ],
+				'version'     => [ 'type' => 'string' ],
+				'extensions'  => [ 'type' => 'object' ],
+			],
+			[ 'media_id', 'title', 'mime_type', 'url' ]
+		);
+	}
+
+	private static function canonical_site_info_schema() {
+		return self::closed_object_schema(
+			[
+				'name'                => [ 'type' => 'string' ],
+				'description'         => [ 'type' => 'string' ],
+				'home_url'            => [ 'type' => 'string' ],
+				'site_url'            => [ 'type' => 'string' ],
+				'wordpress_version'   => [ 'type' => 'string' ],
+				'php_version'         => [ 'type' => 'string' ],
+				'locale'              => [ 'type' => 'string' ],
+				'timezone'            => [ 'type' => 'string' ],
+				'environment'         => [ 'type' => 'string' ],
+				'is_multisite'        => [ 'type' => 'boolean' ],
+				'active_theme'        => [ 'type' => 'string' ],
+				'permalink_structure' => [ 'type' => 'string' ],
+				'modules'             => self::array_schema( [ 'type' => 'string' ] ),
+				'extensions'          => [ 'type' => 'object' ],
+			],
+			[ 'name', 'description', 'home_url', 'site_url', 'wordpress_version', 'php_version', 'locale', 'timezone', 'environment', 'is_multisite', 'active_theme', 'permalink_structure', 'modules' ]
+		);
+	}
+
+	private static function canonical_site_health_schema() {
+		return self::closed_object_schema(
+			[
+				'status'     => [ 'type' => 'string' ],
+				'checks'     => self::array_schema(
+					self::closed_object_schema(
+						[
+							'id'      => [ 'type' => 'string' ],
+							'status'  => [ 'type' => 'string' ],
+							'summary' => [ 'type' => 'string' ],
+						],
+						[ 'id', 'status', 'summary' ]
+					)
+				),
+				'extensions' => [ 'type' => 'object' ],
+			],
+			[ 'status', 'checks' ]
+		);
+	}
+
+	private static function canonical_site_update_status_schema() {
+		return self::closed_object_schema(
+			[
+				'core'       => self::array_schema(
+					self::closed_object_schema(
+						[
+							'version'  => [ 'type' => 'string' ],
+							'locale'   => [ 'type' => 'string' ],
+							'response' => [ 'type' => 'string' ],
+						],
+						[ 'version', 'locale', 'response' ]
+					)
+				),
+				'plugins'    => self::array_schema(
+					self::closed_object_schema(
+						[
+							'plugin'      => [ 'type' => 'string' ],
+							'new_version' => [ 'type' => 'string' ],
+						],
+						[ 'plugin', 'new_version' ]
+					)
+				),
+				'themes'     => self::array_schema(
+					self::closed_object_schema(
+						[
+							'theme'       => [ 'type' => 'string' ],
+							'new_version' => [ 'type' => 'string' ],
+						],
+						[ 'theme', 'new_version' ]
+					)
+				),
+				'checked_at' => [ 'type' => 'string' ],
+				'extensions' => [ 'type' => 'object' ],
+			],
+			[ 'core', 'plugins', 'themes', 'checked_at' ]
+		);
+	}
+
+	private static function canonical_product_schema() {
+		return self::closed_object_schema(
+			[
+				'id'             => [ 'type' => [ 'string', 'integer' ] ],
+				'name'           => [ 'type' => 'string' ],
+				'sku'            => [ 'type' => 'string' ],
+				'status'         => [ 'type' => 'string' ],
+				'type'           => [ 'type' => 'string' ],
+				'price'          => [ 'type' => [ 'string', 'number' ] ],
+				'currency'       => [ 'type' => 'string' ],
+				'stock_quantity' => [ 'type' => [ 'integer', 'null' ] ],
+				'stock_status'   => [ 'type' => 'string' ],
+				'version'        => [ 'type' => 'string' ],
+				'extensions'     => [ 'type' => 'object' ],
+			],
+			[ 'id', 'name', 'sku', 'status', 'type', 'price', 'currency', 'stock_quantity', 'stock_status', 'version' ]
+		);
+	}
+
+	private static function canonical_timeline_event_schema() {
+		return self::closed_object_schema(
+			[
+				'id'          => [ 'type' => 'string' ],
+				'type'        => [ 'type' => 'string' ],
+				'visibility'  => [ 'type' => 'string', 'enum' => [ 'system', 'internal', 'customer' ] ],
+				'summary'     => [ 'type' => 'string' ],
+				'occurred_at' => [ 'type' => 'string' ],
+				'extensions'  => [ 'type' => 'object' ],
+			],
+			[ 'id', 'type', 'visibility', 'summary', 'occurred_at', 'extensions' ]
+		);
+	}
+
+	private static function canonical_tracking_shipment_schema() {
+		return self::closed_object_schema(
+			[
+				'carrier'         => [ 'type' => 'string' ],
+				'tracking_number' => [ 'type' => 'string' ],
+				'tracking_url'    => [ 'type' => 'string' ],
+				'status'          => [ 'type' => 'string' ],
+				'extensions'      => [ 'type' => 'object' ],
+			],
+			[ 'carrier', 'tracking_number', 'tracking_url', 'status', 'extensions' ]
+		);
+	}
+
+	private static function canonical_page_info_schema() {
+		return self::closed_object_schema(
+			[
+				'has_next_page' => [ 'type' => 'boolean' ],
+				'next_cursor'   => [ 'type' => [ 'string', 'null' ] ],
+			],
+			[ 'has_next_page', 'next_cursor' ]
+		);
+	}
+
+	private static function closed_object_schema( array $properties, array $required ) {
+		return [
+			'type'                 => 'object',
+			'properties'           => $properties,
+			'required'             => $required,
+			'additionalProperties' => false,
+		];
+	}
+
+	private static function array_schema( array $items ) {
+		return [
+			'type'  => 'array',
+			'items' => $items,
+		];
+	}
+
+	private static function is_strict_schema_node( $schema, $property_name = '' ) {
+		if ( ! is_array( $schema ) ) {
+			return false;
+		}
+
+		$types = is_array( $schema['type'] ?? null )
+			? array_values( $schema['type'] )
+			: [ $schema['type'] ?? '' ];
+
+		if ( empty( array_filter( $types, 'is_string' ) ) ) {
+			return false;
+		}
+
+		if ( 'extensions' === $property_name ) {
+			return in_array( 'object', $types, true );
+		}
+
+		if ( in_array( 'object', $types, true ) ) {
+			$properties = $schema['properties'] ?? null;
+			$required   = $schema['required'] ?? null;
+
+			if ( ! is_array( $properties )
+				|| ! is_array( $required )
+				|| false !== ( $schema['additionalProperties'] ?? null )
+				|| ! empty( array_diff( $required, array_keys( $properties ) ) ) ) {
+				return false;
+			}
+
+			foreach ( $properties as $name => $definition ) {
+				if ( ! self::is_strict_schema_node( $definition, sanitize_key( $name ) ) ) {
+					return false;
+				}
+			}
+		}
+
+		if ( in_array( 'array', $types, true )
+			&& ! self::is_strict_schema_node( $schema['items'] ?? null ) ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	private static function is_canonical_read_action( $action_name ) {
+		return in_array(
+			sanitize_text_field( $action_name ),
+			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ],
+			true
+		);
+	}
+
+	private static function is_canonical_write_action( $action_name ) {
+		return in_array(
+			sanitize_text_field( $action_name ),
+			[ 'orders.update_status', 'products.update_stock', 'products.update_stock_status' ],
+			true
+		);
+	}
+
+	private static function canonical_write_data( $action_name, array $execution ) {
+		if ( 'orders.update_status' === $action_name ) {
+			$current_versions = [];
+
+			foreach ( (array) ( $execution['current_versions'] ?? [] ) as $item ) {
+				if ( ! is_array( $item ) ) {
+					continue;
+				}
+
+				$current_versions[] = [
+					'order_id' => absint( $item['order_id'] ?? 0 ),
+					'expected_version' => sanitize_text_field( $item['expected_version'] ?? '' ),
+				];
+			}
+
+			return [
+				'processed' => array_values( array_map( 'absint', (array) ( $execution['processed'] ?? [] ) ) ),
+				'status' => sanitize_key( $execution['status'] ?? '' ),
+				'status_label' => sanitize_text_field( $execution['status_label'] ?? '' ),
+				'current_versions' => $current_versions,
+			];
+		}
+
+		$data = [
+			'product_id' => absint( $execution['product_id'] ?? 0 ),
+			'stock_status' => sanitize_key( $execution['stock_status'] ?? '' ),
+			'manage_stock' => (bool) ( $execution['manage_stock'] ?? false ),
+			'current_version' => sanitize_text_field( $execution['current_version'] ?? '' ),
+		];
+
+		if ( 'products.update_stock' === $action_name ) {
+			return [
+				'product_id' => $data['product_id'],
+				'stock_quantity' => (int) ( $execution['stock_quantity'] ?? 0 ),
+				'stock_status' => $data['stock_status'],
+				'manage_stock' => $data['manage_stock'],
+				'current_version' => $data['current_version'],
+			];
+		}
+
+		return $data;
+	}
+
+	private static function canonical_read_data( $action_name, array $execution ) {
+		$raw_data = is_array( $execution['data'] ?? null ) ? $execution['data'] : [];
+
+		if ( in_array( $action_name, [ 'content.search', 'comments.list', 'media.search' ], true ) ) {
+			$items = self::is_list_array( $raw_data )
+				? array_values( $raw_data )
+				: array_values( (array) ( $raw_data['items'] ?? ( $execution['items'] ?? [] ) ) );
+
+			return [
+				'items' => $items,
+				'count' => count( $items ),
+			];
+		}
+
+		if ( in_array( $action_name, [ 'content.get', 'media.get' ], true ) ) {
+			return [ 'item' => is_array( $raw_data['item'] ?? null ) ? $raw_data['item'] : ( is_array( $execution['item'] ?? null ) ? $execution['item'] : $raw_data ) ];
+		}
+
+		if ( 'site.get_info' === $action_name ) {
+			return [ 'site' => is_array( $raw_data['site'] ?? null ) ? $raw_data['site'] : ( is_array( $execution['site'] ?? null ) ? $execution['site'] : $raw_data ) ];
+		}
+
+		if ( 'site.get_health' === $action_name ) {
+			return [ 'health' => is_array( $raw_data['health'] ?? null ) ? $raw_data['health'] : ( is_array( $execution['health'] ?? null ) ? $execution['health'] : $raw_data ) ];
+		}
+
+		if ( 'site.get_update_status' === $action_name ) {
+			return [ 'updates' => is_array( $raw_data['updates'] ?? null ) ? $raw_data['updates'] : ( is_array( $execution['updates'] ?? null ) ? $execution['updates'] : $raw_data ) ];
+		}
+
+		if ( in_array( $action_name, [ 'products.search', 'products.get_details' ], true ) ) {
+			$products = array_values( (array) ( $execution['products'] ?? ( $raw_data['products'] ?? [] ) ) );
+
+			if ( 'products.get_details' === $action_name ) {
+				return [
+					'products' => $products,
+					'count'    => count( $products ),
+				];
+			}
+
+			return [
+				'products'  => $products,
+				'page_info' => self::canonical_page_info( $execution['page_info'] ?? ( $raw_data['page_info'] ?? [] ) ),
+				'count'     => count( $products ),
+			];
+		}
+
+		if ( 'orders.get_timeline' === $action_name ) {
+			return [
+				'order_id' => $execution['order_id'] ?? ( $raw_data['order_id'] ?? 0 ),
+				'events'   => array_values( (array) ( $execution['events'] ?? ( $raw_data['events'] ?? [] ) ) ),
+				'count'    => count( (array) ( $execution['events'] ?? ( $raw_data['events'] ?? [] ) ) ),
+			];
+		}
+
+		if ( 'fulfillment.get_tracking' === $action_name ) {
+			return [
+				'order_id'  => $execution['order_id'] ?? ( $raw_data['order_id'] ?? 0 ),
+				'status'    => sanitize_key( $execution['status'] ?? ( $raw_data['status'] ?? 'unavailable' ) ),
+				'shipments' => array_values( (array) ( $execution['shipments'] ?? ( $raw_data['shipments'] ?? [] ) ) ),
+				'count'     => count( (array) ( $execution['shipments'] ?? ( $raw_data['shipments'] ?? [] ) ) ),
+			];
+		}
+
+		if ( in_array( $action_name, [ 'orders.search', 'orders.get_details', 'orders.find_by_customer' ], true ) ) {
+			$orders = self::canonical_orders( $execution['orders'] ?? [] );
+
+			if ( 'orders.get_details' === $action_name ) {
+				return [
+					'orders' => $orders,
+					'count'  => count( $orders ),
+				];
+			}
+
+			return [
+				'orders'    => $orders,
+				'page_info' => self::canonical_page_info( $execution['page_info'] ?? [] ),
+				'count'     => count( $orders ),
+			];
+		}
+
+		if ( 'customers.lookup' === $action_name ) {
+			$customers = [];
+			$raw_customers = is_array( $execution['customers'] ?? null ) ? $execution['customers'] : [];
+
+			if ( empty( $raw_customers ) && is_array( $execution['customer'] ?? null ) ) {
+				$raw_customers = [ $execution['customer'] ];
+			}
+
+			foreach ( $raw_customers as $customer ) {
+				if ( is_array( $customer ) ) {
+					$customers[] = self::canonical_customer( $customer );
+				}
+			}
+
+			return [
+				'customers' => $customers,
+				'page_info' => self::canonical_page_info( $execution['page_info'] ?? [] ),
+				'count'     => count( $customers ),
+			];
+		}
+
+		$items = [];
+
+		foreach ( (array) ( $execution['products'] ?? ( $execution['items'] ?? [] ) ) as $item ) {
+			if ( is_array( $item ) ) {
+				$items[] = self::canonical_inventory_item( $item );
+			}
+		}
+
+		return [
+			'items'     => $items,
+			'page_info' => self::canonical_page_info( $execution['page_info'] ?? [] ),
+			'count'     => count( $items ),
+		];
+	}
+
+	private static function is_list_array( array $value ) {
+		return [] === $value || array_keys( $value ) === range( 0, count( $value ) - 1 );
+	}
+
+	private static function canonical_orders( $orders ) {
+		$canonical = [];
+
+		foreach ( (array) $orders as $order ) {
+			if ( ! is_array( $order ) ) {
+				continue;
+			}
+
+			$item = [
+				'id'           => is_numeric( $order['id'] ?? null ) ? absint( $order['id'] ) : sanitize_text_field( $order['id'] ?? '' ),
+				'number'       => sanitize_text_field( $order['number'] ?? ( $order['id'] ?? '' ) ),
+				'status'       => sanitize_key( $order['status'] ?? '' ),
+				'status_label' => sanitize_text_field( $order['status_label'] ?? ( $order['status'] ?? '' ) ),
+				'total'        => is_scalar( $order['total'] ?? null ) ? (string) $order['total'] : '0',
+				'currency'     => sanitize_text_field( $order['currency'] ?? '' ),
+				'created_at'   => sanitize_text_field( $order['created_at'] ?? ( $order['date_created'] ?? '' ) ),
+				'version'      => sanitize_text_field( $order['version'] ?? '' ),
+				'extensions'   => [
+					'woocommerce.order' => [
+						'edit_url' => esc_url_raw( $order['edit_url'] ?? '' ),
+					],
+				],
+			];
+
+			if ( array_key_exists( 'line_items', $order ) ) {
+				$item['customer'] = [
+					'name'  => sanitize_text_field( $order['customer_name'] ?? '' ),
+					'email' => sanitize_text_field( $order['billing_email'] ?? '' ),
+					'phone' => sanitize_text_field( $order['billing_phone'] ?? '' ),
+				];
+				$item['line_items'] = [];
+
+				foreach ( (array) $order['line_items'] as $line_item ) {
+					if ( is_array( $line_item ) ) {
+						$item['line_items'][] = [
+							'name'     => sanitize_text_field( $line_item['name'] ?? '' ),
+							'quantity' => (int) ( $line_item['quantity'] ?? 0 ),
+							'sku'      => sanitize_text_field( $line_item['sku'] ?? '' ),
+							'total'    => is_scalar( $line_item['total'] ?? null ) ? (string) $line_item['total'] : '0',
+						];
+					}
+				}
+			}
+
+			$canonical[] = $item;
+		}
+
+		return $canonical;
+	}
+
+	private static function canonical_customer( array $customer ) {
+		return [
+			'id'             => is_numeric( $customer['id'] ?? null ) ? absint( $customer['id'] ) : sanitize_text_field( $customer['id'] ?? '' ),
+			'name'           => sanitize_text_field( $customer['name'] ?? '' ),
+			'email'          => sanitize_text_field( $customer['email'] ?? '' ),
+			'phone'          => sanitize_text_field( $customer['phone'] ?? '' ),
+			'status'         => sanitize_key( $customer['status'] ?? 'unknown' ),
+			'orders_count'   => absint( $customer['orders_count'] ?? 0 ),
+			'lifetime_value' => is_scalar( $customer['lifetime_value'] ?? null ) ? (string) $customer['lifetime_value'] : '0',
+			'currency'       => sanitize_text_field( $customer['currency'] ?? '' ),
+			'created_at'     => sanitize_text_field( $customer['created_at'] ?? ( $customer['first_order_at'] ?? '' ) ),
+			'last_order_at'  => sanitize_text_field( $customer['last_order_at'] ?? '' ),
+			'segments'       => array_values( array_map( 'sanitize_key', (array) ( $customer['segments'] ?? [] ) ) ),
+			'risk_flags'     => array_values( array_map( 'sanitize_key', (array) ( $customer['risk_flags'] ?? [] ) ) ),
+			'extensions'     => [
+				'woocommerce.customer' => [
+					'meta' => is_array( $customer['meta'] ?? null ) ? $customer['meta'] : [],
+				],
+			],
+		];
+	}
+
+	private static function canonical_inventory_item( array $item ) {
+		$stock_quantity = $item['stock_quantity'] ?? null;
+		$product_id = is_numeric( $item['product_id'] ?? null ) ? absint( $item['product_id'] ) : ( is_numeric( $item['id'] ?? null ) ? absint( $item['id'] ) : 0 );
+		$version = sanitize_text_field( $item['version'] ?? '' );
+
+		if ( '' === $version && $product_id > 0 && class_exists( 'YoRo_Commerce_Discovery_Service' ) && function_exists( 'wc_get_product' ) ) {
+			$product = wc_get_product( $product_id );
+			$version = $product instanceof WC_Product ? YoRo_Commerce_Discovery_Service::product_version( $product ) : '';
+		}
+
+		return [
+			'id'             => is_numeric( $item['id'] ?? null ) ? absint( $item['id'] ) : sanitize_text_field( $item['id'] ?? '' ),
+			'product_id'     => $product_id > 0 ? $product_id : sanitize_text_field( $item['id'] ?? '' ),
+			'name'           => sanitize_text_field( $item['name'] ?? ( $item['title'] ?? '' ) ),
+			'sku'            => sanitize_text_field( $item['sku'] ?? '' ),
+			'stock_quantity' => is_numeric( $stock_quantity ) ? (int) $stock_quantity : null,
+			'stock_status'   => sanitize_key( $item['stock_status'] ?? 'unknown' ),
+			'version'        => $version,
+			'extensions'     => [
+				'woocommerce.inventory' => [
+					'edit_url' => esc_url_raw( $item['edit_url'] ?? '' ),
+				],
+			],
+		];
+	}
+
+	private static function canonical_page_info( $page_info ) {
+		$page_info = is_array( $page_info ) ? $page_info : [];
+		$has_next_page = ! empty( $page_info['has_next_page'] ) || ! empty( $page_info['hasNextPage'] );
+		$next_cursor = sanitize_text_field( $page_info['next_cursor'] ?? ( $page_info['endCursor'] ?? '' ) );
+
+		return [
+			'has_next_page' => $has_next_page,
+			'next_cursor'   => $has_next_page && '' !== $next_cursor ? $next_cursor : null,
 		];
 	}
 

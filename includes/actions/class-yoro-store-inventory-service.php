@@ -32,6 +32,12 @@ class YoRo_Store_Inventory_Service {
 			return new WP_Error( 'product_not_found', __( 'I could not find that product.', 'yoro-ai-core' ) );
 		}
 
+		$version_validation = self::validate_product_version( $product, $params );
+
+		if ( is_wp_error( $version_validation ) ) {
+			return $version_validation;
+		}
+
 		if ( self::variable_parent_requires_explicit_stock_quantity_scope( $product ) ) {
 			return new WP_Error(
 				'variable_parent_requires_variation_or_shared_stock',
@@ -64,6 +70,7 @@ class YoRo_Store_Inventory_Service {
 		}
 
 		$current_stock_status = method_exists( $product, 'get_stock_status' ) ? sanitize_key( $product->get_stock_status() ) : '';
+		$current_version = YoRo_Commerce_Discovery_Service::product_version( $product );
 		$previous_label = is_numeric( $previous_stock_quantity ) ? (string) (int) $previous_stock_quantity : __( 'untracked', 'yoro-ai-core' );
 		$enabled_stock_management = false === (bool) $previous_manage_stock;
 		$current_product_meta = self::product_inventory_target_meta( $product, $product_target );
@@ -155,7 +162,19 @@ class YoRo_Store_Inventory_Service {
 			'count'                   => 1,
 			'read_only'               => false,
 			'undoable'                => false,
-			'undo_plan'               => [],
+			'undo_plan'               => [
+				[
+					'action' => 'products.restore_stock_state',
+					'params' => [
+						'product_id'      => $product_id,
+						'expected_version' => $current_version,
+						'manage_stock'     => $previous_manage_stock,
+						'stock_quantity'   => is_numeric( $previous_stock_quantity ) ? (int) $previous_stock_quantity : null,
+						'stock_status'     => $previous_stock_status,
+					],
+				],
+			],
+			'current_version'         => $current_version,
 			'result_type'             => 'generic',
 			'display_type'            => 'generic',
 			'meta'                    => [
@@ -194,6 +213,12 @@ class YoRo_Store_Inventory_Service {
 			return new WP_Error( 'product_not_found', __( 'I could not find that product.', 'yoro-ai-core' ) );
 		}
 
+		$version_validation = self::validate_product_version( $product, $params );
+
+		if ( is_wp_error( $version_validation ) ) {
+			return $version_validation;
+		}
+
 		$product_meta            = self::product_inventory_target_meta( $product, $product_target );
 		$previous_manage_stock   = method_exists( $product, 'get_manage_stock' ) ? $product->get_manage_stock() : null;
 		$managing_stock_quantity = self::product_manages_stock_quantity( $product );
@@ -228,6 +253,7 @@ class YoRo_Store_Inventory_Service {
 		}
 
 		$current_stock_status = method_exists( $product, 'get_stock_status' ) ? YoRo_Product_Helper::normalize_stock_status_slug( $product->get_stock_status() ) : $stock_status;
+		$current_version = YoRo_Commerce_Discovery_Service::product_version( $product );
 		$summary              = sprintf(
 			/* translators: 1: product name, 2: product id, 3: previous stock status, 4: new stock status */
 			__( 'Updated stock status for %1$s (#%2$d) from %3$s to %4$s.', 'yoro-ai-core' ),
@@ -277,7 +303,19 @@ class YoRo_Store_Inventory_Service {
 			'count'                  => 1,
 			'read_only'              => false,
 			'undoable'               => false,
-			'undo_plan'              => [],
+			'undo_plan'              => [
+				[
+					'action' => 'products.restore_stock_state',
+					'params' => [
+						'product_id'      => $product_id,
+						'expected_version' => $current_version,
+						'manage_stock'     => $previous_manage_stock,
+						'stock_quantity'   => method_exists( $product, 'get_stock_quantity' ) && is_numeric( $product->get_stock_quantity() ) ? (int) $product->get_stock_quantity() : null,
+						'stock_status'     => $previous_stock_status,
+					],
+				],
+			],
+			'current_version'        => $current_version,
 			'result_type'            => 'generic',
 			'display_type'           => 'generic',
 			'meta'                   => [
@@ -319,6 +357,9 @@ class YoRo_Store_Inventory_Service {
 		} elseif ( ! $product ) {
 			$message = __( 'I could not find that product.', 'yoro-ai-core' );
 			$block_reason = 'product_not_found';
+		} elseif ( is_wp_error( self::validate_product_version( $product, $params ) ) ) {
+			$message = __( 'The product changed after it was read. Refresh the product details before approving this update.', 'yoro-ai-core' );
+			$block_reason = 'product_version_conflict';
 		} elseif ( $managing_stock_quantity ) {
 			$message = __( 'Stock status is controlled by stock quantity for products with stock management enabled. Update the stock quantity instead.', 'yoro-ai-core' );
 			$block_reason = 'stock_status_managed_by_quantity';
@@ -390,6 +431,9 @@ class YoRo_Store_Inventory_Service {
 		} elseif ( ! $product ) {
 			$message      = __( 'I could not find that product.', 'yoro-ai-core' );
 			$block_reason = 'product_not_found';
+		} elseif ( is_wp_error( self::validate_product_version( $product, $params ) ) ) {
+			$message      = __( 'The product changed after it was read. Refresh the product details before approving this update.', 'yoro-ai-core' );
+			$block_reason = 'product_version_conflict';
 		} elseif ( $variable_parent_quantity_blocked ) {
 			$message      = self::variable_parent_stock_quantity_message();
 			$block_reason = 'variable_parent_requires_variation_or_shared_stock';
@@ -537,6 +581,57 @@ class YoRo_Store_Inventory_Service {
 			self::product_inventory_target_meta( $product, $product_target ),
 			is_array( $extra ) ? $extra : []
 		);
+	}
+
+	public static function restore_product_stock_state( $params ) {
+		$product_id = absint( $params['product_id'] ?? 0 );
+		$product = function_exists( 'wc_get_product' ) ? wc_get_product( $product_id ) : false;
+
+		if ( ! $product instanceof WC_Product ) {
+			return new WP_Error( 'product_not_found', __( 'I could not find that product.', 'yoro-ai-core' ) );
+		}
+
+		$version_validation = self::validate_product_version( $product, $params );
+
+		if ( is_wp_error( $version_validation ) ) {
+			return $version_validation;
+		}
+
+		try {
+			$product->set_manage_stock( $params['manage_stock'] );
+			$product->set_stock_quantity( null === ( $params['stock_quantity'] ?? null ) ? null : (int) $params['stock_quantity'] );
+			$product->set_stock_status( sanitize_key( $params['stock_status'] ?? '' ) );
+			$product->save();
+		} catch ( Exception $exception ) {
+			return new WP_Error( 'stock_restore_failed', $exception->getMessage() );
+		}
+
+		return [
+			'success'      => true,
+			'action'       => 'products.restore_stock_state',
+			'summary'      => sprintf( __( 'Restored stock state for product #%d.', 'yoro-ai-core' ), $product_id ),
+			'processed'    => [ $product_id ],
+			'count'        => 1,
+			'read_only'    => false,
+			'undoable'     => false,
+			'undo_plan'    => [],
+			'current_version' => YoRo_Commerce_Discovery_Service::product_version( $product ),
+		];
+	}
+
+	private static function validate_product_version( WC_Product $product, $params ) {
+		$expected_version = sanitize_text_field( is_array( $params ) ? ( $params['expected_version'] ?? '' ) : '' );
+		$current_version = YoRo_Commerce_Discovery_Service::product_version( $product );
+
+		if ( '' === $expected_version || ! hash_equals( $current_version, $expected_version ) ) {
+			return new WP_Error(
+				'product_version_conflict',
+				__( 'The product changed after it was read. Refresh the product details before trying again.', 'yoro-ai-core' ),
+				[ 'current_version' => $current_version ]
+			);
+		}
+
+		return true;
 	}
 
 	private static function variable_parent_requires_explicit_stock_quantity_scope( $product ) {

@@ -28,7 +28,25 @@ class YoRo_Order_Presenter {
 			'draft_count'    => $draft_count,
 			'has_email_drafts' => $draft_count > 0,
 			'edit_url'       => method_exists( $order, 'get_edit_order_url' ) ? $order->get_edit_order_url() : admin_url( 'post.php?post=' . $order->get_id() . '&action=edit' ),
+			'version'        => self::order_version( $order ),
 		];
+	}
+
+	public static function order_version( WC_Order $order ) {
+		$date_modified = $order->get_date_modified();
+
+		return hash(
+			'sha256',
+			wp_json_encode(
+				[
+					$order->get_id(),
+					$date_modified ? $date_modified->getTimestamp() : 0,
+					$order->get_status(),
+					$order->get_total(),
+					$order->get_currency(),
+				]
+			)
+		);
 	}
 
 	public static function format_order_details( WC_Order $order ) {

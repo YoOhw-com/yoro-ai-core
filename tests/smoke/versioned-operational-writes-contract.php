@@ -1,0 +1,188 @@
+<?php
+/**
+ * Versioned operational write and bounded recovery smoke contract.
+ *
+ * Run through WordPress with the plugin worktree loaded. All fixtures are
+ * created inside a database transaction and rolled back.
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	fwrite( STDERR, "Run this smoke contract through WordPress.\n" );
+	exit( 1 );
+}
+
+$plugin_root = dirname( __DIR__, 2 );
+
+if ( ! class_exists( 'YoRo_AI_Core' ) && file_exists( $plugin_root . '/yoro-ai-core.php' ) ) {
+	require_once $plugin_root . '/yoro-ai-core.php';
+}
+
+if ( class_exists( 'YoRo_AI_Core' ) && function_exists( 'yoro_ai_core_has_woocommerce' ) && yoro_ai_core_has_woocommerce() ) {
+	YoRo_AI_Core::init();
+}
+
+$assert = static function ( $condition, $message ) {
+	if ( ! $condition ) {
+		throw new RuntimeException( $message );
+	}
+};
+
+$admin_ids = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ] );
+$assert( ! empty( $admin_ids ), 'An administrator is required for operational write smokes.' );
+wp_set_current_user( absint( $admin_ids[0] ) );
+
+if ( class_exists( 'YoRo_Action_Registry' ) && 0 === count( YoRo_Action_Registry::all() ) ) {
+	YoRo_Action_Registry::init();
+	YoRo_Orders_Actions::register();
+}
+
+$registry = YoRo_Action_Registry::all();
+
+foreach ( [
+	'orders.update_status' => 'per_item_optimistic_version',
+	'products.update_stock' => 'optimistic_version',
+	'products.update_stock_status' => 'optimistic_version',
+] as $action_name => $concurrency_strategy ) {
+	$action = $registry[ $action_name ] ?? null;
+	$assert( is_array( $action ), sprintf( '%s must be registered.', $action_name ) );
+	$assert( ! empty( $action['write_action'] ), sprintf( '%s must be classified as a write.', $action_name ) );
+	$assert( ! empty( $action['requires_confirmation'] ), sprintf( '%s must require confirmation.', $action_name ) );
+	$assert( 'operation_journal' === ( $action['idempotency_strategy'] ?? '' ), sprintf( '%s must use the operation journal.', $action_name ) );
+	$assert( $concurrency_strategy === ( $action['concurrency_strategy'] ?? '' ), sprintf( '%s must publish its version strategy.', $action_name ) );
+}
+
+$catalog = YoRo_Action_Catalog_Builder::build();
+$catalog_by_name = [];
+
+foreach ( $catalog as $item ) {
+	if ( is_array( $item ) && ! empty( $item['name'] ) ) {
+		$catalog_by_name[ $item['name'] ] = $item;
+	}
+}
+
+foreach ( [ 'orders.update_status', 'products.update_stock', 'products.update_stock_status' ] as $action_name ) {
+	$assert( isset( $catalog_by_name[ $action_name ] ), sprintf( '%s must be published to Chat only after its safety contract is complete.', $action_name ) );
+}
+
+$assert( ! isset( $catalog_by_name['orders.restore_statuses'] ), 'Order recovery must remain hidden from AI selection.' );
+$assert( ! isset( $catalog_by_name['products.restore_stock_state'] ), 'Product recovery must remain hidden from AI selection.' );
+
+global $wpdb;
+
+$wpdb->query( 'START TRANSACTION' );
+$original_manage_stock = get_option( 'woocommerce_manage_stock', '__yoro_missing__' );
+$product_id = 0;
+$order_id = 0;
+
+try {
+	update_option( 'woocommerce_manage_stock', 'yes', false );
+
+	$product = new WC_Product_Simple();
+	$product->set_name( 'YoRo versioned write smoke ' . wp_generate_uuid4() );
+	$product->set_status( 'draft' );
+	$product->set_regular_price( '10' );
+	$product->set_manage_stock( true );
+	$product->set_stock_quantity( 4 );
+	$product->set_stock_status( 'instock' );
+	$product_id = $product->save();
+	$product = wc_get_product( $product_id );
+	$product_version = YoRo_Commerce_Discovery_Service::product_version( $product );
+
+	$stale_product = YoRo_Store_Inventory_Service::update_product_stock(
+		[
+			'product_id'       => $product_id,
+			'stock_quantity'   => 9,
+			'expected_version' => str_repeat( '0', 64 ),
+		]
+	);
+	$assert( is_wp_error( $stale_product ) && 'product_version_conflict' === $stale_product->get_error_code(), 'A stale product version must fail before mutation.' );
+	$assert( 4 === (int) wc_get_product( $product_id )->get_stock_quantity(), 'A stale product write must not change stock.' );
+
+	$product_result = YoRo_Store_Inventory_Service::update_product_stock(
+		[
+			'product_id'       => $product_id,
+			'stock_quantity'   => 9,
+			'expected_version' => $product_version,
+		]
+	);
+	$assert( is_array( $product_result ) && ! empty( $product_result['success'] ), 'A current product version must allow the write.' );
+	$assert( 9 === (int) wc_get_product( $product_id )->get_stock_quantity(), 'The current product write must update stock.' );
+	$product_undo = $product_result['undo_plan'][0] ?? [];
+	$assert( 'products.restore_stock_state' === ( $product_undo['action'] ?? '' ), 'Product writes must return a bounded hidden recovery action.' );
+	$assert( ( $product_result['current_version'] ?? '' ) === ( $product_undo['params']['expected_version'] ?? '' ), 'Product recovery must bind to the post-write version.' );
+	$product_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $product_result, 'products.update_stock' );
+	$product_schema = YoRo_Commerce_Contract_Builder::execution_output_schema( 'products.update_stock' );
+	$assert( array_keys( $product_payload['data'] ) === $product_schema['properties']['data']['required'], 'Product writes must match the exact canonical output data schema.' );
+
+	$product_recovery = YoRo_Store_Inventory_Service::restore_product_stock_state( $product_undo['params'] ?? [] );
+	$product_recovery_error = is_wp_error( $product_recovery )
+		? $product_recovery->get_error_code() . ':' . wp_json_encode( $product_recovery->get_error_data() )
+		: gettype( $product_recovery );
+	$assert( is_array( $product_recovery ) && ! empty( $product_recovery['success'] ), 'Product recovery must succeed against the exact post-write version. Received ' . $product_recovery_error );
+	$assert( 4 === (int) wc_get_product( $product_id )->get_stock_quantity(), 'Product recovery must restore the previous stock.' );
+
+	$order = wc_create_order( [ 'status' => 'processing', 'customer_id' => 0 ] );
+	$assert( $order instanceof WC_Order, 'A WooCommerce order fixture is required.' );
+	$order_id = $order->get_id();
+	$order = wc_get_order( $order_id );
+	$order_version = YoRo_Order_Presenter::order_version( $order );
+
+	$stale_order = YoRo_Orders_Write_Service::update_order_status(
+		[
+			'order_ids' => [ $order_id ],
+			'status' => 'completed',
+			'expected_versions' => [
+				[ 'order_id' => $order_id, 'expected_version' => str_repeat( '0', 64 ) ],
+			],
+		]
+	);
+	$assert( is_wp_error( $stale_order ) && 'order_version_conflict' === $stale_order->get_error_code(), 'A stale order version must fail before mutation.' );
+	$assert( 'processing' === wc_get_order( $order_id )->get_status(), 'A stale order write must not change status.' );
+
+	$order_result = YoRo_Orders_Write_Service::update_order_status(
+		[
+			'order_ids' => [ $order_id ],
+			'status' => 'completed',
+			'expected_versions' => [
+				[ 'order_id' => $order_id, 'expected_version' => $order_version ],
+			],
+		]
+	);
+	$assert(
+		is_array( $order_result ) && ! empty( $order_result['success'] ),
+		is_wp_error( $order_result )
+			? sprintf( 'A current order version must allow the write; got %s.', $order_result->get_error_code() )
+			: 'A current order version must allow the write.'
+	);
+	$assert( 'completed' === wc_get_order( $order_id )->get_status(), 'The current order write must update status.' );
+	$order_undo = $order_result['undo_plan'][0] ?? [];
+	$assert( 'orders.restore_statuses' === ( $order_undo['action'] ?? '' ), 'Order writes must return a bounded hidden recovery action.' );
+	$assert( ( $order_result['current_versions'] ?? [] ) === ( $order_undo['params']['expected_versions'] ?? [] ), 'Order recovery must bind to post-write versions.' );
+	$order_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $order_result, 'orders.update_status' );
+	$order_schema = YoRo_Commerce_Contract_Builder::execution_output_schema( 'orders.update_status' );
+	$assert( array_keys( $order_payload['data'] ) === $order_schema['properties']['data']['required'], 'Order writes must match the exact canonical output data schema.' );
+
+	$order_recovery = YoRo_Orders_Write_Service::restore_order_statuses( $order_undo['params'] ?? [] );
+	$assert( is_array( $order_recovery ) && ! empty( $order_recovery['success'] ), 'Order recovery must succeed against exact post-write versions.' );
+	$assert( 'processing' === wc_get_order( $order_id )->get_status(), 'Order recovery must restore the previous status.' );
+} finally {
+	$wpdb->query( 'ROLLBACK' );
+
+	if ( '__yoro_missing__' === $original_manage_stock ) {
+		delete_option( 'woocommerce_manage_stock' );
+	} else {
+		update_option( 'woocommerce_manage_stock', $original_manage_stock, false );
+	}
+
+	if ( $product_id > 0 ) {
+		clean_post_cache( $product_id );
+	}
+
+	if ( $order_id > 0 ) {
+		clean_post_cache( $order_id );
+	}
+
+	wp_cache_flush();
+}
+
+echo "YoRo versioned operational writes: PASS\n";
