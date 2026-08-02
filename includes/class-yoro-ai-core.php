@@ -80,6 +80,7 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-customer-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-fulfillment-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-inventory-service.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-commerce-discovery-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-briefing-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-read-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-write-service.php';

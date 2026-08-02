@@ -27,7 +27,10 @@ class YoRo_Action_Registry {
 				'callback'              => null,
 				'preview_callback'      => null,
 				'input_schema'          => [],
+				'canonical_input_schema' => null,
 				'output_schema'         => [],
+				'idempotency_strategy'  => '',
+				'concurrency_strategy'  => '',
 				'requires_confirmation' => false,
 				'risk_level'            => 'low',
 				'write_action'          => false,
@@ -66,6 +69,21 @@ class YoRo_Action_Registry {
 		$action['target_type'] = sanitize_key( $action['target_type'] );
 		$action['supports_bulk'] = ! empty( $action['supports_bulk'] ) || self::has_bulk_schema( $action['input_schema'] );
 		$action['max_targets'] = max( 1, absint( $action['max_targets'] ?: $action['max_items'] ) );
+		$action['canonical_input_schema'] = is_array( $action['canonical_input_schema'] )
+			? $action['canonical_input_schema']
+			: null;
+		$action['idempotency_strategy'] = sanitize_key( $action['idempotency_strategy'] );
+		$action['concurrency_strategy'] = sanitize_key( $action['concurrency_strategy'] );
+
+		if ( ! empty( $action['write_action'] ) && '' === $action['idempotency_strategy'] ) {
+			$action['idempotency_strategy'] = 'operation_journal';
+		}
+
+		if ( ! empty( $action['write_action'] )
+			&& '' === $action['concurrency_strategy']
+			&& array_key_exists( 'expected_version', (array) $action['input_schema'] ) ) {
+			$action['concurrency_strategy'] = 'optimistic_version';
+		}
 
 		$action['ai_exposed'] = ! empty( $action['ai_exposed'] );
 		$action['ai_description'] = sanitize_text_field( $action['ai_description'] );

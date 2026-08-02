@@ -74,7 +74,7 @@ $assert( class_exists( 'YoRo_Action_Catalog_Builder' ), 'YoRo_Action_Catalog_Bui
 
 $expected = [
 	'orders.update_status' => [
-		'required_params' => [ 'order_ids', 'status' ],
+		'required_params' => [ 'order_ids', 'status', 'expected_versions' ],
 		'ai_exposed'      => true,
 		'write_action'    => true,
 		'confirm'         => true,
@@ -93,7 +93,7 @@ $expected = [
 	],
 	'orders.email_customer_template' => [
 		'required_params' => [ 'order_id', 'template' ],
-		'ai_exposed'      => true,
+		'ai_exposed'      => false,
 		'write_action'    => true,
 		'confirm'         => true,
 	],
@@ -123,7 +123,7 @@ $expected = [
 	],
 	'orders.add_private_note_template' => [
 		'required_params' => [ 'order_ids', 'template' ],
-		'ai_exposed'      => true,
+		'ai_exposed'      => false,
 		'write_action'    => true,
 		'confirm'         => true,
 	],
@@ -134,7 +134,7 @@ $expected = [
 		'confirm'         => true,
 	],
 	'orders.restore_statuses' => [
-		'required_params' => [],
+		'required_params' => [ 'statuses', 'expected_versions' ],
 		'ai_exposed'      => false,
 		'write_action'    => true,
 		'confirm'         => true,
@@ -146,13 +146,13 @@ $expected = [
 		'confirm'         => false,
 	],
 	'products.update_stock' => [
-		'required_params' => [ 'product_id', 'stock_quantity' ],
+		'required_params' => [ 'product_id', 'stock_quantity', 'expected_version' ],
 		'ai_exposed'      => true,
 		'write_action'    => true,
 		'confirm'         => true,
 	],
 	'products.update_stock_status' => [
-		'required_params' => [ 'product_id', 'stock_status' ],
+		'required_params' => [ 'product_id', 'stock_status', 'expected_version' ],
 		'ai_exposed'      => true,
 		'write_action'    => true,
 		'confirm'         => true,

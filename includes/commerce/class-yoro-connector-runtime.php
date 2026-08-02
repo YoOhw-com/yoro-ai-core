@@ -354,7 +354,7 @@ class YoRo_Connector_Runtime {
 			[
 				'status'      => 'executed',
 				'summary'     => '' !== $summary ? $summary : 'The local operation completed.',
-				'result'      => $execution,
+				'result'      => YoRo_Commerce_Contract_Builder::canonical_execution_payload( $execution, $operation['action'] ?? '' ),
 				'occurred_at' => gmdate( 'c' ),
 			]
 		);

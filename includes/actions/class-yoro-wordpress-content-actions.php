@@ -9,7 +9,7 @@ class YoRo_WordPress_Content_Actions {
 	public static function register() {
 		self::register_action( 'content.search', 'Search content', 'read', false, [ 'query' => 'string', 'post_type' => 'string', 'limit' => 'integer' ], [], 'search_content', 50 );
 		self::register_action( 'content.get', 'Get content', 'read', false, [ 'content_id' => 'integer' ], [ 'content_id' ], 'get_content' );
-		self::register_action( 'content.create_draft', 'Create content draft', 'draft', true, [ 'title' => 'string', 'content' => 'string', 'post_type' => 'string' ], [ 'title', 'content' ], 'create_draft' );
+		self::register_action( 'content.create_draft', 'Create content draft', 'mutate', true, [ 'title' => 'string', 'content' => 'string', 'post_type' => 'string' ], [ 'title', 'content' ], 'create_draft', 1, 'create_only' );
 		self::register_action( 'content.update_draft', 'Update content draft', 'mutate', true, [ 'content_id' => 'integer', 'expected_version' => 'string', 'title' => 'string', 'content' => 'string' ], [ 'content_id', 'expected_version' ], 'update_draft' );
 		self::register_action( 'content.preview_changes', 'Preview content changes', 'read', false, [ 'content_id' => 'integer', 'expected_version' => 'string', 'title' => 'string', 'content' => 'string' ], [ 'content_id', 'expected_version' ], 'preview_changes' );
 		self::register_action( 'content.publish', 'Publish content', 'mutate', true, [ 'content_id' => 'integer', 'expected_version' => 'string', 'expected_preview_hash' => 'string' ], [ 'content_id', 'expected_version', 'expected_preview_hash' ], 'publish' );
@@ -21,17 +21,17 @@ class YoRo_WordPress_Content_Actions {
 		self::register_action( 'content.restore_revision', 'Restore a content revision', 'mutate', true, [ 'content_id' => 'integer', 'revision_id' => 'integer', 'expected_version' => 'string' ], [ 'content_id', 'revision_id', 'expected_version' ], 'restore_revision' );
 		self::register_action( 'content.assign_terms', 'Assign categories or tags to content', 'mutate', true, [ 'content_id' => 'integer', 'taxonomy' => 'string', 'term_ids' => 'array<integer>', 'expected_version' => 'string' ], [ 'content_id', 'taxonomy', 'term_ids', 'expected_version' ], 'assign_terms', 20 );
 		self::register_action( 'content.set_featured_image', 'Set a featured image', 'mutate', true, [ 'content_id' => 'integer', 'media_id' => 'integer', 'expected_version' => 'string' ], [ 'content_id', 'media_id', 'expected_version' ], 'set_featured_image' );
-		self::register_action( 'content.bulk_update_status', 'Update content status in a bounded batch', 'mutate', true, [ 'items' => 'array<object>', 'status' => 'string' ], [ 'items', 'status' ], 'bulk_update_status', 20 );
+		self::register_action( 'content.bulk_update_status', 'Update content status in a bounded batch', 'mutate', true, [ 'items' => 'array<object>', 'status' => 'string' ], [ 'items', 'status' ], 'bulk_update_status', 20, 'per_item_optimistic_version' );
 		self::register_action( 'comments.list', 'List comments', 'read', false, [ 'content_id' => 'integer', 'status' => 'string', 'limit' => 'integer' ], [], 'list_comments', 50 );
 		self::register_action( 'comments.reply', 'Reply to comment', 'communicate', true, [ 'comment_id' => 'integer', 'expected_version' => 'string', 'content' => 'string' ], [ 'comment_id', 'expected_version', 'content' ], 'reply_comment' );
 		self::register_action( 'comments.update_status', 'Update comment status', 'mutate', true, [ 'comment_id' => 'integer', 'expected_version' => 'string', 'status' => 'string' ], [ 'comment_id', 'expected_version', 'status' ], 'update_comment_status' );
 		self::register_action( 'media.search', 'Search media', 'read', false, [ 'query' => 'string', 'mime_type' => 'string', 'limit' => 'integer' ], [], 'search_media', 50 );
 		self::register_action( 'media.get', 'Get media details', 'read', false, [ 'media_id' => 'integer' ], [ 'media_id' ], 'get_media' );
-		self::register_action( 'media.upload', 'Upload media', 'mutate', true, [ 'media_reference_id' => 'string', 'filename' => 'string', 'mime_type' => 'string', 'byte_size' => 'integer', 'sha256' => 'string', 'alt_text' => 'string' ], [ 'media_reference_id', 'filename', 'mime_type', 'byte_size', 'sha256' ], 'upload_media' );
+		self::register_action( 'media.upload', 'Upload media', 'mutate', true, [ 'media_reference_id' => 'string', 'filename' => 'string', 'mime_type' => 'string', 'byte_size' => 'integer', 'sha256' => 'string', 'alt_text' => 'string' ], [ 'media_reference_id', 'filename', 'mime_type', 'byte_size', 'sha256' ], 'upload_media', 1, 'create_only' );
 		self::register_action( 'media.update_metadata', 'Update media metadata', 'mutate', true, [ 'media_id' => 'integer', 'expected_version' => 'string', 'title' => 'string', 'caption' => 'string', 'description' => 'string', 'alt_text' => 'string' ], [ 'media_id', 'expected_version' ], 'update_media_metadata' );
 	}
 
-	private static function register_action( $name, $label, $effect, $write, $schema, $required, $callback, $max_targets = 1 ) {
+	private static function register_action( $name, $label, $effect, $write, $schema, $required, $callback, $max_targets = 1, $concurrency_strategy = '' ) {
 		YoRo_Action_Registry::register(
 			$name,
 			[
@@ -44,6 +44,7 @@ class YoRo_WordPress_Content_Actions {
 				'requires_confirmation' => $write,
 				'risk_level'            => $write ? 'medium' : 'low',
 				'write_action'          => $write,
+				'concurrency_strategy'  => $concurrency_strategy,
 				'effect'                => $effect,
 				'reversibility'         => $write ? 'partial' : 'full',
 				'external_side_effect'  => in_array( $effect, [ 'communicate' ], true ),
