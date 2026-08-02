@@ -225,19 +225,30 @@ class YoRo_Commerce_Contract_Builder {
 					'idempotency_strategy' => $is_write ? $idempotency_strategy : 'none',
 					'concurrency_strategy' => $is_write ? $concurrency_strategy : 'none',
 				],
-				'yoro.contracts' => self::execution_contract_extension(),
+				'yoro.contracts' => self::execution_contract_extension( $name ),
 				'yoro.conversation' => $conversation_semantics,
 			],
 		];
 	}
 
-	public static function execution_contract_extension() {
+	public static function execution_contract_extension( $action_name = '' ) {
 		return [
 			'execution_payload'              => 'canonical_action_result',
 			'execution_payload_version'      => self::EXECUTION_PAYLOAD_VERSION,
 			'fixture_revision'               => 2,
-			'strict_output_validation_ready' => true,
+			'strict_output_validation_ready' => self::strict_output_validation_ready( $action_name ),
 		];
+	}
+
+	public static function strict_output_validation_ready( $action_name ) {
+		$output_schema = self::execution_output_schema( $action_name );
+		$data_schema   = $output_schema['properties']['data'] ?? null;
+		$data_types    = is_array( $data_schema['type'] ?? null )
+			? array_values( $data_schema['type'] )
+			: [ $data_schema['type'] ?? '' ];
+
+		return in_array( 'object', $data_types, true )
+			&& self::is_strict_schema_node( $output_schema );
 	}
 
 	public static function execution_output_schema( $action_name = '' ) {
@@ -791,6 +802,49 @@ class YoRo_Commerce_Contract_Builder {
 			'type'  => 'array',
 			'items' => $items,
 		];
+	}
+
+	private static function is_strict_schema_node( $schema, $property_name = '' ) {
+		if ( ! is_array( $schema ) ) {
+			return false;
+		}
+
+		$types = is_array( $schema['type'] ?? null )
+			? array_values( $schema['type'] )
+			: [ $schema['type'] ?? '' ];
+
+		if ( empty( array_filter( $types, 'is_string' ) ) ) {
+			return false;
+		}
+
+		if ( 'extensions' === $property_name ) {
+			return in_array( 'object', $types, true );
+		}
+
+		if ( in_array( 'object', $types, true ) ) {
+			$properties = $schema['properties'] ?? null;
+			$required   = $schema['required'] ?? null;
+
+			if ( ! is_array( $properties )
+				|| ! is_array( $required )
+				|| false !== ( $schema['additionalProperties'] ?? null )
+				|| ! empty( array_diff( $required, array_keys( $properties ) ) ) ) {
+				return false;
+			}
+
+			foreach ( $properties as $name => $definition ) {
+				if ( ! self::is_strict_schema_node( $definition, sanitize_key( $name ) ) ) {
+					return false;
+				}
+			}
+		}
+
+		if ( in_array( 'array', $types, true )
+			&& ! self::is_strict_schema_node( $schema['items'] ?? null ) ) {
+			return false;
+		}
+
+		return true;
 	}
 
 	private static function is_canonical_read_action( $action_name ) {

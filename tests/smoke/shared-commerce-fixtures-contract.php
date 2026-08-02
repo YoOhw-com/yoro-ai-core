@@ -78,9 +78,11 @@ $assert(
 );
 $contract_extension = YoRo_Commerce_Contract_Builder::execution_contract_extension();
 $assert( 1 === ( $contract_extension['execution_payload_version'] ?? 0 ), 'The connector must publish canonical execution payload version 1.' );
-$assert( ! empty( $contract_extension['strict_output_validation_ready'] ), 'The connector must declare strict output validation readiness.' );
+$assert( empty( $contract_extension['strict_output_validation_ready'] ), 'A generic action result schema must never declare strict output validation readiness.' );
 
 if ( $has_action_result_contracts ) {
+	$shared_action_name       = sanitize_text_field( $fixtures['capability_manifest']['actions'][0]['name'] ?? '' );
+	$shared_contract_extension = $fixtures['capability_manifest']['actions'][0]['extensions']['yoro.contracts'] ?? [];
 	$shared_output_schema     = $fixtures['capability_manifest']['actions'][0]['output_schema'] ?? [];
 	$shared_execution_payload = $fixtures['execution_result']['result'] ?? [];
 
@@ -91,6 +93,10 @@ if ( $has_action_result_contracts ) {
 	$assert(
 		array_keys( (array) $shared_execution_payload ) === ( $shared_output_schema['required'] ?? [] ),
 		'The shared execution payload root must exactly match its published output schema.'
+	);
+	$assert(
+		YoRo_Commerce_Contract_Builder::execution_contract_extension( $shared_action_name ) === $shared_contract_extension,
+		'The shared capability fixture must publish accurate action-level result contract readiness.'
 	);
 	$assert( 1 === ( $action_result_contracts['execution_payload_version'] ?? 0 ), 'The shared action-result contract version must be supported.' );
 	$assert( 2 === ( $action_result_contracts['fixture_revision'] ?? 0 ), 'The connector must pin canonical action-result fixture revision 2.' );

@@ -284,7 +284,7 @@ class YoRo_Action_Catalog_Builder {
 				'wordpress.action' => [
 					'registry_action' => $name,
 				],
-				'yoro.contracts' => YoRo_Commerce_Contract_Builder::execution_contract_extension(),
+				'yoro.contracts' => YoRo_Commerce_Contract_Builder::execution_contract_extension( $name ),
 			],
 		];
 	}
