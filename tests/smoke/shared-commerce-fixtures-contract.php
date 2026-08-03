@@ -99,7 +99,7 @@ if ( $has_action_result_contracts ) {
 		'The shared capability fixture must publish accurate action-level result contract readiness.'
 	);
 	$assert( 1 === ( $action_result_contracts['execution_payload_version'] ?? 0 ), 'The shared action-result contract version must be supported.' );
-	$assert( 2 === ( $action_result_contracts['fixture_revision'] ?? 0 ), 'The connector must pin canonical action-result fixture revision 2.' );
+	$assert( 3 === ( $action_result_contracts['fixture_revision'] ?? 0 ), 'The connector must pin canonical action-result fixture revision 3.' );
 
 	foreach ( (array) ( $action_result_contracts['actions'] ?? [] ) as $action_name => $fixture ) {
 		$schema      = YoRo_Commerce_Contract_Builder::execution_output_schema( $action_name );

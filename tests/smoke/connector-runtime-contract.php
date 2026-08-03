@@ -302,6 +302,59 @@ try {
 		$assert( 1 === ( $actions[ $canonical_read ]['extensions']['yoro.contracts']['execution_payload_version'] ?? 0 ), sprintf( '%s must publish the canonical execution payload marker.', $canonical_read ) );
 		$assert( ! empty( $actions[ $canonical_read ]['extensions']['yoro.contracts']['strict_output_validation_ready'] ), sprintf( '%s must publish accurate action-level strict validation readiness.', $canonical_read ) );
 	}
+	$assert( 3 === ( $actions['orders.get_details']['extensions']['yoro.contracts']['fixture_revision'] ?? 0 ), 'Order investigation reads must publish fixture revision 3.' );
+	$assert( isset( $actions['orders.find_by_customer']['input_schema']['properties']['order_id'] ), 'Customer-order lookup must accept an explicit order reference.' );
+	$assert( isset( $actions['customers.lookup']['input_schema']['properties']['order_id'] ), 'Customer lookup must accept an explicit order reference.' );
+	$investigation_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload(
+		[
+			'success'   => true,
+			'action'    => 'orders.get_details',
+			'summary'   => 'Order investigation fixture.',
+			'read_only' => true,
+			'orders'    => [
+				[
+					'id'                => 91,
+					'number'            => '91',
+					'status'            => 'failed',
+					'status_label'      => 'Failed',
+					'total'             => '99.00',
+					'currency'          => 'USD',
+					'date_created'      => '2026-07-21T01:00:00+00:00',
+					'age_hours'         => 96,
+					'version'           => str_repeat( '1', 64 ),
+					'customer_id'       => 7,
+					'customer_name'     => 'Ada',
+					'billing_email'     => 'a***@example.test',
+					'billing_phone'     => '***1234',
+					'requires_shipping' => true,
+					'line_items'        => [],
+					'notes'             => [
+						[ 'date' => '2026-07-21T01:30:00+00:00', 'customer' => false, 'content' => 'secret internal note' ],
+					],
+					'related_orders'    => [
+						[
+							'id'           => 92,
+							'number'       => '92',
+							'status'       => 'processing',
+							'status_label' => 'Processing',
+							'total'        => '99.00',
+							'currency'     => 'USD',
+							'date_created' => '2026-07-21T01:10:00+00:00',
+							'version'      => str_repeat( '2', 64 ),
+						],
+					],
+				],
+			],
+		],
+		'orders.get_details'
+	);
+	$investigation_order = $investigation_payload['data']['orders'][0] ?? [];
+	$investigation_signal_codes = array_column( (array) ( $investigation_order['signals'] ?? [] ), 'code' );
+	$assert( in_array( 'failed_payment', $investigation_signal_codes, true ), 'Order investigation must expose deterministic failed-payment evidence.' );
+	$assert( in_array( 'duplicate_order_candidate', $investigation_signal_codes, true ), 'Order investigation must expose deterministic duplicate-order evidence.' );
+	$assert( 'internal' === ( $investigation_order['timeline'][1]['visibility'] ?? '' ), 'Internal order notes must remain a distinct timeline visibility.' );
+	$assert( false === ( $investigation_order['suggested_next_steps'][0]['requires_write'] ?? true ), 'Suggested investigation steps must remain read-only.' );
+	$assert( false === strpos( wp_json_encode( $investigation_order ), 'secret internal note' ), 'Canonical investigation data must not expose note content.' );
 	$brief_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload(
 		[
 			'success'          => true,

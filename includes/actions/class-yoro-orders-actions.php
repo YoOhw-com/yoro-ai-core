@@ -720,6 +720,7 @@ class YoRo_Orders_Actions {
 					'phone'         => 'string',
 					'customer_id'   => 'integer',
 					'customer_name' => 'string',
+					'order_id'      => 'integer',
 					'limit'         => 'integer',
 				],
 				'preview_callback' => [ __CLASS__, 'preview_get_customer_summary' ],
@@ -736,6 +737,7 @@ class YoRo_Orders_Actions {
 					'phone'         => __( 'Use the customer phone number when that is the clearest identifier.', 'yoro-ai-core' ),
 					'customer_id'   => __( 'Use the customer ID when it is explicitly mentioned.', 'yoro-ai-core' ),
 					'customer_name' => __( 'Use the customer name when no stronger identifier is provided.', 'yoro-ai-core' ),
+					'order_id'      => __( 'Use the explicit order ID to resolve the customer through the same frozen workflow capability.', 'yoro-ai-core' ),
 					'limit'         => __( 'Keep the result compact unless the person asks for a larger history.', 'yoro-ai-core' ),
 				],
 				'clarification_hints' => [
@@ -803,6 +805,7 @@ class YoRo_Orders_Actions {
 						'phone'         => 'string',
 						'customer_id'   => 'integer',
 						'customer_name' => 'string',
+						'order_id'      => 'integer',
 						'limit'         => 'integer',
 					],
 					'preview_callback' => [ __CLASS__, 'preview_find_orders_by_customer' ],
@@ -820,6 +823,7 @@ class YoRo_Orders_Actions {
 						'phone'         => __( 'Use the phone number when it is the clearest customer identifier.', 'yoro-ai-core' ),
 						'customer_id'   => __( 'Use the numeric customer ID when the person provides it directly.', 'yoro-ai-core' ),
 						'customer_name' => __( 'Use the customer name when the person provides a name instead of an email, phone, or customer ID.', 'yoro-ai-core' ),
+						'order_id'      => __( 'Use the explicit order ID to resolve customer identity within this read-only action.', 'yoro-ai-core' ),
 						'limit'         => __( 'Use a small numeric limit for list requests.', 'yoro-ai-core' ),
 					],
 					'clarification_hints' => [

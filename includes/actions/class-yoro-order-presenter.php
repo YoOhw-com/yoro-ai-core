@@ -8,6 +8,7 @@ class YoRo_Order_Presenter {
 
 	public static function format_order_summary( WC_Order $order ) {
 		$date_created = $order->get_date_created();
+		$date_paid     = $order->get_date_paid();
 		$draft_count  = self::get_order_email_draft_count( $order );
 
 		return [
@@ -24,7 +25,10 @@ class YoRo_Order_Presenter {
 			'billing_phone'  => self::mask_phone( $order->get_billing_phone() ),
 			'date_created'   => $date_created ? YoRo_Date_Helper::format_wc_datetime( $date_created ) : '',
 			'date_created_ts'=> $date_created ? YoRo_Date_Helper::get_wc_timestamp( $date_created ) : 0,
+			'date_paid'      => $date_paid ? YoRo_Date_Helper::format_wc_datetime( $date_paid ) : '',
 			'age_hours'      => self::get_order_age_hours( $order ),
+			'requires_shipping' => self::order_requires_shipping( $order ),
+			'tracking_detected' => self::order_has_tracking( $order ),
 			'draft_count'    => $draft_count,
 			'has_email_drafts' => $draft_count > 0,
 			'edit_url'       => method_exists( $order, 'get_edit_order_url' ) ? $order->get_edit_order_url() : admin_url( 'post.php?post=' . $order->get_id() . '&action=edit' ),
@@ -92,8 +96,44 @@ class YoRo_Order_Presenter {
 		$data['line_items']           = self::format_order_line_items( $order );
 		$data['customer_note']        = sanitize_textarea_field( (string) $order->get_customer_note() );
 		$data['notes']                = self::format_order_notes( $order );
+		$data['related_orders']       = self::format_related_orders( $order );
 
 		return $data;
+	}
+
+	private static function format_related_orders( WC_Order $order ) {
+		if ( ! function_exists( 'wc_get_orders' ) ) {
+			return [];
+		}
+
+		$args = [
+			'limit'   => 10,
+			'orderby' => 'date',
+			'order'   => 'DESC',
+			'return'  => 'objects',
+		];
+		$customer_id = (int) $order->get_customer_id();
+
+		if ( $customer_id > 0 ) {
+			$args['customer_id'] = $customer_id;
+		} else {
+			$email = sanitize_email( $order->get_billing_email() );
+			if ( '' === $email ) {
+				return [];
+			}
+			$args['billing_email'] = $email;
+		}
+
+		$related = [];
+		foreach ( wc_get_orders( $args ) as $candidate ) {
+			if ( ! $candidate instanceof WC_Order || $candidate->get_id() === $order->get_id() ) {
+				continue;
+			}
+
+			$related[] = self::format_order_summary( $candidate );
+		}
+
+		return $related;
 	}
 
 	private static function format_order_totals( WC_Order $order ) {
