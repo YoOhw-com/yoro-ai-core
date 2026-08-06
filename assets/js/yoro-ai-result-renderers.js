@@ -530,7 +530,7 @@
 	}
 
 	function renderInlineAssistantText(text, h) {
-		let html = h.escapeHtml(decodeAssistantDisplayEntities(formatAssistantDisplayText(String(text || ''))));
+		let html = h.escapeHtml(decodeAssistantDisplayEntities(String(text || '')));
 
 		html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 		html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
@@ -545,16 +545,6 @@
 			.replace(/&quot;/g, '"')
 			.replace(/&#039;/g, "'")
 			.replace(/&amp;/g, '&');
-	}
-
-	function formatAssistantDisplayText(text) {
-		const labels = typeof window !== 'undefined' ? window.YoRoAIDisplayLabels : null;
-
-		if (labels && typeof labels.formatText === 'function') {
-			return labels.formatText(text);
-		}
-
-		return String(text || '');
 	}
 
 	function formatAssistantValueLabel(text) {
@@ -574,7 +564,7 @@
 			return labels.formatFactPart(text);
 		}
 
-		return formatAssistantDisplayText(text);
+		return String(text || '');
 	}
 
 	function formatAssistantFactLabel(text) {

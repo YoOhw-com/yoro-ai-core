@@ -169,10 +169,6 @@
 			return directLabel;
 		}
 
-		Object.keys(LOCALE_LABELS).forEach(function(locale) {
-			text = text.replace(new RegExp('\\b' + escapeRegExp(locale) + '\\b', 'g'), LOCALE_LABELS[locale]);
-		});
-
 		Object.keys(COMPACT_TOKEN_LABELS).forEach(function(token) {
 			text = text.replace(new RegExp('\\b' + escapeRegExp(token) + '\\b', 'gi'), COMPACT_TOKEN_LABELS[token]);
 		});
