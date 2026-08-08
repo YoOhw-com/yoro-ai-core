@@ -1,0 +1,1292 @@
+schema_version: '0.1'
+fixtures:
+- id: ordinary_laravel_feature
+  request: Add a component-local dashboard query that uses existing private service
+    contracts.
+  input:
+    primary_task_class: component-local feature
+    risk_flags: []
+    affected_components:
+    - yoro-ai-api
+    context:
+      route_profile: ordinary_laravel_feature
+      environment_writable_repositories:
+      - yoro-ai-api
+  expected:
+    primary_task_class: component-local feature
+    adoption_operation: not_applicable
+    risk_flags: []
+    agent_sequence:
+    - coordinator
+    - explorer-laravel
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: standard_implementation
+    candidate_write_scope:
+    - yoro-ai-api
+    write_authorization_state: authorized
+    effective_write_scope:
+    - yoro-ai-api
+    artifact_write_scope: []
+    write_scope:
+    - yoro-ai-api
+    required_gates:
+    - api_local_tests
+    - pint
+    required_reviewers:
+    - reviewer
+    required_approvals: []
+    owner_resolution:
+      required_for_this_task: []
+      unresolved_required: []
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: false
+    stop_conditions:
+    - public_contract_delta_discovered
+    prohibited_behavior:
+    - modify_other_components
+    - alter_public_contract_silently
+- id: ordinary_wordpress_feature
+  request: Add a read-only WordPress health diagnostic using the existing connector
+    contract.
+  input:
+    primary_task_class: component-local feature
+    risk_flags:
+    - read-only
+    affected_components:
+    - yoro-ai-core
+    context:
+      route_profile: ordinary_wordpress_feature
+      environment_writable_repositories:
+      - yoro-ai-core
+  expected:
+    primary_task_class: component-local feature
+    adoption_operation: not_applicable
+    risk_flags:
+    - read-only
+    agent_sequence:
+    - coordinator
+    - explorer-wordpress
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: standard_implementation
+    candidate_write_scope:
+    - yoro-ai-core
+    write_authorization_state: authorized
+    effective_write_scope:
+    - yoro-ai-core
+    artifact_write_scope: []
+    write_scope:
+    - yoro-ai-core
+    required_gates:
+    - plain_wordpress_smoke
+    - woocommerce_smoke_if_affected
+    required_reviewers:
+    - reviewer
+    required_approvals: []
+    owner_resolution:
+      required_for_this_task: []
+      unresolved_required: []
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: false
+    stop_conditions:
+    - contract_delta_discovered
+    prohibited_behavior:
+    - mutate_live_wordpress
+    - modify_cloud_contract
+- id: flutter_ui_only_change
+  request: Adjust spacing and labels on an existing Flutter screen without changing
+    models or networking.
+  input:
+    primary_task_class: component-local feature
+    risk_flags: []
+    affected_components:
+    - yoro-apps
+    context:
+      route_profile: flutter_ui_only_change
+      environment_writable_repositories:
+      - yoro-apps
+  expected:
+    primary_task_class: component-local feature
+    adoption_operation: not_applicable
+    risk_flags: []
+    agent_sequence:
+    - coordinator
+    - explorer-flutter
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: standard_implementation
+    candidate_write_scope:
+    - yoro-apps
+    write_authorization_state: authorized
+    effective_write_scope:
+    - yoro-apps
+    artifact_write_scope: []
+    write_scope:
+    - yoro-apps
+    required_gates:
+    - flutter_analyze
+    - flutter_test
+    required_reviewers:
+    - reviewer
+    required_approvals: []
+    owner_resolution:
+      required_for_this_task: []
+      unresolved_required: []
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: false
+    stop_conditions:
+    - API_or_signing_delta_discovered
+    prohibited_behavior:
+    - change_API_contract
+    - change_signing
+- id: flutter_api_contract_change
+  request: Change a Flutter response model and its Laravel App Gateway schema.
+  input:
+    primary_task_class: cross-repository contract
+    risk_flags:
+    - public contract
+    - cross-repository
+    affected_components:
+    - yoro-ai-api
+    - yoro-apps
+    context:
+      route_profile: flutter_api_contract_change
+      environment_writable_repositories:
+      - yoro-ai-api
+      - yoro-apps
+  expected:
+    primary_task_class: cross-repository contract
+    adoption_operation: not_applicable
+    risk_flags:
+    - public contract
+    - cross-repository
+    agent_sequence:
+    - coordinator
+    - explorer-laravel
+    - explorer-flutter
+    - architect
+    - contract-auditor
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: high_reasoning
+    candidate_write_scope:
+    - yoro-ai-api
+    - yoro-apps
+    write_authorization_state: blocked_pending_approvals
+    effective_write_scope: []
+    artifact_write_scope: []
+    write_scope: []
+    required_gates:
+    - route_OpenAPI_client_parity
+    - provider_tests
+    - consumer_tests
+    - contract_lock
+    - provider_consumer_compatibility
+    - immutable_contract_lock
+    - compatibility_matrix
+    required_reviewers:
+    - architect
+    - contract-auditor
+    - reviewer
+    required_approvals:
+    - contract_owner
+    - affected_component_owners
+    owner_resolution:
+      required_for_this_task:
+      - contract_owner
+      - affected_component_owners
+      unresolved_required:
+      - contract_owner
+      - affected_component_owners
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: true
+    stop_conditions:
+    - contract_owner_unassigned
+    - compatibility_evidence_missing
+    prohibited_behavior:
+    - single_repository_contract_change
+    - floating_ref_evidence
+- id: app_gateway_cross_repository_change
+  request: Implement app activity, confirmation/rejection, and automatic operation
+    polling.
+  input:
+    primary_task_class: cross-repository contract
+    risk_flags:
+    - mutation
+    - public contract
+    - cross-repository
+    - authentication
+    - authorization
+    - tenant isolation
+    affected_components:
+    - yoro-ai-api
+    - yoro-apps
+    context:
+      route_profile: app_gateway_cross_repository_change
+      environment_writable_repositories:
+      - yoro-ai-api
+      - yoro-apps
+  expected:
+    primary_task_class: cross-repository contract
+    adoption_operation: not_applicable
+    risk_flags:
+    - mutation
+    - public contract
+    - cross-repository
+    - authentication
+    - authorization
+    - tenant isolation
+    agent_sequence:
+    - coordinator
+    - explorer-laravel
+    - explorer-flutter
+    - architect
+    - contract-auditor
+    - security-reviewer
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: high_reasoning
+    candidate_write_scope:
+    - yoro-ai-api
+    - yoro-apps
+    write_authorization_state: blocked_pending_approvals
+    effective_write_scope: []
+    artifact_write_scope: []
+    write_scope: []
+    required_gates:
+    - ADR
+    - route_OpenAPI_client_parity
+    - lifecycle_tests
+    - authorization_negative_tests
+    - contract_lock
+    - mutation_safety_matrix
+    - concurrency
+    - idempotency
+    - replay
+    - recovery
+    - provider_consumer_compatibility
+    - immutable_contract_lock
+    - compatibility_matrix
+    required_reviewers:
+    - architect
+    - contract-auditor
+    - security-reviewer
+    - reviewer
+    required_approvals:
+    - contract_owner
+    - affected_component_owners
+    - product_contract_owner
+    - architecture_owner
+    - security_owner
+    owner_resolution:
+      required_for_this_task:
+      - contract_owner
+      - affected_component_owners
+      - product_contract_owner
+      - architecture_owner
+      - security_owner
+      unresolved_required:
+      - contract_owner
+      - affected_component_owners
+      - product_contract_owner
+      - architecture_owner
+      - security_owner
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: true
+    stop_conditions:
+    - product_contract_owner_unassigned
+    - lifecycle_semantics_unresolved
+    - mutation_family_unclassified
+    - recovery_unknown
+    prohibited_behavior:
+    - invent_endpoints
+    - reuse_site_key_confirmation_for_app
+- id: mcp_read_tool_change
+  request: Add a new read-only MCP tool using an existing connector read action.
+  input:
+    primary_task_class: MCP change
+    risk_flags:
+    - read-only
+    - public contract
+    - MCP
+    affected_components:
+    - yoro-ai-api
+    context:
+      route_profile: mcp_read_tool_change
+      mcp_mode: read
+      environment_writable_repositories:
+      - yoro-ai-api
+  expected:
+    primary_task_class: MCP change
+    adoption_operation: not_applicable
+    risk_flags:
+    - read-only
+    - public contract
+    - MCP
+    agent_sequence:
+    - coordinator
+    - explorer-laravel
+    - contract-auditor
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: high_reasoning
+    candidate_write_scope:
+    - yoro-ai-api
+    write_authorization_state: blocked_pending_approvals
+    effective_write_scope: []
+    artifact_write_scope: []
+    write_scope: []
+    required_gates:
+    - MCP_runtime_catalog_parity
+    - schema_scope_annotations
+    - adapter_contract
+    - error_taxonomy
+    - provider_consumer_compatibility
+    required_reviewers:
+    - contract-auditor
+    - reviewer
+    required_approvals:
+    - MCP_contract_owner
+    owner_resolution:
+      required_for_this_task:
+      - MCP_contract_owner
+      unresolved_required:
+      - MCP_contract_owner
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: true
+    stop_conditions:
+    - tool_owner_unassigned
+    - consumer_compatibility_unknown
+    prohibited_behavior:
+    - edit_historical_14_tool_catalog_as_current
+    - omit_operations_get_lifecycle
+- id: mcp_mutation_scope_change
+  request: Add an MCP write tool and broaden its OAuth scope.
+  input:
+    primary_task_class: MCP change
+    risk_flags:
+    - mutation
+    - public contract
+    - authorization
+    - MCP
+    - destructive/irreversible
+    affected_components:
+    - yoro-ai-api
+    context:
+      route_profile: mcp_mutation_scope_change
+      mcp_mode: write_and_scope
+      environment_writable_repositories:
+      - yoro-ai-api
+  expected:
+    primary_task_class: MCP change
+    adoption_operation: not_applicable
+    risk_flags:
+    - mutation
+    - public contract
+    - authorization
+    - MCP
+    - destructive/irreversible
+    agent_sequence:
+    - coordinator
+    - explorer-laravel
+    - architect
+    - contract-auditor
+    - security-reviewer
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: high_reasoning
+    candidate_write_scope:
+    - yoro-ai-api
+    write_authorization_state: blocked_pending_approvals
+    effective_write_scope: []
+    artifact_write_scope: []
+    write_scope: []
+    required_gates:
+    - ADR
+    - MCP_runtime_catalog_parity
+    - schema_scope_annotations
+    - confirmation_reauth
+    - idempotency_replay
+    - mutation_safety
+    - mutation_safety_matrix
+    - concurrency
+    - idempotency
+    - replay
+    - recovery
+    - provider_consumer_compatibility
+    required_reviewers:
+    - architect
+    - contract-auditor
+    - security-reviewer
+    - reviewer
+    required_approvals:
+    - MCP_contract_owner
+    - architecture_owner
+    - security_owner
+    - explicit_human_approval
+    owner_resolution:
+      required_for_this_task:
+      - MCP_contract_owner
+      - architecture_owner
+      - security_owner
+      - explicit_human_approval
+      unresolved_required:
+      - MCP_contract_owner
+      - architecture_owner
+      - security_owner
+      - explicit_human_approval
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: true
+    stop_conditions:
+    - mutation_family_unknown
+    - security_owner_unassigned
+    - mutation_family_unclassified
+    - recovery_unknown
+    prohibited_behavior:
+    - lower_capability_substitution
+    - bypass_confirmation
+- id: ordinary_bug_fix
+  request: Fix a Laravel formatting regression with an existing failing test and no
+    contract change.
+  input:
+    primary_task_class: component-local bug fix
+    risk_flags: []
+    affected_components:
+    - yoro-ai-api
+    context:
+      route_profile: ordinary_bug_fix
+      environment_writable_repositories:
+      - yoro-ai-api
+  expected:
+    primary_task_class: component-local bug fix
+    adoption_operation: not_applicable
+    risk_flags: []
+    agent_sequence:
+    - coordinator
+    - explorer-laravel
+    - debugger
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: standard_implementation
+    candidate_write_scope:
+    - yoro-ai-api
+    write_authorization_state: authorized
+    effective_write_scope:
+    - yoro-ai-api
+    artifact_write_scope: []
+    write_scope:
+    - yoro-ai-api
+    required_gates:
+    - regression_test
+    - api_local_tests
+    - pint
+    required_reviewers:
+    - reviewer
+    required_approvals: []
+    owner_resolution:
+      required_for_this_task: []
+      unresolved_required: []
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: false
+    stop_conditions:
+    - root_cause_crosses_contract_boundary
+    prohibited_behavior:
+    - broad_refactor
+    - suppress_test
+- id: production_incident
+  request: Investigate operations with unknown outcomes across cloud and a customer
+    site.
+  input:
+    primary_task_class: incident/recovery
+    risk_flags:
+    - read-only
+    - mutation
+    - cross-repository
+    - customer communication
+    affected_components:
+    - yoro-ai-api
+    - yoro-ai-core
+    context:
+      route_profile: production_incident
+  expected:
+    primary_task_class: incident/recovery
+    adoption_operation: not_applicable
+    risk_flags:
+    - read-only
+    - mutation
+    - cross-repository
+    - customer communication
+    agent_sequence:
+    - coordinator
+    - incident-investigator
+    - explorer-laravel
+    - explorer-wordpress
+    - security-reviewer
+    capability_tier: high_reasoning
+    candidate_write_scope: []
+    write_authorization_state: blocked_pending_approvals
+    effective_write_scope: []
+    artifact_write_scope: []
+    write_scope: []
+    required_gates:
+    - evidence_preservation
+    - blast_radius
+    - cloud_store_reconciliation
+    - recovery_classification
+    - mutation_safety_matrix
+    - concurrency
+    - idempotency
+    - replay
+    - recovery
+    - immutable_contract_lock
+    - compatibility_matrix
+    required_reviewers:
+    - incident_commander
+    - security-reviewer
+    required_approvals:
+    - incident_commander_for_state_change
+    - customer_communication_owner
+    owner_resolution:
+      required_for_this_task:
+      - incident_commander_for_state_change
+      - customer_communication_owner
+      unresolved_required:
+      - incident_commander_for_state_change
+      - customer_communication_owner
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: true
+    stop_conditions:
+    - unknown_recovery
+    - containment_not_authorized
+    - mutation_family_unclassified
+    - recovery_unknown
+    prohibited_behavior:
+    - modify_production
+    - contact_customers_without_owner
+- id: authentication_tenant_change
+  request: Change bearer-token authorization and workspace/site tenant resolution.
+  input:
+    primary_task_class: security/auth/tenant
+    risk_flags:
+    - authentication
+    - authorization
+    - tenant isolation
+    - credential
+    affected_components:
+    - yoro-ai-api
+    context:
+      route_profile: authentication_tenant_change
+      environment_writable_repositories:
+      - yoro-ai-api
+  expected:
+    primary_task_class: security/auth/tenant
+    adoption_operation: not_applicable
+    risk_flags:
+    - authentication
+    - authorization
+    - tenant isolation
+    - credential
+    agent_sequence:
+    - coordinator
+    - explorer-laravel
+    - architect
+    - security-reviewer
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: high_reasoning
+    candidate_write_scope:
+    - yoro-ai-api
+    write_authorization_state: blocked_pending_approvals
+    effective_write_scope: []
+    artifact_write_scope: []
+    write_scope: []
+    required_gates:
+    - negative_authorization
+    - tenant_isolation
+    - replay
+    - secret_absence
+    required_reviewers:
+    - architect
+    - security-reviewer
+    - reviewer
+    required_approvals:
+    - security_owner
+    - architecture_owner
+    owner_resolution:
+      required_for_this_task:
+      - security_owner
+      - architecture_owner
+      unresolved_required:
+      - security_owner
+      - architecture_owner
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: true
+    stop_conditions:
+    - security_owner_unassigned
+    - secret_access_required
+    - credential_material_required_by_agent
+    prohibited_behavior:
+    - read_env
+    - weaken_policy
+- id: release_readiness_failure
+  request: Assess a release whose compatibility lock is incomplete and Android signing
+    gate fails.
+  input:
+    primary_task_class: release/readiness
+    risk_flags:
+    - cross-repository
+    - mobile signing
+    affected_components:
+    - yoro-ai-api
+    - yoro-ai-core
+    - yoro-apps
+    context:
+      route_profile: release_readiness_failure
+  expected:
+    primary_task_class: release/readiness
+    adoption_operation: not_applicable
+    risk_flags:
+    - cross-repository
+    - mobile signing
+    agent_sequence:
+    - coordinator
+    - contract-auditor
+    - security-reviewer
+    - release-reviewer
+    capability_tier: high_reasoning
+    candidate_write_scope: []
+    write_authorization_state: blocked_pending_approvals
+    effective_write_scope: []
+    artifact_write_scope:
+    - release_evidence
+    write_scope: []
+    required_gates:
+    - contract_lock
+    - component_gates
+    - signing_gate
+    - rollback_checkpoints
+    - immutable_contract_lock
+    - compatibility_matrix
+    required_reviewers:
+    - contract-auditor
+    - security-reviewer
+    - release-reviewer
+    required_approvals:
+    - release_owner
+    owner_resolution:
+      required_for_this_task:
+      - release_owner
+      unresolved_required:
+      - release_owner
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: true
+    stop_conditions:
+    - compatibility_incomplete
+    - signing_gate_failed
+    - signing_credentials_required
+    prohibited_behavior:
+    - declare_ready
+    - deploy
+    - use_main_as_evidence
+- id: documentation_only_change
+  request: Correct a governance explanation without changing runtime behavior or contracts.
+  input:
+    primary_task_class: documentation/governance
+    risk_flags:
+    - read-only
+    affected_components:
+    - yoro-codex-os
+    context:
+      route_profile: documentation_only_change
+      environment_writable_repositories:
+      - yoro-codex-os
+  expected:
+    primary_task_class: documentation/governance
+    adoption_operation: not_applicable
+    risk_flags:
+    - read-only
+    agent_sequence:
+    - coordinator
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: standard_implementation
+    candidate_write_scope:
+    - yoro-codex-os
+    write_authorization_state: authorized
+    effective_write_scope:
+    - yoro-codex-os
+    artifact_write_scope: []
+    write_scope:
+    - yoro-codex-os
+    required_gates:
+    - markdown_links
+    - governance_validation
+    required_reviewers:
+    - reviewer
+    required_approvals: []
+    owner_resolution:
+      required_for_this_task: []
+      unresolved_required: []
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: false
+    stop_conditions:
+    - runtime_claim_requires_unresolved_decision
+    prohibited_behavior:
+    - modify_component_repository
+    - encode_unresolved_invariant
+- id: mutation_unknown_safety
+  request: Add a new connector mutation family whose replay and recovery behavior
+    are not classified.
+  input:
+    primary_task_class: component-local feature
+    risk_flags:
+    - mutation
+    affected_components:
+    - yoro-ai-core
+    context:
+      route_profile: mutation_unknown_safety
+      mutation_safety: unknown
+      environment_writable_repositories:
+      - yoro-ai-core
+  expected:
+    primary_task_class: component-local feature
+    adoption_operation: not_applicable
+    risk_flags:
+    - mutation
+    agent_sequence:
+    - coordinator
+    - explorer-wordpress
+    - architect
+    - security-reviewer
+    capability_tier: high_reasoning
+    candidate_write_scope:
+    - yoro-ai-core
+    write_authorization_state: blocked_pending_approvals
+    effective_write_scope: []
+    artifact_write_scope: []
+    write_scope: []
+    required_gates:
+    - mutation_safety_matrix
+    - authorization
+    - preflight
+    - concurrency
+    - idempotency
+    - replay
+    - recovery
+    required_reviewers:
+    - architect
+    - security-reviewer
+    required_approvals:
+    - architecture_owner
+    - security_owner
+    owner_resolution:
+      required_for_this_task:
+      - architecture_owner
+      - security_owner
+      unresolved_required:
+      - architecture_owner
+      - security_owner
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: true
+    stop_conditions:
+    - mutation_family_unclassified
+    - replay_unknown
+    - recovery_unknown
+    prohibited_behavior:
+    - application_write
+    - infer_reversibility_from_operation_journal
+- id: repository_adoption_yoro_ai_api
+  request: Install the reviewed YoRo Codex OS governance package into yoro-ai-api.
+  input:
+    primary_task_class: repository adoption
+    risk_flags: []
+    affected_components:
+    - yoro-ai-api
+    context:
+      adoption_operation: install
+      requested_write_paths:
+      - AGENTS.md
+      - ".gitignore"
+      - ".codex/yoro-os/README.md"
+      owner_assignments:
+        repository_adoption_authority:
+          authority: api_repository_owner
+          authorized_components:
+          - yoro-ai-api
+          authorized_operations:
+          - install
+          authorized_baselines:
+            yoro-ai-api: 3a0727e67a24586915b649e742f6fc7da96b35c2
+      environment_writable_repositories:
+      - yoro-ai-api
+      target_worktree_clean: true
+      preview_completed: true
+      managed_diff_reviewed: true
+      rollback_evidence_prepared: true
+      target_baseline_commit: 3a0727e67a24586915b649e742f6fc7da96b35c2
+  expected:
+    primary_task_class: repository adoption
+    adoption_operation: install
+    risk_flags: []
+    agent_sequence:
+    - coordinator
+    - explorer-laravel
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: standard_implementation
+    candidate_write_scope:
+    - yoro-ai-api
+    write_authorization_state: authorized
+    effective_write_scope:
+    - yoro-ai-api
+    artifact_write_scope: []
+    write_scope:
+    - yoro-ai-api
+    required_gates:
+    - managed_preview
+    - managed_diff
+    - installation_validation
+    - deterministic_generation
+    - install_check_install_idempotence
+    - generated_drift
+    - rollback_evidence
+    - post_install_git_status
+    required_reviewers:
+    - reviewer
+    required_approvals:
+    - repository_adoption_authority
+    owner_resolution:
+      required_for_this_task:
+      - repository_adoption_authority
+      unresolved_required: []
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: false
+    stop_conditions:
+    - classification_ambiguous
+    - owner_controlled_change_would_be_overwritten
+    - required_owner_unassigned
+    - required_agent_unavailable
+    - lower_capability_substitution_requested
+    - secret_access_required
+    - contract_compatibility_unproven_before_cross_repo_write
+    - mutation_safety_unknown_before_mutation_write
+    - protected_gate_bypass
+    - execution_environment_write_scope_mismatch
+    - repository_adoption_authority_missing
+    - repository_adoption_target_ambiguous
+    - repository_adoption_runtime_source_write_requested
+    - repository_adoption_generated_content_drift
+    - repository_adoption_preconditions_incomplete
+    prohibited_behavior:
+    - write_outside_resolved_scope
+    - bypass_protected_gate
+    - lower_capability_substitution
+- id: repository_adoption_yoro_ai_core
+  request: Install the reviewed YoRo Codex OS governance package into yoro-ai-core.
+  input:
+    primary_task_class: repository adoption
+    risk_flags: []
+    affected_components:
+    - yoro-ai-core
+    context:
+      adoption_operation: install
+      requested_write_paths:
+      - AGENTS.md
+      - ".gitignore"
+      - ".codex/yoro-os/README.md"
+      owner_assignments:
+        repository_adoption_authority:
+          authority: connector_repository_owner
+          authorized_components:
+          - yoro-ai-core
+          authorized_operations:
+          - install
+          authorized_baselines:
+            yoro-ai-core: c1e1ace97a3c1283e72b33b173a9696e1748ae89
+      environment_writable_repositories:
+      - yoro-ai-core
+      target_worktree_clean: true
+      preview_completed: true
+      managed_diff_reviewed: true
+      rollback_evidence_prepared: true
+      target_baseline_commit: c1e1ace97a3c1283e72b33b173a9696e1748ae89
+  expected:
+    primary_task_class: repository adoption
+    adoption_operation: install
+    risk_flags: []
+    agent_sequence:
+    - coordinator
+    - explorer-wordpress
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: standard_implementation
+    candidate_write_scope:
+    - yoro-ai-core
+    write_authorization_state: authorized
+    effective_write_scope:
+    - yoro-ai-core
+    artifact_write_scope: []
+    write_scope:
+    - yoro-ai-core
+    required_gates:
+    - managed_preview
+    - managed_diff
+    - installation_validation
+    - deterministic_generation
+    - install_check_install_idempotence
+    - generated_drift
+    - rollback_evidence
+    - post_install_git_status
+    required_reviewers:
+    - reviewer
+    required_approvals:
+    - repository_adoption_authority
+    owner_resolution:
+      required_for_this_task:
+      - repository_adoption_authority
+      unresolved_required: []
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: false
+    stop_conditions:
+    - classification_ambiguous
+    - owner_controlled_change_would_be_overwritten
+    - required_owner_unassigned
+    - required_agent_unavailable
+    - lower_capability_substitution_requested
+    - secret_access_required
+    - contract_compatibility_unproven_before_cross_repo_write
+    - mutation_safety_unknown_before_mutation_write
+    - protected_gate_bypass
+    - execution_environment_write_scope_mismatch
+    - repository_adoption_authority_missing
+    - repository_adoption_target_ambiguous
+    - repository_adoption_runtime_source_write_requested
+    - repository_adoption_generated_content_drift
+    - repository_adoption_preconditions_incomplete
+    prohibited_behavior:
+    - write_outside_resolved_scope
+    - bypass_protected_gate
+    - lower_capability_substitution
+- id: repository_adoption_yoro_apps
+  request: Install the reviewed YoRo Codex OS governance package into yoro-apps.
+  input:
+    primary_task_class: repository adoption
+    risk_flags: []
+    affected_components:
+    - yoro-apps
+    context:
+      adoption_operation: install
+      requested_write_paths:
+      - AGENTS.md
+      - ".gitignore"
+      - ".codex/yoro-os/README.md"
+      owner_assignments:
+        repository_adoption_authority:
+          authority: app_repository_owner
+          authorized_components:
+          - yoro-apps
+          authorized_operations:
+          - install
+          authorized_baselines:
+            yoro-apps: 4e3e3f76265868efa95d73005af26f68f2fb137c
+      environment_writable_repositories:
+      - yoro-apps
+      target_worktree_clean: true
+      preview_completed: true
+      managed_diff_reviewed: true
+      rollback_evidence_prepared: true
+      target_baseline_commit: 4e3e3f76265868efa95d73005af26f68f2fb137c
+  expected:
+    primary_task_class: repository adoption
+    adoption_operation: install
+    risk_flags: []
+    agent_sequence:
+    - coordinator
+    - explorer-flutter
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: standard_implementation
+    candidate_write_scope:
+    - yoro-apps
+    write_authorization_state: authorized
+    effective_write_scope:
+    - yoro-apps
+    artifact_write_scope: []
+    write_scope:
+    - yoro-apps
+    required_gates:
+    - managed_preview
+    - managed_diff
+    - installation_validation
+    - deterministic_generation
+    - install_check_install_idempotence
+    - generated_drift
+    - rollback_evidence
+    - post_install_git_status
+    required_reviewers:
+    - reviewer
+    required_approvals:
+    - repository_adoption_authority
+    owner_resolution:
+      required_for_this_task:
+      - repository_adoption_authority
+      unresolved_required: []
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: false
+    stop_conditions:
+    - classification_ambiguous
+    - owner_controlled_change_would_be_overwritten
+    - required_owner_unassigned
+    - required_agent_unavailable
+    - lower_capability_substitution_requested
+    - secret_access_required
+    - contract_compatibility_unproven_before_cross_repo_write
+    - mutation_safety_unknown_before_mutation_write
+    - protected_gate_bypass
+    - execution_environment_write_scope_mismatch
+    - repository_adoption_authority_missing
+    - repository_adoption_target_ambiguous
+    - repository_adoption_runtime_source_write_requested
+    - repository_adoption_generated_content_drift
+    - repository_adoption_preconditions_incomplete
+    prohibited_behavior:
+    - write_outside_resolved_scope
+    - bypass_protected_gate
+    - lower_capability_substitution
+- id: repository_adoption_without_authority
+  request: Attempt to install YoRo Codex OS into yoro-ai-api without component-scoped
+    adoption authority.
+  input:
+    primary_task_class: repository adoption
+    risk_flags: []
+    affected_components:
+    - yoro-ai-api
+    context:
+      adoption_operation: install
+      requested_write_paths:
+      - AGENTS.md
+      - ".gitignore"
+      - ".codex/yoro-os/README.md"
+      environment_writable_repositories:
+      - yoro-ai-api
+      target_worktree_clean: true
+      preview_completed: true
+      managed_diff_reviewed: true
+      rollback_evidence_prepared: true
+      target_baseline_commit: 3a0727e67a24586915b649e742f6fc7da96b35c2
+  expected:
+    primary_task_class: repository adoption
+    adoption_operation: install
+    risk_flags: []
+    agent_sequence:
+    - coordinator
+    - explorer-laravel
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: standard_implementation
+    candidate_write_scope:
+    - yoro-ai-api
+    write_authorization_state: blocked_pending_approvals
+    effective_write_scope: []
+    artifact_write_scope: []
+    write_scope: []
+    required_gates:
+    - managed_preview
+    - managed_diff
+    - installation_validation
+    - deterministic_generation
+    - install_check_install_idempotence
+    - generated_drift
+    - rollback_evidence
+    - post_install_git_status
+    required_reviewers:
+    - reviewer
+    required_approvals:
+    - repository_adoption_authority
+    owner_resolution:
+      required_for_this_task:
+      - repository_adoption_authority
+      unresolved_required:
+      - repository_adoption_authority
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: true
+    stop_conditions:
+    - classification_ambiguous
+    - owner_controlled_change_would_be_overwritten
+    - required_owner_unassigned
+    - required_agent_unavailable
+    - lower_capability_substitution_requested
+    - secret_access_required
+    - contract_compatibility_unproven_before_cross_repo_write
+    - mutation_safety_unknown_before_mutation_write
+    - protected_gate_bypass
+    - execution_environment_write_scope_mismatch
+    - repository_adoption_authority_missing
+    - repository_adoption_target_ambiguous
+    - repository_adoption_runtime_source_write_requested
+    - repository_adoption_generated_content_drift
+    - repository_adoption_preconditions_incomplete
+    prohibited_behavior:
+    - write_outside_resolved_scope
+    - bypass_protected_gate
+    - lower_capability_substitution
+- id: repository_adoption_generated_content_drift
+  request: Attempt an adoption update after managed generated content drift is detected.
+  input:
+    primary_task_class: repository adoption
+    risk_flags: []
+    affected_components:
+    - yoro-ai-api
+    context:
+      adoption_operation: update
+      requested_write_paths:
+      - AGENTS.md
+      - ".gitignore"
+      - ".codex/yoro-os/README.md"
+      generated_content_drift: true
+      owner_assignments:
+        repository_adoption_authority:
+          authority: api_repository_owner
+          authorized_components:
+          - yoro-ai-api
+          authorized_operations:
+          - update
+          authorized_baselines:
+            yoro-ai-api: 3a0727e67a24586915b649e742f6fc7da96b35c2
+      environment_writable_repositories:
+      - yoro-ai-api
+      target_worktree_clean: true
+      preview_completed: true
+      managed_diff_reviewed: true
+      rollback_evidence_prepared: true
+      target_baseline_commit: 3a0727e67a24586915b649e742f6fc7da96b35c2
+  expected:
+    primary_task_class: repository adoption
+    adoption_operation: update
+    risk_flags: []
+    agent_sequence:
+    - coordinator
+    - explorer-laravel
+    - implementer
+    - test-runner
+    - reviewer
+    capability_tier: standard_implementation
+    candidate_write_scope:
+    - yoro-ai-api
+    write_authorization_state: blocked_generated_content_drift
+    effective_write_scope: []
+    artifact_write_scope: []
+    write_scope: []
+    required_gates:
+    - managed_preview
+    - managed_diff
+    - installation_validation
+    - deterministic_generation
+    - install_check_install_idempotence
+    - generated_drift
+    - rollback_evidence
+    - post_install_git_status
+    required_reviewers:
+    - reviewer
+    required_approvals:
+    - repository_adoption_authority
+    owner_resolution:
+      required_for_this_task:
+      - repository_adoption_authority
+      unresolved_required: []
+      metadata_only_unresolved_is_blocking: false
+    blocked_before_protected_write: true
+    stop_conditions:
+    - classification_ambiguous
+    - owner_controlled_change_would_be_overwritten
+    - required_owner_unassigned
+    - required_agent_unavailable
+    - lower_capability_substitution_requested
+    - secret_access_required
+    - contract_compatibility_unproven_before_cross_repo_write
+    - mutation_safety_unknown_before_mutation_write
+    - protected_gate_bypass
+    - execution_environment_write_scope_mismatch
+    - repository_adoption_authority_missing
+    - repository_adoption_target_ambiguous
+    - repository_adoption_runtime_source_write_requested
+    - repository_adoption_generated_content_drift
+    - repository_adoption_preconditions_incomplete
+    - repository_adoption_generated_content_drift
+    prohibited_behavior:
+    - write_outside_resolved_scope
+    - bypass_protected_gate
+    - lower_capability_substitution
+- id: repository_adoption_multiple_targets
+  request: Attempt one adoption route across multiple component repositories.
+  input:
+    primary_task_class: repository adoption
+    risk_flags: []
+    affected_components:
+    - yoro-ai-api
+    - yoro-ai-core
+    context:
+      adoption_operation: install
+      owner_assignments:
+        repository_adoption_authority:
+          authority: multi_repository_owner
+          authorized_components:
+          - yoro-ai-api
+          - yoro-ai-core
+          authorized_operations:
+          - install
+          authorized_baselines:
+            yoro-ai-api: 3a0727e67a24586915b649e742f6fc7da96b35c2
+            yoro-ai-core: c1e1ace97a3c1283e72b33b173a9696e1748ae89
+      environment_writable_repositories:
+      - yoro-ai-api
+      - yoro-ai-core
+      target_worktree_clean: true
+      preview_completed: true
+      managed_diff_reviewed: true
+      rollback_evidence_prepared: true
+      target_baseline_commit: 3a0727e67a24586915b649e742f6fc7da96b35c2
+  expected_error: write_scope_component_count_exceeded
+- id: repository_adoption_runtime_source_write
+  request: Attempt to include Laravel runtime source in a governance adoption.
+  input:
+    primary_task_class: repository adoption
+    risk_flags: []
+    affected_components:
+    - yoro-ai-api
+    context:
+      adoption_operation: install
+      requested_write_paths:
+      - app/Http/Controllers/AppController.php
+      owner_assignments:
+        repository_adoption_authority:
+          authority: api_repository_owner
+          authorized_components:
+          - yoro-ai-api
+          authorized_operations:
+          - install
+          authorized_baselines:
+            yoro-ai-api: 3a0727e67a24586915b649e742f6fc7da96b35c2
+      environment_writable_repositories:
+      - yoro-ai-api
+      target_worktree_clean: true
+      preview_completed: true
+      managed_diff_reviewed: true
+      rollback_evidence_prepared: true
+      target_baseline_commit: 3a0727e67a24586915b649e742f6fc7da96b35c2
+  expected_error: repository_adoption_runtime_source_write_requested

@@ -8,3 +8,25 @@ vendor/
 coverage/
 dist/
 build/
+
+# BEGIN YORO CODEX OS MANAGED TRACKING
+# Portable YoRo project files are allowlisted; unrelated project-local Codex state stays ignored.
+!/.codex/
+/.codex/*
+!/.codex/agents/
+/.codex/agents/*
+!/.codex/agents/yoro-*.toml
+!/.codex/yoro-os/
+/.codex/yoro-os/*
+!/.codex/yoro-os/README.md
+!/.codex/yoro-os/installation.yaml
+!/.codex/yoro-os/bin/
+/.codex/yoro-os/bin/*
+!/.codex/yoro-os/bin/resolve-route.rb
+!/.codex/yoro-os/docs/
+!/.codex/yoro-os/docs/**
+!/.codex/yoro-os/manifests/
+!/.codex/yoro-os/manifests/**
+!/.codex/yoro-os/templates/
+!/.codex/yoro-os/templates/**
+# END YORO CODEX OS MANAGED TRACKING

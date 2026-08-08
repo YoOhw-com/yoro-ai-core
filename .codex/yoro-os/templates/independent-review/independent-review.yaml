@@ -1,0 +1,15 @@
+schema_version: "0.1"
+document_type: yoro_independent_review
+task_id: TASK-EXAMPLE
+reviewed_result:
+  commit_sha: null
+  pr_url: null
+  pr_head_sha: null
+reviewer_class: independent_chat_reviewer
+reviewer_identity: null
+specification_reference: templates/task-spec/task-spec.yaml
+inspected_files_diff_evidence: []
+findings: []
+disposition: blocked
+residual_risks: []
+next_authorized_action: Provide an exact committed result for review.

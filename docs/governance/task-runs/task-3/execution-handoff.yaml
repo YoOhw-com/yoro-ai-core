@@ -1,0 +1,60 @@
+schema_version: "0.1"
+document_type: yoro_execution_handoff
+task_id: "task-3-repository-adoption-yoro-ai-core"
+specification_reference: "owner-authorized Task 3 repository adoption"
+baseline_commits:
+  yoro-ai-core_pre_adoption: "c1e1ace97a3c1283e72b33b173a9696e1748ae89"
+  yoro_codex_os_source: "9ccb64e17a8a408e20a4992579f4f38816137a5b"
+execution_state: implementation_complete
+actual_changed_paths:
+  - "AGENTS.md"
+  - ".gitignore"
+  - ".agents/skills/yoro-* (26 generated files)"
+  - ".codex/agents/yoro-* (13 generated files)"
+  - ".codex/yoro-os/** (27 generated tracked files; rollback snapshot verified locally)"
+  - "docs/governance/task-runs/task-3/execution-handoff.yaml"
+actual_changed_path_count: 70
+managed_governance_file_count: 67
+runtime_application_changed_path_count: 0
+capability_tiers_used:
+  - standard_implementation
+agents_used:
+  - coordinator
+  - explorer-wordpress
+  - implementer
+  - test-runner
+  - reviewer
+tests_validators:
+  - command: "ruby scripts/yoro_codex_os.rb route /private/tmp/yoro-task-3-route.yaml .codex/agents"
+    result: "PASS: authorized one-component install route; effective/write scope [yoro-ai-core]; protected write not blocked."
+  - command: "ruby scripts/yoro_codex_os.rb render yoro-ai-core TARGET PREVIEW_ONE; repeat PREVIEW_TWO; diff -qr"
+    result: "PASS: deterministic managed-only preview digest 3fd7f2f880682109d3c059ca34693fd4593c56a21473b9c80b98fe033ce3e852."
+  - command: "ruby scripts/yoro_codex_os.rb diff yoro-ai-core TARGET"
+    result: "PASS: reviewed managed diff is limited to governance paths."
+  - command: "scripts/install-component.sh yoro-ai-core TARGET /private/tmp/yoro-task-3-route.yaml 9ccb64e17a8a408e20a4992579f4f38816137a5b"
+    result: "PASS: fail-closed installer completed."
+  - command: "ruby scripts/yoro_codex_os.rb check yoro-ai-core TARGET /private/tmp/yoro-task-3-check-route.yaml"
+    result: "PASS: installation metadata, generated content, digests, tracking, and references verified."
+  - command: "ruby scripts/yoro_codex_os.rb validate && ruby scripts/yoro_codex_os.rb test"
+    result: "PASS: canonical governance validation and fixture install -> check -> install idempotence (second install unchanged); 47 runs, 701 assertions, 0 failures/errors/skips."
+  - command: "ruby .codex/yoro-os/bin/resolve-route.rb /private/tmp/yoro-task-3-route.yaml .codex/agents"
+    result: "PASS: portable resolver authorizes the same scope and discovers installed custom agents."
+  - command: "installed discovery/count and preservation checks"
+    result: "PASS: 13 custom agents, 13 skills, absent .codex/config.toml preserved, and owner .gitignore content preserved outside generated markers."
+  - command: "rollback snapshot integrity digest verification"
+    result: "PASS: .codex/yoro-os/rollback/latest.yaml integrity verified."
+  - command: "git diff --check"
+    result: "PASS."
+deviations_from_plan: []
+unresolved_findings: []
+integrity_result: "PASS: route authority, installer provenance, generated-file digests, rollback snapshot, preservation checks, and governance-only path review succeeded."
+result:
+  commit_sha: null
+  pr_url: null
+  pr_head_sha: null
+proposed_next_task: "Independent review of this exact Task 3 commit; no Task 4 is authorized."
+independent_review_required: true
+review_status: pending
+executor_identity: codex-executor
+independent_reviewer_identity: null
+accepted: false

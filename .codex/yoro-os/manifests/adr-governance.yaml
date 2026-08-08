@@ -1,0 +1,32 @@
+schema_version: "0.1"
+document_type: yoro_adr_governance
+states:
+  - proposed
+  - accepted
+  - implementing
+  - verified
+  - superseded
+  - rolled_back
+required_triggers:
+  - component_ownership_change
+  - public_contract_version_change
+  - new_connector_or_execution_mode
+  - MCP_write_or_scope_change
+  - trust_boundary_change
+  - new_cloud_credentials_or_PII
+  - idempotency_or_replay_policy_change
+  - rollback_or_recovery_policy_change
+  - protected_gate_exception
+required_fields:
+  - id
+  - title
+  - state
+  - classification
+  - owner_role
+  - owner_assignment
+  - affected_components
+  - affected_contracts
+owner_policy:
+  personal_owner_may_be_invented: false
+  coding_agent_may_approve: false
+  unassigned_role_value: UNRESOLVED

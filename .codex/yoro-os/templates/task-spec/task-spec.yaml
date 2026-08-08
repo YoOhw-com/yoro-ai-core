@@ -1,0 +1,20 @@
+schema_version: "0.1"
+document_type: yoro_task_specification
+task_id: TASK-EXAMPLE
+objective: Replace with the approved objective.
+acceptance_criteria: []
+baseline_commits: {}
+writable_repositories: []
+read_only_repositories: []
+primary_task_class: documentation/governance
+risk_flags: []
+required_capability_tiers: []
+required_agents: []
+required_reviewers: []
+protected_constraints: []
+required_tests_gates: []
+rollback_recovery_expectations: []
+stop_conditions: []
+approval:
+  status: pending
+  authority: null

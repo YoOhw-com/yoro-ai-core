@@ -1,0 +1,4 @@
+interface:
+  display_name: "YoRo Bug Fix"
+  short_description: "Diagnose and fix bounded YoRo defects."
+  default_prompt: "Reproduce, classify, fix, and validate this bounded YoRo bug without widening scope."

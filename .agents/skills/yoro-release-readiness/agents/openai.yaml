@@ -1,0 +1,4 @@
+interface:
+  display_name: "YoRo Release Readiness"
+  short_description: "Assemble release evidence without deploying."
+  default_prompt: "Assess YoRo release readiness from immutable evidence without authorizing deployment."

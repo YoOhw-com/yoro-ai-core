@@ -1,0 +1,229 @@
+schema_version: "0.3"
+document_type: yoro_routing_selectors
+component_explorers:
+  yoro-ai-api: explorer-laravel
+  yoro-ai-core: explorer-wordpress
+  yoro-apps: explorer-flutter
+  yoro-codex-os: null
+component_order: [yoro-ai-api, yoro-ai-core, yoro-apps, yoro-codex-os]
+agent_order:
+  - coordinator
+  - incident-investigator
+  - explorer-laravel
+  - explorer-wordpress
+  - explorer-flutter
+  - architect
+  - contract-auditor
+  - security-reviewer
+  - debugger
+  - implementer
+  - test-runner
+  - release-reviewer
+  - reviewer
+selectors:
+  explorer_by_component:
+    type: component_explorer
+    cardinality: one_or_more
+  explorers_for_all_components:
+    type: component_explorers
+    cardinality: one_or_more
+  security-reviewer_if_flagged:
+    type: conditional_agent
+    agent: security-reviewer
+    any_risk_flags: [credential, PII, authentication, authorization, tenant isolation, billing, customer communication, destructive/irreversible, mobile signing]
+  security-reviewer_if_sensitive:
+    type: conditional_agent
+    agent: security-reviewer
+    any_risk_flags: [credential, PII, authentication, authorization, tenant isolation, billing]
+  architect_if_write_or_scope:
+    type: conditional_context_agent
+    agent: architect
+    context_key: mcp_mode
+    values: [write, scope_change, write_and_scope]
+  security-reviewer_if_write_or_scope:
+    type: conditional_context_agent
+    agent: security-reviewer
+    context_key: mcp_mode
+    values: [write, scope_change, write_and_scope]
+  security-reviewer_if_credential_or_trust_boundary:
+    type: conditional_agent
+    agent: security-reviewer
+    any_risk_flags: [credential, authentication, authorization, tenant isolation]
+owner_requirements:
+  owner_for_policy_acceptance:
+    protected_boundary: governance_policy_acceptance
+  product_owner_if_behavior_changes:
+    protected_boundary: product_behavior
+  architecture_owner:
+    protected_boundary: architecture
+  security_owner:
+    protected_boundary: security
+  contract_owner:
+    protected_boundary: public_contract
+  MCP_contract_owner:
+    protected_boundary: MCP_contract
+  release_owner:
+    protected_boundary: release
+  data_owner:
+    protected_boundary: data_schema
+  product_contract_owner:
+    protected_boundary: product_contract
+  incident_commander_for_state_change:
+    protected_boundary: incident_state_change
+  customer_communication_owner:
+    protected_boundary: customer_communication
+  explicit_human_approval:
+    protected_boundary: destructive_action
+  affected_component_owners:
+    protected_boundary: cross_repository_component_ownership
+  repository_adoption_authority:
+    protected_boundary: repository_adoption
+    assignment_type: component_scoped
+    assignment_binding: repository_adoption_task
+approval_selectors:
+  owner_for_policy_acceptance: {type: conditional_context_approval, context_key: policy_acceptance, values: [true]}
+  product_owner_if_behavior_changes: {type: conditional_context_approval, context_key: behavior_changes, values: [true]}
+  incident_commander_for_state_change: {type: conditional_context_approval, context_key: state_change, values: [true]}
+review_agent_mapping:
+  architecture_review: architect
+  contract_review: contract-auditor
+  independent_review: reviewer
+  security_review: security-reviewer
+  release_review: release-reviewer
+  data_owner_review: data_owner
+  incident_owner: incident_commander
+write_scope_policies:
+  discovery/report: {type: none, default: [], artifact_write_scope: []}
+  documentation/governance: {type: fixed_repositories, allowed: [yoro-codex-os], default: [yoro-codex-os], artifact_write_scope: []}
+  repository adoption: {type: affected_components, allowed: [yoro-ai-api, yoro-ai-core, yoro-apps], maximum_components: 1, artifact_write_scope: [], require_exact_environment_boundary: true}
+  component-local feature: {type: affected_components, maximum_components: 1}
+  component-local bug fix: {type: affected_components, maximum_components: 1}
+  cross-repository contract: {type: affected_components}
+  architecture: {type: fixed_repositories, allowed: [yoro-codex-os], default: [yoro-codex-os]}
+  data/schema migration: {type: affected_components}
+  security/auth/tenant: {type: affected_components}
+  MCP change: {type: affected_components, maximum_components: 1}
+  release/readiness: {type: none, default: [], artifact_write_scope: [release_evidence]}
+  incident/recovery: {type: none, default: [], artifact_write_scope: []}
+repository_adoption_policy:
+  operations: [install, update, check, rollback]
+  allowed_components: [yoro-ai-api, yoro-ai-core, yoro-apps]
+  allowed_managed_paths:
+    exact: [AGENTS.md, .gitignore]
+    prefixes: [.agents/skills/yoro-, .codex/agents/yoro-, .codex/yoro-os/]
+  generated_drift_context_key: generated_content_drift
+  environment_boundary_context_key: environment_writable_repositories
+  target_baseline_context_key: target_baseline_commit
+  target_clean_context_key: target_worktree_clean
+  owner_controlled_changes_context_key: owner_controlled_changes_handling
+  required_preflight_evidence: [preview_completed, managed_diff_reviewed, rollback_evidence_prepared]
+non_blocking_metadata_roles:
+  - component_owner_role
+  - architecture_owner_role
+  - security_owner_role
+  - release_owner_role
+route_profiles:
+  ordinary_laravel_feature:
+    match: {primary_task_class: component-local feature, risk_flags: [], affected_components: [yoro-ai-api]}
+    required_gates: [api_local_tests, pint]
+    required_reviewers: [reviewer]
+    stop_conditions: [public_contract_delta_discovered]
+    prohibited_behavior: [modify_other_components, alter_public_contract_silently]
+  ordinary_wordpress_feature:
+    match: {primary_task_class: component-local feature, risk_flags: [read-only], affected_components: [yoro-ai-core]}
+    required_gates: [plain_wordpress_smoke, woocommerce_smoke_if_affected]
+    required_reviewers: [reviewer]
+    stop_conditions: [contract_delta_discovered]
+    prohibited_behavior: [mutate_live_wordpress, modify_cloud_contract]
+  flutter_ui_only_change:
+    match: {primary_task_class: component-local feature, risk_flags: [], affected_components: [yoro-apps]}
+    required_gates: [flutter_analyze, flutter_test]
+    required_reviewers: [reviewer]
+    stop_conditions: [API_or_signing_delta_discovered]
+    prohibited_behavior: [change_API_contract, change_signing]
+  flutter_api_contract_change:
+    match: {primary_task_class: cross-repository contract, risk_flags: [public contract, cross-repository], affected_components: [yoro-ai-api, yoro-apps]}
+    required_gates: [route_OpenAPI_client_parity, provider_tests, consumer_tests, contract_lock]
+    required_reviewers: [architect, contract-auditor, reviewer]
+    required_approvals: [contract_owner, affected_component_owners]
+    stop_conditions: [contract_owner_unassigned, compatibility_evidence_missing]
+    prohibited_behavior: [single_repository_contract_change, floating_ref_evidence]
+  app_gateway_cross_repository_change:
+    match: {primary_task_class: cross-repository contract, risk_flags: [mutation, public contract, cross-repository, authentication, authorization, tenant isolation], affected_components: [yoro-ai-api, yoro-apps]}
+    required_gates: [ADR, route_OpenAPI_client_parity, lifecycle_tests, authorization_negative_tests, contract_lock]
+    required_reviewers: [architect, contract-auditor, security-reviewer, reviewer]
+    required_approvals: [contract_owner, affected_component_owners, product_contract_owner, architecture_owner, security_owner]
+    stop_conditions: [product_contract_owner_unassigned, lifecycle_semantics_unresolved]
+    prohibited_behavior: [invent_endpoints, reuse_site_key_confirmation_for_app]
+  mcp_read_tool_change:
+    match:
+      primary_task_class: MCP change
+      risk_flags: [read-only, public contract, MCP]
+      affected_components: [yoro-ai-api]
+      context: {mcp_mode: read}
+    remove_agents: [architect]
+    required_gates: [MCP_runtime_catalog_parity, schema_scope_annotations, adapter_contract, error_taxonomy]
+    required_reviewers: [contract-auditor, reviewer]
+    required_approvals: [MCP_contract_owner]
+    stop_conditions: [tool_owner_unassigned, consumer_compatibility_unknown]
+    prohibited_behavior: [edit_historical_14_tool_catalog_as_current, omit_operations_get_lifecycle]
+  mcp_mutation_scope_change:
+    match:
+      primary_task_class: MCP change
+      risk_flags: [mutation, public contract, authorization, MCP, destructive/irreversible]
+      affected_components: [yoro-ai-api]
+      context: {mcp_mode: write_and_scope}
+    required_gates: [ADR, MCP_runtime_catalog_parity, schema_scope_annotations, confirmation_reauth, idempotency_replay, mutation_safety]
+    required_reviewers: [architect, contract-auditor, security-reviewer, reviewer]
+    required_approvals: [MCP_contract_owner, architecture_owner, security_owner, explicit_human_approval]
+    stop_conditions: [mutation_family_unknown, security_owner_unassigned]
+    prohibited_behavior: [lower_capability_substitution, bypass_confirmation]
+  ordinary_bug_fix:
+    match: {primary_task_class: component-local bug fix, risk_flags: [], affected_components: [yoro-ai-api]}
+    required_gates: [regression_test, api_local_tests, pint]
+    required_reviewers: [reviewer]
+    stop_conditions: [root_cause_crosses_contract_boundary]
+    prohibited_behavior: [broad_refactor, suppress_test]
+  production_incident:
+    match: {primary_task_class: incident/recovery, risk_flags: [read-only, mutation, cross-repository, customer communication], affected_components: [yoro-ai-api, yoro-ai-core]}
+    remove_agents: [architect, contract-auditor]
+    required_gates: [evidence_preservation, blast_radius, cloud_store_reconciliation, recovery_classification]
+    required_reviewers: [incident_commander, security-reviewer]
+    required_approvals: [incident_commander_for_state_change, customer_communication_owner]
+    stop_conditions: [unknown_recovery, containment_not_authorized]
+    prohibited_behavior: [modify_production, contact_customers_without_owner]
+  authentication_tenant_change:
+    match: {primary_task_class: security/auth/tenant, risk_flags: [authentication, authorization, tenant isolation, credential], affected_components: [yoro-ai-api]}
+    required_gates: [negative_authorization, tenant_isolation, replay, secret_absence]
+    required_reviewers: [architect, security-reviewer, reviewer]
+    required_approvals: [security_owner, architecture_owner]
+    stop_conditions: [security_owner_unassigned, secret_access_required]
+    prohibited_behavior: [read_env, weaken_policy]
+  release_readiness_failure:
+    match: {primary_task_class: release/readiness, risk_flags: [cross-repository, mobile signing], affected_components: [yoro-ai-api, yoro-ai-core, yoro-apps]}
+    remove_agents: [architect]
+    required_gates: [contract_lock, component_gates, signing_gate, rollback_checkpoints]
+    required_reviewers: [contract-auditor, security-reviewer, release-reviewer]
+    required_approvals: [release_owner]
+    stop_conditions: [compatibility_incomplete, signing_gate_failed]
+    prohibited_behavior: [declare_ready, deploy, use_main_as_evidence]
+  documentation_only_change:
+    match: {primary_task_class: documentation/governance, risk_flags: [read-only], affected_components: [yoro-codex-os]}
+    required_gates: [markdown_links, governance_validation]
+    required_reviewers: [reviewer]
+    stop_conditions: [runtime_claim_requires_unresolved_decision]
+    prohibited_behavior: [modify_component_repository, encode_unresolved_invariant]
+  mutation_unknown_safety:
+    match:
+      primary_task_class: component-local feature
+      risk_flags: [mutation]
+      affected_components: [yoro-ai-core]
+      context: {mutation_safety: unknown}
+    add_agents: [architect]
+    remove_agents: [implementer, test-runner, reviewer]
+    capability_tier: high_reasoning
+    required_gates: [mutation_safety_matrix, authorization, preflight, concurrency, idempotency, replay, recovery]
+    required_reviewers: [architect, security-reviewer]
+    required_approvals: [architecture_owner, security_owner]
+    stop_conditions: [mutation_family_unclassified, replay_unknown, recovery_unknown]
+    prohibited_behavior: [application_write, infer_reversibility_from_operation_journal]

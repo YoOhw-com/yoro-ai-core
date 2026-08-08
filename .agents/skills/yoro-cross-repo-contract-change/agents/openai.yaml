@@ -1,0 +1,4 @@
+interface:
+  display_name: "YoRo Cross-Repo Contract Change"
+  short_description: "Govern provider-consumer contract changes."
+  default_prompt: "Plan this cross-repository contract change with explicit ownership, locks, and compatibility evidence."

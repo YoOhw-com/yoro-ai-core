@@ -1,0 +1,48 @@
+schema_version: "0.1"
+release_id: REPLACE
+recommendation: owner_decision_required
+codex_os_version: "0.1.0"
+codex_os_commit: null
+components:
+  - component_id: REPLACE
+    commit_sha: null
+    artifact_version: null
+contracts:
+  - contract_id: REPLACE
+    semantic_version: null
+    sha256: null
+    producer_component: null
+    consumer_components: []
+    compatibility_status: unverified
+compatibility_checks:
+  - id: REPLACE
+    immutable_inputs: []
+    result: not_run
+    evidence: []
+component_gates:
+  - component_id: REPLACE
+    command_or_gate: null
+    result: not_run
+    evidence: []
+security_approvals:
+  - owner_role: security_owner
+    assignment: UNRESOLVED
+    decision: pending
+adr_approvals:
+  - adr_id: null
+    state: proposed
+deployment_order:
+  - sequence: 1
+    component_id: REPLACE
+    human_authorization_required: true
+rollback_checkpoints:
+  - after_sequence: 1
+    evidence: []
+    recovery_action: null
+unresolved_exceptions:
+  - id: REPLACE
+    owner_role: null
+    status: UNRESOLVED
+release_owner_role: release_owner
+release_owner_assignment: UNRESOLVED
+production_authorized: false

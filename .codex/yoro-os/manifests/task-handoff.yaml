@@ -1,0 +1,17 @@
+schema_version: "0.1"
+document_type: yoro_task_handoff_governance
+execution_states: [planned, in_progress, implementation_complete, blocked]
+review_statuses: [pending, approved, approved_with_findings, changes_required, blocked]
+acceptance_dispositions: [approved, approved_with_findings]
+independent_reviewer_classes: [independent_human, independent_chat_reviewer, independent_custom_agent]
+rules:
+  implementation_complete_is_accepted: false
+  executor_may_independently_approve: false
+  review_must_pin_exact_result: true
+  accepted_requires_matching_review: true
+  durable_shared_memory: exact Git commit SHA or PR head SHA plus repository records
+portable_record_policy:
+  generated_os_tree_mutable_records_allowed: false
+  component_owned_evidence_path_allowed: true
+  exact_commit_or_PR_review_evidence_allowed: true
+  executor_may_authorize_next_task: false
