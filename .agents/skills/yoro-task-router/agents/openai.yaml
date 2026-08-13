@@ -1,4 +1,0 @@
-interface:
-  display_name: "YoRo Task Router"
-  short_description: "Classify YoRo tasks and fail closed on unsafe routing."
-  default_prompt: "Classify this YoRo task, assign risk flags, and produce the required agent and gate route."

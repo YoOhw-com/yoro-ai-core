@@ -1,4 +1,0 @@
-interface:
-  display_name: "YoRo MCP Change"
-  short_description: "Validate MCP exposure, parity, and trust metadata."
-  default_prompt: "Govern this YoRo MCP change and validate runtime, catalog, schema, scope, and approval parity."

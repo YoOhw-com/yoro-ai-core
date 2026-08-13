@@ -1,4 +1,0 @@
-interface:
-  display_name: "YoRo Architecture Change"
-  short_description: "Govern high-impact YoRo architecture work."
-  default_prompt: "Plan this YoRo architecture change with ADR, ownership, compatibility, and rollback evidence."

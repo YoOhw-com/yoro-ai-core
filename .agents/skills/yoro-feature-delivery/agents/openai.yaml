@@ -1,4 +1,0 @@
-interface:
-  display_name: "YoRo Feature Delivery"
-  short_description: "Deliver bounded component-local YoRo features."
-  default_prompt: "Plan and deliver this component-local YoRo feature with required tests and reviews."

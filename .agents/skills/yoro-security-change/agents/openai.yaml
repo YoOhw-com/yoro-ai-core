@@ -1,4 +1,0 @@
-interface:
-  display_name: "YoRo Security Change"
-  short_description: "Govern authentication and security-sensitive work."
-  default_prompt: "Route and review this security-sensitive YoRo change with negative tests and independent approval."
