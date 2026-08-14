@@ -1,4 +1,0 @@
-interface:
-  display_name: "YoRo Workspace Discovery"
-  short_description: "Inventory YoRo repositories without changing them."
-  default_prompt: "Discover the YoRo workspace, record integrity baselines, and report evidence by classification."

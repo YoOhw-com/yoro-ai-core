@@ -1,4 +1,0 @@
-interface:
-  display_name: "YoRo Repository Adoption"
-  short_description: "Preview and install governance safely."
-  default_prompt: "Preview or perform an authorized managed-path-only Codex OS installation while preserving component-owned instructions and Codex files."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "YoRo Incident Response"
-  short_description: "Preserve evidence and govern incident recovery."
-  default_prompt: "Investigate this YoRo incident, classify blast radius, and propose authorized containment and recovery."

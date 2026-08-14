@@ -1,4 +1,0 @@
-interface:
-  display_name: "YoRo Flutter API Change"
-  short_description: "Govern Flutter and App Gateway contract work."
-  default_prompt: "Plan this Flutter API change across route, OpenAPI, client, lifecycle, and compatibility evidence."

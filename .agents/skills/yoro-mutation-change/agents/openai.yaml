@@ -1,4 +1,0 @@
-interface:
-  display_name: "YoRo Mutation Change"
-  short_description: "Classify and govern each mutation family."
-  default_prompt: "Evaluate this mutation change against the safety matrix and stop on unknown properties."
