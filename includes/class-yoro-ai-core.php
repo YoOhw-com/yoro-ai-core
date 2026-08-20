@@ -51,6 +51,8 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-settings.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-request-tracker.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/class-yoro-ai-provider-resolver.php';
+		require_once YORO_AI_CORE_PATH . 'includes/ai/clients/class-yoro-ai-api-endpoint-resolver.php';
+		require_once YORO_AI_CORE_PATH . 'includes/ai/clients/class-yoro-ai-api-connection-client.php';
 		require_once YORO_AI_CORE_PATH . 'includes/ai/clients/class-yoro-ai-api-client.php';
 	}
 
