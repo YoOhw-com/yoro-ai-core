@@ -1,0 +1,18 @@
+* text=auto eol=lf
+
+/.github export-ignore
+/.gitignore export-ignore
+/.distignore export-ignore
+/.DS_Store export-ignore
+/docs export-ignore
+/includes/dev export-ignore
+/tests export-ignore
+/AI_FIRST_ENGINEERING.md export-ignore
+/CHANGELOG.md export-ignore
+/node_modules export-ignore
+/vendor export-ignore
+/dist export-ignore
+/yorohq-site export-ignore
+/yorohq-site.zip export-ignore
+*.log export-ignore
+*.map export-ignore
