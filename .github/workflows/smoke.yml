@@ -34,7 +34,21 @@ jobs:
 
     steps:
       - name: Checkout plugin
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Verify P2 distribution and release boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq '/.github export-ignore' .gitattributes
+          grep -Fq '/tests export-ignore' .gitattributes
+          grep -Fq '/yorohq-site export-ignore' .gitattributes
+          grep -Fq 'permissions:' .github/workflows/release-candidate.yml
+          grep -Fq '  contents: read' .github/workflows/release-candidate.yml
+          grep -Fq 'production_authorized' .github/workflows/release-candidate.yml
+          ! grep -q 'secrets\.YORO_PRODUCTION_' .github/workflows/release-candidate.yml
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -49,6 +63,7 @@ jobs:
           set -euo pipefail
           php tests/unit/api-endpoint-resolver-test.php
           php tests/unit/api-connection-client-test.php
+          php tests/unit/trace-context-test.php
 
       - name: Run media reference transport contract
         run: php tests/contracts/media-reference-transport-contract.php
@@ -113,7 +128,9 @@ jobs:
 
     steps:
       - name: Checkout plugin
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
 
       - name: Require cross-repository read credential
         shell: bash
@@ -127,7 +144,7 @@ jobs:
           fi
 
       - name: Checkout latest shared YoRo API contracts canary
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: YoOhw-com/yoro-ai-api
           # This smoke workflow tracks the latest API contract owner as a canary.
@@ -158,6 +175,7 @@ jobs:
           set -euo pipefail
           php tests/unit/api-endpoint-resolver-test.php
           php tests/unit/api-connection-client-test.php
+          php tests/unit/trace-context-test.php
 
       - name: Install disposable WordPress and WooCommerce
         run: |
