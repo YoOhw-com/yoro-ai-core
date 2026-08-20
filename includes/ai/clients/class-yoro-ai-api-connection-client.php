@@ -154,16 +154,27 @@ class YoRo_AI_API_Connection_Client {
 		return $headers;
 	}
 
+	private function public_response_message( $json, $default_message ) {
+		$message = is_array( $json ) && ! empty( $json['message'] )
+			? sanitize_text_field( $json['message'] )
+			: $default_message;
+
+		if ( false !== stripos( $message, 'insufficient authentication scopes' ) ) {
+			return __( 'The connected mailbox needs updated permissions. Reconnect Gmail or Microsoft from Settings > Email Inbox, then try this inbox action again.', 'yoro-ai-core' );
+		}
+
+		return str_ireplace( 'openai', 'YoRo AI API', $message );
+	}
+
 	private function decode_public_json_response( $response, $error_code, $default_message ) {
 		$code = wp_remote_retrieve_response_code( $response );
 		$json = json_decode( wp_remote_retrieve_body( $response ), true );
 
 		if ( $code < 200 || $code >= 300 ) {
-			$message = is_array( $json ) && ! empty( $json['message'] )
-				? sanitize_text_field( $json['message'] )
-				: $default_message;
-
-			return new WP_Error( $error_code, $message );
+			return new WP_Error(
+				$error_code,
+				$this->public_response_message( $json, $default_message )
+			);
 		}
 
 		if ( ! is_array( $json ) ) {
