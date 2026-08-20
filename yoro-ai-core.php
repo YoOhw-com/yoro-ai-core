@@ -40,6 +40,7 @@ if ( ! defined( 'YORO_AI_PROVIDER_YORO_AI_API' ) ) {
 
 require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-db.php';
 require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-capabilities.php';
+require_once YORO_AI_CORE_PATH . 'includes/core/class-yoro-trace-context.php';
 require_once YORO_AI_CORE_PATH . 'includes/class-yoro-ai-core.php';
 
 function yoro_ai_core_activate() {
@@ -64,6 +65,7 @@ function yoro_ai_core_has_woocommerce() {
 }
 
 function yoro_ai_core_boot() {
+	YoRo_Trace_Context::register();
 	YoRo_AI_Core::init();
 }
 
