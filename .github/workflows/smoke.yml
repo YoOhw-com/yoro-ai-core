@@ -44,7 +44,11 @@ jobs:
           extensions: curl, fileinfo, mbstring, mysqli, zip
 
       - name: Run lightweight transport unit contracts
-        run: php tests/unit/api-endpoint-resolver-test.php
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/unit/api-endpoint-resolver-test.php
+          php tests/unit/api-connection-client-test.php
 
       - name: Run media reference transport contract
         run: php tests/contracts/media-reference-transport-contract.php
@@ -138,7 +142,11 @@ jobs:
           extensions: curl, fileinfo, mbstring, mysqli, zip
 
       - name: Run lightweight transport unit contracts
-        run: php tests/unit/api-endpoint-resolver-test.php
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/unit/api-endpoint-resolver-test.php
+          php tests/unit/api-connection-client-test.php
 
       - name: Install disposable WordPress and WooCommerce
         run: |
