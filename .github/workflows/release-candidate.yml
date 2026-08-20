@@ -1,0 +1,234 @@
+name: Core Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact trusted yoro-ai-core commit SHA to package
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-release-candidate-${{ inputs.source_sha }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    name: Secretless Core release candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout trusted main workflow source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Assert trusted workflow and immutable source
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          EVENT_REPOSITORY: ${{ github.repository }}
+          EVENT_REF: ${{ github.ref }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          sha_pattern='^[0-9a-f]{40}$'
+          [[ "$EVENT_REPOSITORY" == 'YoOhw-com/yoro-ai-core' ]]
+          [[ "$EVENT_REF" == 'refs/heads/main' ]]
+          [[ "$WORKFLOW_REF" == 'YoOhw-com/yoro-ai-core/.github/workflows/release-candidate.yml@refs/heads/main' ]]
+          [[ "$SOURCE_SHA" =~ $sha_pattern ]]
+          [[ "$(git cat-file -t "$SOURCE_SHA")" == 'commit' ]]
+          git merge-base --is-ancestor "$SOURCE_SHA" HEAD
+
+          attrs="$(git show "$SOURCE_SHA:.gitattributes")"
+          grep -Fq '/.github export-ignore' <<<"$attrs"
+          grep -Fq '/tests export-ignore' <<<"$attrs"
+          grep -Fq '/yorohq-site export-ignore' <<<"$attrs"
+
+      - name: Build deterministic WordPress plugin ZIP twice
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/yoro-core-rc"
+          mkdir -p "$root"
+
+          for generation in a b; do
+            git archive \
+              --format=zip \
+              --prefix=yoro-ai-core/ \
+              --output="$root/yoro-ai-core-$SOURCE_SHA-$generation.zip" \
+              "$SOURCE_SHA"
+          done
+
+          cmp \
+            "$root/yoro-ai-core-$SOURCE_SHA-a.zip" \
+            "$root/yoro-ai-core-$SOURCE_SHA-b.zip"
+          mv "$root/yoro-ai-core-$SOURCE_SHA-a.zip" "$root/yoro-ai-core-$SOURCE_SHA.zip"
+          rm "$root/yoro-ai-core-$SOURCE_SHA-b.zip"
+
+          unzip -Z1 "$root/yoro-ai-core-$SOURCE_SHA.zip" | grep -Fqx 'yoro-ai-core/yoro-ai-core.php'
+          ! unzip -Z1 "$root/yoro-ai-core-$SOURCE_SHA.zip" | grep -q '^yoro-ai-core/.github/'
+          ! unzip -Z1 "$root/yoro-ai-core-$SOURCE_SHA.zip" | grep -q '^yoro-ai-core/tests/'
+          ! unzip -Z1 "$root/yoro-ai-core-$SOURCE_SHA.zip" | grep -q '^yoro-ai-core/yorohq-site/'
+
+      - name: Generate plugin inventory, SBOM, and manifest
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/yoro-core-rc"
+          artifact="$root/yoro-ai-core-$SOURCE_SHA.zip"
+          extract="$RUNNER_TEMP/yoro-core-extract"
+          mkdir -p "$extract"
+          unzip -qq "$artifact" -d "$extract"
+
+          git show "$SOURCE_SHA:yoro-ai-core.php" > "$root/plugin-header.php"
+          export PLUGIN_VERSION="$(python3 - "$root/plugin-header.php" <<'PY'
+          import re
+          import sys
+          text = open(sys.argv[1], encoding='utf-8').read()
+          match = re.search(r'^\s*\*\s*Version:\s*([^\s]+)\s*$', text, flags=re.MULTILINE)
+          if not match:
+              raise SystemExit('Plugin Version header is missing')
+          print(match.group(1))
+          PY
+          )"
+          rm "$root/plugin-header.php"
+
+          python3 - "$extract/yoro-ai-core" "$root/file-manifest.json" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import sys
+
+          base = pathlib.Path(sys.argv[1])
+          files = []
+          for path in sorted(p for p in base.rglob('*') if p.is_file()):
+              files.append({
+                  'path': path.relative_to(base).as_posix(),
+                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+              })
+          if not files:
+              raise SystemExit('Release candidate contains no files')
+          with open(sys.argv[2], 'w', encoding='utf-8') as target:
+              json.dump({'files': files}, target, sort_keys=True, separators=(',', ':'))
+              target.write('\n')
+          PY
+
+          python3 - "$root/sbom.cdx.json" <<'PY'
+          import json
+          import os
+          import sys
+          document = {
+              'bomFormat': 'CycloneDX',
+              'specVersion': '1.5',
+              'version': 1,
+              'metadata': {
+                  'component': {
+                      'type': 'application',
+                      'name': 'yoro-ai-core',
+                      'version': os.environ['PLUGIN_VERSION'],
+                      'licenses': [{'license': {'id': 'GPL-2.0-or-later'}}],
+                  },
+              },
+              'components': [],
+          }
+          with open(sys.argv[1], 'w', encoding='utf-8') as target:
+              json.dump(document, target, sort_keys=True, separators=(',', ':'))
+              target.write('\n')
+          PY
+
+          artifact_sha="$(sha256sum "$artifact" | cut -d' ' -f1)"
+          inventory_sha="$(sha256sum "$root/file-manifest.json" | cut -d' ' -f1)"
+          sbom_sha="$(sha256sum "$root/sbom.cdx.json" | cut -d' ' -f1)"
+          file_count="$(python3 - "$root/file-manifest.json" <<'PY'
+          import json
+          import sys
+          print(len(json.load(open(sys.argv[1], encoding='utf-8'))['files']))
+          PY
+          )"
+          export SOURCE_SHA artifact_sha inventory_sha sbom_sha file_count
+
+          python3 - "$root/manifest.json" <<'PY'
+          import json
+          import os
+          import sys
+          manifest = {
+              'schema_version': '1',
+              'artifact_type': 'wordpress_plugin_release_candidate',
+              'repository': 'YoOhw-com/yoro-ai-core',
+              'source_sha': os.environ['SOURCE_SHA'],
+              'plugin_version': os.environ['PLUGIN_VERSION'],
+              'file_count': int(os.environ['file_count']),
+              'artifact': {
+                  'filename': f"yoro-ai-core-{os.environ['SOURCE_SHA']}.zip",
+                  'sha256': os.environ['artifact_sha'],
+              },
+              'file_manifest_sha256': os.environ['inventory_sha'],
+              'sbom_sha256': os.environ['sbom_sha'],
+              'production_authorized': False,
+          }
+          with open(sys.argv[1], 'w', encoding='utf-8') as target:
+              json.dump(manifest, target, sort_keys=True, separators=(',', ':'))
+              target.write('\n')
+          PY
+
+          rm -rf "$extract"
+
+      - name: Emit run provenance and checksums
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/yoro-core-rc"
+
+          python3 - "$root/provenance.json" <<'PY'
+          import json
+          import os
+          import sys
+          provenance = {
+              'result': 'PASS',
+              'verifier_repository': 'YoOhw-com/yoro-ai-core',
+              'workflow_path': '.github/workflows/release-candidate.yml',
+              'workflow_sha': os.environ['WORKFLOW_SHA'],
+              'source_sha': os.environ['SOURCE_SHA'],
+              'run_id': os.environ['RUN_ID'],
+              'run_attempt': os.environ['RUN_ATTEMPT'],
+              'secretless_candidate': True,
+              'production_authorized': False,
+          }
+          with open(sys.argv[1], 'w', encoding='utf-8') as target:
+              json.dump(provenance, target, sort_keys=True, separators=(',', ':'))
+              target.write('\n')
+          PY
+
+          (cd "$root" && sha256sum yoro-ai-core-*.zip file-manifest.json sbom.cdx.json manifest.json provenance.json | sort) > "$root/SHA256SUMS"
+          (cd "$root" && sha256sum --check SHA256SUMS)
+
+          expected=$'SHA256SUMS\nfile-manifest.json\nmanifest.json\nprovenance.json\nsbom.cdx.json\nyoro-ai-core-'"$SOURCE_SHA"$'.zip'
+          actual="$(find "$root" -maxdepth 1 -type f -exec basename {} \; | sort)"
+          [[ "$actual" == "$expected" ]]
+          ! git config --show-origin --get-regexp 'credential|http\..*extraheader'
+
+      - name: Upload Core release-candidate evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: yoro-ai-core-rc-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/yoro-core-rc
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 9
+          overwrite: false
+          include-hidden-files: false
