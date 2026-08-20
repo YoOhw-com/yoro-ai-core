@@ -73,10 +73,13 @@ jobs:
           mv "$root/yoro-ai-core-$SOURCE_SHA-a.zip" "$root/yoro-ai-core-$SOURCE_SHA.zip"
           rm "$root/yoro-ai-core-$SOURCE_SHA-b.zip"
 
-          unzip -Z1 "$root/yoro-ai-core-$SOURCE_SHA.zip" | grep -Fqx 'yoro-ai-core/yoro-ai-core.php'
-          ! unzip -Z1 "$root/yoro-ai-core-$SOURCE_SHA.zip" | grep -q '^yoro-ai-core/.github/'
-          ! unzip -Z1 "$root/yoro-ai-core-$SOURCE_SHA.zip" | grep -q '^yoro-ai-core/tests/'
-          ! unzip -Z1 "$root/yoro-ai-core-$SOURCE_SHA.zip" | grep -q '^yoro-ai-core/yorohq-site/'
+          archive_listing="$root/archive-list.txt"
+          unzip -Z1 "$root/yoro-ai-core-$SOURCE_SHA.zip" > "$archive_listing"
+          grep -Fqx 'yoro-ai-core/yoro-ai-core.php' "$archive_listing"
+          ! grep -q '^yoro-ai-core/.github/' "$archive_listing"
+          ! grep -q '^yoro-ai-core/tests/' "$archive_listing"
+          ! grep -q '^yoro-ai-core/yorohq-site/' "$archive_listing"
+          rm "$archive_listing"
 
       - name: Generate plugin inventory, SBOM, and manifest
         shell: bash
