@@ -112,9 +112,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: yoohwz/yoro-ai-api
-          # P0 live API baseline from the 2026-08-20 zero-assumption audit.
+          # P0 live API baseline from the 2026-08-20 zero-assumption audit,
+          # refreshed after API PR #40 moved main during P0 execution.
           # This is an exact test input, not a compatibility claim.
-          ref: 4602d5699cad0c1604afd9e171603ab758ea4a64
+          ref: dfd7a189de3f0652cd725804ff4a6fb484c4d6b8
           ssh-key: ${{ secrets.YORO_API_DEPLOY_KEY }}
           path: _shared/yoro-ai-api
           persist-credentials: false
