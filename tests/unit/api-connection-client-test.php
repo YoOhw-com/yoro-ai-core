@@ -133,6 +133,16 @@ $assert( is_wp_error( $error ), 'Failed connect exchange did not return WP_Error
 $assert( 'yoro_ai_api_connect_exchange_error' === $error->get_error_code(), 'Connect exchange error code changed.' );
 $assert( 'Rejected connection' === $error->get_error_message(), 'Server error message was not preserved.' );
 
+$GLOBALS['yoro_connection_test_response'] = [
+	'response' => [ 'code' => 502 ],
+	'body'     => '{"message":"OpenAI upstream unavailable"}',
+];
+$error = $client->disconnect_site();
+
+$assert( is_wp_error( $error ), 'Failed disconnect did not return WP_Error.' );
+$assert( 'yoro_ai_api_disconnect_error' === $error->get_error_code(), 'Disconnect error code changed.' );
+$assert( 'YoRo AI API upstream unavailable' === $error->get_error_message(), 'Public provider wording was not normalized.' );
+
 if ( [] !== $failures ) {
 	fwrite( STDERR, implode( "\n", $failures ) . "\n" );
 	exit( 1 );
