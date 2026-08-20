@@ -8,3 +8,4 @@ vendor/
 coverage/
 dist/
 build/
+/yorohq-site.zip
