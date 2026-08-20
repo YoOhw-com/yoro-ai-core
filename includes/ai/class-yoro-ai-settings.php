@@ -528,7 +528,7 @@ class YoRo_AI_Settings {
 		$site_key = self::get_ai_api_site_key();
 
 		if ( '' !== $site_key ) {
-			$disconnect_result = ( new YoRo_AI_API_Client() )->disconnect_site(
+			$disconnect_result = ( new YoRo_AI_API_Connection_Client() )->disconnect_site(
 				[
 					'installation_uuid' => self::get_installation_uuid(),
 					'reason'            => 'Disconnected by a WordPress administrator.',
