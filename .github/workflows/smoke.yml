@@ -108,17 +108,24 @@ jobs:
       - name: Checkout plugin
         uses: actions/checkout@v4
 
-      - name: Checkout shared YoRo contracts
+      - name: Checkout latest shared YoRo API contracts canary
         uses: actions/checkout@v4
         with:
           repository: yoohwz/yoro-ai-api
-          # P0 live API baseline from the 2026-08-20 zero-assumption audit,
-          # refreshed after API PR #40 moved main during P0 execution.
-          # This is an exact test input, not a compatibility claim.
-          ref: dfd7a189de3f0652cd725804ff4a6fb484c4d6b8
+          # This smoke workflow tracks the latest API contract owner as a canary.
+          # Exact immutable API/Core compatibility proof remains separate.
+          ref: main
           ssh-key: ${{ secrets.YORO_API_DEPLOY_KEY }}
           path: _shared/yoro-ai-api
           persist-credentials: false
+
+      - name: Record resolved API canary identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_sha="$(git -C "$GITHUB_WORKSPACE/_shared/yoro-ai-api" rev-parse HEAD)"
+          [[ "$api_sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "Resolved yoro-ai-api/main canary SHA: $api_sha"
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
