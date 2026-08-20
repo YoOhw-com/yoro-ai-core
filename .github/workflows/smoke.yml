@@ -43,6 +43,13 @@ jobs:
           coverage: none
           extensions: curl, fileinfo, mbstring, mysqli, zip
 
+      - name: Run lightweight transport unit contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/unit/api-endpoint-resolver-test.php
+          php tests/unit/api-connection-client-test.php
+
       - name: Run media reference transport contract
         run: php tests/contracts/media-reference-transport-contract.php
 
@@ -108,14 +115,25 @@ jobs:
       - name: Checkout plugin
         uses: actions/checkout@v4
 
+      - name: Require cross-repository read credential
+        shell: bash
+        env:
+          YORO_CROSS_REPO_READ_TOKEN: ${{ secrets.YORO_CROSS_REPO_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$YORO_CROSS_REPO_READ_TOKEN" ]]; then
+            echo "YORO_CROSS_REPO_READ_TOKEN is required for the latest API compatibility canary." >&2
+            exit 1
+          fi
+
       - name: Checkout latest shared YoRo API contracts canary
         uses: actions/checkout@v4
         with:
-          repository: yoohwz/yoro-ai-api
+          repository: YoOhw-com/yoro-ai-api
           # This smoke workflow tracks the latest API contract owner as a canary.
           # Exact immutable API/Core compatibility proof remains separate.
           ref: main
-          ssh-key: ${{ secrets.YORO_API_DEPLOY_KEY }}
+          token: ${{ secrets.YORO_CROSS_REPO_READ_TOKEN }}
           path: _shared/yoro-ai-api
           persist-credentials: false
 
@@ -125,7 +143,7 @@ jobs:
           set -euo pipefail
           api_sha="$(git -C "$GITHUB_WORKSPACE/_shared/yoro-ai-api" rev-parse HEAD)"
           [[ "$api_sha" =~ ^[0-9a-f]{40}$ ]]
-          echo "Resolved yoro-ai-api/main canary SHA: $api_sha"
+          echo "Resolved YoOhw-com/yoro-ai-api@main canary SHA: $api_sha"
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -133,6 +151,13 @@ jobs:
           php-version: "8.4"
           coverage: none
           extensions: curl, fileinfo, mbstring, mysqli, zip
+
+      - name: Run lightweight transport unit contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/unit/api-endpoint-resolver-test.php
+          php tests/unit/api-connection-client-test.php
 
       - name: Install disposable WordPress and WooCommerce
         run: |
