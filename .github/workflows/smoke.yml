@@ -48,6 +48,8 @@ jobs:
           grep -Fq 'permissions:' .github/workflows/release-candidate.yml
           grep -Fq '  contents: read' .github/workflows/release-candidate.yml
           grep -Fq 'production_authorized' .github/workflows/release-candidate.yml
+          grep -Fq 'archive_listing="$root/archive-list.txt"' .github/workflows/release-candidate.yml
+          ! grep -Fq 'unzip -Z1 "$root/yoro-ai-core-$SOURCE_SHA.zip" | grep' .github/workflows/release-candidate.yml
           ! grep -q 'secrets\.YORO_PRODUCTION_' .github/workflows/release-candidate.yml
 
       - name: Setup PHP
