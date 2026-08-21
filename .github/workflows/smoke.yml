@@ -51,6 +51,9 @@ jobs:
           grep -Fq 'archive_listing="$root/archive-list.txt"' .github/workflows/release-candidate.yml
           ! grep -Fq 'unzip -Z1 "$root/yoro-ai-core-$SOURCE_SHA.zip" | grep' .github/workflows/release-candidate.yml
           ! grep -q 'secrets\.YORO_PRODUCTION_' .github/workflows/release-candidate.yml
+          grep -Fq 'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1' .github/workflows/smoke.yml
+          legacy_token_name="YORO_CROSS_REPO"_READ_TOKEN
+          ! grep -Fq "secrets.$legacy_token_name" .github/workflows/smoke.yml
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -134,16 +137,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Require cross-repository read credential
-        shell: bash
-        env:
-          YORO_CROSS_REPO_READ_TOKEN: ${{ secrets.YORO_CROSS_REPO_READ_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$YORO_CROSS_REPO_READ_TOKEN" ]]; then
-            echo "YORO_CROSS_REPO_READ_TOKEN is required for the latest API compatibility canary." >&2
-            exit 1
-          fi
+      - name: Create short-lived API repository token
+        id: api_read_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.YORO_CI_READ_APP_CLIENT_ID }}
+          private-key: ${{ secrets.YORO_CI_READ_APP_PRIVATE_KEY }}
+          owner: YoOhw-com
+          repositories: |
+            yoro-ai-api
+          permission-contents: read
 
       - name: Checkout latest shared YoRo API contracts canary
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -152,7 +155,7 @@ jobs:
           # This smoke workflow tracks the latest API contract owner as a canary.
           # Exact immutable API/Core compatibility proof remains separate.
           ref: main
-          token: ${{ secrets.YORO_CROSS_REPO_READ_TOKEN }}
+          token: ${{ steps.api_read_token.outputs.token }}
           path: _shared/yoro-ai-api
           persist-credentials: false
 
