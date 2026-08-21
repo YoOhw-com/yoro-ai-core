@@ -52,7 +52,8 @@ jobs:
           ! grep -Fq 'unzip -Z1 "$root/yoro-ai-core-$SOURCE_SHA.zip" | grep' .github/workflows/release-candidate.yml
           ! grep -q 'secrets\.YORO_PRODUCTION_' .github/workflows/release-candidate.yml
           grep -Fq 'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1' .github/workflows/smoke.yml
-          ! grep -Fq 'YORO_CROSS_REPO_READ_TOKEN' .github/workflows/smoke.yml
+          legacy_token_name="YORO_CROSS_REPO"_READ_TOKEN
+          ! grep -Fq "secrets.$legacy_token_name" .github/workflows/smoke.yml
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
