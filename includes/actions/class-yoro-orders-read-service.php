@@ -6,21 +6,24 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Orders_Read_Service {
 
-	public static function search_orders( $params ) {
-		if ( ! function_exists( 'wc_get_orders' ) ) {
-			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
-		}
-
+	public static function get_search_result_limit( $params ) {
+		$params = is_array( $params ) ? $params : [];
 		$limit = isset( $params['limit'] )
 			? absint( $params['limit'] )
 			: 10;
 
-		$global_limit = absint(
-			get_option( 'yoro_ai_max_result_limit', 20 )
-		);
+		$global_limit = absint( get_option( 'yoro_ai_max_result_limit', 20 ) );
 
 		if ( $global_limit <= 0 ) {
 			$global_limit = 20;
+		}
+
+		return min( max( $limit, 1 ), $global_limit, 50 );
+	}
+
+	public static function search_orders( $params ) {
+		if ( ! function_exists( 'wc_get_orders' ) ) {
+			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
 		}
 
 		$status = $params['status'] ?? [];
@@ -35,11 +38,7 @@ class YoRo_Orders_Read_Service {
 			)
 		);
 
-		$result_limit = min(
-			max( $limit, 1 ),
-			$global_limit,
-			50
-		);
+		$result_limit = self::get_search_result_limit( $params );
 
 		$args = [
 			'limit' => $result_limit,
@@ -114,6 +113,15 @@ class YoRo_Orders_Read_Service {
 		$post_filter_scan = [];
 		$orders = self::query_filtered_orders( $args, $params, $result_limit, $post_filter_scan );
 
+		return self::format_search_result( $orders, $params, $resolved_window, $min_age_hours, $post_filter_scan );
+	}
+
+	public static function format_search_result( $orders, $params, $resolved_window = [], $min_age_hours = 0, $post_filter_scan = [] ) {
+		$orders = is_array( $orders ) ? $orders : [];
+		$params = is_array( $params ) ? $params : [];
+		$resolved_window = is_array( $resolved_window ) ? $resolved_window : [];
+		$min_age_hours = absint( $min_age_hours );
+		$post_filter_scan = is_array( $post_filter_scan ) ? $post_filter_scan : [];
 		$data = [];
 
 		foreach ( $orders as $order ) {

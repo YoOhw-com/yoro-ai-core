@@ -90,6 +90,21 @@ class YoRo_YR0005_Test_Native_Provider extends YoRo_Native_Ability_Execution_Pro
 	protected function request_is_covered( $coverage_predicate, $params, array $action, array $context ) {
 		return $this->covered;
 	}
+
+	protected function assess_ability_contract( array $mapping, $ability ) {
+		return [
+			'accepted'    => true,
+			'status_enum' => [ 'pending', 'processing', 'completed' ],
+		];
+	}
+
+	protected function adapt_input( $action_name, $params ) {
+		return is_array( $params ) ? $params : [];
+	}
+
+	protected function adapt_output( $action_name, $native_result, $params ) {
+		return $native_result;
+	}
 }
 
 class YoRo_YR0005_Test_Provider implements YoRo_Action_Execution_Provider {
@@ -129,14 +144,14 @@ class YoRo_YR0005_Test_Provider implements YoRo_Action_Execution_Provider {
 }
 
 $expected_map = [
-	'products.search'              => [ 'woocommerce/products-query', 'B', 'products_search_subset' ],
-	'products.get_details'         => [ 'woocommerce/products-query', 'B', 'single_supported_product' ],
-	'orders.search'                => [ 'woocommerce/orders-query', 'B', 'orders_search_subset' ],
-	'orders.get_details'           => [ 'woocommerce/orders-query', 'B', 'single_order' ],
-	'orders.update_status'         => [ 'woocommerce/order-update-status', 'C', 'single_versioned_order_status_write' ],
-	'orders.add_note'              => [ 'woocommerce/order-add-note', 'C', 'single_provenance_preserving_order_note' ],
-	'products.update_stock'        => [ 'woocommerce/product-update', 'C', 'single_simple_versioned_stock_write' ],
-	'products.update_stock_status' => [ 'woocommerce/product-update', 'C', 'single_simple_versioned_stock_status_write' ],
+	'products.search'              => [ 'woocommerce/products-query', 'B', 'products_search_subset', false ],
+	'products.get_details'         => [ 'woocommerce/products-query', 'B', 'single_supported_product', false ],
+	'orders.search'                => [ 'woocommerce/orders-query', 'B', 'orders_search_subset', true ],
+	'orders.get_details'           => [ 'woocommerce/orders-query', 'B', 'single_order', false ],
+	'orders.update_status'         => [ 'woocommerce/order-update-status', 'C', 'single_versioned_order_status_write', false ],
+	'orders.add_note'              => [ 'woocommerce/order-add-note', 'C', 'single_provenance_preserving_order_note', false ],
+	'products.update_stock'        => [ 'woocommerce/product-update', 'C', 'single_simple_versioned_stock_write', false ],
+	'products.update_stock_status' => [ 'woocommerce/product-update', 'C', 'single_simple_versioned_stock_status_write', false ],
 ];
 $candidate_map = YoRo_Native_Ability_Execution_Provider::candidate_map();
 $assert( array_keys( $expected_map ) === array_keys( $candidate_map ), 'The production native candidate map must contain only the eight reviewed YoRo actions.' );
@@ -146,7 +161,7 @@ foreach ( $expected_map as $action_name => $expected_mapping ) {
 	$assert( $expected_mapping[0] === ( $mapping['ability_id'] ?? '' ), sprintf( '%s must map to the exact reviewed WooCommerce ability.', $action_name ) );
 	$assert( $expected_mapping[1] === ( $mapping['candidate_tranche'] ?? '' ), sprintf( '%s must retain its reviewed future tranche.', $action_name ) );
 	$assert( $expected_mapping[2] === ( $mapping['coverage_predicate'] ?? '' ), sprintf( '%s must retain its explicit coverage predicate.', $action_name ) );
-	$assert( array_key_exists( 'enabled', $mapping ) && false === $mapping['enabled'], sprintf( '%s must remain inactive in P3-002/A.', $action_name ) );
+	$assert( array_key_exists( 'enabled', $mapping ) && $expected_mapping[3] === $mapping['enabled'], sprintf( '%s must retain its reviewed P3-002/B activation state.', $action_name ) );
 }
 
 $registry_before = wp_json_encode( YoRo_Action_Registry::all() );
@@ -165,7 +180,7 @@ $dummy_action = [
 	},
 ];
 $missing_mapping = $production_native->assess( 'site.get_info', $dummy_action );
-$inactive_mapping = $production_native->assess( 'orders.search', $dummy_action );
+$inactive_mapping = $production_native->assess( 'products.search', $dummy_action );
 $assert( 'native_mapping_missing' === ( $missing_mapping['reason'] ?? '' ), 'Provider selection must reject an unmapped semantic action before any capability lookup.' );
 $assert( 'native_mapping_inactive' === ( $inactive_mapping['reason'] ?? '' ), 'Provider selection must reject an inactive production mapping before any capability lookup.' );
 
