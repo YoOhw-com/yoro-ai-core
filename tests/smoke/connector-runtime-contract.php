@@ -261,6 +261,10 @@ try {
 	);
 	$list_result = YoRo_Action_Executor::execute( 'test.list_result_count' );
 	$assert( 2 === ( $list_result['count'] ?? 0 ), 'Normalized list data must expose an accurate item count.' );
+	$list_result_json = wp_json_encode( $list_result );
+	foreach ( [ 'execution_provider', 'provider_kind', 'selection_reason', 'candidate_tranche', 'native_mapping_' ] as $private_provider_field ) {
+		$assert( false === strpos( $list_result_json, $private_provider_field ), sprintf( 'Direct action results must not expose internal provider field %s.', $private_provider_field ) );
+	}
 
 	$client = new YoRo_Connector_Smoke_Client();
 	$publisher = new YoRo_Connector_Snapshot_Publisher( $client );
@@ -532,6 +536,11 @@ try {
 	$assert( false === strpos( $context_json, (string) wp_get_current_user()->user_email ), 'Context pack must not publish the current actor email.' );
 
 	$manifest_state = YoRo_Connector_Snapshot_Publisher::current_manifest_state();
+	$manifest_identity_before_execution = [
+		'manifest_id' => $manifest_state['manifest_id'] ?? '',
+		'revision'    => $manifest_state['revision'] ?? 0,
+		'actions_hash' => hash( 'sha256', wp_json_encode( $client->manifest['actions'] ?? [] ) ),
+	];
 	$delivery_id = 'delivery_' . hash( 'sha256', 'woocommerce-runtime-smoke' );
 	$claim_token = 'claim_' . hash( 'sha256', 'woocommerce-runtime-smoke-token' );
 	$expires_at = gmdate( 'c', time() + ( 10 * MINUTE_IN_SECONDS ) );
@@ -589,8 +598,17 @@ try {
 		],
 	];
 
+	$shared_executor_calls = 0;
+	$shared_executor_probe = static function ( $executed_action ) use ( &$shared_executor_calls ) {
+		if ( 'orders.search' === $executed_action ) {
+			$shared_executor_calls++;
+		}
+	};
+	add_action( 'yoro_before_action_execute', $shared_executor_probe, 10, 1 );
 	$runtime_result = ( new YoRo_Connector_Runtime( $client ) )->run_once();
+	remove_action( 'yoro_before_action_execute', $shared_executor_probe, 10 );
 	$assert( ! is_wp_error( $runtime_result ) && ! empty( $runtime_result['success'] ), 'Pull runtime must complete one claimed read-only operation.' );
+	$assert( 1 === $shared_executor_calls, 'Remote connector execution must pass through the shared action executor exactly once.' );
 	$assert( 1 === count( $client->events ), 'Pull runtime must acknowledge the claim once.' );
 	$assert( 1 === count( $client->renewals ), 'Pull runtime must renew the lease before local execution.' );
 	$assert( 1 === count( $client->results ), 'Pull runtime must publish one canonical execution result.' );
@@ -600,12 +618,20 @@ try {
 	$assert( false === ( $actions['orders.search']['output_schema']['additionalProperties'] ?? true ), 'Read outputs must use the exact shared execution schema.' );
 	$assert( array_keys( (array) $canonical_result ) === ( $actions['orders.search']['output_schema']['required'] ?? [] ), 'Runtime result roots must exactly match the published output schema.' );
 	$assert( isset( $canonical_result['data']['orders'] ) || isset( $canonical_result['data']['items'] ), 'Canonical results must retain action data under the stable data object.' );
+	$canonical_result_json = wp_json_encode( $canonical_result );
+	foreach ( [ 'execution_provider', 'provider_kind', 'selection_reason', 'candidate_tranche', 'native_mapping_' ] as $private_provider_field ) {
+		$assert( false === strpos( $canonical_result_json, $private_provider_field ), sprintf( 'Canonical connector results must not expose internal provider field %s.', $private_provider_field ) );
+	}
 	$assert( $claim_token === ( $client->results[0]['claim_token'] ?? '' ), 'Result publication must retain exact lease authority.' );
 	$assert( 1 === ( $client->results[0]['lease_generation'] ?? 0 ), 'Result publication must retain the lease generation.' );
 	$assert( $admin_id === get_current_user_id(), 'Connector execution must restore the original WordPress user.' );
 
 	$journal_after_publish = YoRo_Connector_Execution_Journal::begin( $operation );
 	$assert( 'completed' === ( $journal_after_publish['state'] ?? '' ), 'Accepted results must retain the durable local execution receipt.' );
+	$manifest_state_after_execution = YoRo_Connector_Snapshot_Publisher::current_manifest_state();
+	$assert( $manifest_identity_before_execution['manifest_id'] === ( $manifest_state_after_execution['manifest_id'] ?? '' ), 'Provider routing must not change the capability manifest identity.' );
+	$assert( $manifest_identity_before_execution['revision'] === ( $manifest_state_after_execution['revision'] ?? 0 ), 'Provider routing must not change the capability manifest revision.' );
+	$assert( $manifest_identity_before_execution['actions_hash'] === hash( 'sha256', wp_json_encode( $client->manifest['actions'] ?? [] ) ), 'Provider routing must not change semantic action identity.' );
 	YoRo_Connector_Execution_Journal::clear( $operation );
 
 	$batch_client = new YoRo_Connector_Smoke_Client();
