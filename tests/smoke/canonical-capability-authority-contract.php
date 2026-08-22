@@ -17,7 +17,14 @@ if ( class_exists( 'YoRo_AI_Core' ) && function_exists( 'yoro_ai_core_has_woocom
 $catalog_path = getenv( 'YORO_CANONICAL_CAPABILITY_AUTHORITY' );
 
 if ( ! is_string( $catalog_path ) || '' === $catalog_path || ! is_readable( $catalog_path ) ) {
-	throw new RuntimeException( 'Set YORO_CANONICAL_CAPABILITY_AUTHORITY to the API canonical capability authority JSON file.' );
+	$fixture_path = getenv( 'YORO_SHARED_COMMERCE_FIXTURES' );
+	$catalog_path = is_string( $fixture_path ) && '' !== $fixture_path
+		? dirname( $fixture_path ) . '/canonical-capability-authority.json'
+		: '';
+}
+
+if ( '' === $catalog_path || ! is_readable( $catalog_path ) ) {
+	throw new RuntimeException( 'Set YORO_CANONICAL_CAPABILITY_AUTHORITY or YORO_SHARED_COMMERCE_FIXTURES to the exact API contract files.' );
 }
 
 $catalog = json_decode( file_get_contents( $catalog_path ), true );
