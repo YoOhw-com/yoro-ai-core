@@ -374,6 +374,23 @@ if ( $admin_id > 0 && function_exists( 'wc_create_order' ) && function_exists( '
 	}
 
 	if ( is_object( $ability ) && count( $created_orders ) === count( $fixture_statuses ) ) {
+		$duplicate_order_id = $created_orders[0]->get_id();
+		$duplicate_ability = new YoRo_YR0007_Test_Ability(
+			$compatible_input_schema,
+			$compatible_output_schema,
+			[
+				'orders'      => [ [ 'id' => $duplicate_order_id ], [ 'id' => $duplicate_order_id ] ],
+				'total_pages' => 1,
+				'page'        => 1,
+				'per_page'    => 5,
+			]
+		);
+		$duplicate_native = new YoRo_YR0007_Test_Native_Provider( $duplicate_ability );
+		$duplicate_local = new YoRo_YR0007_Counting_Local_Provider();
+		$duplicate_route = ( new YoRo_Action_Execution_Router( [ $duplicate_native, $duplicate_local ] ) )->execute( 'orders.search', $dummy_action, [ 'limit' => 5 ] );
+		$assert( is_wp_error( $duplicate_route['result'] ?? null ) && 'yoro_native_ability_invalid_result' === $duplicate_route['result']->get_error_code(), 'A duplicate native order identity must fail closed.' );
+		$assert( 0 === $duplicate_local->executions, 'A duplicate native order identity must never retry local.' );
+
 		$parity_cases = [
 			[ 'email' => $unique_email, 'limit' => 3 ],
 			[ 'email' => $unique_email, 'limit' => 1 ],
