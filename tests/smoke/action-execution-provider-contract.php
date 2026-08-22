@@ -148,10 +148,10 @@ $expected_map = [
 	'products.get_details'         => [ 'woocommerce/products-query', 'B', 'single_supported_product', false ],
 	'orders.search'                => [ 'woocommerce/orders-query', 'B', 'orders_search_subset', true ],
 	'orders.get_details'           => [ 'woocommerce/orders-query', 'B', 'single_order', false ],
-	'orders.update_status'         => [ 'woocommerce/order-update-status', 'C', 'single_versioned_order_status_write', false ],
+	'orders.update_status'         => [ 'woocommerce/order-update-status', 'C', 'single_versioned_order_status_write', true ],
 	'orders.add_note'              => [ 'woocommerce/order-add-note', 'C', 'single_provenance_preserving_order_note', false ],
-	'products.update_stock'        => [ 'woocommerce/product-update', 'C', 'single_simple_versioned_stock_write', false ],
-	'products.update_stock_status' => [ 'woocommerce/product-update', 'C', 'single_simple_versioned_stock_status_write', false ],
+	'products.update_stock'        => [ 'woocommerce/product-update', 'C', 'single_simple_versioned_stock_write', true ],
+	'products.update_stock_status' => [ 'woocommerce/product-update', 'C', 'single_simple_versioned_stock_status_write', true ],
 ];
 $candidate_map = YoRo_Native_Ability_Execution_Provider::candidate_map();
 $assert( array_keys( $expected_map ) === array_keys( $candidate_map ), 'The production native candidate map must contain only the eight reviewed YoRo actions.' );
