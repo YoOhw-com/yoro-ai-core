@@ -510,8 +510,8 @@ try {
 	update_option( YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION, time(), false );
 	$admin_ready_manifest = YoRo_Commerce_Contract_Builder::build_capability_manifest( YoRo_Connector_Snapshot_Publisher::runtime(), time() + 1 );
 	$admin_ready_names = wp_list_pluck( (array) ( $admin_ready_manifest['actions'] ?? [] ), 'name' );
-	$assert( in_array( 'plugins.activate', $admin_ready_names, true ), 'Administration actions may publish only after policy and backup gates are ready.' );
-	$assert( ! empty( $admin_ready_manifest['extensions']['wordpress.runtime']['admin_actions_ready'] ), 'The ready manifest must disclose administration capability readiness.' );
+	$assert( ! in_array( 'plugins.activate', $admin_ready_names, true ), 'Administration actions must remain local-only even when local policy and backup gates are ready.' );
+	$assert( empty( $admin_ready_manifest['extensions']['wordpress.runtime']['admin_actions_ready'] ), 'The connector manifest must not advertise local administration capability readiness.' );
 	update_option( YoRo_WordPress_Admin_Actions::POLICY_OPTION, 'no', false );
 	delete_option( YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION );
 	$assert(
@@ -625,6 +625,47 @@ try {
 	$assert( $claim_token === ( $client->results[0]['claim_token'] ?? '' ), 'Result publication must retain exact lease authority.' );
 	$assert( 1 === ( $client->results[0]['lease_generation'] ?? 0 ), 'Result publication must retain the lease generation.' );
 	$assert( $admin_id === get_current_user_id(), 'Connector execution must restore the original WordPress user.' );
+
+	update_option( YoRo_WordPress_Admin_Actions::POLICY_OPTION, 'yes', false );
+	update_option( YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION, time(), false );
+	$admin_action = YoRo_Action_Registry::get( 'plugins.activate' );
+	$assert( is_array( $admin_action ) && empty( $admin_action['ai_exposed'] ), 'Administration actions must be non-exposable at the registry boundary.' );
+	$admin_operation = $operation;
+	$admin_operation['envelope_id'] = 'envelope_' . hash( 'sha256', 'woocommerce-runtime-admin-negative-envelope' );
+	$admin_operation['workflow_id'] = 'workflow_' . hash( 'sha256', 'woocommerce-runtime-admin-negative-workflow' );
+	$admin_operation['operation_id'] = 'operation_admin_negative';
+	$admin_operation['idempotency_key'] = 'operation_' . hash( 'sha256', 'woocommerce-runtime-admin-negative-idempotency' );
+	$admin_operation['action'] = 'plugins.activate';
+	$admin_operation['params'] = [
+		'plugin'           => 'akismet/akismet.php',
+		'expected_version' => '0.0.0',
+	];
+	$admin_operation['actor']['permissions'] = [ $admin_action['permission'] ?? 'activate_plugins' ];
+	$admin_client = new YoRo_Connector_Smoke_Client();
+	$admin_client->claim = [
+		'success'  => true,
+		'delivery' => [
+			'delivery_id'      => 'delivery_' . hash( 'sha256', 'woocommerce-runtime-admin-negative' ),
+			'claim_token'      => 'claim_' . hash( 'sha256', 'woocommerce-runtime-admin-negative-token' ),
+			'lease_generation' => 1,
+			'operations'       => [ $admin_operation ],
+		],
+	];
+	$admin_executor_calls = 0;
+	$admin_executor_probe = static function ( $executed_action ) use ( &$admin_executor_calls ) {
+		if ( 'plugins.activate' === $executed_action ) {
+			$admin_executor_calls++;
+		}
+	};
+	add_action( 'yoro_before_action_execute', $admin_executor_probe, 10, 1 );
+	$admin_runtime_result = ( new YoRo_Connector_Runtime( $admin_client ) )->run_once();
+	remove_action( 'yoro_before_action_execute', $admin_executor_probe, 10 );
+	$assert( ! is_wp_error( $admin_runtime_result ) && ! empty( $admin_runtime_result['success'] ), 'Pull runtime must report the rejected administration delivery deterministically.' );
+	$assert( 0 === $admin_executor_calls, 'Remote connector delivery must never invoke a WordPress administration action.' );
+	$assert( 1 === count( $admin_client->results ) && 'failed' === ( $admin_client->results[0]['payload']['status'] ?? '' ), 'Remote administration delivery must publish one failed result.' );
+	update_option( YoRo_WordPress_Admin_Actions::POLICY_OPTION, 'no', false );
+	delete_option( YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION );
+	YoRo_Connector_Execution_Journal::clear( $admin_operation );
 
 	$journal_after_publish = YoRo_Connector_Execution_Journal::begin( $operation );
 	$assert( 'completed' === ( $journal_after_publish['state'] ?? '' ), 'Accepted results must retain the durable local execution receipt.' );
