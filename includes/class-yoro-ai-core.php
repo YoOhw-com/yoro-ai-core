@@ -98,6 +98,10 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-policy-engine.php';
 		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-plan-risk-engine.php';
 		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-runtime-guard.php';
+		require_once YORO_AI_CORE_PATH . 'includes/execution/interface-yoro-action-execution-provider.php';
+		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-local-action-execution-provider.php';
+		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-native-ability-execution-provider.php';
+		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-action-execution-router.php';
 		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-action-executor.php';
 		require_once YORO_AI_CORE_PATH . 'includes/execution/class-yoro-plan-executor.php';
 	}

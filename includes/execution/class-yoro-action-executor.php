@@ -74,20 +74,10 @@ class YoRo_Action_Executor {
 			]
 		);
 
-		if (
-			! empty( $context['store_context_pack'] ) &&
-			is_array( $context['store_context_pack'] ) &&
-			class_exists( 'YoRo_Report_Builder' )
-		) {
-			$result = YoRo_Report_Builder::with_store_context_pack(
-				$context['store_context_pack'],
-				static function() use ( $action, $params ) {
-					return call_user_func( $action['callback'], $params );
-				}
-			);
-		} else {
-			$result = call_user_func( $action['callback'], $params );
-		}
+		$execution = ( new YoRo_Action_Execution_Router() )->execute( $action_name, $action, $params, $context );
+		$result = is_array( $execution ) && array_key_exists( 'result', $execution )
+			? $execution['result']
+			: new WP_Error( 'yoro_execution_provider_failed', __( 'YoRo could not safely execute that action.', 'yoro-ai-core' ) );
 		$result = self::normalize_result( $action_name, $result, $action );
 
 		if (
