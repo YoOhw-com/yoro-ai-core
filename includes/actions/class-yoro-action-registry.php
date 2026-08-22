@@ -85,7 +85,8 @@ class YoRo_Action_Registry {
 			$action['concurrency_strategy'] = 'optimistic_version';
 		}
 
-		$action['ai_exposed'] = ! empty( $action['ai_exposed'] );
+		$action['ai_exposed'] = 'wordpress_admin' !== sanitize_key( $action['category'] ?? '' )
+			&& ! empty( $action['ai_exposed'] );
 		$action['ai_description'] = sanitize_text_field( $action['ai_description'] );
 		$action['ai_examples'] = self::normalize_string_list( $action['ai_examples'] );
 		$action['required_params'] = self::normalize_param_list( $action['required_params'] );

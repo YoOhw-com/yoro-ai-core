@@ -9,6 +9,8 @@ class YoRo_Commerce_Contract_Builder {
 	const CONNECTOR_KEY = 'wordpress';
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
+	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:970799ead3248c1d4a6f9231e6b241813c2ba2b867f646d77703df17cf8ea107';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -27,8 +29,7 @@ class YoRo_Commerce_Contract_Builder {
 				continue;
 			}
 
-			if ( 'wordpress_admin' === sanitize_key( $action['category'] ?? '' )
-				&& ! YoRo_WordPress_Admin_Actions::connector_policy_ready() ) {
+			if ( 'wordpress_admin' === sanitize_key( $action['category'] ?? '' ) ) {
 				continue;
 			}
 
@@ -52,7 +53,7 @@ class YoRo_Commerce_Contract_Builder {
 				'plugin_version'     => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
 				'execution_boundary' => 'plugin_executor',
 				'modules'            => YoRo_WordPress_Site_Actions::modules(),
-				'admin_actions_ready' => YoRo_WordPress_Admin_Actions::connector_policy_ready(),
+				'admin_actions_ready' => false,
 			],
 		];
 		if ( yoro_ai_core_has_woocommerce() ) {
@@ -60,6 +61,7 @@ class YoRo_Commerce_Contract_Builder {
 				'active' => true,
 			];
 		}
+		$extensions['yoro.capability_authority'] = self::capability_authority_binding( $actions );
 
 		return [
 			'contract_type'          => 'yoro.commerce.capability_manifest',
@@ -72,6 +74,36 @@ class YoRo_Commerce_Contract_Builder {
 			'expires_at'             => gmdate( 'c', $captured_at + self::MANIFEST_TTL ),
 			'actions'                => $actions,
 			'extensions'             => $extensions,
+		];
+	}
+
+	public static function capability_authority_binding( array $actions ) {
+		$support = [];
+
+		foreach ( $actions as $action ) {
+			if ( ! is_array( $action ) || '' === sanitize_text_field( $action['name'] ?? '' ) ) {
+				continue;
+			}
+
+			$support[] = [
+				'action_id' => sanitize_text_field( $action['name'] ),
+				'support'   => 'supported',
+				'coverage'  => 'full',
+			];
+		}
+
+		usort(
+			$support,
+			static function ( $left, $right ) {
+				return strcmp( (string) ( $left['action_id'] ?? '' ), (string) ( $right['action_id'] ?? '' ) );
+			}
+		);
+
+		return [
+			'catalog_version' => self::CAPABILITY_AUTHORITY_CATALOG_VERSION,
+			'catalog_digest'  => self::CAPABILITY_AUTHORITY_CATALOG_DIGEST,
+			'binding'         => 'exact',
+			'support'         => $support,
 		];
 	}
 
