@@ -45,6 +45,51 @@ class YoRo_YR0008_Forbidden_Local_Provider implements YoRo_Action_Execution_Prov
 	}
 }
 
+class YoRo_YR0008_Bounded_Product_Ability {
+	private $input_schema;
+	private $output_schema;
+	public $executions = 0;
+
+	public function __construct( array $input_schema, array $output_schema ) {
+		$this->input_schema = $input_schema;
+		$this->output_schema = $output_schema;
+	}
+
+	public function get_input_schema() {
+		return $this->input_schema;
+	}
+
+	public function get_output_schema() {
+		return $this->output_schema;
+	}
+
+	public function check_permissions( $input ) {
+		return true;
+	}
+
+	public function execute( $input ) {
+		$this->executions++;
+
+		return [];
+	}
+}
+
+class YoRo_YR0008_Bounded_Product_Provider extends YoRo_Native_Ability_Execution_Provider {
+	private $ability;
+
+	public function __construct( $ability ) {
+		$this->ability = $ability;
+	}
+
+	protected function abilities_api_is_available() {
+		return true;
+	}
+
+	protected function resolve_ability( $ability_id ) {
+		return $this->ability;
+	}
+}
+
 $assert( function_exists( 'wp_get_ability' ), 'The installed WordPress runtime must provide the Abilities API.' );
 $order_ability = wp_get_ability( 'woocommerce/order-update-status' );
 $product_ability = wp_get_ability( 'woocommerce/product-update' );
@@ -56,6 +101,36 @@ $assert( ! empty( $admin_ids ), 'An administrator is required for native write s
 $original_user_id = get_current_user_id();
 $subscriber_id = 0;
 $original_manage_stock = get_option( 'woocommerce_manage_stock', '__yoro_missing__' );
+$pre_execute_attempts = 0;
+$ability_invocations = 0;
+$ability_primitive_results = 0;
+$permission_bypass = static function ( $pre, $ability_name, $input ) use ( &$pre_execute_attempts ) {
+	if ( 'woocommerce/order-update-status' === $ability_name ) {
+		$pre_execute_attempts++;
+
+		return [ 'order' => [ 'id' => absint( $input['id'] ?? 0 ), 'status' => sanitize_key( $input['status'] ?? '' ) ] ];
+	}
+
+	if ( 'woocommerce/product-update' === $ability_name ) {
+		$pre_execute_attempts++;
+
+		return [ 'product' => [ 'id' => absint( $input['id'] ?? 0 ), 'type' => 'simple' ] ];
+	}
+
+	return $pre;
+};
+$count_ability_invocation = static function ( $ability_name ) use ( &$ability_invocations ) {
+	if ( in_array( $ability_name, [ 'woocommerce/order-update-status', 'woocommerce/product-update' ], true ) ) {
+		$ability_invocations++;
+	}
+};
+$count_ability_primitive_result = static function ( $result, $ability_name ) use ( &$ability_primitive_results ) {
+	if ( in_array( $ability_name, [ 'woocommerce/order-update-status', 'woocommerce/product-update' ], true ) ) {
+		$ability_primitive_results++;
+	}
+
+	return $result;
+};
 
 global $wpdb;
 $wpdb->query( 'START TRANSACTION' );
@@ -156,12 +231,18 @@ try {
 	$status_product->save();
 	$status_product = wc_get_product( $status_product_id );
 	$status_params['expected_version'] = YoRo_Commerce_Discovery_Service::product_version( $status_product );
+	$status_manage_stock_before = $status_product->get_manage_stock();
+	$status_quantity_before = $status_product->get_stock_quantity();
 	$status_decision = $provider->assess( 'products.update_stock_status', $dummy_action, $status_params );
 	$assert( ! empty( $status_decision['eligible'] ), 'The exact simple-product stock status write must select native. Decision: ' . wp_json_encode( $status_decision ) );
 	$native_status = $provider->execute( 'products.update_stock_status', $dummy_action, $status_params, [], $status_decision );
 	$assert( is_array( $native_status ) && ! empty( $native_status['success'] ), 'The native stock status write must succeed.' );
 	$assert( array_keys( $local_status ) === array_keys( $native_status ), 'Local and native stock status writes must preserve the same result shape.' );
 	$assert( 'outofstock' === $native_status['stock_status'], 'Native stock status post-state must be authoritative.' );
+	$status_product = wc_get_product( $status_product_id );
+	$assert( $status_manage_stock_before === $status_product->get_manage_stock(), 'A status-only native write must preserve manage_stock exactly.' );
+	$assert( $status_quantity_before === $status_product->get_stock_quantity(), 'A status-only native write must preserve stock quantity exactly.' );
+	$assert( 'simple' === $status_product->get_type() && ! $status_product->get_virtual() && ! $status_product->get_downloadable(), 'A status-only native write must preserve product type, virtual, and downloadable traits.' );
 
 	$digital_product = wc_get_product( $digital_product_id );
 	$digital_params = [
@@ -192,6 +273,23 @@ try {
 	$redundant_decision = $provider->assess( 'products.update_stock', $dummy_action, $redundant_identity );
 	$assert( empty( $redundant_decision['eligible'] ), 'An effective redundant product identity must reject native coverage.' );
 
+	$bounded_input_schema = $product_ability->get_input_schema();
+	foreach ( $bounded_input_schema['oneOf'] as &$bounded_branch ) {
+		$bounded_aliases = $bounded_branch['properties']['product_type_alias']['enum'] ?? [];
+
+		if ( in_array( 'physical', $bounded_aliases, true ) ) {
+			$bounded_branch['properties']['stock_quantity']['maximum'] = 6;
+		}
+	}
+	unset( $bounded_branch );
+	$bounded_ability = new YoRo_YR0008_Bounded_Product_Ability( $bounded_input_schema, $product_ability->get_output_schema() );
+	$bounded_provider = new YoRo_YR0008_Bounded_Product_Provider( $bounded_ability );
+	$bounded_params = $product_params;
+	$bounded_params['expected_version'] = YoRo_Commerce_Discovery_Service::product_version( wc_get_product( $product_id ) );
+	$bounded_decision = $bounded_provider->assess( 'products.update_stock', $dummy_action, $bounded_params );
+	$assert( empty( $bounded_decision['eligible'] ) && 'request_outside_native_coverage' === ( $bounded_decision['reason'] ?? '' ), 'An actual requested quantity outside the live native schema bounds must reject native before execution.' );
+	$assert( 0 === $bounded_ability->executions, 'A quantity outside live native schema bounds must execute zero native primitives.' );
+
 	$product = wc_get_product( $product_id );
 	$raced_params = $product_params;
 	$raced_params['stock_quantity'] = 8;
@@ -203,6 +301,38 @@ try {
 	$raced_result = $provider->execute( 'products.update_stock', $dummy_action, $raced_params, [], $raced_decision );
 	$assert( is_wp_error( $raced_result ) && 'product_version_conflict' === $raced_result->get_error_code(), 'Native execution must revalidate the version immediately before the primitive.' );
 	$assert( 6 === (int) wc_get_product( $product_id )->get_stock_quantity(), 'An adjacent version conflict must execute zero native mutation primitives.' );
+
+	$status_product = wc_get_product( $status_product_id );
+	$status_product->set_manage_stock( false );
+	$status_product->set_stock_status( 'instock' );
+	$status_product->save();
+	$status_product = wc_get_product( $status_product_id );
+	$drift_params = [
+		'product_id'       => $status_product_id,
+		'stock_status'     => 'outofstock',
+		'expected_version' => YoRo_Commerce_Discovery_Service::product_version( $status_product ),
+	];
+	$drift_decision = $provider->assess( 'products.update_stock_status', $dummy_action, $drift_params );
+	$assert( ! empty( $drift_decision['eligible'] ), 'The status-only drift fixture must select native before execution.' );
+	$force_status_only_drift = static function ( $result, $ability_name, $input ) use ( $status_product_id ) {
+		if ( 'woocommerce/product-update' === $ability_name && absint( $input['id'] ?? 0 ) === $status_product_id ) {
+			$drifted_product = wc_get_product( $status_product_id );
+			$drifted_product->set_manage_stock( true );
+			$drifted_product->set_stock_quantity( 3 );
+			$drifted_product->save();
+		}
+
+		return $result;
+	};
+	add_filter( 'wp_ability_execute_result', $force_status_only_drift, 10, 3 );
+	try {
+		$drift_result = $provider->execute( 'products.update_stock_status', $dummy_action, $drift_params, [], $drift_decision );
+	} finally {
+		remove_filter( 'wp_ability_execute_result', $force_status_only_drift, 10 );
+	}
+	$assert( is_wp_error( $drift_result ) && 'yoro_native_ability_invalid_result' === $drift_result->get_error_code(), 'Unexpected status-only manage_stock or quantity drift must fail terminally.' );
+	$drifted_product = wc_get_product( $status_product_id );
+	$assert( true === $drifted_product->get_manage_stock() && 3 === (int) $drifted_product->get_stock_quantity(), 'A failed native postcondition must not invoke a hidden local repair.' );
 
 	$subscriber_id = wp_insert_user(
 		[
@@ -219,6 +349,9 @@ try {
 	wp_set_current_user( absint( $subscriber_id ) );
 	$assert( current_user_can( YoRo_Capabilities::EXECUTE_ACTIONS ), 'The restricted actor must pass the real outer YoRo action permission.' );
 	$assert( ! current_user_can( 'edit_shop_orders' ) && ! current_user_can( 'edit_products' ), 'The restricted actor must fail the native WooCommerce order and product permissions.' );
+	add_filter( 'wp_pre_execute_ability', $permission_bypass, 10, 3 );
+	add_action( 'wp_ability_invoked', $count_ability_invocation, 10, 1 );
+	add_filter( 'wp_ability_execute_result', $count_ability_primitive_result, 10, 2 );
 
 	$order = wc_get_order( $order_id );
 	$order->set_status( 'processing' );
@@ -228,11 +361,11 @@ try {
 	$denied_order_params['expected_versions'][0]['expected_version'] = YoRo_Order_Presenter::order_version( $order );
 	$forbidden_order_local = new YoRo_YR0008_Forbidden_Local_Provider();
 	$denied_order_route = ( new YoRo_Action_Execution_Router( [ new YoRo_Native_Ability_Execution_Provider(), $forbidden_order_local ] ) )->execute( 'orders.update_status', $dummy_action, $denied_order_params );
-	$assert( is_wp_error( $denied_order_route['result'] ?? null ), 'Native order permission denial must remain terminal.' );
+	$assert( is_wp_error( $denied_order_route['result'] ?? null ) && 'ability_invalid_permissions' === $denied_order_route['result']->get_error_code(), 'Native order permission denial must remain the stable terminal permission error.' );
 	$assert( 0 === $forbidden_order_local->executions, 'Native order permission denial must not retry local.' );
 	$assert( 'processing' === wc_get_order( $order_id )->get_status(), 'Native order permission denial must execute zero mutation primitives.' );
 	$normalized_order_denial = YoRo_Action_Executor::execute( 'orders.update_status', $denied_order_params, true );
-	$assert( is_array( $normalized_order_denial ) && empty( $normalized_order_denial['success'] ) && ! empty( $normalized_order_denial['error']['code'] ), 'The public executor must normalize the terminal native order permission denial.' );
+	$assert( is_array( $normalized_order_denial ) && empty( $normalized_order_denial['success'] ) && 'ability_invalid_permissions' === ( $normalized_order_denial['error']['code'] ?? '' ), 'The public executor must preserve the stable terminal native order permission error.' );
 	$assert( 'processing' === wc_get_order( $order_id )->get_status(), 'Normalized native order permission denial must still execute zero mutation primitives.' );
 
 	$product = wc_get_product( $product_id );
@@ -242,13 +375,19 @@ try {
 	$before_quantity = (int) $product->get_stock_quantity();
 	$forbidden_product_local = new YoRo_YR0008_Forbidden_Local_Provider();
 	$denied_product_route = ( new YoRo_Action_Execution_Router( [ new YoRo_Native_Ability_Execution_Provider(), $forbidden_product_local ] ) )->execute( 'products.update_stock', $dummy_action, $denied_product_params );
-	$assert( is_wp_error( $denied_product_route['result'] ?? null ), 'Native product permission denial must remain terminal.' );
+	$assert( is_wp_error( $denied_product_route['result'] ?? null ) && 'ability_invalid_permissions' === $denied_product_route['result']->get_error_code(), 'Native product permission denial must remain the stable terminal permission error.' );
 	$assert( 0 === $forbidden_product_local->executions, 'Native product permission denial must not retry local.' );
 	$assert( $before_quantity === (int) wc_get_product( $product_id )->get_stock_quantity(), 'Native product permission denial must execute zero mutation primitives.' );
 	$normalized_product_denial = YoRo_Action_Executor::execute( 'products.update_stock', $denied_product_params, true );
-	$assert( is_array( $normalized_product_denial ) && empty( $normalized_product_denial['success'] ) && ! empty( $normalized_product_denial['error']['code'] ), 'The public executor must normalize the terminal native product permission denial.' );
+	$assert( is_array( $normalized_product_denial ) && empty( $normalized_product_denial['success'] ) && 'ability_invalid_permissions' === ( $normalized_product_denial['error']['code'] ?? '' ), 'The public executor must preserve the stable terminal native product permission error.' );
 	$assert( $before_quantity === (int) wc_get_product( $product_id )->get_stock_quantity(), 'Normalized native product permission denial must still execute zero mutation primitives.' );
+	$assert( 0 === $pre_execute_attempts, 'Explicit native permission denial must occur before wp_pre_execute_ability can short-circuit execution.' );
+	$assert( 0 === $ability_invocations, 'Explicit native permission denial must produce zero ability execute invocations.' );
+	$assert( 0 === $ability_primitive_results, 'Explicit native permission denial must produce zero native primitive callback results.' );
 } finally {
+	remove_filter( 'wp_pre_execute_ability', $permission_bypass, 10 );
+	remove_action( 'wp_ability_invoked', $count_ability_invocation, 10 );
+	remove_filter( 'wp_ability_execute_result', $count_ability_primitive_result, 10 );
 	wp_set_current_user( $original_user_id );
 	$wpdb->query( 'ROLLBACK' );
 

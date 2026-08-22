@@ -172,6 +172,17 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 			return [ 'accepted' => false ];
 		}
 
+		if (
+			in_array(
+				(string) ( $mapping['coverage_predicate'] ?? '' ),
+				[ 'single_versioned_order_status_write', 'single_simple_versioned_stock_write', 'single_simple_versioned_stock_status_write' ],
+				true
+			)
+			&& ! is_callable( [ $ability, 'check_permissions' ] )
+		) {
+			return [ 'accepted' => false ];
+		}
+
 		try {
 			$input_schema = $ability->get_input_schema();
 			$output_schema = $ability->get_output_schema();
@@ -295,6 +306,7 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 		}
 
 		$accepted_aliases = [];
+		$quantity_schemas = [];
 
 		foreach ( $branches as $branch ) {
 			$properties = is_array( $branch ) ? ( $branch['properties'] ?? [] ) : [];
@@ -321,11 +333,16 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 			if ( $requires_quantity ) {
 				if (
 					! $this->schema_has_type( $properties['manage_stock'] ?? [], 'boolean' )
-					|| ! $this->numeric_schema_accepts( $properties['stock_quantity'] ?? [], 0 )
+					|| (
+						! $this->schema_has_type( $properties['stock_quantity'] ?? [], 'integer' )
+						&& ! $this->schema_has_type( $properties['stock_quantity'] ?? [], 'number' )
+					)
 					|| ! $this->schema_has_string_enum( $properties['stock_status'] ?? [] )
 				) {
 					continue;
 				}
+
+				$quantity_schemas[ $alias ] = $properties['stock_quantity'];
 			} elseif ( ! $this->schema_has_string_enum( $properties['stock_status'] ?? [] ) ) {
 				continue;
 			}
@@ -338,8 +355,9 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 		}
 
 		return [
-			'accepted' => true,
-			'aliases'  => $accepted_aliases,
+			'accepted'         => true,
+			'aliases'          => $accepted_aliases,
+			'quantity_schemas' => $quantity_schemas,
 		];
 	}
 
@@ -380,9 +398,11 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 			return false;
 		}
 
-		$statuses = $this->accepted_ability_contract['aliases'][ $prepared['product_type_alias'] ] ?? [];
+		$statuses        = $this->accepted_ability_contract['aliases'][ $prepared['product_type_alias'] ] ?? [];
+		$quantity_schema = $this->accepted_ability_contract['quantity_schemas'][ $prepared['product_type_alias'] ] ?? [];
 
-		return in_array( $prepared['stock_quantity'] > 0 ? 'instock' : 'outofstock', $statuses, true );
+		return $this->schema_accepts_value( $quantity_schema, $prepared['stock_quantity'], 'stock_quantity' )
+			&& in_array( $prepared['stock_quantity'] > 0 ? 'instock' : 'outofstock', $statuses, true );
 	}
 
 	private function product_stock_status_write_request_is_covered( $params ) {
@@ -488,13 +508,18 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 			}
 
 			$order_id = $prepared['order_ids'][0];
-			$native_result = $ability->execute(
-				[
-					'id'     => $order_id,
-					'status' => $prepared['status'],
-					'note'   => $prepared['note'],
-				]
-			);
+			$native_input = [
+				'id'     => $order_id,
+				'status' => $prepared['status'],
+				'note'   => $prepared['note'],
+			];
+			$permission = $this->check_native_write_permission( $ability, $native_input );
+
+			if ( is_wp_error( $permission ) ) {
+				return $permission;
+			}
+
+			$native_result = $ability->execute( $native_input );
 
 			if ( is_wp_error( $native_result ) ) {
 				return $native_result;
@@ -553,6 +578,12 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 			$native_input['stock_quantity'] = $prepared['stock_quantity'];
 		}
 
+		$permission = $this->check_native_write_permission( $ability, $native_input );
+
+		if ( is_wp_error( $permission ) ) {
+			return $permission;
+		}
+
 		$native_result = $ability->execute( $native_input );
 
 		if ( is_wp_error( $native_result ) ) {
@@ -583,7 +614,32 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 			return YoRo_Store_Inventory_Service::build_product_stock_write_result( $prepared, $product );
 		}
 
+		if (
+			$product->get_manage_stock() !== $prepared['previous_manage_stock']
+			|| $product->get_stock_quantity() !== $prepared['previous_stock_quantity']
+		) {
+			return $this->invalid_native_result();
+		}
+
 		return YoRo_Store_Inventory_Service::build_product_stock_status_write_result( $prepared, $product );
+	}
+
+	private function check_native_write_permission( $ability, array $native_input ) {
+		if ( ! is_object( $ability ) || ! is_callable( [ $ability, 'check_permissions' ] ) ) {
+			return $this->invalid_native_permission();
+		}
+
+		try {
+			$permission = $ability->check_permissions( $native_input );
+		} catch ( Throwable $error ) {
+			return $this->invalid_native_permission();
+		}
+
+		return true === $permission ? true : $this->invalid_native_permission();
+	}
+
+	private function invalid_native_permission() {
+		return new WP_Error( 'ability_invalid_permissions', __( 'The selected native store capability does not have necessary permission.', 'yoro-ai-core' ) );
 	}
 
 	private function native_result_has_identity( $native_result, $envelope_key, $expected_id ) {
@@ -738,16 +794,12 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 		return ! isset( $schema['maximum'] ) || ( is_numeric( $schema['maximum'] ) && $value <= (int) $schema['maximum'] );
 	}
 
-	private function numeric_schema_accepts( $schema, $value ) {
-		if ( ! $this->schema_has_type( $schema, 'integer' ) && ! $this->schema_has_type( $schema, 'number' ) ) {
+	private function schema_accepts_value( $schema, $value, $parameter ) {
+		if ( ! is_array( $schema ) || ! function_exists( 'rest_validate_value_from_schema' ) ) {
 			return false;
 		}
 
-		if ( isset( $schema['minimum'] ) && ( ! is_numeric( $schema['minimum'] ) || $value < (float) $schema['minimum'] ) ) {
-			return false;
-		}
-
-		return ! isset( $schema['maximum'] ) || ( is_numeric( $schema['maximum'] ) && $value <= (float) $schema['maximum'] );
+		return ! is_wp_error( rest_validate_value_from_schema( $value, $schema, $parameter ) );
 	}
 
 	private function schema_required_contains( $schema, array $required ) {

@@ -315,6 +315,7 @@ class YoRo_Store_Inventory_Service {
 
 		$product_meta            = self::product_inventory_target_meta( $product, $product_target );
 		$previous_manage_stock   = method_exists( $product, 'get_manage_stock' ) ? $product->get_manage_stock() : null;
+		$previous_stock_quantity = method_exists( $product, 'get_stock_quantity' ) ? $product->get_stock_quantity() : null;
 		$managing_stock_quantity = self::product_manages_stock_quantity( $product );
 
 		if ( $managing_stock_quantity ) {
@@ -364,8 +365,9 @@ class YoRo_Store_Inventory_Service {
 			'product_downloadable' => (bool) $product->get_downloadable(),
 			'stock_status'         => $stock_status,
 			'product_meta'         => $product_meta,
-			'previous_manage_stock'=> $previous_manage_stock,
-			'previous_stock_status'=> $previous_stock_status,
+			'previous_manage_stock' => $previous_manage_stock,
+			'previous_stock_quantity' => $previous_stock_quantity,
+			'previous_stock_status' => $previous_stock_status,
 			'product_name'         => $product_name,
 			'previous_label'       => $previous_label,
 		];
