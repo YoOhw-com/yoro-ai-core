@@ -42,7 +42,7 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 				'ability_id'         => 'woocommerce/order-update-status',
 				'candidate_tranche'  => 'C',
 				'coverage_predicate' => 'single_versioned_order_status_write',
-				'enabled'            => false,
+				'enabled'            => true,
 			],
 			'orders.add_note'             => [
 				'ability_id'         => 'woocommerce/order-add-note',
@@ -54,13 +54,13 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 				'ability_id'         => 'woocommerce/product-update',
 				'candidate_tranche'  => 'C',
 				'coverage_predicate' => 'single_simple_versioned_stock_write',
-				'enabled'            => false,
+				'enabled'            => true,
 			],
 			'products.update_stock_status' => [
 				'ability_id'         => 'woocommerce/product-update',
 				'candidate_tranche'  => 'C',
 				'coverage_predicate' => 'single_simple_versioned_stock_status_write',
-				'enabled'            => false,
+				'enabled'            => true,
 			],
 		];
 	}
@@ -118,6 +118,10 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 		}
 
 		try {
+			if ( in_array( $action_name, [ 'orders.update_status', 'products.update_stock', 'products.update_stock_status' ], true ) ) {
+				return $this->execute_native_write( $action_name, $ability, $params );
+			}
+
 			$native_input = $this->adapt_input( $action_name, $params );
 
 			if ( is_wp_error( $native_input ) ) {
@@ -149,19 +153,33 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 	}
 
 	protected function request_is_covered( $coverage_predicate, $params, array $action, array $context ) {
-		if ( 'orders_search_subset' !== (string) $coverage_predicate ) {
-			return false;
+		switch ( (string) $coverage_predicate ) {
+			case 'orders_search_subset':
+				return $this->orders_search_request_is_covered( $params );
+			case 'single_versioned_order_status_write':
+				return $this->order_status_write_request_is_covered( $params );
+			case 'single_simple_versioned_stock_write':
+				return $this->product_stock_write_request_is_covered( $params );
+			case 'single_simple_versioned_stock_status_write':
+				return $this->product_stock_status_write_request_is_covered( $params );
+			default:
+				return false;
 		}
-
-		return $this->orders_search_request_is_covered( $params );
 	}
 
 	protected function assess_ability_contract( array $mapping, $ability ) {
-		if ( 'orders_search_subset' !== ( $mapping['coverage_predicate'] ?? '' ) ) {
+		if ( ! is_callable( [ $ability, 'get_input_schema' ] ) || ! is_callable( [ $ability, 'get_output_schema' ] ) ) {
 			return [ 'accepted' => false ];
 		}
 
-		if ( ! is_callable( [ $ability, 'get_input_schema' ] ) || ! is_callable( [ $ability, 'get_output_schema' ] ) ) {
+		if (
+			in_array(
+				(string) ( $mapping['coverage_predicate'] ?? '' ),
+				[ 'single_versioned_order_status_write', 'single_simple_versioned_stock_write', 'single_simple_versioned_stock_status_write' ],
+				true
+			)
+			&& ! is_callable( [ $ability, 'check_permissions' ] )
+		) {
 			return [ 'accepted' => false ];
 		}
 
@@ -175,6 +193,22 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 		if ( ! is_array( $input_schema ) || ! is_array( $output_schema ) ) {
 			return [ 'accepted' => false ];
 		}
+
+		switch ( (string) ( $mapping['coverage_predicate'] ?? '' ) ) {
+			case 'orders_search_subset':
+				return $this->assess_orders_search_contract( $input_schema, $output_schema );
+			case 'single_versioned_order_status_write':
+				return $this->assess_order_status_write_contract( $input_schema, $output_schema );
+			case 'single_simple_versioned_stock_write':
+				return $this->assess_product_write_contract( $input_schema, $output_schema, true );
+			case 'single_simple_versioned_stock_status_write':
+				return $this->assess_product_write_contract( $input_schema, $output_schema, false );
+			default:
+				return [ 'accepted' => false ];
+		}
+	}
+
+	private function assess_orders_search_contract( array $input_schema, array $output_schema ) {
 
 		$input_properties = $input_schema['properties'] ?? [];
 		$output_properties = $output_schema['properties'] ?? [];
@@ -223,6 +257,174 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 			'output_keys' => array_keys( $output_properties ),
 			'status_enum' => array_values( array_map( 'sanitize_key', $input_properties['status']['enum'] ) ),
 		];
+	}
+
+	private function assess_order_status_write_contract( array $input_schema, array $output_schema ) {
+		$input_properties = $input_schema['properties'] ?? [];
+		$output_properties = $output_schema['properties'] ?? [];
+		$order_schema = is_array( $output_properties ) ? ( $output_properties['order'] ?? [] ) : [];
+		$order_properties = is_array( $order_schema ) ? ( $order_schema['properties'] ?? [] ) : [];
+
+		if (
+			! is_array( $input_properties )
+			|| ! is_array( $output_properties )
+			|| ! $this->schema_has_type( $input_schema, 'object' )
+			|| ! $this->schema_required_contains( $input_schema, [ 'id', 'status' ] )
+			|| ! $this->integer_schema_accepts( $input_properties['id'] ?? [], 1 )
+			|| ! $this->schema_has_string_enum( $input_properties['status'] ?? [] )
+			|| ! $this->schema_has_type( $input_properties['note'] ?? [], 'string' )
+			|| ! is_array( $order_properties )
+			|| ! $this->schema_has_type( $output_schema, 'object' )
+			|| ! $this->schema_has_type( $order_schema, 'object' )
+			|| ! $this->schema_has_type( $order_properties['id'] ?? [], 'integer' )
+			|| ! $this->schema_has_type( $order_properties['status'] ?? [], 'string' )
+		) {
+			return [ 'accepted' => false ];
+		}
+
+		return [
+			'accepted'    => true,
+			'status_enum' => array_values( array_unique( array_map( 'sanitize_key', $input_properties['status']['enum'] ) ) ),
+		];
+	}
+
+	private function assess_product_write_contract( array $input_schema, array $output_schema, $requires_quantity ) {
+		$branches = isset( $input_schema['oneOf'] ) && is_array( $input_schema['oneOf'] ) ? $input_schema['oneOf'] : [];
+		$output_properties = $output_schema['properties'] ?? [];
+		$product_schema = is_array( $output_properties ) ? ( $output_properties['product'] ?? [] ) : [];
+		$product_properties = is_array( $product_schema ) ? ( $product_schema['properties'] ?? [] ) : [];
+
+		if (
+			empty( $branches )
+			|| ! is_array( $product_properties )
+			|| ! $this->schema_has_type( $output_schema, 'object' )
+			|| ! $this->schema_has_type( $product_schema, 'object' )
+			|| ! $this->schema_has_type( $product_properties['id'] ?? [], 'integer' )
+			|| ! $this->schema_has_type( $product_properties['type'] ?? [], 'string' )
+		) {
+			return [ 'accepted' => false ];
+		}
+
+		$accepted_aliases = [];
+		$quantity_schemas = [];
+
+		foreach ( $branches as $branch ) {
+			$properties = is_array( $branch ) ? ( $branch['properties'] ?? [] ) : [];
+			$alias_schema = is_array( $properties ) ? ( $properties['product_type_alias'] ?? [] ) : [];
+			$aliases = is_array( $alias_schema['enum'] ?? null ) ? $alias_schema['enum'] : [];
+
+			if (
+				! is_array( $properties )
+				|| ! $this->schema_has_type( $branch, 'object' )
+				|| ! $this->schema_required_contains( $branch, [ 'id', 'product_type_alias' ] )
+				|| ! $this->integer_schema_accepts( $properties['id'] ?? [], 1 )
+				|| 1 !== count( $aliases )
+				|| ! is_string( reset( $aliases ) )
+			) {
+				continue;
+			}
+
+			$alias = sanitize_key( reset( $aliases ) );
+
+			if ( ! in_array( $alias, [ 'physical', 'virtual', 'digital' ], true ) ) {
+				continue;
+			}
+
+			if ( $requires_quantity ) {
+				if (
+					! $this->schema_has_type( $properties['manage_stock'] ?? [], 'boolean' )
+					|| (
+						! $this->schema_has_type( $properties['stock_quantity'] ?? [], 'integer' )
+						&& ! $this->schema_has_type( $properties['stock_quantity'] ?? [], 'number' )
+					)
+					|| ! $this->schema_has_string_enum( $properties['stock_status'] ?? [] )
+				) {
+					continue;
+				}
+
+				$quantity_schemas[ $alias ] = $properties['stock_quantity'];
+			} elseif ( ! $this->schema_has_string_enum( $properties['stock_status'] ?? [] ) ) {
+				continue;
+			}
+
+			$accepted_aliases[ $alias ] = array_values( array_unique( array_map( 'sanitize_key', $properties['stock_status']['enum'] ) ) );
+		}
+
+		if ( empty( $accepted_aliases ) ) {
+			return [ 'accepted' => false ];
+		}
+
+		return [
+			'accepted'         => true,
+			'aliases'          => $accepted_aliases,
+			'quantity_schemas' => $quantity_schemas,
+		];
+	}
+
+	private function order_status_write_request_is_covered( $params ) {
+		if ( ! $this->params_only_use_supported_keys( $params, [ 'order_ids', 'status', 'note', 'expected_versions' ] ) ) {
+			return false;
+		}
+
+		$prepared = YoRo_Orders_Write_Service::prepare_order_status_write(
+			$params,
+			[
+				'canonical_order_ids_only' => true,
+				'single_target'            => true,
+				'status_must_change'       => true,
+				'allowed_statuses'         => $this->accepted_ability_contract['status_enum'] ?? [],
+			]
+		);
+
+		return ! is_wp_error( $prepared );
+	}
+
+	private function product_stock_write_request_is_covered( $params ) {
+		if ( ! $this->params_only_use_supported_keys( $params, [ 'product_id', 'stock_quantity', 'expected_version', 'product_sku', 'global_unique_id' ] ) ) {
+			return false;
+		}
+
+		$prepared = YoRo_Store_Inventory_Service::prepare_product_stock_write(
+			$params,
+			[
+				'explicit_product_id_only'                => true,
+				'supported_simple_only'                   => true,
+				'canonical_nonnegative_integer_quantity' => true,
+				'allowed_aliases'                         => array_keys( $this->accepted_ability_contract['aliases'] ?? [] ),
+			]
+		);
+
+		if ( is_wp_error( $prepared ) ) {
+			return false;
+		}
+
+		$statuses        = $this->accepted_ability_contract['aliases'][ $prepared['product_type_alias'] ] ?? [];
+		$quantity_schema = $this->accepted_ability_contract['quantity_schemas'][ $prepared['product_type_alias'] ] ?? [];
+
+		return $this->schema_accepts_value( $quantity_schema, $prepared['stock_quantity'], 'stock_quantity' )
+			&& in_array( $prepared['stock_quantity'] > 0 ? 'instock' : 'outofstock', $statuses, true );
+	}
+
+	private function product_stock_status_write_request_is_covered( $params ) {
+		if ( ! $this->params_only_use_supported_keys( $params, [ 'product_id', 'stock_status', 'expected_version', 'product_sku', 'global_unique_id' ] ) ) {
+			return false;
+		}
+
+		$aliases = $this->accepted_ability_contract['aliases'] ?? [];
+		$prepared = YoRo_Store_Inventory_Service::prepare_product_stock_status_write(
+			$params,
+			[
+				'explicit_product_id_only' => true,
+				'supported_simple_only'    => true,
+				'allowed_aliases'          => array_keys( $aliases ),
+			]
+		);
+
+		if ( is_wp_error( $prepared ) ) {
+			return false;
+		}
+
+		return in_array( $prepared['stock_status'], $aliases[ $prepared['product_type_alias'] ] ?? [], true );
 	}
 
 	private function orders_search_request_is_covered( $params ) {
@@ -284,6 +486,186 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 
 		if ( isset( $params['limit'] ) && ! is_scalar( $params['limit'] ) ) {
 			return false;
+		}
+
+		return true;
+	}
+
+	private function execute_native_write( $action_name, $ability, $params ) {
+		if ( 'orders.update_status' === $action_name ) {
+			$prepared = YoRo_Orders_Write_Service::prepare_order_status_write(
+				$params,
+				[
+					'canonical_order_ids_only' => true,
+					'single_target'            => true,
+					'status_must_change'       => true,
+					'allowed_statuses'         => $this->accepted_ability_contract['status_enum'] ?? [],
+				]
+			);
+
+			if ( is_wp_error( $prepared ) ) {
+				return $prepared;
+			}
+
+			$order_id = $prepared['order_ids'][0];
+			$native_input = [
+				'id'     => $order_id,
+				'status' => $prepared['status'],
+				'note'   => $prepared['note'],
+			];
+			$permission = $this->check_native_write_permission( $ability, $native_input );
+
+			if ( is_wp_error( $permission ) ) {
+				return $permission;
+			}
+
+			$native_result = $ability->execute( $native_input );
+
+			if ( is_wp_error( $native_result ) ) {
+				return $native_result;
+			}
+
+			if ( ! $this->native_result_has_identity( $native_result, 'order', $order_id ) ) {
+				return $this->invalid_native_result();
+			}
+
+			$order = function_exists( 'wc_get_order' ) ? wc_get_order( $order_id ) : false;
+
+			if ( ! $order instanceof WC_Order || $prepared['status'] !== sanitize_key( $order->get_status() ) ) {
+				return $this->invalid_native_result();
+			}
+
+			return YoRo_Orders_Write_Service::build_order_status_write_result( $prepared, [ $order_id ] );
+		}
+
+		$aliases = $this->accepted_ability_contract['aliases'] ?? [];
+		$is_quantity_write = 'products.update_stock' === $action_name;
+		$constraints = [
+			'explicit_product_id_only' => true,
+			'supported_simple_only'    => true,
+			'allowed_aliases'          => array_keys( $aliases ),
+		];
+
+		if ( $is_quantity_write ) {
+			$constraints['canonical_nonnegative_integer_quantity'] = true;
+			$prepared = YoRo_Store_Inventory_Service::prepare_product_stock_write( $params, $constraints );
+		} else {
+			$prepared = YoRo_Store_Inventory_Service::prepare_product_stock_status_write( $params, $constraints );
+		}
+
+		if ( is_wp_error( $prepared ) ) {
+			return $prepared;
+		}
+
+		$product_id = $prepared['product_id'];
+		$product_alias = $prepared['product_type_alias'];
+		$stock_status = $is_quantity_write
+			? ( $prepared['stock_quantity'] > 0 ? 'instock' : 'outofstock' )
+			: $prepared['stock_status'];
+
+		if ( ! in_array( $stock_status, $aliases[ $product_alias ] ?? [], true ) ) {
+			return new WP_Error( 'yoro_native_ability_contract_incompatible', __( 'The selected native store capability no longer covers this stock status.', 'yoro-ai-core' ) );
+		}
+
+		$native_input = [
+			'id'                 => $product_id,
+			'product_type_alias' => $product_alias,
+			'stock_status'       => $stock_status,
+		];
+
+		if ( $is_quantity_write ) {
+			$native_input['manage_stock'] = true;
+			$native_input['stock_quantity'] = $prepared['stock_quantity'];
+		}
+
+		$permission = $this->check_native_write_permission( $ability, $native_input );
+
+		if ( is_wp_error( $permission ) ) {
+			return $permission;
+		}
+
+		$native_result = $ability->execute( $native_input );
+
+		if ( is_wp_error( $native_result ) ) {
+			return $native_result;
+		}
+
+		if ( ! $this->native_result_has_identity( $native_result, 'product', $product_id ) ) {
+			return $this->invalid_native_result();
+		}
+
+		$product = function_exists( 'wc_get_product' ) ? wc_get_product( $product_id ) : false;
+
+		if (
+			! $product instanceof WC_Product
+			|| sanitize_key( $product->get_type() ) !== $prepared['product_type']
+			|| (bool) $product->get_virtual() !== $prepared['product_virtual']
+			|| (bool) $product->get_downloadable() !== $prepared['product_downloadable']
+			|| sanitize_key( $product->get_stock_status() ) !== $stock_status
+		) {
+			return $this->invalid_native_result();
+		}
+
+		if ( $is_quantity_write ) {
+			if ( ! $product->get_manage_stock() || ! is_numeric( $product->get_stock_quantity() ) || (int) $product->get_stock_quantity() !== $prepared['stock_quantity'] ) {
+				return $this->invalid_native_result();
+			}
+
+			return YoRo_Store_Inventory_Service::build_product_stock_write_result( $prepared, $product );
+		}
+
+		if (
+			$product->get_manage_stock() !== $prepared['previous_manage_stock']
+			|| $product->get_stock_quantity() !== $prepared['previous_stock_quantity']
+		) {
+			return $this->invalid_native_result();
+		}
+
+		return YoRo_Store_Inventory_Service::build_product_stock_status_write_result( $prepared, $product );
+	}
+
+	private function check_native_write_permission( $ability, array $native_input ) {
+		if ( ! is_object( $ability ) || ! is_callable( [ $ability, 'check_permissions' ] ) ) {
+			return $this->invalid_native_permission();
+		}
+
+		try {
+			$permission = $ability->check_permissions( $native_input );
+		} catch ( Throwable $error ) {
+			return $this->invalid_native_permission();
+		}
+
+		return true === $permission ? true : $this->invalid_native_permission();
+	}
+
+	private function invalid_native_permission() {
+		return new WP_Error( 'ability_invalid_permissions', __( 'The selected native store capability does not have necessary permission.', 'yoro-ai-core' ) );
+	}
+
+	private function native_result_has_identity( $native_result, $envelope_key, $expected_id ) {
+		return is_array( $native_result )
+			&& isset( $native_result[ $envelope_key ] )
+			&& is_array( $native_result[ $envelope_key ] )
+			&& isset( $native_result[ $envelope_key ]['id'] )
+			&& is_int( $native_result[ $envelope_key ]['id'] )
+			&& $expected_id === $native_result[ $envelope_key ]['id'];
+	}
+
+	private function params_only_use_supported_keys( $params, array $supported ) {
+		if ( ! is_array( $params ) ) {
+			return false;
+		}
+
+		$control = [ 'response_language', 'original_command', '_yoro_confirmed', '_yoro_preview' ];
+
+		foreach ( $params as $key => $value ) {
+			if ( in_array( $key, $supported, true ) || in_array( $key, $control, true ) ) {
+				continue;
+			}
+
+			if ( $this->value_is_effective( $value ) ) {
+				return false;
+			}
 		}
 
 		return true;
@@ -410,6 +792,20 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 		}
 
 		return ! isset( $schema['maximum'] ) || ( is_numeric( $schema['maximum'] ) && $value <= (int) $schema['maximum'] );
+	}
+
+	private function schema_accepts_value( $schema, $value, $parameter ) {
+		if ( ! is_array( $schema ) || ! function_exists( 'rest_validate_value_from_schema' ) ) {
+			return false;
+		}
+
+		return ! is_wp_error( rest_validate_value_from_schema( $value, $schema, $parameter ) );
+	}
+
+	private function schema_required_contains( $schema, array $required ) {
+		$declared = is_array( $schema ) && is_array( $schema['required'] ?? null ) ? $schema['required'] : [];
+
+		return empty( array_diff( $required, $declared ) );
 	}
 
 	private function value_is_effective( $value ) {

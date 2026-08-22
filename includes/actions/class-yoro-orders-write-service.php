@@ -327,42 +327,19 @@ class YoRo_Orders_Write_Service {
 	}
 
 	public static function update_order_status( $params ) {
-		$order_ids = self::order_ids_from_params( $params );
+		$prepared = self::prepare_order_status_write( $params );
 
-		$status = ! empty( $params['status'] )
-			? YoRo_Order_Helper::normalize_status_slug( $params['status'] )
-			: '';
-
-		$note   = ! empty( $params['note'] ) ? sanitize_textarea_field( $params['note'] ) : __( 'Order status updated by YoRo AI.', 'yoro-ai-core' );
-
-		if ( empty( $order_ids ) || empty( $status ) ) {
-			return new WP_Error( 'invalid_params', __( 'Please choose at least one order and the status to apply.', 'yoro-ai-core' ) );
-		}
-
-		if ( ! YoRo_Order_Helper::is_valid_order_status( $status ) ) {
-			return new WP_Error(
-				'invalid_status',
-				sprintf(
-						/* translators: %s: order status */
-						__( 'I do not recognize the order status "%s".', 'yoro-ai-core' ),
-						$status
-					)
-				);
-		}
-
-		$version_validation = self::validate_order_versions( $order_ids, $params );
-
-		if ( is_wp_error( $version_validation ) ) {
-			return $version_validation;
+		if ( is_wp_error( $prepared ) ) {
+			return $prepared;
 		}
 
 		$processed = [];
 		$skipped   = [];
 		$errors    = [];
-		$previous_statuses = [];
 
-		foreach ( $order_ids as $order_id ) {
-			$order = wc_get_order( $order_id );
+		foreach ( $prepared['targets'] as $target ) {
+			$order_id = $target['order_id'];
+			$order = $target['order'];
 
 			if ( ! $order ) {
 					$skipped[] = [
@@ -373,11 +350,7 @@ class YoRo_Orders_Write_Service {
 			}
 
 			try {
-				$previous_statuses[] = [
-					'order_id' => $order_id,
-					'status'   => $order->get_status(),
-				];
-				$order->update_status( $status, $note );
+				$order->update_status( $prepared['status'], $prepared['note'] );
 				$processed[] = $order_id;
 			} catch ( Exception $e ) {
 				$errors[] = [
@@ -385,6 +358,101 @@ class YoRo_Orders_Write_Service {
 					'message' => $e->getMessage(),
 				];
 			}
+		}
+
+		return self::build_order_status_write_result( $prepared, $processed, $skipped, $errors );
+	}
+
+	public static function prepare_order_status_write( $params, $constraints = [] ) {
+		$params = is_array( $params ) ? $params : [];
+		$constraints = is_array( $constraints ) ? $constraints : [];
+		$order_ids = self::order_ids_from_params( $params );
+		$status = ! empty( $params['status'] )
+			? YoRo_Order_Helper::normalize_status_slug( $params['status'] )
+			: '';
+		$note = ! empty( $params['note'] )
+			? sanitize_textarea_field( $params['note'] )
+			: __( 'Order status updated by YoRo AI.', 'yoro-ai-core' );
+
+		if ( empty( $order_ids ) || empty( $status ) ) {
+			return new WP_Error( 'invalid_params', __( 'Please choose at least one order and the status to apply.', 'yoro-ai-core' ) );
+		}
+
+		if ( ! empty( $constraints['canonical_order_ids_only'] ) && ! self::has_one_canonical_order_id_only( $params ) ) {
+			return new WP_Error( 'native_order_target_not_covered', __( 'The native order capability requires one exact order ID.', 'yoro-ai-core' ) );
+		}
+
+		if ( ! empty( $constraints['single_target'] ) && 1 !== count( $order_ids ) ) {
+			return new WP_Error( 'native_order_target_not_covered', __( 'The native order capability only covers one exact order.', 'yoro-ai-core' ) );
+		}
+
+		if ( ! YoRo_Order_Helper::is_valid_order_status( $status ) ) {
+			return new WP_Error(
+				'invalid_status',
+				sprintf(
+					/* translators: %s: order status */
+					__( 'I do not recognize the order status "%s".', 'yoro-ai-core' ),
+					$status
+				)
+			);
+		}
+
+		$allowed_statuses = isset( $constraints['allowed_statuses'] ) && is_array( $constraints['allowed_statuses'] )
+			? array_values( array_unique( array_map( 'sanitize_key', $constraints['allowed_statuses'] ) ) )
+			: [];
+
+		if ( ! empty( $allowed_statuses ) && ! in_array( $status, $allowed_statuses, true ) ) {
+			return new WP_Error( 'native_order_status_not_covered', __( 'The native order capability does not cover this status.', 'yoro-ai-core' ) );
+		}
+
+		$version_validation = self::validate_order_versions( $order_ids, $params );
+
+		if ( is_wp_error( $version_validation ) ) {
+			return $version_validation;
+		}
+
+		$targets = [];
+
+		foreach ( $order_ids as $order_id ) {
+			$order = $version_validation['orders'][ $order_id ] ?? false;
+
+			if ( ! $order instanceof WC_Order ) {
+				return new WP_Error( 'order_not_found', __( 'I could not find that order.', 'yoro-ai-core' ) );
+			}
+
+			if ( ! empty( $constraints['status_must_change'] ) && $status === $order->get_status() ) {
+				return new WP_Error( 'native_order_status_unchanged', __( 'The native order capability does not cover an unchanged status.', 'yoro-ai-core' ) );
+			}
+
+			$targets[] = [
+				'order_id'         => $order_id,
+				'order'            => $order,
+				'previous_status'  => $order->get_status(),
+				'expected_version' => $version_validation['version_map'][ $order_id ],
+			];
+		}
+
+		return [
+			'order_ids' => $order_ids,
+			'status'    => $status,
+			'note'      => $note,
+			'targets'   => $targets,
+		];
+	}
+
+	public static function build_order_status_write_result( array $prepared, array $processed, array $skipped = [], array $errors = [] ) {
+		$status = sanitize_key( $prepared['status'] ?? '' );
+		$previous_statuses = [];
+
+		foreach ( $prepared['targets'] ?? [] as $target ) {
+			if ( ! is_array( $target ) ) {
+				continue;
+			}
+
+			$previous_statuses[] = [
+				'order_id' => absint( $target['order_id'] ?? 0 ),
+				'status'   => sanitize_key( $target['previous_status'] ?? '' ),
+			];
 		}
 
 		$current_versions = [];
@@ -665,6 +733,8 @@ class YoRo_Orders_Write_Service {
 			return new WP_Error( 'order_version_contract_invalid', __( 'Every target order must have one expected version from the latest read.', 'yoro-ai-core' ) );
 		}
 
+		$orders = [];
+
 		foreach ( $order_ids as $order_id ) {
 			$order = function_exists( 'wc_get_order' ) ? wc_get_order( $order_id ) : false;
 
@@ -681,9 +751,14 @@ class YoRo_Orders_Write_Service {
 					[ 'order_id' => $order_id, 'current_version' => $current_version ]
 				);
 			}
+
+			$orders[ $order_id ] = $order;
 		}
 
-		return true;
+		return [
+			'version_map' => $version_map,
+			'orders'      => $orders,
+		];
 	}
 
 	private static function normalize_restore_statuses( $statuses ) {
@@ -727,5 +802,19 @@ class YoRo_Orders_Write_Service {
 		}
 
 		return array_values( array_filter( array_unique( $order_ids ) ) );
+	}
+
+	private static function has_one_canonical_order_id_only( $params ) {
+		if ( ! is_array( $params ) || ! isset( $params['order_ids'] ) || ! is_array( $params['order_ids'] ) || 1 !== count( $params['order_ids'] ) ) {
+			return false;
+		}
+
+		if ( ! empty( $params['order_id'] ) ) {
+			return false;
+		}
+
+		$order_id = reset( $params['order_ids'] );
+
+		return is_int( $order_id ) && $order_id > 0;
 	}
 }

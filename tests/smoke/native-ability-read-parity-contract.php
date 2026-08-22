@@ -336,10 +336,12 @@ $assert( is_wp_error( $throwing_route['result'] ?? null ) && 'yoro_native_abilit
 $assert( 0 === $throwing_local->executions, 'A native throwable must never retry local.' );
 
 $candidate_map = YoRo_Native_Ability_Execution_Provider::candidate_map();
-foreach ( [ 'products.search', 'products.get_details', 'orders.get_details', 'orders.update_status', 'orders.add_note', 'products.update_stock', 'products.update_stock_status' ] as $inactive_action ) {
-	$assert( empty( $candidate_map[ $inactive_action ]['enabled'] ), sprintf( '%s must remain inactive/local in P3-002/B.', $inactive_action ) );
+foreach ( [ 'products.search', 'products.get_details', 'orders.get_details', 'orders.add_note' ] as $inactive_action ) {
+	$assert( empty( $candidate_map[ $inactive_action ]['enabled'] ), sprintf( '%s must remain inactive/local after the accepted P3-002/C activation.', $inactive_action ) );
 }
-$assert( ! empty( $candidate_map['orders.search']['enabled'] ), 'Only orders.search may be native-enabled in P3-002/B.' );
+foreach ( [ 'orders.search', 'orders.update_status', 'products.update_stock', 'products.update_stock_status' ] as $active_action ) {
+	$assert( ! empty( $candidate_map[ $active_action ]['enabled'] ), sprintf( '%s must remain native-enabled after the accepted P3-002/C activation.', $active_action ) );
+}
 
 $original_user_id = get_current_user_id();
 $admin_ids = get_users( [ 'role' => 'administrator', 'fields' => 'ids', 'number' => 1 ] );

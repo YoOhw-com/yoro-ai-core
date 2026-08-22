@@ -7,9 +7,43 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Store_Inventory_Service {
 
 	public static function update_product_stock( $params ) {
+		$prepared = self::prepare_product_stock_write( $params );
+
+		if ( is_wp_error( $prepared ) ) {
+			return $prepared;
+		}
+
+		$product = $prepared['product'];
+		$stock_quantity = $prepared['stock_quantity'];
+
+		try {
+			if ( method_exists( $product, 'set_manage_stock' ) ) {
+				$product->set_manage_stock( true );
+			}
+
+			if ( method_exists( $product, 'set_stock_quantity' ) ) {
+				$product->set_stock_quantity( $stock_quantity );
+			}
+
+			if ( method_exists( $product, 'set_stock_status' ) ) {
+				$product->set_stock_status( $stock_quantity > 0 ? 'instock' : 'outofstock' );
+			}
+
+			$product->save();
+		} catch ( Exception $exception ) {
+			return new WP_Error( 'stock_update_failed', $exception->getMessage() );
+		}
+
+		return self::build_product_stock_write_result( $prepared, $product );
+	}
+
+	public static function prepare_product_stock_write( $params, $constraints = [] ) {
 		if ( ! function_exists( 'wc_get_product' ) ) {
 			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
 		}
+
+		$params = is_array( $params ) ? $params : [];
+		$constraints = is_array( $constraints ) ? $constraints : [];
 
 		if ( ! self::is_stock_management_enabled() ) {
 			return new WP_Error(
@@ -18,11 +52,19 @@ class YoRo_Store_Inventory_Service {
 			);
 		}
 
+		if ( ! empty( $constraints['explicit_product_id_only'] ) && ! self::has_one_explicit_product_id_only( $params ) ) {
+			return new WP_Error( 'native_product_target_not_covered', __( 'The native product capability requires one explicit product ID.', 'yoro-ai-core' ) );
+		}
+
 		$product_target = self::resolve_product_target( $params );
 		$product_id     = absint( $product_target['product_id'] ?? 0 );
 		$product        = $product_target['product'] ?? false;
 		$has_quantity = array_key_exists( 'stock_quantity', is_array( $params ) ? $params : [] ) && is_numeric( $params['stock_quantity'] );
 		$stock_quantity = $has_quantity ? max( 0, (int) $params['stock_quantity'] ) : null;
+
+		if ( ! empty( $constraints['canonical_nonnegative_integer_quantity'] ) && ( ! isset( $params['stock_quantity'] ) || ! is_int( $params['stock_quantity'] ) || $params['stock_quantity'] < 0 ) ) {
+			return new WP_Error( 'native_stock_quantity_not_covered', __( 'The native product capability requires a non-negative integer stock quantity.', 'yoro-ai-core' ) );
+		}
 
 		if ( '' === ( $product_target['target_type'] ?? '' ) || null === $stock_quantity ) {
 			return new WP_Error( 'invalid_params', __( 'Please choose a product and the stock quantity to set.', 'yoro-ai-core' ) );
@@ -45,29 +87,51 @@ class YoRo_Store_Inventory_Service {
 			);
 		}
 
+		$product_type_alias = self::supported_simple_product_alias( $product );
+		$allowed_aliases = isset( $constraints['allowed_aliases'] ) && is_array( $constraints['allowed_aliases'] )
+			? array_values( array_unique( array_map( 'sanitize_key', $constraints['allowed_aliases'] ) ) )
+			: [];
+
+		if ( ! empty( $constraints['supported_simple_only'] ) && '' === $product_type_alias ) {
+			return new WP_Error( 'native_product_type_not_covered', __( 'The native product capability does not cover this product type.', 'yoro-ai-core' ) );
+		}
+
+		if ( ! empty( $allowed_aliases ) && ! in_array( $product_type_alias, $allowed_aliases, true ) ) {
+			return new WP_Error( 'native_product_type_not_covered', __( 'The native product capability does not cover this product type.', 'yoro-ai-core' ) );
+		}
+
 		$previous_product_meta = self::product_inventory_target_meta( $product, $product_target );
 		$previous_manage_stock = method_exists( $product, 'get_manage_stock' ) ? $product->get_manage_stock() : null;
 		$previous_stock_quantity = method_exists( $product, 'get_stock_quantity' ) ? $product->get_stock_quantity() : null;
 		$previous_stock_status = method_exists( $product, 'get_stock_status' ) ? sanitize_key( $product->get_stock_status() ) : '';
 		$product_name = method_exists( $product, 'get_name' ) ? sanitize_text_field( $product->get_name() ) : sprintf( 'Product #%d', $product_id );
 
-		try {
-			if ( method_exists( $product, 'set_manage_stock' ) ) {
-				$product->set_manage_stock( true );
-			}
+		return [
+			'product_target'          => $product_target,
+			'product_id'              => $product_id,
+			'product'                 => $product,
+			'product_type_alias'      => $product_type_alias,
+			'product_type'            => sanitize_key( $product->get_type() ),
+			'product_virtual'         => (bool) $product->get_virtual(),
+			'product_downloadable'    => (bool) $product->get_downloadable(),
+			'stock_quantity'          => $stock_quantity,
+			'previous_product_meta'   => $previous_product_meta,
+			'previous_manage_stock'   => $previous_manage_stock,
+			'previous_stock_quantity' => $previous_stock_quantity,
+			'previous_stock_status'   => $previous_stock_status,
+			'product_name'            => $product_name,
+		];
+	}
 
-			if ( method_exists( $product, 'set_stock_quantity' ) ) {
-				$product->set_stock_quantity( $stock_quantity );
-			}
-
-			if ( method_exists( $product, 'set_stock_status' ) ) {
-				$product->set_stock_status( $stock_quantity > 0 ? 'instock' : 'outofstock' );
-			}
-
-			$product->save();
-		} catch ( Exception $exception ) {
-			return new WP_Error( 'stock_update_failed', $exception->getMessage() );
-		}
+	public static function build_product_stock_write_result( array $prepared, WC_Product $product ) {
+		$product_target = $prepared['product_target'];
+		$product_id = $prepared['product_id'];
+		$stock_quantity = $prepared['stock_quantity'];
+		$previous_product_meta = $prepared['previous_product_meta'];
+		$previous_manage_stock = $prepared['previous_manage_stock'];
+		$previous_stock_quantity = $prepared['previous_stock_quantity'];
+		$previous_stock_status = $prepared['previous_stock_status'];
+		$product_name = $prepared['product_name'];
 
 		$current_stock_status = method_exists( $product, 'get_stock_status' ) ? sanitize_key( $product->get_stock_status() ) : '';
 		$current_version = YoRo_Commerce_Discovery_Service::product_version( $product );
@@ -195,8 +259,38 @@ class YoRo_Store_Inventory_Service {
 	}
 
 	public static function update_product_stock_status( $params ) {
+		$prepared = self::prepare_product_stock_status_write( $params );
+
+		if ( is_wp_error( $prepared ) ) {
+			return $prepared;
+		}
+
+		$product = $prepared['product'];
+		$stock_status = $prepared['stock_status'];
+
+		try {
+			if ( method_exists( $product, 'set_stock_status' ) ) {
+				$product->set_stock_status( $stock_status );
+			}
+
+			$product->save();
+		} catch ( Exception $exception ) {
+			return new WP_Error( 'stock_status_update_failed', $exception->getMessage() );
+		}
+
+		return self::build_product_stock_status_write_result( $prepared, $product );
+	}
+
+	public static function prepare_product_stock_status_write( $params, $constraints = [] ) {
 		if ( ! function_exists( 'wc_get_product' ) ) {
 			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
+		}
+
+		$params = is_array( $params ) ? $params : [];
+		$constraints = is_array( $constraints ) ? $constraints : [];
+
+		if ( ! empty( $constraints['explicit_product_id_only'] ) && ! self::has_one_explicit_product_id_only( $params ) ) {
+			return new WP_Error( 'native_product_target_not_covered', __( 'The native product capability requires one explicit product ID.', 'yoro-ai-core' ) );
 		}
 
 		$product_target = self::resolve_product_target( $params );
@@ -221,6 +315,7 @@ class YoRo_Store_Inventory_Service {
 
 		$product_meta            = self::product_inventory_target_meta( $product, $product_target );
 		$previous_manage_stock   = method_exists( $product, 'get_manage_stock' ) ? $product->get_manage_stock() : null;
+		$previous_stock_quantity = method_exists( $product, 'get_stock_quantity' ) ? $product->get_stock_quantity() : null;
 		$managing_stock_quantity = self::product_manages_stock_quantity( $product );
 
 		if ( $managing_stock_quantity ) {
@@ -237,20 +332,56 @@ class YoRo_Store_Inventory_Service {
 			);
 		}
 
+		$product_type_alias = self::supported_simple_product_alias( $product );
+		$allowed_aliases = isset( $constraints['allowed_aliases'] ) && is_array( $constraints['allowed_aliases'] )
+			? array_values( array_unique( array_map( 'sanitize_key', $constraints['allowed_aliases'] ) ) )
+			: [];
+		$allowed_statuses = isset( $constraints['allowed_statuses'] ) && is_array( $constraints['allowed_statuses'] )
+			? array_values( array_unique( array_map( 'sanitize_key', $constraints['allowed_statuses'] ) ) )
+			: [];
+
+		if ( ! empty( $constraints['supported_simple_only'] ) && '' === $product_type_alias ) {
+			return new WP_Error( 'native_product_type_not_covered', __( 'The native product capability does not cover this product type.', 'yoro-ai-core' ) );
+		}
+
+		if ( ! empty( $allowed_aliases ) && ! in_array( $product_type_alias, $allowed_aliases, true ) ) {
+			return new WP_Error( 'native_product_type_not_covered', __( 'The native product capability does not cover this product type.', 'yoro-ai-core' ) );
+		}
+
+		if ( ! empty( $allowed_statuses ) && ! in_array( $stock_status, $allowed_statuses, true ) ) {
+			return new WP_Error( 'native_product_status_not_covered', __( 'The native product capability does not cover this stock status.', 'yoro-ai-core' ) );
+		}
+
 		$previous_stock_status = method_exists( $product, 'get_stock_status' ) ? YoRo_Product_Helper::normalize_stock_status_slug( $product->get_stock_status() ) : '';
 		$product_name          = method_exists( $product, 'get_name' ) ? sanitize_text_field( $product->get_name() ) : sprintf( 'Product #%d', $product_id );
 		$previous_label        = YoRo_Product_Helper::get_stock_status_label( $previous_stock_status );
-		$current_label         = YoRo_Product_Helper::get_stock_status_label( $stock_status );
+		return [
+			'product_target'       => $product_target,
+			'product_id'           => $product_id,
+			'product'              => $product,
+			'product_type_alias'   => $product_type_alias,
+			'product_type'         => sanitize_key( $product->get_type() ),
+			'product_virtual'      => (bool) $product->get_virtual(),
+			'product_downloadable' => (bool) $product->get_downloadable(),
+			'stock_status'         => $stock_status,
+			'product_meta'         => $product_meta,
+			'previous_manage_stock' => $previous_manage_stock,
+			'previous_stock_quantity' => $previous_stock_quantity,
+			'previous_stock_status' => $previous_stock_status,
+			'product_name'         => $product_name,
+			'previous_label'       => $previous_label,
+		];
+	}
 
-		try {
-			if ( method_exists( $product, 'set_stock_status' ) ) {
-				$product->set_stock_status( $stock_status );
-			}
-
-			$product->save();
-		} catch ( Exception $exception ) {
-			return new WP_Error( 'stock_status_update_failed', $exception->getMessage() );
-		}
+	public static function build_product_stock_status_write_result( array $prepared, WC_Product $product ) {
+		$product_target = $prepared['product_target'];
+		$product_id = $prepared['product_id'];
+		$stock_status = $prepared['stock_status'];
+		$product_meta = $prepared['product_meta'];
+		$previous_manage_stock = $prepared['previous_manage_stock'];
+		$previous_stock_status = $prepared['previous_stock_status'];
+		$product_name = $prepared['product_name'];
+		$previous_label = $prepared['previous_label'];
 
 		$current_stock_status = method_exists( $product, 'get_stock_status' ) ? YoRo_Product_Helper::normalize_stock_status_slug( $product->get_stock_status() ) : $stock_status;
 		$current_version = YoRo_Commerce_Discovery_Service::product_version( $product );
@@ -982,6 +1113,34 @@ class YoRo_Store_Inventory_Service {
 		}
 
 		return trim( sanitize_text_field( (string) $value ) );
+	}
+
+	private static function has_one_explicit_product_id_only( $params ) {
+		if ( ! is_array( $params ) || ! isset( $params['product_id'] ) || ! is_int( $params['product_id'] ) || $params['product_id'] <= 0 ) {
+			return false;
+		}
+
+		return '' === self::clean_product_identifier( $params['product_sku'] ?? '' )
+			&& '' === self::clean_product_identifier( $params['global_unique_id'] ?? '' );
+	}
+
+	private static function supported_simple_product_alias( $product ) {
+		if ( ! $product instanceof WC_Product || 'simple' !== sanitize_key( $product->get_type() ) ) {
+			return '';
+		}
+
+		$is_virtual = (bool) $product->get_virtual();
+		$is_downloadable = (bool) $product->get_downloadable();
+
+		if ( ! $is_virtual && ! $is_downloadable ) {
+			return 'physical';
+		}
+
+		if ( $is_virtual && ! $is_downloadable ) {
+			return 'virtual';
+		}
+
+		return $is_virtual && $is_downloadable ? 'digital' : '';
 	}
 
 	public static function get_inventory_queue( $params ) {
