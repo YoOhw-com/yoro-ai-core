@@ -24,7 +24,7 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 				'ability_id'         => 'woocommerce/products-query',
 				'candidate_tranche'  => 'B',
 				'coverage_predicate' => 'single_supported_product',
-				'enabled'            => false,
+				'enabled'            => true,
 			],
 			'orders.search'               => [
 				'ability_id'         => 'woocommerce/orders-query',
@@ -36,7 +36,7 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 				'ability_id'         => 'woocommerce/orders-query',
 				'candidate_tranche'  => 'B',
 				'coverage_predicate' => 'single_order',
-				'enabled'            => false,
+				'enabled'            => true,
 			],
 			'orders.update_status'        => [
 				'ability_id'         => 'woocommerce/order-update-status',
@@ -156,6 +156,10 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 		switch ( (string) $coverage_predicate ) {
 			case 'orders_search_subset':
 				return $this->orders_search_request_is_covered( $params );
+			case 'single_order':
+				return $this->order_details_request_is_covered( $params );
+			case 'single_supported_product':
+				return $this->product_details_request_is_covered( $params );
 			case 'single_versioned_order_status_write':
 				return $this->order_status_write_request_is_covered( $params );
 			case 'single_simple_versioned_stock_write':
@@ -197,6 +201,10 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 		switch ( (string) ( $mapping['coverage_predicate'] ?? '' ) ) {
 			case 'orders_search_subset':
 				return $this->assess_orders_search_contract( $input_schema, $output_schema );
+			case 'single_order':
+				return $this->assess_detail_query_contract( $input_schema, $output_schema, 'orders', true );
+			case 'single_supported_product':
+				return $this->assess_detail_query_contract( $input_schema, $output_schema, 'products', false );
 			case 'single_versioned_order_status_write':
 				return $this->assess_order_status_write_contract( $input_schema, $output_schema );
 			case 'single_simple_versioned_stock_write':
@@ -256,6 +264,48 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 			'accepted'    => true,
 			'output_keys' => array_keys( $output_properties ),
 			'status_enum' => array_values( array_map( 'sanitize_key', $input_properties['status']['enum'] ) ),
+		];
+	}
+
+	private function assess_detail_query_contract( array $input_schema, array $output_schema, $collection_key, $requires_line_items_flag ) {
+		$input_properties = $input_schema['properties'] ?? [];
+		$output_properties = $output_schema['properties'] ?? [];
+
+		if ( ! is_array( $input_properties ) || ! is_array( $output_properties ) ) {
+			return [ 'accepted' => false ];
+		}
+
+		$collection_schema = $output_properties[ $collection_key ] ?? [];
+		$item_schema = is_array( $collection_schema ) ? ( $collection_schema['items'] ?? [] ) : [];
+		$item_properties = is_array( $item_schema ) ? ( $item_schema['properties'] ?? [] ) : [];
+
+		if (
+			! is_array( $item_properties )
+			|| ! $this->schema_has_type( $input_schema, 'object' )
+			|| ! $this->integer_schema_accepts( $input_properties['id'] ?? [], 1 )
+			|| ( $requires_line_items_flag && ! $this->schema_has_type( $input_properties['include_line_items'] ?? [], 'boolean' ) )
+			|| ! $this->schema_has_type( $output_schema, 'object' )
+			|| ! $this->schema_has_type( $collection_schema, 'array' )
+			|| ! $this->array_schema_accepts_count( $collection_schema, 1 )
+			|| ! $this->schema_has_type( $item_schema, 'object' )
+			|| ! $this->schema_has_type( $item_properties['id'] ?? [], 'integer' )
+			|| ! $this->schema_has_type( $output_properties['total_pages'] ?? [], 'integer' )
+			|| ! $this->schema_has_type( $output_properties['page'] ?? [], 'integer' )
+			|| ! $this->schema_has_type( $output_properties['per_page'] ?? [], 'integer' )
+			|| ! $this->schema_accepts_value( $output_properties['total_pages'] ?? [], 1, 'total_pages' )
+			|| ! $this->schema_accepts_value( $output_properties['page'] ?? [], 1, 'page' )
+			|| ! $this->schema_accepts_value( $output_properties['per_page'] ?? [], 1, 'per_page' )
+		) {
+			return [ 'accepted' => false ];
+		}
+
+		return [
+			'accepted'         => true,
+			'collection_key'   => $collection_key,
+			'id_schema'        => $input_properties['id'],
+			'input_schema'     => $input_schema,
+			'output_id_schema' => $item_properties['id'],
+			'output_keys'      => array_keys( $output_properties ),
 		];
 	}
 
@@ -425,6 +475,64 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 		}
 
 		return in_array( $prepared['stock_status'], $aliases[ $prepared['product_type_alias'] ] ?? [], true );
+	}
+
+	private function order_details_request_is_covered( $params ) {
+		$order_id = $this->single_detail_target_id( $params, 'order_ids', [ 'response_focus', 'requested_fields' ] );
+
+		if (
+			$order_id <= 0
+			|| ! $this->detail_query_contract_covers_input_and_identity(
+				[ 'id' => $order_id, 'include_line_items' => false ],
+				$order_id
+			)
+			|| ! function_exists( 'wc_get_order' )
+		) {
+			return false;
+		}
+
+		$order = wc_get_order( $order_id );
+
+		return $order instanceof WC_Order
+			&& $order_id === (int) $order->get_id();
+	}
+
+	private function product_details_request_is_covered( $params ) {
+		$product_id = $this->single_detail_target_id( $params, 'product_ids' );
+
+		if (
+			$product_id <= 0
+			|| ! $this->detail_query_contract_covers_input_and_identity( [ 'id' => $product_id ], $product_id )
+			|| ! function_exists( 'wc_get_product' )
+		) {
+			return false;
+		}
+
+		$product = wc_get_product( $product_id );
+
+		return $product instanceof WC_Product
+			&& $product_id === (int) $product->get_id()
+			&& 'variation' !== sanitize_key( $product->get_type() );
+	}
+
+	private function detail_query_contract_covers_input_and_identity( array $native_input, $target_id ) {
+		return $this->schema_accepts_value( $this->accepted_ability_contract['input_schema'] ?? [], $native_input, 'input' )
+			&& $this->schema_accepts_value( $this->accepted_ability_contract['id_schema'] ?? [], $target_id, 'id' )
+			&& $this->schema_accepts_value( $this->accepted_ability_contract['output_id_schema'] ?? [], $target_id, 'output_id' );
+	}
+
+	private function single_detail_target_id( $params, $target_key, array $additional_supported_keys = [] ) {
+		if ( ! $this->params_only_use_supported_keys( $params, array_merge( [ $target_key ], $additional_supported_keys ) ) ) {
+			return 0;
+		}
+
+		$targets = is_array( $params[ $target_key ] ?? null ) ? array_values( $params[ $target_key ] ) : [];
+
+		if ( 1 !== count( $targets ) || ! is_int( $targets[0] ) || $targets[0] <= 0 ) {
+			return 0;
+		}
+
+		return $targets[0];
 	}
 
 	private function orders_search_request_is_covered( $params ) {
@@ -672,7 +780,27 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 	}
 
 	protected function adapt_input( $action_name, $params ) {
-		if ( 'orders.search' !== $action_name || ! is_array( $params ) ) {
+		if ( ! is_array( $params ) ) {
+			return new WP_Error( 'yoro_native_input_adapter_unavailable', __( 'The selected native store capability has no accepted input adapter.', 'yoro-ai-core' ) );
+		}
+
+		if ( 'orders.get_details' === $action_name ) {
+			$order_id = $this->single_detail_target_id( $params, 'order_ids', [ 'response_focus', 'requested_fields' ] );
+
+			return $order_id > 0
+				? [ 'id' => $order_id, 'include_line_items' => false ]
+				: new WP_Error( 'yoro_native_input_adapter_unavailable', __( 'The selected native store capability has no accepted input adapter.', 'yoro-ai-core' ) );
+		}
+
+		if ( 'products.get_details' === $action_name ) {
+			$product_id = $this->single_detail_target_id( $params, 'product_ids' );
+
+			return $product_id > 0
+				? [ 'id' => $product_id ]
+				: new WP_Error( 'yoro_native_input_adapter_unavailable', __( 'The selected native store capability has no accepted input adapter.', 'yoro-ai-core' ) );
+		}
+
+		if ( 'orders.search' !== $action_name ) {
 			return new WP_Error( 'yoro_native_input_adapter_unavailable', __( 'The selected native store capability has no accepted input adapter.', 'yoro-ai-core' ) );
 		}
 
@@ -700,7 +828,19 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 	}
 
 	protected function adapt_output( $action_name, $native_result, $params ) {
-		if ( 'orders.search' !== $action_name || ! is_array( $native_result ) ) {
+		if ( ! is_array( $native_result ) ) {
+			return $this->invalid_native_result();
+		}
+
+		if ( 'orders.get_details' === $action_name ) {
+			return $this->adapt_detail_output( $action_name, $native_result, $params, 'orders' );
+		}
+
+		if ( 'products.get_details' === $action_name ) {
+			return $this->adapt_detail_output( $action_name, $native_result, $params, 'products' );
+		}
+
+		if ( 'orders.search' !== $action_name ) {
 			return $this->invalid_native_result();
 		}
 
@@ -751,6 +891,60 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 		return YoRo_Orders_Read_Service::format_search_result( $orders, $params );
 	}
 
+	private function adapt_detail_output( $action_name, array $native_result, $params, $collection_key ) {
+		$allowed_keys = $this->accepted_ability_contract['output_keys'] ?? [];
+		$target_key = 'orders.get_details' === $action_name ? 'order_ids' : 'product_ids';
+		$additional_supported_keys = 'orders.get_details' === $action_name ? [ 'response_focus', 'requested_fields' ] : [];
+		$target_id = $this->single_detail_target_id( $params, $target_key, $additional_supported_keys );
+		$items = $native_result[ $collection_key ] ?? null;
+
+		if (
+			$target_id <= 0
+			|| ! is_array( $allowed_keys )
+			|| empty( $allowed_keys )
+			|| $collection_key !== ( $this->accepted_ability_contract['collection_key'] ?? '' )
+			|| array_diff( array_keys( $native_result ), $allowed_keys )
+			|| ! is_array( $items )
+			|| 1 !== count( $items )
+			|| [ 0 ] !== array_keys( $items )
+			|| ! isset( $native_result['total_pages'], $native_result['page'], $native_result['per_page'] )
+			|| ! is_int( $native_result['total_pages'] )
+			|| ! is_int( $native_result['page'] )
+			|| ! is_int( $native_result['per_page'] )
+			|| 1 !== $native_result['total_pages']
+			|| 1 !== $native_result['page']
+			|| 1 !== $native_result['per_page']
+			|| ! is_array( $items[0] )
+			|| ! isset( $items[0]['id'] )
+			|| ! is_int( $items[0]['id'] )
+			|| $target_id !== $items[0]['id']
+		) {
+			return $this->invalid_native_result();
+		}
+
+		if ( 'orders.get_details' === $action_name ) {
+			$order = function_exists( 'wc_get_order' ) ? wc_get_order( $target_id ) : false;
+
+			if ( ! $order instanceof WC_Order || $target_id !== (int) $order->get_id() ) {
+				return $this->invalid_native_result();
+			}
+
+			return YoRo_Orders_Read_Service::get_order_details( $params );
+		}
+
+		$product = function_exists( 'wc_get_product' ) ? wc_get_product( $target_id ) : false;
+
+		if (
+			! $product instanceof WC_Product
+			|| $target_id !== (int) $product->get_id()
+			|| 'variation' === sanitize_key( $product->get_type() )
+		) {
+			return $this->invalid_native_result();
+		}
+
+		return YoRo_Commerce_Discovery_Service::get_product_details( $params );
+	}
+
 	private function invalid_native_result() {
 		return new WP_Error( 'yoro_native_ability_invalid_result', __( 'The selected native store capability returned an incompatible result.', 'yoro-ai-core' ) );
 	}
@@ -792,6 +986,18 @@ class YoRo_Native_Ability_Execution_Provider implements YoRo_Action_Execution_Pr
 		}
 
 		return ! isset( $schema['maximum'] ) || ( is_numeric( $schema['maximum'] ) && $value <= (int) $schema['maximum'] );
+	}
+
+	private function array_schema_accepts_count( $schema, $count ) {
+		if ( ! $this->schema_has_type( $schema, 'array' ) ) {
+			return false;
+		}
+
+		if ( isset( $schema['minItems'] ) && ( ! is_numeric( $schema['minItems'] ) || $count < (int) $schema['minItems'] ) ) {
+			return false;
+		}
+
+		return ! isset( $schema['maxItems'] ) || ( is_numeric( $schema['maxItems'] ) && $count <= (int) $schema['maxItems'] );
 	}
 
 	private function schema_accepts_value( $schema, $value, $parameter ) {
