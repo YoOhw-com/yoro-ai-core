@@ -145,9 +145,9 @@ class YoRo_YR0005_Test_Provider implements YoRo_Action_Execution_Provider {
 
 $expected_map = [
 	'products.search'              => [ 'woocommerce/products-query', 'B', 'products_search_subset', false ],
-	'products.get_details'         => [ 'woocommerce/products-query', 'B', 'single_supported_product', false ],
+	'products.get_details'         => [ 'woocommerce/products-query', 'B', 'single_supported_product', true ],
 	'orders.search'                => [ 'woocommerce/orders-query', 'B', 'orders_search_subset', true ],
-	'orders.get_details'           => [ 'woocommerce/orders-query', 'B', 'single_order', false ],
+	'orders.get_details'           => [ 'woocommerce/orders-query', 'B', 'single_order', true ],
 	'orders.update_status'         => [ 'woocommerce/order-update-status', 'C', 'single_versioned_order_status_write', true ],
 	'orders.add_note'              => [ 'woocommerce/order-add-note', 'C', 'single_provenance_preserving_order_note', false ],
 	'products.update_stock'        => [ 'woocommerce/product-update', 'C', 'single_simple_versioned_stock_write', true ],
@@ -161,7 +161,7 @@ foreach ( $expected_map as $action_name => $expected_mapping ) {
 	$assert( $expected_mapping[0] === ( $mapping['ability_id'] ?? '' ), sprintf( '%s must map to the exact reviewed WooCommerce ability.', $action_name ) );
 	$assert( $expected_mapping[1] === ( $mapping['candidate_tranche'] ?? '' ), sprintf( '%s must retain its reviewed future tranche.', $action_name ) );
 	$assert( $expected_mapping[2] === ( $mapping['coverage_predicate'] ?? '' ), sprintf( '%s must retain its explicit coverage predicate.', $action_name ) );
-	$assert( array_key_exists( 'enabled', $mapping ) && $expected_mapping[3] === $mapping['enabled'], sprintf( '%s must retain its reviewed P3-002/B activation state.', $action_name ) );
+	$assert( array_key_exists( 'enabled', $mapping ) && $expected_mapping[3] === $mapping['enabled'], sprintf( '%s must retain its reviewed YR-0016 activation state.', $action_name ) );
 }
 
 $registry_before = wp_json_encode( YoRo_Action_Registry::all() );
@@ -180,9 +180,12 @@ $dummy_action = [
 	},
 ];
 $missing_mapping = $production_native->assess( 'site.get_info', $dummy_action );
-$inactive_mapping = $production_native->assess( 'products.search', $dummy_action );
 $assert( 'native_mapping_missing' === ( $missing_mapping['reason'] ?? '' ), 'Provider selection must reject an unmapped semantic action before any capability lookup.' );
-$assert( 'native_mapping_inactive' === ( $inactive_mapping['reason'] ?? '' ), 'Provider selection must reject an inactive production mapping before any capability lookup.' );
+
+foreach ( [ 'products.search', 'orders.add_note' ] as $inactive_action ) {
+	$inactive_mapping = $production_native->assess( $inactive_action, $dummy_action );
+	$assert( 'native_mapping_inactive' === ( $inactive_mapping['reason'] ?? '' ), sprintf( '%s must remain inactive before any capability lookup.', $inactive_action ) );
+}
 
 $active_map = [
 	'test.native' => [
