@@ -336,54 +336,6 @@ class YoRo_Admin_Page {
 				</div>
 			</section>
 
-			<?php if ( current_user_can( YoRo_Capabilities::MANAGE_MAILBOX ) ) : ?>
-			<div class="yoro-chat-quick-actions" data-yoro-quick-actions>
-				<div class="yoro-chat-quick-tray">
-					<div class="yoro-chat-quick-panel" id="yoro-chat-quick-panel" hidden data-yoro-quick-panel>
-						<div class="yoro-chat-quick-search-wrap">
-							<input
-								type="search"
-								class="yoro-chat-quick-search"
-								placeholder="<?php esc_attr_e( 'Search order #, customer email, or phone', 'yoro-ai-core' ); ?>"
-								aria-label="<?php esc_attr_e( 'Quick search orders and customers', 'yoro-ai-core' ); ?>"
-								data-yoro-quick-search
-							/>
-						</div>
-
-						<div class="yoro-chat-quick-search-results" data-yoro-quick-results>
-							<p class="yoro-chat-quick-hint"><?php esc_html_e( 'Search by order number, customer email, or phone number.', 'yoro-ai-core' ); ?></p>
-						</div>
-
-						<div class="yoro-chat-quick-inbox" data-yoro-quick-inbox>
-							<div class="yoro-chat-quick-inbox-head">
-								<div>
-									<strong><?php esc_html_e( 'Inbox', 'yoro-ai-core' ); ?></strong>
-									<span><?php esc_html_e( 'Recent shop emails', 'yoro-ai-core' ); ?></span>
-								</div>
-								<div class="yoro-chat-quick-inbox-actions">
-									<button type="button" class="button button-small yoro-quick-inbox-refresh">
-										<span class="dashicons dashicons-update" aria-hidden="true"></span>
-										<span><?php esc_html_e( 'Refresh', 'yoro-ai-core' ); ?></span>
-									</button>
-									<button type="button" class="button button-small yoro-quick-inbox-sync">
-										<span class="dashicons dashicons-update-alt" aria-hidden="true"></span>
-										<span><?php esc_html_e( 'Sync', 'yoro-ai-core' ); ?></span>
-									</button>
-								</div>
-							</div>
-							<div class="yoro-chat-quick-inbox-body" data-yoro-quick-inbox-body>
-								<p class="yoro-chat-quick-hint"><?php esc_html_e( 'Open Shop desk to load recent inbox threads.', 'yoro-ai-core' ); ?></p>
-							</div>
-						</div>
-					</div>
-					<button type="button" class="yoro-chat-quick-bubble" data-yoro-quick-toggle aria-expanded="false" aria-controls="yoro-chat-quick-panel">
-						<span class="dashicons dashicons-store yoro-chat-quick-bubble-icon" aria-hidden="true"></span>
-						<span class="yoro-chat-quick-bubble-label"><?php esc_html_e( 'Shop desk', 'yoro-ai-core' ); ?></span>
-					</button>
-				</div>
-			</div>
-			<?php endif; ?>
-
 			<div id="yoro-chat-thread" class="yoro-chat-thread">
 				<div class="yoro-chat-message yoro-chat-message-assistant" data-yoro-initial-greeting="1">
 					<div class="yoro-chat-avatar" aria-hidden="true"></div>
@@ -1106,19 +1058,6 @@ class YoRo_Admin_Page {
 							</td>
 						</tr>
 					</table>
-				</div>
-
-				<div class="yoro-ai-card yoro-email-connection-card" data-yoro-mailbox-settings>
-					<h2><?php esc_html_e( 'Email Inbox', 'yoro-ai-core' ); ?></h2>
-					<div class="yoro-email-connection-panel" data-yoro-mailbox-settings-body>
-						<div class="yoro-email-connection-summary is-loading">
-							<span class="dashicons dashicons-update" aria-hidden="true"></span>
-							<div>
-								<strong><?php esc_html_e( 'Checking email connection...', 'yoro-ai-core' ); ?></strong>
-								<p><?php esc_html_e( 'YoRo is checking the connected shop inbox.', 'yoro-ai-core' ); ?></p>
-							</div>
-						</div>
-					</div>
 				</div>
 
 				<?php if ( current_user_can( YoRo_Capabilities::MANAGE_POLICIES ) ) : ?>
