@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: YoRo Connector for WordPress
+ * Plugin Name: YoRo AI
  * Description: Securely connect WordPress to YoRo and supported AI clients.
  * Version: 0.2.4
  * Requires at least: 6.4
