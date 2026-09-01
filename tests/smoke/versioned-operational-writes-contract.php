@@ -98,6 +98,13 @@ try {
 	$assert( is_wp_error( $stale_product ) && 'product_version_conflict' === $stale_product->get_error_code(), 'A stale product version must fail before mutation.' );
 	$assert( 4 === (int) wc_get_product( $product_id )->get_stock_quantity(), 'A stale product write must not change stock.' );
 
+	$product_save_count = 0;
+	$count_product_save = static function ( $saved_product ) use ( &$product_save_count, $product_id ) {
+		if ( $saved_product instanceof WC_Product && $product_id === $saved_product->get_id() ) {
+			++$product_save_count;
+		}
+	};
+	add_action( 'woocommerce_after_product_object_save', $count_product_save, 10, 1 );
 	$product_result = YoRo_Store_Inventory_Service::update_product_stock(
 		[
 			'product_id'       => $product_id,
@@ -105,21 +112,73 @@ try {
 			'expected_version' => $product_version,
 		]
 	);
+	remove_action( 'woocommerce_after_product_object_save', $count_product_save, 10 );
 	$assert( is_array( $product_result ) && ! empty( $product_result['success'] ), 'A current product version must allow the write.' );
-	$assert( 9 === (int) wc_get_product( $product_id )->get_stock_quantity(), 'The current product write must update stock.' );
+	$assert( 1 === $product_save_count, 'A successful product write must save the product exactly once.' );
+	$post_write_product = wc_get_product( $product_id );
+	$assert( $post_write_product instanceof WC_Product, 'The persisted post-write product must be readable.' );
+	$assert( 9 === (int) $post_write_product->get_stock_quantity(), 'The current product write must update stock.' );
+	$post_write_version = YoRo_Commerce_Discovery_Service::product_version( $post_write_product );
+	$assert( $post_write_version === ( $product_result['current_version'] ?? '' ), 'The product write must return the persisted post-write version.' );
 	$product_undo = $product_result['undo_plan'][0] ?? [];
 	$assert( 'products.restore_stock_state' === ( $product_undo['action'] ?? '' ), 'Product writes must return a bounded hidden recovery action.' );
-	$assert( ( $product_result['current_version'] ?? '' ) === ( $product_undo['params']['expected_version'] ?? '' ), 'Product recovery must bind to the post-write version.' );
+	$assert( $post_write_version === ( $product_undo['params']['expected_version'] ?? '' ), 'Product recovery must bind to the persisted post-write version.' );
+	$assert( $post_write_version === YoRo_Commerce_Discovery_Service::product_version( wc_get_product( $product_id ) ), 'Repeated reads of unchanged persisted product state must return a stable version.' );
 	$product_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $product_result, 'products.update_stock' );
 	$product_schema = YoRo_Commerce_Contract_Builder::execution_output_schema( 'products.update_stock' );
 	$assert( array_keys( $product_payload['data'] ) === $product_schema['properties']['data']['required'], 'Product writes must match the exact canonical output data schema.' );
 
+	$product_save_count = 0;
+	add_action( 'woocommerce_after_product_object_save', $count_product_save, 10, 1 );
 	$product_recovery = YoRo_Store_Inventory_Service::restore_product_stock_state( $product_undo['params'] ?? [] );
+	remove_action( 'woocommerce_after_product_object_save', $count_product_save, 10 );
 	$product_recovery_error = is_wp_error( $product_recovery )
 		? $product_recovery->get_error_code() . ':' . wp_json_encode( $product_recovery->get_error_data() )
 		: gettype( $product_recovery );
 	$assert( is_array( $product_recovery ) && ! empty( $product_recovery['success'] ), 'Product recovery must succeed against the exact post-write version. Received ' . $product_recovery_error );
-	$assert( 4 === (int) wc_get_product( $product_id )->get_stock_quantity(), 'Product recovery must restore the previous stock.' );
+	$assert( 1 === $product_save_count, 'A successful product recovery must save the product exactly once.' );
+	$recovered_product = wc_get_product( $product_id );
+	$assert( $recovered_product instanceof WC_Product, 'The persisted recovered product must be readable.' );
+	$assert( true === $recovered_product->get_manage_stock(), 'Product recovery must restore the previous stock-management flag.' );
+	$assert( 4 === (int) $recovered_product->get_stock_quantity(), 'Product recovery must restore the previous stock quantity.' );
+	$assert( 'instock' === $recovered_product->get_stock_status(), 'Product recovery must restore the previous stock status.' );
+	$recovered_version = YoRo_Commerce_Discovery_Service::product_version( $recovered_product );
+	$assert( $recovered_version === ( $product_recovery['current_version'] ?? '' ), 'Product recovery must return the persisted recovered version.' );
+	$product_save_count = 0;
+	add_action( 'woocommerce_after_product_object_save', $count_product_save, 10, 1 );
+	$replayed_product_recovery = YoRo_Store_Inventory_Service::restore_product_stock_state( $product_undo['params'] ?? [] );
+	remove_action( 'woocommerce_after_product_object_save', $count_product_save, 10 );
+	$assert( is_wp_error( $replayed_product_recovery ) && 'product_version_conflict' === $replayed_product_recovery->get_error_code(), 'An already-consumed recovery token must fail closed.' );
+	$assert( 0 === $product_save_count, 'An already-consumed recovery token must not trigger a second product save.' );
+	$assert( $recovered_version === YoRo_Commerce_Discovery_Service::product_version( wc_get_product( $product_id ) ), 'Rejected recovery replay must leave persisted product state unchanged.' );
+
+	$second_product_result = YoRo_Store_Inventory_Service::update_product_stock(
+		[
+			'product_id'       => $product_id,
+			'stock_quantity'   => 11,
+			'expected_version' => $recovered_version,
+		]
+	);
+	$assert( is_array( $second_product_result ) && ! empty( $second_product_result['success'] ), 'A second current product version must allow the write.' );
+	$stale_product_undo = $second_product_result['undo_plan'][0] ?? [];
+	$intervening_product = wc_get_product( $product_id );
+	$assert( $intervening_product instanceof WC_Product, 'The product must remain readable before an intervening mutation.' );
+	$intervening_product->set_stock_quantity( 6 );
+	$intervening_product->set_stock_status( 'instock' );
+	$intervening_product->save();
+	$intervening_product = wc_get_product( $product_id );
+	$intervening_version = YoRo_Commerce_Discovery_Service::product_version( $intervening_product );
+	$assert( $intervening_version !== ( $stale_product_undo['params']['expected_version'] ?? '' ), 'An intervening mutation must supersede the earlier recovery version.' );
+
+	$product_save_count = 0;
+	add_action( 'woocommerce_after_product_object_save', $count_product_save, 10, 1 );
+	$stale_product_recovery = YoRo_Store_Inventory_Service::restore_product_stock_state( $stale_product_undo['params'] ?? [] );
+	remove_action( 'woocommerce_after_product_object_save', $count_product_save, 10 );
+	$assert( is_wp_error( $stale_product_recovery ) && 'product_version_conflict' === $stale_product_recovery->get_error_code(), 'Recovery must reject a stale token after an intervening mutation.' );
+	$assert( 0 === $product_save_count, 'Stale recovery must fail before triggering a product save.' );
+	$post_conflict_product = wc_get_product( $product_id );
+	$assert( 6 === (int) $post_conflict_product->get_stock_quantity(), 'Stale recovery must not overwrite the intervening product state.' );
+	$assert( $intervening_version === YoRo_Commerce_Discovery_Service::product_version( $post_conflict_product ), 'Stale recovery must leave the intervening persisted version unchanged.' );
 
 	$order = wc_create_order( [ 'status' => 'processing', 'customer_id' => 0 ] );
 	$assert( $order instanceof WC_Order, 'A WooCommerce order fixture is required.' );
