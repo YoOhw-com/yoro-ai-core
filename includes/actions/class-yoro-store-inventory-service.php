@@ -34,6 +34,12 @@ class YoRo_Store_Inventory_Service {
 			return new WP_Error( 'stock_update_failed', $exception->getMessage() );
 		}
 
+		$product = self::reload_product_after_inventory_write( $product );
+
+		if ( is_wp_error( $product ) ) {
+			return $product;
+		}
+
 		return self::build_product_stock_write_result( $prepared, $product );
 	}
 
@@ -276,6 +282,12 @@ class YoRo_Store_Inventory_Service {
 			$product->save();
 		} catch ( Exception $exception ) {
 			return new WP_Error( 'stock_status_update_failed', $exception->getMessage() );
+		}
+
+		$product = self::reload_product_after_inventory_write( $product );
+
+		if ( is_wp_error( $product ) ) {
+			return $product;
 		}
 
 		return self::build_product_stock_status_write_result( $prepared, $product );
@@ -737,6 +749,12 @@ class YoRo_Store_Inventory_Service {
 			return new WP_Error( 'stock_restore_failed', $exception->getMessage() );
 		}
 
+		$product = self::reload_product_after_inventory_write( $product );
+
+		if ( is_wp_error( $product ) ) {
+			return $product;
+		}
+
 		return [
 			'success'      => true,
 			'action'       => 'products.restore_stock_state',
@@ -748,6 +766,20 @@ class YoRo_Store_Inventory_Service {
 			'undo_plan'    => [],
 			'current_version' => YoRo_Commerce_Discovery_Service::product_version( $product ),
 		];
+	}
+
+	private static function reload_product_after_inventory_write( WC_Product $product ) {
+		$product_id = absint( $product->get_id() );
+		$persisted_product = function_exists( 'wc_get_product' ) ? wc_get_product( $product_id ) : false;
+
+		if ( ! $persisted_product instanceof WC_Product ) {
+			return new WP_Error(
+				'product_refresh_failed',
+				__( 'The product was saved but its persisted state could not be read.', 'yoro-ai-core' )
+			);
+		}
+
+		return $persisted_product;
 	}
 
 	private static function validate_product_version( WC_Product $product, $params ) {
