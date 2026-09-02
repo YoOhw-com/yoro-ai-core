@@ -6,10 +6,141 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Logger {
 
+	const SUPPORT_DIAGNOSTIC_LIMIT = 100;
+
+	const SUPPORT_DIAGNOSTIC_TELEMETRY_KEYS = [
+		'ai_trace_id',
+		'parser_source',
+		'router_mode',
+		'intent_name',
+		'intent_family',
+		'language',
+		'confidence',
+		'ai_feature',
+		'ai_provider',
+		'ai_model',
+		'prompt_version',
+		'yoro_ai_api_request_id',
+		'yoro_ai_api_plan',
+		'yoro_ai_api_usage_period',
+		'yoro_ai_api_usage_remaining',
+		'plan_type',
+		'preview',
+		'confirm',
+		'requires_confirmation',
+		'risk_level',
+		'result_success',
+		'result_type',
+		'display_type',
+		'count',
+		'duration_ms',
+	];
+
 	public static function log( $data ) {
 		$data = is_array( $data ) ? $data : [];
 
 		return self::log_to_db( $data );
+	}
+
+	public static function get_support_diagnostics( $limit = self::SUPPORT_DIAGNOSTIC_LIMIT ) {
+		global $wpdb;
+
+		$table   = YoRo_DB::logs_table_name();
+		$columns = self::get_table_columns( $table );
+		$limit   = min( self::SUPPORT_DIAGNOSTIC_LIMIT, max( 1, absint( $limit ) ) );
+		$selected_columns = array_values(
+			array_intersect(
+				[ 'id', 'trace_id', 'action', 'status', 'preview', 'confirm', 'telemetry', 'created_at' ],
+				$columns
+			)
+		);
+
+		if ( empty( $selected_columns ) || ! in_array( 'id', $selected_columns, true ) ) {
+			return [];
+		}
+
+		$select_sql = implode(
+			', ',
+			array_map(
+				static function ( $column ) {
+					return '`' . $column . '`';
+				},
+				$selected_columns
+			)
+		);
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB -- Reads only an allowlisted projection from the plugin-owned log table.
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT {$select_sql} FROM {$table} ORDER BY id DESC LIMIT %d",
+				$limit
+			),
+			ARRAY_A
+		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB
+
+		return array_values(
+			array_map(
+				[ __CLASS__, 'support_diagnostic_row' ],
+				is_array( $rows ) ? $rows : []
+			)
+		);
+	}
+
+	private static function support_diagnostic_row( $row ) {
+		$row       = is_array( $row ) ? $row : [];
+		$telemetry = [];
+
+		if ( is_array( $row['telemetry'] ?? null ) ) {
+			$telemetry = $row['telemetry'];
+		} elseif ( is_string( $row['telemetry'] ?? null ) && '' !== trim( $row['telemetry'] ) ) {
+			$decoded = json_decode( $row['telemetry'], true );
+			$telemetry = is_array( $decoded ) ? $decoded : [];
+		}
+
+		$trace_id = sanitize_text_field( (string) ( $row['trace_id'] ?? $telemetry['trace_id'] ?? '' ) );
+
+		return [
+			'id'         => absint( $row['id'] ?? 0 ),
+			'trace_id'   => substr( $trace_id, 0, 160 ),
+			'action'     => substr( sanitize_text_field( (string) ( $row['action'] ?? '' ) ), 0, 160 ),
+			'status'     => sanitize_key( (string) ( $row['status'] ?? '' ) ),
+			'preview'    => ! empty( $row['preview'] ),
+			'confirm'    => ! empty( $row['confirm'] ),
+			'created_at' => substr( sanitize_text_field( (string) ( $row['created_at'] ?? '' ) ), 0, 32 ),
+			'telemetry'  => self::support_diagnostic_telemetry( $telemetry ),
+		];
+	}
+
+	private static function support_diagnostic_telemetry( $telemetry ) {
+		$telemetry = is_array( $telemetry ) ? $telemetry : [];
+		$safe      = [];
+
+		foreach ( self::SUPPORT_DIAGNOSTIC_TELEMETRY_KEYS as $key ) {
+			if ( ! array_key_exists( $key, $telemetry ) ) {
+				continue;
+			}
+
+			$value = self::support_diagnostic_value( $telemetry[ $key ] );
+
+			if ( null !== $value ) {
+				$safe[ $key ] = $value;
+			}
+		}
+
+		return $safe;
+	}
+
+	private static function support_diagnostic_value( $value ) {
+		if ( is_bool( $value ) || is_int( $value ) || is_float( $value ) ) {
+			return $value;
+		}
+
+		if ( is_string( $value ) ) {
+			return substr( sanitize_text_field( $value ), 0, 200 );
+		}
+
+		return null;
 	}
 
 	private static function log_to_db( $data ) {
