@@ -7,6 +7,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Admin_Page {
 
 	const MENU_SLUG = 'yoro-ai-core';
+	const SUPPORT_DIAGNOSTICS_ACTION = 'yoro_download_support_diagnostics';
+	const SUPPORT_DIAGNOSTICS_NONCE_ACTION = 'yoro_download_support_diagnostics';
 
 	private static $admin_screen_ids = [];
 
@@ -16,6 +18,7 @@ class YoRo_Admin_Page {
 		add_action( 'admin_init', [ __CLASS__, 'handle_policy_save' ] );
 		add_action( 'admin_init', [ __CLASS__, 'handle_ai_api_connect_callback' ] );
 		add_action( 'admin_init', [ __CLASS__, 'handle_settings_save' ] );
+		add_action( 'admin_post_' . self::SUPPORT_DIAGNOSTICS_ACTION, [ __CLASS__, 'handle_support_diagnostics_download' ] );
 		add_action( 'admin_head', [ __CLASS__, 'print_menu_icon_styles' ] );
 	}
 
@@ -539,6 +542,17 @@ class YoRo_Admin_Page {
 					<?php endif; ?>
 				</p>
 
+				<?php if ( current_user_can( YoRo_Capabilities::VIEW_AUDIT ) ) : ?>
+					<p>
+						<a
+							class="button"
+							href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=' . self::SUPPORT_DIAGNOSTICS_ACTION ), self::SUPPORT_DIAGNOSTICS_NONCE_ACTION ) ); ?>"
+						>
+							<?php esc_html_e( 'Download support diagnostics', 'yoro-ai-core' ); ?>
+						</a>
+					</p>
+				<?php endif; ?>
+
 				<form method="get">
 					<input type="hidden" name="page" value="<?php echo esc_attr( self::MENU_SLUG ); ?>" />
 					<input type="hidden" name="yoro_admin_panel" value="history" />
@@ -551,6 +565,77 @@ class YoRo_Admin_Page {
 		</div>
 
 		<?php
+	}
+
+	public static function validate_support_diagnostics_download( $nonce ) {
+		if ( ! current_user_can( YoRo_Capabilities::VIEW_AUDIT ) ) {
+			return new WP_Error(
+				'yoro_support_diagnostics_forbidden',
+				__( 'You do not have permission to download YoRo support diagnostics.', 'yoro-ai-core' ),
+				[ 'status' => 403 ]
+			);
+		}
+
+		if ( ! wp_verify_nonce( sanitize_text_field( (string) $nonce ), self::SUPPORT_DIAGNOSTICS_NONCE_ACTION ) ) {
+			return new WP_Error(
+				'yoro_support_diagnostics_invalid_nonce',
+				__( 'The support diagnostics download link is invalid or expired.', 'yoro-ai-core' ),
+				[ 'status' => 403 ]
+			);
+		}
+
+		return true;
+	}
+
+	public static function build_support_diagnostics_payload() {
+		$diagnostics = YoRo_Logger::get_support_diagnostics();
+		$trace_ids   = [];
+
+		foreach ( $diagnostics as $diagnostic ) {
+			$trace_id = sanitize_text_field( (string) ( $diagnostic['trace_id'] ?? '' ) );
+
+			if ( '' !== $trace_id ) {
+				$trace_ids[ $trace_id ] = true;
+			}
+		}
+
+		return [
+			'generated_at' => gmdate( 'c' ),
+			'correlation'  => [
+				'join_key'     => 'trace_id',
+				'semantics'    => 'diagnostic_only',
+				'authoritative' => false,
+				'trace_ids'    => array_slice( array_keys( $trace_ids ), 0, YoRo_Logger::SUPPORT_DIAGNOSTIC_LIMIT ),
+			],
+			'diagnostics'  => $diagnostics,
+		];
+	}
+
+	public static function handle_support_diagnostics_download() {
+		$nonce = isset( $_GET['_wpnonce'] )
+			? sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) )
+			: '';
+		$validation = self::validate_support_diagnostics_download( $nonce );
+
+		if ( is_wp_error( $validation ) ) {
+			$status = absint( $validation->get_error_data()['status'] ?? 403 );
+
+			wp_die(
+				esc_html( $validation->get_error_message() ),
+				esc_html__( 'Support diagnostics unavailable', 'yoro-ai-core' ),
+				[ 'response' => $status ]
+			);
+		}
+
+		$payload = self::build_support_diagnostics_payload();
+		$filename = 'yoro-support-diagnostics-' . gmdate( 'Ymd-His' ) . '.json';
+
+		nocache_headers();
+		header( 'Content-Type: application/json; charset=UTF-8' );
+		header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+		header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
+		echo wp_json_encode( $payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE );
+		exit;
 	}
 
 	public static function render_policies_page() {
