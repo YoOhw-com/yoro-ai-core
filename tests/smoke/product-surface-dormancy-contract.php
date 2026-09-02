@@ -48,9 +48,19 @@ $assert(
 	'The main plugin header must expose the public product name YoRo AI.'
 );
 $assert(
-	1 === preg_match( '/^ \* Version: 0\.2\.4$/m', $plugin_source ),
-	'The plugin version must remain 0.2.4.'
+	1 === preg_match( '/^ \* Version: (0\.2\.5)$/m', $plugin_source, $plugin_version ),
+	'The candidate must have the distinct plugin version 0.2.5.'
 );
+$assert(
+	false !== strpos( $plugin_source, '$yoro_ai_core_plugin_data = get_file_data(' ) &&
+	false !== strpos( $plugin_source, "'Version' => 'Version'" ) &&
+	false !== strpos( $plugin_source, "'YORO_AI_CORE_VERSION'," ) &&
+	false !== strpos( $plugin_source, "? \$yoro_ai_core_plugin_data['Version']" ),
+	'The runtime version must continue to derive from the plugin header.'
+);
+if ( defined( 'YORO_AI_CORE_VERSION' ) ) {
+	$assert( '0.2.5' === YORO_AI_CORE_VERSION, 'The loaded runtime must report the candidate version 0.2.5.' );
+}
 $assert(
 	false !== strpos( $plugin_source, 'Text Domain: yoro-ai-core' ) &&
 	false !== strpos( $plugin_source, "define( 'YORO_AI_CORE_FILE', __FILE__ );" ) &&
@@ -63,8 +73,10 @@ $assert(
 	'The WordPress readme title must expose YoRo AI.'
 );
 $assert(
-	1 === preg_match( '/^Stable tag: 0\.2\.4$/m', $readme_source ),
-	'The WordPress readme Stable tag must match version 0.2.4.'
+	1 === preg_match( '/^Stable tag: (0\.2\.5)$/m', $readme_source, $stable_version ) &&
+	isset( $plugin_version[1] ) && $plugin_version[1] === $stable_version[1] &&
+	false !== strpos( $readme_source, "= 0.2.5 =\n" ),
+	'The readme Stable tag and changelog must match the candidate plugin header.'
 );
 $assert(
 	false !== strpos( $readme_source, 'YoRo AI is the local WordPress runtime for YoRo.' ),
