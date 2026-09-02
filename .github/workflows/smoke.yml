@@ -13,12 +13,12 @@ permissions:
 jobs:
   wordpress-core:
     name: Plain WordPress Smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     services:
       mysql:
-        image: mysql:8.4
+        image: mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
         env:
           MYSQL_DATABASE: wordpress
           MYSQL_USER: wordpress
@@ -55,8 +55,57 @@ jobs:
           legacy_token_name="YORO_CROSS_REPO"_READ_TOKEN
           ! grep -Fq "secrets.$legacy_token_name" .github/workflows/smoke.yml
 
+          workflow='.github/workflows/smoke.yml'
+          checkout_sha='11d5960a326750d5838078e36cf38b85af677262'
+          setup_php_sha='f3e473d116dcccaddc5834248c87452386958240'
+          wp_cli_commit='2f25af27dbcfc55ca8fe0efe65c7771a777234dc'
+          wordpress_version='7.1'
+          wordpress_archive='https://wordpress.org/wordpress-7.1.zip'
+          woocommerce_version='11.0.1'
+          mysql_image='mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb'
+          runner_family='ubuntu-24.04'
+
+          assert_immutable_action_refs() {
+            local candidate="$1"
+            local action_ref
+            local failed=0
+
+            while IFS= read -r action_ref; do
+              if [[ ! "$action_ref" =~ ^[^@[:space:]]+@[0-9a-f]{40}$ ]]; then
+                echo "Mutable or malformed protected action ref: $action_ref" >&2
+                failed=1
+              fi
+            done < <(sed -nE 's/^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*([^[:space:]#]+).*/\2/p' "$candidate")
+
+            [[ "$failed" -eq 0 ]]
+          }
+
+          assert_immutable_action_refs "$workflow"
+          adversarial_workflow="$RUNNER_TEMP/core-smoke-mutable-action.yml"
+          printf '%s\n' 'steps:' '  - uses: shivammathur/setup-php@v2' > "$adversarial_workflow"
+          if assert_immutable_action_refs "$adversarial_workflow"; then
+            echo 'Mutable protected action adversarial fixture was accepted.' >&2
+            exit 1
+          fi
+
+          [[ "$(grep -Fc "uses: actions/checkout@$checkout_sha" "$workflow")" -eq 3 ]]
+          [[ "$(grep -Fc "uses: shivammathur/setup-php@$setup_php_sha" "$workflow")" -eq 2 ]]
+          [[ "$(grep -Fc "runs-on: $runner_family" "$workflow")" -eq 2 ]]
+          [[ "$(grep -Fc "image: $mysql_image" "$workflow")" -eq 2 ]]
+          wp_cli_url="https://raw.githubusercontent.com/wp-cli/builds/$wp_cli_commit/phar/wp-cli.phar"
+          [[ "$(grep -Fc "$wp_cli_url" "$workflow")" -eq 2 ]]
+          mutable_wp_cli_ref='gh-pages'
+          ! grep -Fq "${mutable_wp_cli_ref}/phar/wp-cli.phar" "$workflow"
+          [[ "$(grep -Fc "core download $wordpress_archive" "$workflow")" -eq 2 ]]
+          [[ "$(grep -Fc "core verify-checksums --version=$wordpress_version" "$workflow")" -eq 2 ]]
+          grep -Fq "plugin install woocommerce --version=$woocommerce_version" "$workflow"
+          grep -Fq "plugin verify-checksums woocommerce --version=$woocommerce_version" "$workflow"
+
+          echo "Immutable verifier identities: checkout@$checkout_sha setup-php@$setup_php_sha wp-cli/builds@$wp_cli_commit WordPress@$wordpress_version WooCommerce@$woocommerce_version $mysql_image $runner_family"
+          echo 'Mutable protected action adversarial fixture: REJECTED'
+
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: "8.4"
           coverage: none
@@ -75,12 +124,15 @@ jobs:
 
       - name: Install disposable plain WordPress
         run: |
+          set -euo pipefail
           curl --fail --location --silent --show-error \
             --output "$RUNNER_TEMP/wp-cli.phar" \
-            https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
-          php "$RUNNER_TEMP/wp-cli.phar" core download \
+            https://raw.githubusercontent.com/wp-cli/builds/2f25af27dbcfc55ca8fe0efe65c7771a777234dc/phar/wp-cli.phar
+          php "$RUNNER_TEMP/wp-cli.phar" core download https://wordpress.org/wordpress-7.1.zip \
             --path="$RUNNER_TEMP/wordpress" \
             --quiet
+          php "$RUNNER_TEMP/wp-cli.phar" core verify-checksums --version=7.1 \
+            --path="$RUNNER_TEMP/wordpress"
           php "$RUNNER_TEMP/wp-cli.phar" config create \
             --path="$RUNNER_TEMP/wordpress" \
             --dbname=wordpress \
@@ -100,6 +152,9 @@ jobs:
             "$RUNNER_TEMP/wordpress/wp-content/plugins/yoro-ai-core"
           php "$RUNNER_TEMP/wp-cli.phar" plugin activate yoro-ai-core \
             --path="$RUNNER_TEMP/wordpress"
+          wordpress_version="$(php "$RUNNER_TEMP/wp-cli.phar" core version --path="$RUNNER_TEMP/wordpress")"
+          [[ "$wordpress_version" == '7.1' ]]
+          echo "Verified WordPress $wordpress_version against WordPress.org checksums."
 
       - name: Run WordPress-first contract
         run: |
@@ -112,12 +167,12 @@ jobs:
 
   smoke:
     name: WordPress and WooCommerce Smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     services:
       mysql:
-        image: mysql:8.4
+        image: mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
         env:
           MYSQL_DATABASE: wordpress
           MYSQL_USER: wordpress
@@ -168,7 +223,7 @@ jobs:
           echo "Resolved YoOhw-com/yoro-ai-api@main canary SHA: $api_sha"
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: "8.4"
           coverage: none
@@ -184,12 +239,15 @@ jobs:
 
       - name: Install disposable WordPress and WooCommerce
         run: |
+          set -euo pipefail
           curl --fail --location --silent --show-error \
             --output "$RUNNER_TEMP/wp-cli.phar" \
-            https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
-          php "$RUNNER_TEMP/wp-cli.phar" core download \
+            https://raw.githubusercontent.com/wp-cli/builds/2f25af27dbcfc55ca8fe0efe65c7771a777234dc/phar/wp-cli.phar
+          php "$RUNNER_TEMP/wp-cli.phar" core download https://wordpress.org/wordpress-7.1.zip \
             --path="$RUNNER_TEMP/wordpress" \
             --quiet
+          php "$RUNNER_TEMP/wp-cli.phar" core verify-checksums --version=7.1 \
+            --path="$RUNNER_TEMP/wordpress"
           php "$RUNNER_TEMP/wp-cli.phar" config create \
             --path="$RUNNER_TEMP/wordpress" \
             --dbname=wordpress \
@@ -205,13 +263,21 @@ jobs:
             --admin_password=yoro_smoke_password \
             --admin_email=smoke@example.test \
             --skip-email
-          php "$RUNNER_TEMP/wp-cli.phar" plugin install woocommerce \
-            --path="$RUNNER_TEMP/wordpress" \
-            --activate
+          php "$RUNNER_TEMP/wp-cli.phar" plugin install woocommerce --version=11.0.1 \
+            --path="$RUNNER_TEMP/wordpress"
+          php "$RUNNER_TEMP/wp-cli.phar" plugin verify-checksums woocommerce --version=11.0.1 \
+            --path="$RUNNER_TEMP/wordpress"
+          php "$RUNNER_TEMP/wp-cli.phar" plugin activate woocommerce \
+            --path="$RUNNER_TEMP/wordpress"
           ln -s "$GITHUB_WORKSPACE" \
             "$RUNNER_TEMP/wordpress/wp-content/plugins/yoro-ai-core"
           php "$RUNNER_TEMP/wp-cli.phar" plugin activate yoro-ai-core \
             --path="$RUNNER_TEMP/wordpress"
+          wordpress_version="$(php "$RUNNER_TEMP/wp-cli.phar" core version --path="$RUNNER_TEMP/wordpress")"
+          woocommerce_version="$(php "$RUNNER_TEMP/wp-cli.phar" plugin get woocommerce --field=version --path="$RUNNER_TEMP/wordpress")"
+          [[ "$wordpress_version" == '7.1' ]]
+          [[ "$woocommerce_version" == '11.0.1' ]]
+          echo "Verified WordPress $wordpress_version and WooCommerce $woocommerce_version against WordPress.org checksums."
 
       - name: Run PHP smoke contracts
         env:
