@@ -60,6 +60,7 @@ jobs:
           setup_php_sha='f3e473d116dcccaddc5834248c87452386958240'
           wp_cli_commit='2f25af27dbcfc55ca8fe0efe65c7771a777234dc'
           wordpress_version='7.1'
+          wordpress_archive='https://wordpress.org/wordpress-7.1.zip'
           woocommerce_version='11.0.1'
           mysql_image='mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb'
           runner_family='ubuntu-24.04'
@@ -95,7 +96,7 @@ jobs:
           [[ "$(grep -Fc "$wp_cli_url" "$workflow")" -eq 2 ]]
           mutable_wp_cli_ref='gh-pages'
           ! grep -Fq "${mutable_wp_cli_ref}/phar/wp-cli.phar" "$workflow"
-          [[ "$(grep -Fc "core download --version=$wordpress_version" "$workflow")" -eq 2 ]]
+          [[ "$(grep -Fc "core download $wordpress_archive" "$workflow")" -eq 2 ]]
           [[ "$(grep -Fc "core verify-checksums --version=$wordpress_version" "$workflow")" -eq 2 ]]
           grep -Fq "plugin install woocommerce --version=$woocommerce_version" "$workflow"
           grep -Fq "plugin verify-checksums woocommerce --version=$woocommerce_version" "$workflow"
@@ -127,7 +128,7 @@ jobs:
           curl --fail --location --silent --show-error \
             --output "$RUNNER_TEMP/wp-cli.phar" \
             https://raw.githubusercontent.com/wp-cli/builds/2f25af27dbcfc55ca8fe0efe65c7771a777234dc/phar/wp-cli.phar
-          php "$RUNNER_TEMP/wp-cli.phar" core download --version=7.1 \
+          php "$RUNNER_TEMP/wp-cli.phar" core download https://wordpress.org/wordpress-7.1.zip \
             --path="$RUNNER_TEMP/wordpress" \
             --quiet
           php "$RUNNER_TEMP/wp-cli.phar" core verify-checksums --version=7.1 \
@@ -242,7 +243,7 @@ jobs:
           curl --fail --location --silent --show-error \
             --output "$RUNNER_TEMP/wp-cli.phar" \
             https://raw.githubusercontent.com/wp-cli/builds/2f25af27dbcfc55ca8fe0efe65c7771a777234dc/phar/wp-cli.phar
-          php "$RUNNER_TEMP/wp-cli.phar" core download --version=7.1 \
+          php "$RUNNER_TEMP/wp-cli.phar" core download https://wordpress.org/wordpress-7.1.zip \
             --path="$RUNNER_TEMP/wordpress" \
             --quiet
           php "$RUNNER_TEMP/wp-cli.phar" core verify-checksums --version=7.1 \
