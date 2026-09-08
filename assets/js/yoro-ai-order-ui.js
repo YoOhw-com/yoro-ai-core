@@ -2520,11 +2520,45 @@
 		}
 	}
 
+	let reportPresentationSequence = 0;
+
 	function renderReportResult(data, h) {
+		if (data.result && data.result.report_presentation) {
+			return renderReportPresentation(data, h);
+		}
 		const locale = getResultLocale(data);
 
 		return renderUnifiedReportResult(data, h, locale)
 			|| renderReportContractFallback(data, h, locale, 'Store report');
+	}
+
+	function renderReportPresentation(data, h) {
+		const result = data.result || {};
+		const p = result.report_presentation;
+		const state = h.getConversationState ? h.getConversationState() : {};
+		const valid = ['store.get_daily_briefing', 'store.get_business_summary', 'operations.get_summary', 'store.get_insights'].indexOf(p.action) !== -1
+			&& p.version === 1 && typeof p.conversation_id === 'string' && p.action_event_id > 0
+			&& p.result_id === p.conversation_id + ':' + p.action_event_id
+			&& (!h.getConversationState || state.conversation_id === p.conversation_id)
+			&& (!data.conversation_id || data.conversation_id === p.conversation_id)
+			&& (!result.action || result.action === p.action);
+		if (!valid) {
+			return '<p class="yoro-report-unavailable">' + h.escapeHtml(p.state === 'unavailable' ? result.summary : '') + '</p>';
+		}
+		const id = 'yoro-report-details-' + (++reportPresentationSequence);
+		const expanded = p.expanded === true;
+		let html = '<div class="yoro-report-presentation" data-report-result-id="' + h.escapeHtml(p.result_id)
+			+ '" data-conversation-id="' + h.escapeHtml(p.conversation_id) + '">';
+		html += '<p class="yoro-report-summary">' + h.escapeHtml(p.summary || '') + '</p>';
+		if (p.has_details === true && ['complete', 'partial', 'no_data'].indexOf(p.state) !== -1 && p.report && typeof p.report === 'object') {
+			html += '<button type="button" class="button yoro-report-toggle" aria-expanded="' + expanded + '" aria-controls="' + id
+				+ '" data-open-label="' + h.escapeHtml(p.open_label) + '" data-close-label="' + h.escapeHtml(p.close_label) + '">'
+				+ h.escapeHtml(expanded ? p.close_label : p.open_label) + '</button>';
+			html += '<div class="yoro-report-details" id="' + id + '"' + (expanded ? '' : ' hidden') + '>';
+			html += renderUnifiedReportPanel(p.report, h, normalizeLocale(p.language) || getResultLocale(data), p.report.window || {});
+			html += '</div>';
+		}
+		return html + '</div>';
 	}
 
 	function renderQueueWorkbenchIntro(config, h) {
@@ -3974,6 +4008,23 @@
 		
 	function handleOrderClick(event, h) {
 		const rawTarget = event.target;
+
+		const toggle = rawTarget.closest('.yoro-report-toggle');
+		if (toggle) {
+			event.preventDefault();
+			const card = toggle.closest('.yoro-report-presentation');
+			const details = card && card.querySelector('.yoro-report-details');
+			const state = h.getConversationState ? h.getConversationState() : {};
+			if (!card || !details || !toggle.isConnected || details.id !== toggle.getAttribute('aria-controls')
+				|| (h.getConversationState && state.conversation_id !== card.getAttribute('data-conversation-id'))) {
+				return true;
+			}
+			const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+			details.hidden = !expanded;
+			toggle.setAttribute('aria-expanded', String(expanded));
+			toggle.textContent = toggle.getAttribute(expanded ? 'data-close-label' : 'data-open-label');
+			return true;
+		}
 
 		const target =
 			rawTarget.closest(

@@ -326,7 +326,7 @@
 			const markup = typeof html === 'string' ? html : '';
 			const trimmed = markup.trim();
 			const hasAssistantMarkup = trimmed.indexOf('yoro-assistant-message-result') !== -1;
-			const assistant = data && data.stage !== 'clarify' && !hasAssistantMarkup && !isConfirmationResult(data)
+			const assistant = data && data.stage !== 'clarify' && !hasAssistantMarkup && !(data.result && (data.result.report_presentation || (Array.isArray(data.result.actions) && data.result.actions.some(item => item && item.result && item.result.report_presentation)))) && !isConfirmationResult(data)
 				? renderAssistantResponse(data, h)
 				: '';
 
@@ -377,7 +377,7 @@
 		const displayType = result.display_type || data.display_type || '';
 		const resultType = result.result_type || data.result_type || '';
 
-		if (result.report && typeof h.renderReportResult === 'function') {
+		if ((result.report || result.report_presentation) && typeof h.renderReportResult === 'function') {
 			return finish(h.renderReportResult(data));
 		}
 
@@ -459,6 +459,22 @@
 
 		if (displayType === 'assistant_message') {
 			return finish(renderAssistantMessageResult(data, h));
+		}
+
+		if (displayType === 'multi_action' && Array.isArray(result.actions) && typeof h.renderReportResult === 'function') {
+			const reportSteps = result.actions.filter(item => item && item.result && item.result.report_presentation);
+			if (reportSteps.length) {
+				const otherSteps = result.actions.filter(item => !reportSteps.includes(item));
+				let output = '';
+				if (otherSteps.length) {
+					const remaining = Object.assign({}, data, { result: Object.assign({}, result, { actions: otherSteps }) });
+					output = typeof h.renderMultiActionResult === 'function' ? h.renderMultiActionResult(remaining) : renderJson(remaining, h);
+				}
+				reportSteps.forEach(item => {
+					output += h.renderReportResult(Object.assign({}, data, { result: item.result }));
+				});
+				return finish(output);
+			}
 		}
 
 		if (displayType === 'multi_action') {
