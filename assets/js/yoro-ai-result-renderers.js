@@ -321,12 +321,18 @@
 		return friendly.slice(0, 4);
 	}
 
+	function isQueueDataFailure(data) {
+		const result = data && data.result;
+		return result && result.success === false && !result.multi_action && !Array.isArray(result.actions)
+			&& ['operations.get_attention_queue', 'operations.get_fulfillment_queue', 'customers.get_service_queue', 'operations.get_summary', 'store.get_daily_briefing'].indexOf(result.action || data.action) >= 0;
+	}
+
 		function renderResult(data, h) {
 		function finish(html) {
 			const markup = typeof html === 'string' ? html : '';
 			const trimmed = markup.trim();
 			const hasAssistantMarkup = trimmed.indexOf('yoro-assistant-message-result') !== -1;
-			const assistant = data && data.stage !== 'clarify' && !hasAssistantMarkup && !(data.result && (data.result.report_presentation || (Array.isArray(data.result.actions) && data.result.actions.some(item => item && item.result && item.result.report_presentation)))) && !isConfirmationResult(data)
+			const assistant = data && !isQueueDataFailure(data) && data.stage !== 'clarify' && !hasAssistantMarkup && !(data.result && (data.result.report_presentation || (Array.isArray(data.result.actions) && data.result.actions.some(item => item && item.result && item.result.report_presentation)))) && !isConfirmationResult(data)
 				? renderAssistantResponse(data, h)
 				: '';
 
@@ -365,7 +371,7 @@
 			return finish(renderClarification(data, h));
 		}
 
-		if (!data.success) {
+		if (!data.success || isQueueDataFailure(data)) {
 			return finish(renderError(data, h));
 		}
 

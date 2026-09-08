@@ -18,6 +18,7 @@ class YoRo_Store_Operations_Service {
 		return YoRo_Action_Cache::remember(
 			'operations_summary',
 			[
+				'queue_evidence_version' => 1,
 				'window' => $window_key,
 				'focus'  => $focus,
 				'language' => $language,
@@ -38,7 +39,7 @@ class YoRo_Store_Operations_Service {
 				$window_status_counts = [];
 
 				foreach ( $window_statuses as $status ) {
-					$window_status_counts[ $status ] = YoRo_Orders_Read_Service::briefing_count_orders(
+					$window_status_counts[ $status ] = YoRo_Orders_Read_Service::queue_count_orders(
 						[
 							'status'       => [ $status ],
 							'date_created' => $window['query'],
@@ -50,7 +51,7 @@ class YoRo_Store_Operations_Service {
 
 				if ( ! empty( $previous_window['query'] ) ) {
 					foreach ( $window_statuses as $status ) {
-						$previous_window_status_counts[ $status ] = YoRo_Orders_Read_Service::briefing_count_orders(
+						$previous_window_status_counts[ $status ] = YoRo_Orders_Read_Service::queue_count_orders(
 							[
 								'status'       => [ $status ],
 								'date_created' => $previous_window['query'],
@@ -60,25 +61,25 @@ class YoRo_Store_Operations_Service {
 				}
 
 				$backlog_counts = [
-					'pending'    => YoRo_Orders_Read_Service::briefing_count_orders( [ 'status' => [ 'pending' ] ] ),
-					'processing' => YoRo_Orders_Read_Service::briefing_count_orders( [ 'status' => [ 'processing' ] ] ),
-					'on-hold'    => YoRo_Orders_Read_Service::briefing_count_orders( [ 'status' => [ 'on-hold' ] ] ),
+					'pending'    => YoRo_Orders_Read_Service::queue_count_orders( [ 'status' => [ 'pending' ] ] ),
+					'processing' => YoRo_Orders_Read_Service::queue_count_orders( [ 'status' => [ 'processing' ] ] ),
+					'on-hold'    => YoRo_Orders_Read_Service::queue_count_orders( [ 'status' => [ 'on-hold' ] ] ),
 				];
 
 				$attention_counts = [
-					'pending_over_24h'    => YoRo_Orders_Read_Service::briefing_count_orders(
+					'pending_over_24h'    => YoRo_Orders_Read_Service::queue_count_orders(
 						[
 							'status'       => [ 'pending' ],
 							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-24 hours' ),
 						]
 					),
-					'processing_over_72h' => YoRo_Orders_Read_Service::briefing_count_orders(
+					'processing_over_72h' => YoRo_Orders_Read_Service::queue_count_orders(
 						[
 							'status'       => [ 'processing' ],
 							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-72 hours' ),
 						]
 					),
-					'on_hold_over_48h'    => YoRo_Orders_Read_Service::briefing_count_orders(
+					'on_hold_over_48h'    => YoRo_Orders_Read_Service::queue_count_orders(
 						[
 							'status'       => [ 'on-hold' ],
 							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-48 hours' ),
@@ -86,11 +87,21 @@ class YoRo_Store_Operations_Service {
 					),
 				];
 
+				foreach ( [ $window_status_counts, $previous_window_status_counts, $backlog_counts, $attention_counts ] as $counts ) {
+					foreach ( $counts as $count ) {
+						if ( is_wp_error( $count ) ) {
+							return $count;
+						}
+					}
+				}
 				$window_total    = array_sum( $window_status_counts );
 				$previous_window_total = array_sum( $previous_window_status_counts );
 				$backlog_total   = array_sum( $backlog_counts );
 				$attention_total = array_sum( $attention_counts );
 				$backlog_age     = self::summarize_backlog_age();
+				if ( is_wp_error( $backlog_age ) ) {
+					return $backlog_age;
+				}
 				$comparison      = [
 					'window'  => YoRo_Date_Helper::build_window_payload( $previous_window ),
 					'metrics' => [
@@ -101,18 +112,26 @@ class YoRo_Store_Operations_Service {
 				];
 				$recent_orders   = [];
 
-				foreach (
-					wc_get_orders(
+				$recent_candidates = YoRo_Orders_Read_Service::queue_query_orders(
 						[
 							'limit'   => 5,
 							'status'  => [ 'pending', 'processing', 'on-hold' ],
 							'orderby' => 'date',
 							'order'   => 'DESC',
 						]
-					) as $order
-				) {
+				);
+				if ( is_wp_error( $recent_candidates ) ) {
+					return $recent_candidates;
+				}
+				foreach ( $recent_candidates as $order ) {
 					if ( $order instanceof WC_Order ) {
-						$recent_orders[] = YoRo_Order_Presenter::format_order_summary( $order );
+						$age = YoRo_Orders_Read_Service::queue_order_age_hours( $order );
+						if ( is_wp_error( $age ) ) {
+							return $age;
+						}
+						$row = YoRo_Order_Presenter::format_order_summary( $order );
+						$row['age_hours'] = $age;
+						$recent_orders[] = $row;
 					}
 				}
 
@@ -154,7 +173,7 @@ class YoRo_Store_Operations_Service {
 					'undoable'             => false,
 					'undo_plan'            => [],
 					'data'                 => [],
-					'meta'                 => [],
+					'meta'                 => [ 'queue_evidence' => [ 'version' => 1, 'captured_at' => gmdate( 'c' ), 'age_basis' => 'date_created', 'status_duration' => 'unknown', 'count_basis' => 'query_matches', 'backlog_sample_size' => $backlog_age['sampled_orders'], 'backlog_candidate_limit' => 200, 'backlog_complete' => $backlog_age['sampled_orders'] < 200 ] ],
 					'processed'            => [],
 					'skipped'              => [],
 					'errors'               => [],
@@ -222,7 +241,7 @@ class YoRo_Store_Operations_Service {
 				__( 'Backlog age needs attention', 'yoro-ai-core' ),
 				sprintf(
 					/* translators: 1: oldest open order age in days, 2: average backlog age in days. */
-					__( 'The oldest sampled open order has been waiting for %1$s days, and the sampled backlog averages %2$s days.', 'yoro-ai-core' ),
+					__( 'The oldest sampled open order was created %1$s days ago; sampled mean created-age is %2$s days. Time in the current status is unknown.', 'yoro-ai-core' ),
 					wc_format_decimal( $oldest_backlog_hours / 24, 1 ),
 					wc_format_decimal( $average_backlog_hours / 24, 1 )
 				),
@@ -251,7 +270,7 @@ class YoRo_Store_Operations_Service {
 
 		if ( $oldest_backlog_hours >= 72 ) {
 			$alerts[] = YoRo_Report_Builder::alert(
-				__( 'Oldest backlog item is stale', 'yoro-ai-core' ),
+				__( 'Oldest sampled order needs review', 'yoro-ai-core' ),
 				/* translators: %s: Value generated from store data. */
 				sprintf( __( 'At least one sampled open order is older than %s days.', 'yoro-ai-core' ), wc_format_decimal( $oldest_backlog_hours / 24, 1 ) ),
 				'risk',
@@ -351,9 +370,9 @@ class YoRo_Store_Operations_Service {
 		}
 
 		$attention_labels = [
-			'pending_over_24h'    => __( 'Pending over 24h', 'yoro-ai-core' ),
-			'processing_over_72h' => __( 'Processing over 72h', 'yoro-ai-core' ),
-			'on_hold_over_48h'    => __( 'On-hold over 48h', 'yoro-ai-core' ),
+			'pending_over_24h'    => __( 'Pending; created at least 24h ago', 'yoro-ai-core' ),
+			'processing_over_72h' => __( 'Processing; created at least 72h ago', 'yoro-ai-core' ),
+			'on_hold_over_48h'    => __( 'On-hold; created at least 48h ago', 'yoro-ai-core' ),
 		];
 		$attention_items  = [];
 
@@ -426,7 +445,7 @@ class YoRo_Store_Operations_Service {
 			return $summary;
 		}
 
-		$orders = wc_get_orders(
+		$orders = YoRo_Orders_Read_Service::queue_query_orders(
 			[
 				'limit'   => 200,
 				'status'  => [ 'pending', 'processing', 'on-hold' ],
@@ -435,7 +454,9 @@ class YoRo_Store_Operations_Service {
 			]
 		);
 
-		$now = current_datetime()->getTimestamp();
+		if ( is_wp_error( $orders ) ) {
+			return $orders;
+		}
 		$total_hours = 0;
 
 		foreach ( $orders as $order ) {
@@ -443,13 +464,10 @@ class YoRo_Store_Operations_Service {
 				continue;
 			}
 
-			$created = $order->get_date_created();
-
-			if ( ! $created ) {
-				continue;
+			$age_hours = YoRo_Orders_Read_Service::queue_order_age_hours( $order );
+			if ( is_wp_error( $age_hours ) ) {
+				return $age_hours;
 			}
-
-			$age_hours = max( 0, (int) floor( ( $now - $created->getTimestamp() ) / HOUR_IN_SECONDS ) );
 			$summary['sampled_orders']++;
 			$total_hours += $age_hours;
 			$summary['oldest_hours'] = max( $summary['oldest_hours'], $age_hours );
@@ -477,14 +495,14 @@ class YoRo_Store_Operations_Service {
 			[
 				'limit'                => $limit,
 				'high_value_threshold' => $high_value_threshold,
-				'schema_version'       => 2,
+				'schema_version'       => 3,
 			],
 			function() use ( $limit, $high_value_threshold ) {
 				$queues = [
 					YoRo_Orders_Read_Service::operations_build_attention_queue(
 						'pending_payment_older_than_24h',
 						__( 'Pending payment older than 24h', 'yoro-ai-core' ),
-						__( 'Orders still pending payment after 24 hours.', 'yoro-ai-core' ),
+						__( 'Orders currently pending, created at least 24 hours ago. Status duration is unknown.', 'yoro-ai-core' ),
 						[
 							'status'       => [ 'pending' ],
 							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-24 hours' ),
@@ -504,7 +522,7 @@ class YoRo_Store_Operations_Service {
 					YoRo_Orders_Read_Service::operations_build_attention_queue(
 						'on_hold_older_than_48h',
 						__( 'On-hold older than 48h', 'yoro-ai-core' ),
-						__( 'On-hold orders that have not moved for two days.', 'yoro-ai-core' ),
+						__( 'Orders currently on hold, created at least 48 hours ago. Status duration is unknown.', 'yoro-ai-core' ),
 						[
 							'status'       => [ 'on-hold' ],
 							'date_created' => '<=' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-48 hours' ),
@@ -514,7 +532,7 @@ class YoRo_Store_Operations_Service {
 					YoRo_Orders_Read_Service::operations_build_attention_queue(
 						'recent_failed_orders',
 						__( 'Recent failed orders', 'yoro-ai-core' ),
-						__( 'Failed checkout/payment attempts from the last 7 days.', 'yoro-ai-core' ),
+						__( 'Orders created in the last 7 days whose current status is failed. Cause and time of failure are unknown.', 'yoro-ai-core' ),
 						[
 							'status'       => [ 'failed' ],
 							'date_created' => YoRo_Orders_Read_Service::briefing_build_relative_cutoff( '-7 days' ) . '...' . YoRo_Orders_Read_Service::briefing_build_relative_cutoff( 'now' ),
@@ -523,29 +541,19 @@ class YoRo_Store_Operations_Service {
 					),
 					YoRo_Orders_Read_Service::operations_build_high_value_open_queue( $limit, $high_value_threshold ),
 				];
-				$queues = self::rank_operations_attention_queue_orders( $queues );
-
-				$total_items = 0;
-				$orders      = [];
-
 				foreach ( $queues as $queue ) {
-					$total_items += absint( $queue['count'] ?? 0 );
-
-					foreach ( $queue['orders'] as $order ) {
-						$orders[ $order['id'] ] = $order;
+					if ( is_wp_error( $queue ) ) {
+						return $queue;
 					}
 				}
+				$queues = self::rank_operations_attention_queue_orders( $queues );
 
-				$orders               = array_values( $orders );
-				usort(
-					$orders,
-					function( $a, $b ) {
-						return (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 );
-					}
-				);
+				$total_items = array_sum( array_column( $queues, 'count' ) );
 				$attention_context    = self::build_operations_attention_orchestrator_context( $queues, $high_value_threshold );
 				$priority_items       = self::build_operations_attention_priority_items( $queues, $attention_context );
 				$case_rankings        = self::build_operations_attention_case_rankings( $queues, $attention_context );
+				$orders = array_column( $case_rankings, 'order' );
+				$queue_evidence = YoRo_Orders_Read_Service::queue_evidence( $queues, $orders );
 				$recommended_sequence = self::build_operations_attention_recommended_sequence( $case_rankings, $attention_context );
 				$next_case            = self::build_operations_attention_next_recommended_case( $case_rankings );
 				$batch_candidates     = self::build_operations_attention_batch_candidates( $case_rankings );
@@ -559,7 +567,7 @@ class YoRo_Store_Operations_Service {
 				$visible_unique_order_count = count( $orders );
 				$queue_summary        = sprintf(
 					/* translators: 1: queue match count, 2: queue count */
-					__( 'Operations attention queue: %1$d queue matches across %2$d queues.', 'yoro-ai-core' ),
+					__( 'Operations attention queue: %1$d queue memberships across %2$d queues.', 'yoro-ai-core' ),
 					$total_items,
 					$queue_count
 				);
@@ -580,6 +588,7 @@ class YoRo_Store_Operations_Service {
 					'undo_plan'            => [],
 					'data'                 => [],
 					'meta'                 => [
+						'queue_evidence' => $queue_evidence,
 						'limit_per_queue'       => $limit,
 						'high_value_threshold'  => $high_value_threshold,
 						'fraud_scoring_applied' => false,
@@ -617,6 +626,7 @@ class YoRo_Store_Operations_Service {
 			$counts[ $key ] = absint( $queue['count'] ?? 0 );
 		}
 
+		ksort( $counts );
 		arsort( $counts );
 		$top_topic = (string) key( $counts );
 		$top_count = (int) reset( $counts );
@@ -761,7 +771,7 @@ class YoRo_Store_Operations_Service {
 			usort(
 				$queues[ $queue_index ]['orders'],
 				function( $a, $b ) {
-					return (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 );
+					return ( (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 ) ) ?: ( (int) $a['id'] <=> (int) $b['id'] );
 				}
 			);
 		}
@@ -794,14 +804,7 @@ class YoRo_Store_Operations_Service {
 			}
 		}
 
-		usort(
-			$rankings,
-			function( $a, $b ) {
-				return (float) ( $b['score'] ?? 0 ) <=> (float) ( $a['score'] ?? 0 );
-			}
-		);
-
-		return $rankings;
+		return YoRo_Orders_Read_Service::queue_case_rankings( $rankings );
 	}
 
 	private static function build_operations_attention_next_recommended_case( $case_rankings ) {
@@ -954,49 +957,11 @@ class YoRo_Store_Operations_Service {
 
 	private static function get_operations_attention_primary_command( $topic, $order ) {
 		$order_id = absint( $order['id'] ?? 0 );
-
-		if ( $order_id <= 0 ) {
-			return '';
-		}
-
-		if ( 'pending_payment_older_than_24h' === $topic ) {
-			return 'Write email for order #' . $order_id . ' about: ' . __( 'Payment follow-up may be useful.', 'yoro-ai-core' );
-		}
-
-		if ( 'processing_older_than_72h' === $topic ) {
-			return 'Preview shipping delay email for order ' . $order_id;
-		}
-
-		if ( 'on_hold_older_than_48h' === $topic ) {
-			return 'Write email for order #' . $order_id . ' about: ' . __( 'Order is still on hold and may need clarification.', 'yoro-ai-core' );
-		}
-
-		if ( 'recent_failed_orders' === $topic ) {
-			return 'Write email for order #' . $order_id . ' about: ' . __( 'Failed checkout may need support follow-up.', 'yoro-ai-core' );
-		}
-
-		if ( 'high_value_open_orders' === $topic ) {
-			return 'Show order ' . $order_id . ' details';
-		}
-
-		return 'Show order ' . $order_id . ' details';
+		return $order_id > 0 ? 'Show order ' . $order_id . ' details' : '';
 	}
 
 	private static function get_operations_attention_primary_action_label( $topic ) {
-		switch ( sanitize_key( $topic ) ) {
-			case 'pending_payment_older_than_24h':
-				return __( 'Draft payment follow-up', 'yoro-ai-core' );
-			case 'processing_older_than_72h':
-				return __( 'Preview delay email', 'yoro-ai-core' );
-			case 'on_hold_older_than_48h':
-				return __( 'Draft on-hold reply', 'yoro-ai-core' );
-			case 'recent_failed_orders':
-				return __( 'Draft support reply', 'yoro-ai-core' );
-			case 'high_value_open_orders':
-				return __( 'Open high-value order', 'yoro-ai-core' );
-			default:
-				return __( 'Review order', 'yoro-ai-core' );
-		}
+		return __( 'Review order details', 'yoro-ai-core' );
 	}
 
 	private static function get_operations_attention_sequence_label( $topic ) {
@@ -1045,13 +1010,13 @@ class YoRo_Store_Operations_Service {
 		switch ( sanitize_key( $topic ) ) {
 			case 'pending_payment_older_than_24h':
 				/* translators: %s: Value generated from store data. */
-				return sprintf( __( 'Payment is still pending after %d hours and now needs a direct review.', 'yoro-ai-core' ), $age_hours );
+				return sprintf( __( 'Currently pending; created %d hours ago. Time in this status is unknown.', 'yoro-ai-core' ), $age_hours );
 			case 'processing_older_than_72h':
 				/* translators: %s: Value generated from store data. */
-				return sprintf( __( 'This processing order has been open for %d hours without clearing the operations queue.', 'yoro-ai-core' ), $age_hours );
+				return sprintf( __( 'Currently processing; created %d hours ago. Time in this status is unknown.', 'yoro-ai-core' ), $age_hours );
 			case 'on_hold_older_than_48h':
 				/* translators: %s: Value generated from store data. */
-				return sprintf( __( 'This order has been sitting on hold for %d hours and may need a decision or follow-up.', 'yoro-ai-core' ), $age_hours );
+				return sprintf( __( 'Currently on hold; created %d hours ago. Time in this status is unknown.', 'yoro-ai-core' ), $age_hours );
 			case 'recent_failed_orders':
 				return __( 'A recent failed checkout is still visible here and may need a quick recovery pass.', 'yoro-ai-core' );
 			case 'high_value_open_orders':
@@ -1068,9 +1033,9 @@ class YoRo_Store_Operations_Service {
 
 		switch ( sanitize_key( $topic ) ) {
 			case 'pending_payment_older_than_24h':
-				return __( 'Use this first if you want the clearest payment-delay case before the rest of the queue ages further.', 'yoro-ai-core' );
+				return __( 'Inspect this pending order before deciding whether payment follow-up is needed.', 'yoro-ai-core' );
 			case 'processing_older_than_72h':
-				return __( 'Use this next when you want to confirm whether operations delay is turning into a fulfillment problem.', 'yoro-ai-core' );
+				return __( 'Inspect fulfillment evidence; created-age does not establish a delay.', 'yoro-ai-core' );
 			case 'on_hold_older_than_48h':
 				return __( 'Use this when older on-hold orders are likely to need an explicit decision instead of waiting longer.', 'yoro-ai-core' );
 			case 'recent_failed_orders':
@@ -1080,7 +1045,7 @@ class YoRo_Store_Operations_Service {
 			default:
 				return $age_hours > 0
 					/* translators: %s: Value generated from store data. */
-					? sprintf( __( 'This case has been waiting for %d hours and deserves a direct review.', 'yoro-ai-core' ), $age_hours )
+					? sprintf( __( 'This order was created %d hours ago and is a candidate for review.', 'yoro-ai-core' ), $age_hours )
 					: __( 'This case deserves a direct review.', 'yoro-ai-core' );
 		}
 	}
