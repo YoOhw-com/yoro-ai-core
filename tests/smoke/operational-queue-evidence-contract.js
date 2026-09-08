@@ -22,6 +22,19 @@ const row = { id: 900001, number: '900001', customer_name: '<img src=x onerror=a
 const observation = { captured_at: captured, count_basis: 'sample_matches', match_count: 50, visible_memberships: 1, limit: 1, sample_size: 50, candidate_limit: 50, complete: false, visible_truncated: true };
 const raw = { success: true, action: 'operations.get_attention_queue', display_type: 'operations_attention_queue', count: 50, visible_case_count: 2, orders: [row], queues: [{ key: 'pending_payment_older_than_24h', label: 'Pending', count: 50, orders: [row] }], meta: { queue_evidence: { version: 1, age_basis: 'date_created', status_duration: 'unknown', captured_at: captured, queues: { pending_payment_older_than_24h: observation } } } };
 const render = (result, language = 'en') => renderer.renderResult({ success: true, stage: 'done', parsed: { language }, conversation_id: conversation, result });
+const assertProviderLiterals = (result, output) => {
+    const cells = [...output.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(match => match[1]);
+    for (const queue of result.queues || []) {
+        for (const order of (queue.orders || []).slice(0, 5)) {
+            const values = result.action === 'operations.get_fulfillment_queue'
+                ? [order.shipping_method, order.shipping_city, order.shipping_country]
+                : [order.customer_name || order.billing_email];
+            for (const value of values.filter(Boolean)) {
+                assert.ok(cells.some(cell => cell.includes(escapeHtml(String(value)))), `${result.action}: provider/accepted literal ${value}`);
+            }
+        }
+    }
+};
 const html = render(raw);
 assert.match(html, /Age since creation|age.*creation/i);
 assert.match(html, /time in the current status is unknown/);
@@ -30,6 +43,39 @@ assert.match(html, /full total unknown/);
 assert.match(html, /&lt;img/);
 assert.doesNotMatch(html, /<img|onerror="|Preview shipping delay email|Write email for order/);
 assert.match(render(raw, 'vi'), /Tuổi.*ngày tạo|tuổi.*ngày tạo/);
+const literalValues = ['YoRo_blue-tee', 'Áo onbackorder', 'physical_goods', 'john_doe@example.test', '<img src=x onerror="alert(1)">_blue-tee'];
+const queueKinds = [
+    ['operations.get_attention_queue', 'operations_attention_queue'],
+    ['operations.get_fulfillment_queue', 'fulfillment_queue'],
+    ['customers.get_service_queue', 'customer_service_queue'],
+];
+for (const [action, display_type] of queueKinds) {
+    for (const language of ['en', 'vi']) {
+        for (const literal of literalValues) {
+            for (const emailFallback of [false, true]) {
+                const value = JSON.parse(JSON.stringify(raw));
+                Object.assign(value, { action, display_type });
+                const namedRow = { ...value.queues[0].orders[0], number: literal,
+                    customer_name: emailFallback ? '' : literal, billing_email: literal,
+                    shipping_method: literal, shipping_city: literal, shipping_country: literal,
+                    fulfillment_reason: literal, followup_reason: literal };
+                value.orders = [namedRow];
+                value.queues[0].orders = [namedRow];
+                const before = JSON.stringify(value);
+                // Recreate the accepted-history value without a new provider/model call.
+                for (const input of [value, JSON.parse(before)]) {
+                    const output = render(input, language);
+                    const table = output.slice(output.indexOf('<tbody>'), output.indexOf('</tbody>'));
+                    const caseCell = [...table.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)][1]?.[1] || '';
+                    const expectedOccurrences = display_type === 'fulfillment_queue' ? 4 : (display_type === 'customer_service_queue' ? 2 : 1);
+                    assert.equal(caseCell.split(escapeHtml(literal)).length - 1, expectedOccurrences, `${action} ${language} ${literal}: preserve every literal case value, not only the order number`);
+                    assert.doesNotMatch(output, /<img|<script|onerror="/);
+                }
+                assert.equal(JSON.stringify(value), before, 'Rendering must not rewrite accepted values.');
+            }
+        }
+    }
+}
 for (const age of [null, undefined, -1, '0']) {
     const bad = JSON.parse(JSON.stringify(raw));
     bad.queues[0].orders[0].age_hours = age;
@@ -62,6 +108,7 @@ if (process.env.YORO_QUEUE_FIXTURE) {
         assert.match(output, /time in the current status is unknown/, action);
         assert.doesNotMatch(output, /Preview shipping delay email|Write email for order|<script>/, action);
         for (const order of provider.raw.orders) assert.ok(output.includes(escapeHtml(order.number || order.id)), action);
+        assertProviderLiterals(provider.raw, output);
     }
 }
 if (process.env.YORO_QUEUE_PRESENTATION) {
@@ -85,6 +132,7 @@ if (process.env.YORO_QUEUE_EVENTS) {
         assert.match(output, /Observed at:/);
         assert.doesNotMatch(output, /yoro-report-toggle/);
         assert.ok(output.includes(escapeHtml(extension.meta.queue_evidence.captured_at)));
+        assertProviderLiterals(result, output);
     }
 }
 assert.equal(calls, 0, 'Read/render/hydration must not execute or invoke a model.');

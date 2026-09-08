@@ -3308,8 +3308,8 @@
 				const queueKey = String(queue && queue.key ? queue.key : '');
 				const customerMeta = order.customer_name || order.billing_email || '';
 				const caseMeta = [
-					humanizeAttentionTopic(queueKey || ''),
-					orderDisplayStatus(order) || '',
+					displayText(humanizeAttentionTopic(queueKey || '')),
+					displayText(orderDisplayStatus(order) || ''),
 					order.total ? ((order.total || '') + ' ' + (order.currency || '')) : ''
 				].filter(Boolean).join(' · ');
 				const primaryCommand = getOperationsAttentionRowCommand(queueKey, order);
@@ -3317,7 +3317,7 @@
 				const detailsCommand = 'Show order ' + order.id + ' details';
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
-				row += '<td><strong>' + h2.escapeHtml(displayText(caseMeta || (orderDisplayStatus(order) || 'Case'))) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(displayText(customerMeta || queue.description || '')) + '</div></td>';
+				row += '<td><strong>' + h2.escapeHtml(caseMeta || displayText(orderDisplayStatus(order) || 'Case')) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(customerMeta ? String(customerMeta) : displayText(queue.description || '')) + '</div></td>';
 				row += '<td>' + h2.escapeHtml(queueAgeText(order, locale)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(primaryLabel, primaryCommand, h2) + ' ';
@@ -3425,13 +3425,13 @@
 				const primaryCommand = getOperationsAttentionRowCommand(queueKey, order);
 				const primaryLabel = getFulfillmentRowActionLabel(queueKey);
 				const caseMeta = [
-					humanizeFulfillmentTopic(queueKey || ''),
+					displayText(humanizeFulfillmentTopic(queueKey || '')),
 					order.shipping_method || '',
 					shipTo || ''
 				].filter(Boolean).join(' · ');
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
-				row += '<td><strong>' + h2.escapeHtml(displayText(caseMeta || (orderDisplayStatus(order) || 'Case'))) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(displayText(order.fulfillment_reason || queue.description || '')) + '</div></td>';
+				row += '<td><strong>' + h2.escapeHtml(caseMeta || displayText(orderDisplayStatus(order) || 'Case')) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(String(order.fulfillment_reason || queue.description || '')) + '</div></td>';
 				row += '<td>' + h2.escapeHtml(queueAgeText(order, locale)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(primaryLabel, primaryCommand, h2) + ' ';
@@ -3599,12 +3599,12 @@
 				const rowActionCommand = getCustomerServiceRowActionCommand(queueKey, order);
 				const caseMeta = [
 					order.customer_name || order.billing_email || 'Customer',
-					humanizeServiceTopic(queueKey || ''),
-					orderDisplayStatus(order) || ''
+					displayText(humanizeServiceTopic(queueKey || '')),
+					displayText(orderDisplayStatus(order) || '')
 				].filter(Boolean).join(' · ');
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
-				row += '<td><strong>' + h2.escapeHtml(displayText(caseMeta)) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(displayText(order.followup_reason || '')) + '</div></td>';
+				row += '<td><strong>' + h2.escapeHtml(caseMeta) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(String(order.followup_reason || '')) + '</div></td>';
 				row += '<td>' + h2.escapeHtml(queueAgeText(order, locale)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(rowActionLabel, rowActionCommand, h2) + ' ';

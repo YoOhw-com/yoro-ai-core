@@ -20,7 +20,7 @@ class YoRo_Queue_Fixture_Order extends WC_Order {
 	public function get_date_created( $context = 'view' ) { return $this->fixture_created; }
 	public function get_meta( $key = '', $single = true, $context = 'view' ) { return $this->fixture_meta[ $key ] ?? ''; }
 	public function get_items( $types = 'line_item' ) { return $this->fixture_shipping && 'line_item' === $types ? [ new WC_Order_Item_Product() ] : []; }
-	public function get_shipping_methods() { $item = new WC_Order_Item_Shipping(); $item->set_method_title( 'Fixture shipping' ); return [ $item ]; }
+	public function get_shipping_methods() { $item = new WC_Order_Item_Shipping(); $item->set_method_title( 'physical_goods' ); return [ $item ]; }
 }
 class YoRo_Queue_Fixture_Store extends WC_Order_Data_Store_CPT {
 	public static $orders = [];
@@ -61,7 +61,10 @@ $fixture = static function( $id, $created = '-80 hours', $status = 'processing' 
 	$order->set_status( $status );
 	$order->set_total( '500' );
 	$order->set_currency( 'USD' );
-	$order->set_billing_first_name( 'Alice <script>fixture</script>' );
+	$order->set_billing_first_name( 'YoRo_blue-tee <script>fixture</script>' );
+	$order->set_billing_email( 'john_doe@example.test' );
+	$order->set_shipping_city( 'Áo onbackorder' );
+	$order->set_shipping_country( 'US' );
 	$order->fixture_created = is_string( $created ) ? new WC_DateTime( $created, new DateTimeZone( 'UTC' ) ) : $created;
 	$order->fixture_meta = [ '_yoro_customer_email_drafts' => [ [ 'subject' => 'Review only' ] ] ];
 	return $order;
@@ -201,6 +204,39 @@ try {
 	$daily_canonical = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $daily );
 	$assert( $daily_canonical['success'] && isset( $daily_canonical['extensions']['wordpress.execution']['meta']['queue_evidence']['sections']['fulfillment'] ), 'Daily canonical mapping preserves section observation scopes.' );
 	$exports['store.get_daily_briefing'] = [ 'raw' => $daily, 'canonical' => $daily_canonical ];
+
+	// Exercise the public fallback without the provider's original Unix timestamp.
+	foreach ( [ 'UTC', 'Asia/Ho_Chi_Minh', 'America/Los_Angeles' ] as $zone ) {
+		$site_timezone = static function() use ( $zone ) { return $zone; };
+		add_filter( 'pre_option_timezone_string', $site_timezone );
+		try {
+			foreach ( [ -1800, 1800 ] as $delta ) {
+				$instant = time() + $delta;
+				foreach ( [ 'Y-m-d\TH:i:s\Z', 'Y-m-d\TH:i:sP' ] as $format ) {
+					$row = [ 'id' => 902020, 'age_hours' => 0, 'created_at' => gmdate( $format, $instant ) ];
+					foreach ( [ false, true ] as $mixed ) {
+						$rows = $mixed ? [ [ 'id' => 902021, 'age_hours' => 0, 'created_at' => gmdate( 'c', time() - 1800 ) ], $row ] : [ $row ];
+						$queue = [ 'success' => true, 'action' => 'operations.get_attention_queue', 'orders' => $rows, 'queues' => [ [ 'orders' => $rows ] ] ];
+						$briefing = [ 'success' => true, 'action' => 'store.get_daily_briefing', 'attention_queue' => $queue, 'attention_items' => $rows ];
+						foreach ( [ $queue, $briefing ] as $input ) {
+							$guard = YoRo_Commerce_Contract_Builder::queue_age_guard( $input, $input['action'] );
+							$mapped = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $input );
+							$label = $zone . ' ' . $format . ' delta=' . $delta . ' mixed=' . (int) $mixed . ' ' . $input['action'];
+							if ( $delta > 0 ) {
+								$assert( is_wp_error( $guard ) && 'yoro_queue_age_unavailable' === $guard->get_error_code() && false === $mapped['success'], 'Future UTC fallback must fail the complete read: ' . $label );
+							} else {
+								$assert( null === $guard && true === $mapped['success'], 'Valid zero UTC fallback must survive: ' . $label );
+								$items = $mapped['data'][ 'store.get_daily_briefing' === $input['action'] ? 'attention_items' : 'items' ];
+								$assert( count( $items ) === count( $rows ) && array_column( $items, 'age_hours' ) === array_fill( 0, count( $rows ), 0 ), 'Valid zero rows must remain intact: ' . $label );
+							}
+						}
+					}
+				}
+			}
+		} finally {
+			remove_filter( 'pre_option_timezone_string', $site_timezone );
+		}
+	}
 
 	foreach ( [ null, 'unknown', -1, '0' ] as $bad_age ) {
 		$bad = $young; $bad['orders'][0]['age_hours'] = $bad_age;

@@ -453,10 +453,11 @@ class YoRo_Commerce_Contract_Builder {
 			return false;
 		}
 		foreach ( [ 'Y-m-d\\TH:i:sP', 'Y-m-d\\TH:i:s\\Z', 'Y-m-d H:i:s', YoRo_Date_Helper::get_datetime_format() ] as $format ) {
-			$date = DateTimeImmutable::createFromFormat( '!' . $format, $created, wp_timezone() );
+			$timezone = 'Y-m-d\\TH:i:s\\Z' === $format ? new DateTimeZone( 'UTC' ) : wp_timezone();
+			$date = DateTimeImmutable::createFromFormat( '!' . $format, $created, $timezone );
 			$errors = DateTimeImmutable::getLastErrors();
-			if ( $date && ( false === $errors || ( 0 === $errors['warning_count'] && 0 === $errors['error_count'] ) ) && $date->format( $format ) === $created && $date->getTimestamp() > 0 && $date->getTimestamp() <= time() ) {
-				return true;
+			if ( $date && ( false === $errors || ( 0 === $errors['warning_count'] && 0 === $errors['error_count'] ) ) && $date->format( $format ) === $created ) {
+				return $date->getTimestamp() > 0 && $date->getTimestamp() <= time();
 			}
 		}
 		return false;
