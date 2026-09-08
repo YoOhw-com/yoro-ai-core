@@ -1,7 +1,25 @@
 <?php
 /** Read-only local WordPress bridge/projection checks; optional paired API fixtures. */
-if ( ! defined( 'ABSPATH' ) || ! in_array( wp_get_environment_type(), [ 'local', 'development' ], true ) ) {
-	throw new RuntimeException( 'Run this contract in local/development WordPress with wp eval-file.' );
+if ( ! defined( 'ABSPATH' ) ) {
+	throw new RuntimeException( 'Run this contract with wp eval-file.' );
+}
+// Existing CI workflows create these exact disposable WordPress installations.
+$ci_fixture = false;
+if ( 'true' === getenv( 'GITHUB_ACTIONS' ) && defined( 'WP_CLI' ) && WP_CLI ) {
+	$fixtures = [
+		[ getenv( 'RUNNER_TEMP' ), 'wordpress', 'yoro-plugin-smoke.test' ],
+		[ getenv( 'RUNNER_TEMP' ), 'wordpress-woo', 'yoro-woocommerce-exact-pair.test' ],
+		[ getenv( 'GITHUB_WORKSPACE' ), 'wordpress', 'yoro-smoke.test' ],
+	];
+	foreach ( $fixtures as [ $parent, $directory, $host ] ) {
+		$expected = $parent ? realpath( $parent . '/' . $directory ) : false;
+		if ( false !== $expected && $expected === realpath( ABSPATH ) && $host === wp_parse_url( home_url(), PHP_URL_HOST ) ) {
+			$ci_fixture = true;
+		}
+	}
+}
+if ( ! in_array( wp_get_environment_type(), [ 'local', 'development' ], true ) && ! $ci_fixture ) {
+	throw new RuntimeException( 'Run this contract in local/development WordPress or an exact disposable CI fixture.' );
 }
 $root = dirname( __DIR__, 2 );
 foreach ( [ 'conversation-action-coordinator', 'chat-message-handler', 'execute-handler' ] as $file ) {
