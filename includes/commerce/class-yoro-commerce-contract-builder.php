@@ -327,6 +327,11 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function canonical_execution_payload( array $execution, $action_name = '' ) {
+		$action_name = $action_name ?: ( $execution['action'] ?? '' );
+		$age_error = self::queue_age_guard( $execution, $action_name );
+		if ( is_wp_error( $age_error ) ) {
+			$execution = [ 'success' => false, 'action' => $action_name, 'summary' => $age_error->get_error_message(), 'read_only' => true, 'result_type' => 'error', 'display_type' => 'error', 'errors' => [ [ 'code' => $age_error->get_error_code(), 'message' => $age_error->get_error_message() ] ] ];
+		}
 		$stable_keys = [ 'success', 'action', 'message', 'summary', 'data', 'read_only', 'undoable', 'result_type', 'display_type', 'assistant_summary', 'meta', 'processed', 'skipped', 'errors', 'count', 'undo_plan', 'extensions' ];
 		$action_name = sanitize_text_field( $action_name ?: ( $execution['action'] ?? '' ) );
 		$data = is_array( $execution['data'] ?? null ) ? $execution['data'] : [];
@@ -377,6 +382,85 @@ class YoRo_Commerce_Contract_Builder {
 				],
 			],
 		];
+	}
+
+	/** Shared guard used before callers choose an executed event and by direct serialization. */
+	public static function queue_age_guard( $execution, $action_name ) {
+		if ( ! is_array( $execution ) || empty( $execution['success'] ) || ! empty( $execution['preview'] ) || ! empty( $execution['requires_confirmation'] )
+			|| ! in_array( $action_name, [ 'operations.get_attention_queue', 'operations.get_fulfillment_queue', 'customers.get_service_queue', 'operations.get_summary', 'store.get_daily_briefing' ], true ) ) {
+			return null;
+		}
+		$containers = [ $execution ];
+		if ( is_array( $execution['data'] ?? null ) && ! self::is_list_array( $execution['data'] ) ) {
+			$containers[] = $execution['data'];
+		}
+		if ( 'store.get_daily_briefing' === $action_name ) {
+			foreach ( [ 'attention_queue', 'fulfillment_queue', 'customer_service_queue', 'operations_summary' ] as $key ) {
+				if ( is_array( $execution[ $key ] ?? null ) ) {
+					$containers[] = $execution[ $key ];
+				}
+			}
+		}
+		foreach ( $containers as $container ) {
+			$lists = [];
+			foreach ( [ 'orders', 'items', 'attention_items', 'recent_orders' ] as $key ) {
+				if ( isset( $container[ $key ] ) ) {
+					$lists[] = $container[ $key ];
+				}
+			}
+			foreach ( (array) ( $container['queues'] ?? [] ) as $queue ) {
+				if ( ! is_array( $queue ) ) {
+					return YoRo_Orders_Read_Service::queue_age_error();
+				}
+				$lists[] = $queue['orders'] ?? [];
+			}
+			foreach ( $lists as $rows ) {
+				if ( ! is_array( $rows ) ) {
+					return YoRo_Orders_Read_Service::queue_age_error();
+				}
+				foreach ( $rows as $row ) {
+					if ( ! is_array( $row ) || ! is_int( $row['age_hours'] ?? null ) || $row['age_hours'] < 0 || ! self::queue_created_time_valid( $row ) ) {
+						return YoRo_Orders_Read_Service::queue_age_error();
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	private static function queue_created_time_valid( array $row ) {
+		// Presenter text uses the site's date format. Its original timestamp avoids locale/DST ambiguity.
+		if ( array_key_exists( 'date_created_ts', $row ) ) {
+			$timestamp = $row['date_created_ts'];
+			if ( ! is_int( $timestamp ) || $timestamp <= 0 || $timestamp > time() ) {
+				return false;
+			}
+			if ( isset( $row['extensions'] ) && ! is_array( $row['extensions'] ) ) {
+				return false;
+			}
+			$evidence = $row['extensions']['woocommerce.queue_evidence'] ?? null;
+			if ( null !== $evidence ) {
+				if ( ! is_array( $evidence ) || ! is_string( $evidence['captured_at'] ?? null ) || ! preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/D', $evidence['captured_at'] ) ) {
+					return false;
+				}
+				$capture = strtotime( $evidence['captured_at'] );
+				return false !== $capture && gmdate( 'c', $capture ) === $evidence['captured_at'] && $capture <= time() && $capture >= $timestamp && $row['age_hours'] === (int) floor( ( $capture - $timestamp ) / HOUR_IN_SECONDS );
+			}
+			return true;
+		}
+		$created = $row['created_at'] ?? ( $row['date_created'] ?? null );
+		if ( ! is_string( $created ) || '' === $created || strlen( $created ) > 120 || false !== strpos( $created, chr( 0 ) ) ) {
+			return false;
+		}
+		foreach ( [ 'Y-m-d\\TH:i:sP', 'Y-m-d\\TH:i:s\\Z', 'Y-m-d H:i:s', YoRo_Date_Helper::get_datetime_format() ] as $format ) {
+			$timezone = 'Y-m-d\\TH:i:s\\Z' === $format ? new DateTimeZone( 'UTC' ) : wp_timezone();
+			$date = DateTimeImmutable::createFromFormat( '!' . $format, $created, $timezone );
+			$errors = DateTimeImmutable::getLastErrors();
+			if ( $date && ( false === $errors || ( 0 === $errors['warning_count'] && 0 === $errors['error_count'] ) ) && $date->format( $format ) === $created ) {
+				return $date->getTimestamp() > 0 && $date->getTimestamp() <= time();
+			}
+		}
+		return false;
 	}
 
 	private static function execution_data_schema( $action_name ) {
@@ -1844,9 +1928,7 @@ class YoRo_Commerce_Contract_Builder {
 			'severity'       => $severity,
 			'priority_score' => (float) ( $item['priority_score'] ?? ( $item['case_priority_score'] ?? 0 ) ),
 			'version'        => sanitize_text_field( $item['version'] ?? '' ),
-			'extensions'     => is_array( $item['extensions'] ?? null )
-				? $item['extensions']
-				: [ 'woocommerce.order' => [ 'edit_url' => esc_url_raw( $item['edit_url'] ?? '' ) ] ],
+			'extensions'     => array_replace( [ 'woocommerce.order' => [ 'edit_url' => esc_url_raw( $item['edit_url'] ?? '' ) ] ], is_array( $item['extensions'] ?? null ) ? $item['extensions'] : [] ),
 		];
 	}
 

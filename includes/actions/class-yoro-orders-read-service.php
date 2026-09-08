@@ -2039,6 +2039,103 @@ class YoRo_Orders_Read_Service {
 		return self::build_attention_queue( $key, $label, $description, $query_args, $limit );
 	}
 
+	/** Created-age evidence for the bounded operational queues, never status duration. */
+	public static function queue_order_age_hours( WC_Order $order, $observed_at = null ) {
+		try {
+			$created = $order->get_date_created();
+			$timestamp = $created instanceof DateTimeInterface ? $created->getTimestamp() : null;
+			$now = null === $observed_at ? current_datetime()->getTimestamp() : $observed_at;
+		} catch ( Throwable $error ) {
+			return self::queue_age_error();
+		}
+		if ( ! is_int( $timestamp ) || $timestamp <= 0 || $timestamp > $now ) {
+			return self::queue_age_error();
+		}
+		return (int) floor( ( $now - $timestamp ) / HOUR_IN_SECONDS );
+	}
+
+	public static function queue_age_error() {
+		return new WP_Error( 'yoro_queue_age_unavailable', __( 'The queue could not be read because a required order creation time is unavailable or invalid.', 'yoro-ai-core' ) );
+	}
+
+	/** Query the existing bounded slice without treating a query failure as an empty store. */
+	public static function queue_query_orders( $args ) {
+		try {
+			$result = wc_get_orders( $args );
+		} catch ( Throwable $error ) {
+			return new WP_Error( 'yoro_queue_query_failed', __( 'The queue data could not be read.', 'yoro-ai-core' ) );
+		}
+		if ( is_wp_error( $result ) ) {
+			return new WP_Error( 'yoro_queue_query_failed', __( 'The queue data could not be read.', 'yoro-ai-core' ) );
+		}
+		if ( ! empty( $args['paginate'] ) ) {
+			return is_object( $result ) && isset( $result->total ) && is_numeric( $result->total ) && $result->total >= 0
+				? $result : new WP_Error( 'yoro_queue_query_failed', __( 'The queue data could not be read.', 'yoro-ai-core' ) );
+		}
+		if ( ! is_array( $result ) || count( array_filter( $result, static function( $row ) { return $row instanceof WC_Order; } ) ) !== count( $result ) ) {
+			return new WP_Error( 'yoro_queue_query_failed', __( 'The queue data could not be read.', 'yoro-ai-core' ) );
+		}
+		return $result;
+	}
+
+	public static function queue_count_orders( $args ) {
+		$result = self::queue_query_orders( wp_parse_args( $args, [ 'limit' => 1, 'paginate' => true, 'return' => 'ids', 'orderby' => 'date', 'order' => 'DESC' ] ) );
+		return is_wp_error( $result ) ? $result : (int) $result->total;
+	}
+
+	/** Internal observation, moved to wordpress.execution.meta before returning the queue. */
+	private static function queue_observation( $count, $visible, $limit, $sample_size = null ) {
+		return [
+			'captured_at' => gmdate( 'c' ),
+			'age_basis' => 'date_created',
+			'status_duration' => 'unknown',
+			'count_basis' => null === $sample_size ? 'query_matches' : 'sample_matches',
+			'match_count' => $count,
+			'visible_memberships' => $visible,
+			'limit' => $limit,
+			'sample_size' => $sample_size,
+			'candidate_limit' => null === $sample_size ? null : 50,
+			'complete' => null === $sample_size || $sample_size < 50,
+			'visible_truncated' => $count > $visible,
+		];
+	}
+
+	public static function queue_evidence( &$queues, $orders ) {
+		$evidence = [ 'version' => 1, 'captured_at' => gmdate( 'c' ), 'visible_memberships' => array_sum( array_map( static function( $queue ) { return count( $queue['orders'] ); }, $queues ) ), 'age_basis' => 'date_created', 'status_duration' => 'unknown', 'count_basis' => 'queue_memberships', 'unique_count_scope' => 'visible_sample', 'visible_unique_orders' => count( $orders ), 'queues' => [] ];
+		foreach ( $queues as &$queue ) {
+			$evidence['queues'][ $queue['key'] ] = $queue['_evidence'];
+			unset( $queue['_evidence'] );
+		}
+		unset( $queue );
+		return $evidence;
+	}
+
+	/** One order identity per result; keep the strongest existing score and all observed reasons. */
+	public static function queue_case_rankings( $rankings ) {
+		usort( $rankings, static function( $a, $b ) {
+			return ( (float) $b['score'] <=> (float) $a['score'] )
+				?: ( (int) $a['order']['id'] <=> (int) $b['order']['id'] )
+				?: strcmp( $a['topic'], $b['topic'] );
+		} );
+		$cases = [];
+		foreach ( $rankings as $case ) {
+			$id = (int) $case['order']['id'];
+			if ( ! isset( $cases[ $id ] ) ) {
+				$case['order']['case_priority_score'] = $case['score'];
+				$case['order']['queue_topic'] = $case['topic'];
+				$case['order']['extensions']['woocommerce.queue_evidence']['reasons'] = [];
+				$cases[ $id ] = $case;
+			}
+			$cases[ $id ]['order']['extensions']['woocommerce.queue_evidence']['reasons'][ $case['topic'] ] ??= [ 'topic' => $case['topic'], 'label' => $case['queue_label'], 'description' => $case['queue_description'], 'score' => $case['score'] ];
+		}
+		foreach ( $cases as &$case ) {
+			ksort( $case['order']['extensions']['woocommerce.queue_evidence']['reasons'] );
+			$case['order']['extensions']['woocommerce.queue_evidence']['reasons'] = array_values( $case['order']['extensions']['woocommerce.queue_evidence']['reasons'] );
+		}
+		unset( $case );
+		return array_values( $cases );
+	}
+
 	public static function operations_build_high_value_open_queue( $limit, $threshold ) {
 		return self::build_high_value_open_queue( $limit, $threshold );
 	}
@@ -2313,8 +2410,12 @@ class YoRo_Orders_Read_Service {
 	}
 
 	private static function build_attention_queue( $key, $label, $description, $query_args, $limit ) {
-		$count  = self::count_orders( $query_args );
+		$count  = self::queue_count_orders( $query_args );
 		$orders = self::query_attention_orders( $query_args, $limit );
+
+		if ( is_wp_error( $count ) || is_wp_error( $orders ) ) {
+			return is_wp_error( $count ) ? $count : $orders;
+		}
 
 		return [
 			'key'         => $key,
@@ -2322,12 +2423,17 @@ class YoRo_Orders_Read_Service {
 			'description' => $description,
 			'count'       => $count,
 			'orders'      => $orders,
+			'_evidence'   => self::queue_observation( $count, count( $orders ), $limit ),
 		];
 	}
 
 	private static function build_customer_service_queue( $key, $label, $description, $query_args, $limit, $reason ) {
-		$count  = self::count_orders( $query_args );
+		$count  = self::queue_count_orders( $query_args );
 		$orders = self::query_customer_service_orders( $query_args, $limit, $reason );
+
+		if ( is_wp_error( $count ) || is_wp_error( $orders ) ) {
+			return is_wp_error( $count ) ? $count : $orders;
+		}
 
 		return [
 			'key'         => $key,
@@ -2335,6 +2441,7 @@ class YoRo_Orders_Read_Service {
 			'description' => $description,
 			'count'       => $count,
 			'orders'      => $orders,
+			'_evidence'   => self::queue_observation( $count, count( $orders ), $limit ),
 		];
 	}
 
@@ -2351,7 +2458,7 @@ class YoRo_Orders_Read_Service {
 	}
 
 	private static function get_processing_fulfillment_candidates( $limit = 50 ) {
-		return wc_get_orders(
+		return self::queue_query_orders(
 			[
 				'limit'   => min( max( absint( $limit ), 1 ), 200 ),
 				'status'  => [ 'processing' ],
@@ -2362,6 +2469,9 @@ class YoRo_Orders_Read_Service {
 	}
 
 	private static function build_fulfillment_candidate_queue( $key, $label, $description, $candidates, $limit, $filter, $reason ) {
+		if ( is_wp_error( $candidates ) ) {
+			return $candidates;
+		}
 		$candidates = is_array( $candidates ) ? $candidates : [];
 		$orders     = [];
 		$count      = 0;
@@ -2374,7 +2484,11 @@ class YoRo_Orders_Read_Service {
 			$count++;
 
 			if ( count( $orders ) < $limit ) {
-				$orders[] = self::format_fulfillment_order( $order, $reason );
+				$item = self::format_fulfillment_order( $order, $reason );
+				if ( is_wp_error( $item ) ) {
+					return $item;
+				}
+				$orders[] = $item;
 			}
 		}
 
@@ -2384,6 +2498,7 @@ class YoRo_Orders_Read_Service {
 			'description' => $description,
 			'count'       => $count,
 			'orders'      => $orders,
+			'_evidence'   => self::queue_observation( $count, count( $orders ), $limit, count( $candidates ) ),
 		];
 	}
 
@@ -2550,7 +2665,7 @@ class YoRo_Orders_Read_Service {
 	}
 
 	private static function build_saved_email_drafts_queue( $limit ) {
-		$candidates = wc_get_orders(
+		$candidates = self::queue_query_orders(
 			[
 				'limit'   => 50,
 				'status'  => self::get_all_order_status_slugs(),
@@ -2561,6 +2676,10 @@ class YoRo_Orders_Read_Service {
 
 		$orders = [];
 		$count  = 0;
+
+		if ( is_wp_error( $candidates ) ) {
+			return $candidates;
+		}
 
 		foreach ( $candidates as $order ) {
 			if ( ! $order instanceof WC_Order ) {
@@ -2580,6 +2699,9 @@ class YoRo_Orders_Read_Service {
 					$order,
 					__( 'Saved email draft is waiting for review or send.', 'yoro-ai-core' )
 				);
+				if ( is_wp_error( $item ) ) {
+					return $item;
+				}
 				$item['draft_count'] = count( $drafts );
 				$orders[]            = $item;
 			}
@@ -2591,11 +2713,12 @@ class YoRo_Orders_Read_Service {
 			'description' => __( 'Orders with saved customer email drafts that have not been sent by YoRo.', 'yoro-ai-core' ),
 			'count'       => $count,
 			'orders'      => $orders,
+			'_evidence'   => self::queue_observation( $count, count( $orders ), $limit, count( $candidates ) ),
 		];
 	}
 
 	private static function build_high_value_open_queue( $limit, $threshold ) {
-		$candidates = wc_get_orders(
+		$candidates = self::queue_query_orders(
 			[
 				'limit'   => 50,
 				'status'  => [ 'pending', 'processing', 'on-hold' ],
@@ -2607,6 +2730,10 @@ class YoRo_Orders_Read_Service {
 		$orders = [];
 		$count  = 0;
 
+		if ( is_wp_error( $candidates ) ) {
+			return $candidates;
+		}
+
 		foreach ( $candidates as $order ) {
 			if ( ! $order instanceof WC_Order || (float) $order->get_total() < $threshold ) {
 				continue;
@@ -2615,7 +2742,11 @@ class YoRo_Orders_Read_Service {
 			$count++;
 
 			if ( count( $orders ) < $limit ) {
-				$orders[] = self::format_attention_order( $order );
+				$item = self::format_attention_order( $order );
+				if ( is_wp_error( $item ) ) {
+					return $item;
+				}
+				$orders[] = $item;
 			}
 		}
 
@@ -2629,11 +2760,12 @@ class YoRo_Orders_Read_Service {
 			),
 			'count'       => $count,
 			'orders'      => $orders,
+			'_evidence'   => self::queue_observation( $count, count( $orders ), $limit, count( $candidates ) ),
 		];
 	}
 
 	private static function query_attention_orders( $query_args, $limit ) {
-		$orders = wc_get_orders(
+		$orders = self::queue_query_orders(
 			wp_parse_args(
 				$query_args,
 				[
@@ -2646,9 +2778,17 @@ class YoRo_Orders_Read_Service {
 
 		$data = [];
 
+		if ( is_wp_error( $orders ) ) {
+			return $orders;
+		}
+
 		foreach ( $orders as $order ) {
 			if ( $order instanceof WC_Order ) {
-				$data[] = self::format_attention_order( $order );
+				$item = self::format_attention_order( $order );
+				if ( is_wp_error( $item ) ) {
+					return $item;
+				}
+				$data[] = $item;
 			}
 		}
 
@@ -2713,7 +2853,7 @@ class YoRo_Orders_Read_Service {
 	}
 
 	private static function query_customer_service_orders( $query_args, $limit, $reason ) {
-		$orders = wc_get_orders(
+		$orders = self::queue_query_orders(
 			wp_parse_args(
 				$query_args,
 				[
@@ -2726,9 +2866,17 @@ class YoRo_Orders_Read_Service {
 
 		$data = [];
 
+		if ( is_wp_error( $orders ) ) {
+			return $orders;
+		}
+
 		foreach ( $orders as $order ) {
 			if ( $order instanceof WC_Order ) {
-				$data[] = self::format_customer_service_order( $order, $reason );
+				$item = self::format_customer_service_order( $order, $reason );
+				if ( is_wp_error( $item ) ) {
+					return $item;
+				}
+				$data[] = $item;
 			}
 		}
 
@@ -2736,19 +2884,28 @@ class YoRo_Orders_Read_Service {
 	}
 
 	private static function format_attention_order( WC_Order $order ) {
+		$captured_at = time();
+		$age = self::queue_order_age_hours( $order, $captured_at );
+		if ( is_wp_error( $age ) ) {
+			return $age;
+		}
 		$data = YoRo_Order_Presenter::format_order_summary( $order );
 
-		$data['age_hours'] = self::get_order_age_hours( $order );
+		$data['age_hours'] = $age;
+		$data['extensions']['woocommerce.queue_evidence'] = [ 'age_basis' => 'date_created', 'status_duration' => 'unknown', 'captured_at' => gmdate( 'c', $captured_at ) ];
 
 		return $data;
 	}
 
 	private static function format_customer_service_order( WC_Order $order, $reason ) {
 		$data = self::format_attention_order( $order );
+		if ( is_wp_error( $data ) ) {
+			return $data;
+		}
 
 		$data['customer_name']      = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
 		$data['followup_reason']    = sanitize_text_field( $reason );
-		$data['suggested_command']  = 'Write email for order #' . $order->get_id() . ' about: ' . sanitize_text_field( $reason );
+		$data['suggested_command']  = 'Show order ' . $order->get_id() . ' details';
 		$data['customer_id']        = $order->get_customer_id();
 
 		return $data;
@@ -2756,6 +2913,9 @@ class YoRo_Orders_Read_Service {
 
 	private static function format_fulfillment_order( WC_Order $order, $reason ) {
 		$data = self::format_attention_order( $order );
+		if ( is_wp_error( $data ) ) {
+			return $data;
+		}
 
 		$data['shipping_name']      = trim( $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name() );
 		$data['shipping_city']      = $order->get_shipping_city();
@@ -2763,7 +2923,7 @@ class YoRo_Orders_Read_Service {
 		$data['shipping_method']    = self::get_order_shipping_method_label( $order );
 		$data['tracking_detected']  = self::order_has_tracking( $order );
 		$data['fulfillment_reason'] = sanitize_text_field( $reason );
-		$data['suggested_command']  = 'Preview shipping delay email for order ' . $order->get_id();
+		$data['suggested_command']  = 'Show order ' . $order->get_id() . ' details';
 
 		return $data;
 	}

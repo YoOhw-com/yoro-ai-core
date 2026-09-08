@@ -108,6 +108,14 @@ class YoRo_Action_Executor {
 			]
 		);
 
+		$age_error = YoRo_Commerce_Contract_Builder::queue_age_guard( $result, $action_name );
+		if ( is_wp_error( $age_error ) ) {
+			return $age_error;
+		}
+		if ( is_array( $result ) && empty( $result['success'] ) && 'yoro_queue_age_unavailable' === ( $result['error']['code'] ?? '' )
+			&& in_array( $action_name, [ 'operations.get_attention_queue', 'operations.get_fulfillment_queue', 'customers.get_service_queue', 'operations.get_summary', 'store.get_daily_briefing' ], true ) ) {
+			return YoRo_Orders_Read_Service::queue_age_error();
+		}
 		return $result;
 	}
 
@@ -204,6 +212,10 @@ class YoRo_Action_Executor {
 
 	private static function normalize_result( $action_name, $result, $action = null ) {
 		$action = is_array( $action ) ? $action : YoRo_Action_Registry::get( $action_name );
+		$age_error = YoRo_Commerce_Contract_Builder::queue_age_guard( $result, $action_name );
+		if ( is_wp_error( $age_error ) ) {
+			$result = $age_error;
+		}
 
 		if ( is_wp_error( $result ) ) {
 			return self::normalize_error_result( $action_name, $result, $action );
@@ -362,6 +374,10 @@ class YoRo_Action_Executor {
 
 		if ( $is_write_action ) {
 			return $summary;
+		}
+
+		if ( in_array( $action_name, [ 'operations.get_attention_queue', 'operations.get_fulfillment_queue', 'customers.get_service_queue' ], true ) ) {
+			return $summary . ' ' . __( 'Counts are queue memberships and may overlap. Query and sample limits are listed per queue; created-age does not measure time in the current status.', 'yoro-ai-core' );
 		}
 
 		switch ( $action_name ) {

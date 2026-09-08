@@ -2560,15 +2560,38 @@
 		let html = '<div class="yoro-report-presentation" data-report-result-id="' + h.escapeHtml(p.result_id)
 			+ '" data-conversation-id="' + h.escapeHtml(p.conversation_id) + '">';
 		html += '<p class="yoro-report-summary">' + h.escapeHtml(p.summary || '') + '</p>';
+		if (p.state !== 'error' && validQueueCapture(p.as_of) && ['operations.get_summary', 'store.get_daily_briefing'].indexOf(p.action) >= 0) {
+			html += '<p class="yoro-result-subtle">' + h.escapeHtml((isVietnamese(p.language) ? 'Mốc quan sát: ' : 'Observed at: ') + p.as_of) + '</p>';
+		}
 		if (p.has_details === true && ['complete', 'partial', 'no_data'].indexOf(p.state) !== -1 && p.report && typeof p.report === 'object') {
 			html += '<button type="button" class="button yoro-report-toggle" aria-expanded="' + expanded + '" aria-controls="' + id
 				+ '" data-open-label="' + h.escapeHtml(p.open_label) + '" data-close-label="' + h.escapeHtml(p.close_label) + '">'
 				+ h.escapeHtml(expanded ? p.close_label : p.open_label) + '</button>';
 			html += '<div class="yoro-report-details" id="' + id + '"' + (expanded ? '' : ' hidden') + '>';
 			html += renderUnifiedReportPanel(p.report, h, normalizeLocale(p.language) || getResultLocale(data), p.report.window || {}, true);
+			html += renderReportQueueEvidence(p.report.extensions && p.report.extensions['woocommerce.queue_evidence'], normalizeLocale(p.language), h);
 			html += '</div>';
 		}
 		return html + '</div>';
+	}
+
+	function renderReportQueueEvidence(e, locale, h, depth) {
+		if (!e || e.version !== 1 || !validQueueCapture(e.captured_at) || (depth || 0) > 1) return '';
+		const vi = isVietnamese(locale);
+		let lines = [(vi ? 'Mốc quan sát: ' : 'Observed at: ') + e.captured_at];
+		if (e.applicable === false) lines.push(vi ? 'Không áp dụng' : 'Not applicable');
+		if (Number.isSafeInteger(e.backlog_sample_size) && e.backlog_candidate_limit === 200 && typeof e.backlog_complete === 'boolean') {
+			lines.push((vi ? 'Mẫu đơn tồn: ' : 'Backlog sample: ') + e.backlog_sample_size + '/200; ' + (e.backlog_complete ? (vi ? 'mẫu bao phủ truy vấn' : 'sample covers query') : (vi ? 'mẫu có giới hạn' : 'bounded sample')));
+		}
+		if (e.queues && typeof e.queues === 'object') {
+			Object.entries(e.queues).slice(0, 5).forEach(([key, o]) => {
+				if (!validQueueObservation(o)) return;
+				lines.push(key + ': ' + o.match_count + (o.count_basis === 'sample_matches' ? (vi ? ' khớp trong mẫu ' : ' sample matches ') + o.sample_size + '/50' : (vi ? ' khớp truy vấn' : ' query matches')) + '; ' + (vi ? 'giới hạn ' : 'limit ') + o.limit + '; ' + (vi ? 'lượt trong phần trả về ' : 'returned memberships ') + o.visible_memberships + '; ' + (o.complete ? (vi ? 'đếm đầy đủ trong phạm vi truy vấn' : 'count complete within query scope') : (vi ? 'tổng chưa xác định' : 'full total unknown')));
+			});
+		}
+		let html = '<div class="yoro-queue-evidence">' + lines.map(line => '<p class="yoro-result-subtle">' + h.escapeHtml(line) + '</p>').join('') + '</div>';
+		if (e.sections && typeof e.sections === 'object') Object.values(e.sections).slice(0, 4).forEach(section => { html += renderReportQueueEvidence(section, locale, h, (depth || 0) + 1); });
+		return html;
 	}
 
 	function renderQueueWorkbenchIntro(config, h) {
@@ -2975,6 +2998,49 @@
 		}, h);
 	}
 
+	function validQueueCapture(value) {
+		return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|\+00:00)$/.test(value)
+			&& Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.now()
+			&& new Date(Date.parse(value)).toISOString().slice(0, 19) === value.slice(0, 19);
+	}
+
+	function validQueueObservation(o) {
+		if (!o || ['query_matches', 'sample_matches'].indexOf(o.count_basis) < 0
+			|| !['match_count', 'visible_memberships', 'limit'].every(key => Number.isSafeInteger(o[key]) && o[key] >= 0)
+			|| o.limit < 1 || o.limit > 20 || o.visible_memberships > Math.min(o.limit, o.match_count)
+			|| typeof o.complete !== 'boolean' || o.visible_truncated !== (o.match_count > o.visible_memberships)) return false;
+		return o.count_basis === 'query_matches' ? o.complete === true
+			: o.candidate_limit === 50 && Number.isSafeInteger(o.sample_size) && o.sample_size >= o.match_count && o.sample_size <= 50 && o.complete === (o.sample_size < 50);
+	}
+
+	function queueEvidence(result) {
+		const extension = result.extensions && result.extensions['wordpress.execution'];
+		const e = (result.meta && result.meta.queue_evidence) || (extension && extension.meta && extension.meta.queue_evidence);
+		if (!e || e.version !== 1 || e.age_basis !== 'date_created' || e.status_duration !== 'unknown' || !validQueueCapture(e.captured_at)
+			|| !e.queues || typeof e.queues !== 'object' || Object.keys(e.queues).length > 5
+			|| !Object.values(e.queues).every(validQueueObservation)) return null;
+		return e;
+	}
+
+	function queueAgeText(order, locale) {
+		const e = order.extensions && order.extensions['woocommerce.queue_evidence'];
+		const captured = e && Date.parse(e.captured_at);
+		const created = order.date_created_ts;
+		const valid = e && e.age_basis === 'date_created' && e.status_duration === 'unknown' && validQueueCapture(e.captured_at)
+			&& Number.isSafeInteger(created) && created > 0 && created * 1000 <= captured
+			&& Number.isSafeInteger(order.age_hours) && order.age_hours === Math.floor((captured / 1000 - created) / 3600);
+		return valid ? formatAgeHoursForLocale(order.age_hours, locale) : (isVietnamese(locale) ? 'Chưa xác định' : 'Unknown');
+	}
+
+	function renderQueueEvidence(result, locale, h) {
+		const vi = isVietnamese(locale);
+		const e = queueEvidence(result);
+		const text = vi ? 'Tuổi đơn tính từ ngày tạo; thời gian ở trạng thái hiện tại chưa xác định. Số lượt thuộc nhóm có thể trùng đơn. Chưa thấy tracking không chứng minh đơn chưa gửi hoặc giao trễ.' : 'Age is measured from creation; time in the current status is unknown. Queue memberships may overlap. Missing tracking does not establish shipment state or delay.';
+		let html = '<p class="yoro-result-subtle yoro-queue-evidence">' + h.escapeHtml(text) + '</p>';
+		html += '<p class="yoro-result-subtle">' + h.escapeHtml(e ? (vi ? 'Mốc quan sát: ' : 'Observed at: ') + e.captured_at + (vi ? '. Số đơn duy nhất chỉ trong mẫu trả về.' : '. Unique orders refer only to the returned sample.') : (vi ? 'Thiếu thông tin quan sát và giới hạn mẫu; kết quả cũ chưa được xác thực lại.' : 'Observation and sample limits are unavailable; legacy results are not re-certified.')) + '</p>';
+		return html;
+	}
+
 	function getQueueMatchCount(result) {
 		return parseInt(result && Object.prototype.hasOwnProperty.call(result, 'queue_item_count') ? result.queue_item_count : (result && result.count ? result.count : 0), 10) || 0;
 	}
@@ -3030,7 +3096,19 @@
 			const visibleOrders = maxRows > 0 ? orders.slice(0, maxRows) : orders;
 			let rowsHtml = '';
 			html += '<div class="yoro-order-detail-section yoro-queue-section">';
-			html += renderQueueSectionHeading(queue, 'matches', h);
+			const observation = config.evidence && config.evidence.queues && config.evidence.queues[queue.key];
+			const observed = validQueueObservation(observation) && observation.match_count === queue.count && observation.visible_memberships === orders.length;
+			html += renderQueueSectionHeading(queue, observed ? (observation.count_basis === 'sample_matches' ? 'sample matches' : 'query matches') : 'reported matches; scope unknown', h);
+			if (observed) {
+				const vi = isVietnamese(config.locale);
+				const facts = [
+					(vi ? 'Giới hạn mỗi nhóm: ' : 'Per-queue limit: ') + observation.limit,
+					observation.count_basis === 'sample_matches' ? (vi ? 'Mẫu ứng viên: ' : 'Candidate sample: ') + observation.sample_size + '/' + observation.candidate_limit : (vi ? 'Số khớp toàn truy vấn' : 'Full query match count'),
+					observation.complete ? (vi ? 'Đếm đầy đủ trong phạm vi truy vấn' : 'Count complete within query scope') : (vi ? 'Mẫu có giới hạn; tổng chưa xác định' : 'Bounded sample; full total unknown'),
+					(vi ? 'Đang hiển thị: ' : 'Displayed memberships: ') + visibleOrders.length + '/' + observation.match_count
+				];
+				html += '<p class="yoro-result-subtle">' + h.escapeHtml(facts.join(' · ')) + '</p>';
+			}
 
 			if (!orders.length) {
 				html += '<p class="yoro-result-subtle yoro-queue-empty">' + h.escapeHtml(config.emptyMessage || 'No matching orders in this queue.') + '</p>';
@@ -3162,35 +3240,40 @@
 
 	function renderOperationsAttentionQueueResult(data, h) {
 		const result = data.result || {};
+		const locale = getResultLocale(data);
+		if (result.success === false) {
+			return '<div class="yoro-result-error">' + h.escapeHtml(isVietnamese(locale) ? 'Không đọc được dữ liệu hàng đợi. Đây không phải kết quả 0 đơn.' : 'Queue data is unavailable. This is not a zero-order result.') + '</div>';
+		}
 		const parsed = data.parsed || {};
 		const queues = Array.isArray(result.queues) ? result.queues : [];
 		const attentionContext = result.attention_context || {};
-		const priorityItems = Array.isArray(result.priority_items) ? result.priority_items : [];
-		const recommendedSequence = Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
-		const nextRecommendedCase = result.next_recommended_case || null;
-		const batchDraftCandidates = Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
+		const priorityItems = queueEvidence(result) && Array.isArray(result.priority_items) ? result.priority_items : [];
+		const recommendedSequence = queueEvidence(result) && Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
+		const nextRecommendedCase = queueEvidence(result) ? (result.next_recommended_case || null) : null;
+		const batchDraftCandidates = queueEvidence(result) && Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
 		const topPriority = buildOperationsAttentionHeroItem(attentionContext, priorityItems, result);
 		const supportingPriorityItems = filterOperationsAttentionSupportingPriorities(priorityItems, attentionContext);
 		const queueMatches = getQueueMatchCount(result);
-		const visibleCases = getQueueVisibleCaseCount(result, 'orders');
+		const visibleCases = Array.isArray(result.orders) ? result.orders.length : 'Unknown';
 
 		let html = renderQueueWorkbenchIntro({
 			result: result,
-				showAssistantIntro: true,
+				showAssistantIntro: !!queueEvidence(result),
 				showBoundary: true,
 				summary: result.summary || 'Operations attention queue',
 				subtle: 'Orders that may need review next.',
 				parserRule: parsed.parser_rule,
 				title: 'Operations attention cases',
 				contextLine: 'Top cases from each active queue.',
-				badge: queueMatches + ' matches'
+				badge: queueMatches + ' memberships'
 			}, h);
 		html += renderQueueWorkbenchHero(topPriority, [
-			{ label: 'Queue matches', value: queueMatches },
+			{ label: 'Queue memberships', value: queueMatches },
 			{ label: 'Pending payment', value: attentionContext.pending_count || 0 },
 			{ label: 'Aging processing', value: attentionContext.processing_count || 0 },
 			{ label: 'High-value open', value: attentionContext.high_value_count || 0 }
 		], h);
+		html += renderQueueEvidence(result, locale, h);
 		html += renderWorklistModeCard(result, h);
 		html += renderQueueStartHereCard(nextRecommendedCase, h, {
 			hideCommands: ['Show operations attention queue']
@@ -3207,24 +3290,26 @@
 		html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
 		html += renderQueueMetaMetrics([
 			{ label: 'Queues', value: queues.length },
-			{ label: 'Shown cases', value: visibleCases },
+			{ label: 'Unique orders in returned sample', value: visibleCases },
 			{ label: 'High-value threshold', value: result.high_value_threshold || 0 }
 		], h);
 		html += renderOrderQueueSections(queues, {
 			emptyMessage: 'No matching orders in this queue.',
 			maxRows: 5,
+			evidence: queueEvidence(result),
+			locale: locale,
 			columns: [
 				{ label: 'Order' },
 				{ label: 'Case' },
-				{ label: 'Age' },
+				{ label: isVietnamese(locale) ? 'Tuổi từ ngày tạo' : 'Age since creation' },
 				{ label: 'Next action' }
 			],
 			renderRow: function(order, queue, h2) {
 				const queueKey = String(queue && queue.key ? queue.key : '');
 				const customerMeta = order.customer_name || order.billing_email || '';
 				const caseMeta = [
-					humanizeAttentionTopic(queueKey || ''),
-					orderDisplayStatus(order) || '',
+					displayText(humanizeAttentionTopic(queueKey || '')),
+					displayText(orderDisplayStatus(order) || ''),
 					order.total ? ((order.total || '') + ' ' + (order.currency || '')) : ''
 				].filter(Boolean).join(' · ');
 				const primaryCommand = getOperationsAttentionRowCommand(queueKey, order);
@@ -3232,8 +3317,8 @@
 				const detailsCommand = 'Show order ' + order.id + ' details';
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
-				row += '<td><strong>' + h2.escapeHtml(displayText(caseMeta || (orderDisplayStatus(order) || 'Case'))) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(displayText(customerMeta || queue.description || '')) + '</div></td>';
-				row += '<td>' + h2.escapeHtml(formatAgeHours(order.age_hours)) + '</td>';
+				row += '<td><strong>' + h2.escapeHtml(caseMeta || displayText(orderDisplayStatus(order) || 'Case')) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(customerMeta ? String(customerMeta) : displayText(queue.description || '')) + '</div></td>';
+				row += '<td>' + h2.escapeHtml(queueAgeText(order, locale)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(primaryLabel, primaryCommand, h2) + ' ';
 				if (primaryCommand !== detailsCommand) {
@@ -3257,17 +3342,21 @@
 
 	function renderFulfillmentQueueResult(data, h) {
 		const result = data.result || {};
+		const locale = getResultLocale(data);
+		if (result.success === false) {
+			return '<div class="yoro-result-error">' + h.escapeHtml(isVietnamese(locale) ? 'Không đọc được dữ liệu hàng đợi. Đây không phải kết quả 0 đơn.' : 'Queue data is unavailable. This is not a zero-order result.') + '</div>';
+		}
 		const parsed = data.parsed || {};
 		const queues = Array.isArray(result.queues) ? result.queues : [];
 		const fulfillmentContext = result.fulfillment_context || {};
-		const priorityItems = Array.isArray(result.priority_items) ? result.priority_items : [];
-		const recommendedSequence = Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
-		const nextRecommendedCase = result.next_recommended_case || null;
-		const batchDraftCandidates = Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
+		const priorityItems = queueEvidence(result) && Array.isArray(result.priority_items) ? result.priority_items : [];
+		const recommendedSequence = queueEvidence(result) && Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
+		const nextRecommendedCase = queueEvidence(result) ? (result.next_recommended_case || null) : null;
+		const batchDraftCandidates = queueEvidence(result) && Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
 		if (fulfillmentContext && fulfillmentContext.applicable === false) {
 			return renderQueueWorkbenchIntro({
 				result: result,
-				showAssistantIntro: true,
+				showAssistantIntro: !!queueEvidence(result),
 				showBoundary: true,
 				summary: result.summary || 'Fulfillment queue is not currently applicable.',
 				subtle: 'Shipping-related fulfillment signals are hidden while shipping is disabled for this store.',
@@ -3280,25 +3369,26 @@
 		const topPriority = buildFulfillmentHeroItem(fulfillmentContext, priorityItems, result);
 		const supportingPriorityItems = filterFulfillmentSupportingPriorities(priorityItems, fulfillmentContext);
 		const queueMatches = getQueueMatchCount(result);
-		const visibleCases = getQueueVisibleCaseCount(result, 'orders');
+		const visibleCases = Array.isArray(result.orders) ? result.orders.length : 'Unknown';
 
 		let html = renderQueueWorkbenchIntro({
 			result: result,
-				showAssistantIntro: true,
+				showAssistantIntro: !!queueEvidence(result),
 				showBoundary: true,
 				summary: result.summary || 'Fulfillment queue',
 				subtle: 'Orders that may need shipping or tracking follow-up.',
 				parserRule: parsed.parser_rule,
 				title: 'Fulfillment candidates',
 				contextLine: 'Top fulfillment cases from each queue.',
-				badge: queueMatches + ' matches'
+				badge: queueMatches + ' memberships'
 			}, h);
 		html += renderQueueWorkbenchHero(topPriority, [
-			{ label: 'Queue matches', value: queueMatches },
+			{ label: 'Queue memberships', value: queueMatches },
 			{ label: 'Missing tracking', value: fulfillmentContext.tracking_count || 0 },
 			{ label: 'Aging orders', value: fulfillmentContext.aging_count || 0 },
 			{ label: 'Tracked ready', value: fulfillmentContext.ready_count || 0 }
 		], h);
+		html += renderQueueEvidence(result, locale, h);
 		html += renderWorklistModeCard(result, h);
 		html += renderQueueStartHereCard(nextRecommendedCase, h, {
 			hideCommands: ['Show fulfillment queue']
@@ -3315,32 +3405,34 @@
 		html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
 		html += renderQueueMetaMetrics([
 			{ label: 'Queues', value: queues.length },
-			{ label: 'Shown cases', value: visibleCases },
+			{ label: 'Unique orders in returned sample', value: visibleCases },
 			{ label: 'Store changes', value: 'No' }
 		], h);
 		html += renderOrderQueueSections(queues, {
 			emptyMessage: 'No matching orders in this queue.',
 			maxRows: 5,
+			evidence: queueEvidence(result),
+			locale: locale,
 			columns: [
 				{ label: 'Order' },
 				{ label: 'Case' },
-				{ label: 'Age' },
+				{ label: isVietnamese(locale) ? 'Tuổi từ ngày tạo' : 'Age since creation' },
 				{ label: 'Next action' }
 			],
 			renderRow: function(order, queue, h2) {
 				const shipTo = [order.shipping_city || '', order.shipping_country || ''].filter(Boolean).join(', ');
 				const queueKey = String(queue && queue.key ? queue.key : '');
-				const primaryCommand = order.suggested_command || ('Preview shipping delay email for order ' + order.id);
+				const primaryCommand = getOperationsAttentionRowCommand(queueKey, order);
 				const primaryLabel = getFulfillmentRowActionLabel(queueKey);
 				const caseMeta = [
-					humanizeFulfillmentTopic(queueKey || ''),
+					displayText(humanizeFulfillmentTopic(queueKey || '')),
 					order.shipping_method || '',
 					shipTo || ''
 				].filter(Boolean).join(' · ');
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
-				row += '<td><strong>' + h2.escapeHtml(displayText(caseMeta || (orderDisplayStatus(order) || 'Case'))) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(displayText(order.fulfillment_reason || queue.description || '')) + '</div></td>';
-				row += '<td>' + h2.escapeHtml(formatAgeHours(order.age_hours)) + '</td>';
+				row += '<td><strong>' + h2.escapeHtml(caseMeta || displayText(orderDisplayStatus(order) || 'Case')) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(String(order.fulfillment_reason || queue.description || '')) + '</div></td>';
+				row += '<td>' + h2.escapeHtml(queueAgeText(order, locale)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(primaryLabel, primaryCommand, h2) + ' ';
 				row += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h2.escapeHtml(order.id) + '">Details</button> ';
@@ -3434,45 +3526,50 @@
 
 	function renderCustomerServiceQueueResult(data, h) {
 		const result = data.result || {};
+		const locale = getResultLocale(data);
+		if (result.success === false) {
+			return '<div class="yoro-result-error">' + h.escapeHtml(isVietnamese(locale) ? 'Không đọc được dữ liệu hàng đợi. Đây không phải kết quả 0 đơn.' : 'Queue data is unavailable. This is not a zero-order result.') + '</div>';
+		}
 		const parsed = data.parsed || {};
 		const queues = Array.isArray(result.queues) ? result.queues : [];
 		const serviceContext = result.service_context || {};
-		const priorityItems = Array.isArray(result.priority_items) ? result.priority_items : [];
-		const recommendedSequence = Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
-		const nextRecommendedCase = result.next_recommended_case || null;
-		const batchDraftCandidates = Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
+		const priorityItems = queueEvidence(result) && Array.isArray(result.priority_items) ? result.priority_items : [];
+		const recommendedSequence = queueEvidence(result) && Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
+		const nextRecommendedCase = queueEvidence(result) ? (result.next_recommended_case || null) : null;
+		const batchDraftCandidates = queueEvidence(result) && Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
 		const topPriority = buildCustomerServiceHeroItem(serviceContext, priorityItems, result);
 		const supportingPriorityItems = filterCustomerServiceSupportingPriorities(priorityItems, serviceContext);
 		const queueMatches = getQueueMatchCount(result);
-		const visibleCases = getQueueVisibleCaseCount(result, 'orders');
+		const visibleCases = Array.isArray(result.orders) ? result.orders.length : 'Unknown';
 
 		let html = renderQueueWorkbenchIntro({
 			result: result,
-				showAssistantIntro: true,
+				showAssistantIntro: !!queueEvidence(result),
 				showBoundary: true,
 				summary: result.summary || 'Customer service queue',
 				subtle: 'Customer follow-ups that may need a reply.',
 				parserRule: parsed.parser_rule,
 				title: 'Customer follow-up candidates',
 				contextLine: 'Top customer cases from each queue.',
-				badge: queueMatches + ' matches',
+				badge: queueMatches + ' memberships',
 				cardClassName: 'yoro-queue-workbench-card-customer-service'
 			}, h);
 		html += renderQueueWorkbenchHero(topPriority, [
-			{ label: 'Queue matches', value: queueMatches },
+			{ label: 'Queue memberships', value: queueMatches },
 			{ label: 'On hold', value: serviceContext.on_hold_count || 0 },
 			{ label: 'Pending payment', value: serviceContext.payment_count || 0 },
 			{ label: 'Saved drafts', value: serviceContext.draft_count || 0 }
 		], h, {
 			className: 'yoro-briefing-hero-compact'
 		});
+		html += renderQueueEvidence(result, locale, h);
 		html += renderWorklistModeCard(result, h);
 		html += renderQueueStartHereCard(nextRecommendedCase, h, {
 			hideCommands: ['Show customer service queue']
 		});
 			html += renderBatchDraftPreparation({
-				title: 'Prepare these reply drafts next',
-				description: 'Start here when you want to finish several likely replies.',
+				title: 'Inspect these customer cases next',
+				description: 'Review the observed facts before deciding whether to reply.',
 				items: batchDraftCandidates
 			}, h);
 		html += renderQueueRecommendedSequence(recommendedSequence, h, 'What comes after this', {
@@ -3482,16 +3579,18 @@
 		html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
 		html += renderQueueMetaMetrics([
 			{ label: 'Queues', value: queues.length },
-			{ label: 'Shown cases', value: visibleCases },
+			{ label: 'Unique orders in returned sample', value: visibleCases },
 			{ label: 'Auto-send', value: 'No' }
 		], h);
 		html += renderOrderQueueSections(queues, {
 			emptyMessage: 'No matching orders in this queue.',
 			maxRows: 5,
+			evidence: queueEvidence(result),
+			locale: locale,
 			columns: [
 				{ label: 'Order' },
 				{ label: 'Case' },
-				{ label: 'Age' },
+				{ label: isVietnamese(locale) ? 'Tuổi từ ngày tạo' : 'Age since creation' },
 				{ label: 'Next action' }
 			],
 			renderRow: function(order, queue, h2) {
@@ -3500,13 +3599,13 @@
 				const rowActionCommand = getCustomerServiceRowActionCommand(queueKey, order);
 				const caseMeta = [
 					order.customer_name || order.billing_email || 'Customer',
-					humanizeServiceTopic(queueKey || ''),
-					orderDisplayStatus(order) || ''
+					displayText(humanizeServiceTopic(queueKey || '')),
+					displayText(orderDisplayStatus(order) || '')
 				].filter(Boolean).join(' · ');
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
-				row += '<td><strong>' + h2.escapeHtml(displayText(caseMeta)) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(displayText(order.followup_reason || '')) + '</div></td>';
-				row += '<td>' + h2.escapeHtml(formatAgeHours(order.age_hours)) + '</td>';
+				row += '<td><strong>' + h2.escapeHtml(caseMeta) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(String(order.followup_reason || '')) + '</div></td>';
+				row += '<td>' + h2.escapeHtml(queueAgeText(order, locale)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(rowActionLabel, rowActionCommand, h2) + ' ';
 				row += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h2.escapeHtml(order.id) + '">Details</button> ';
@@ -3542,33 +3641,7 @@
 	}
 
 	function buildCustomerServiceHeroItem(serviceContext, priorityItems, result) {
-		const topTopic = String(serviceContext && serviceContext.top_topic ? serviceContext.top_topic : '');
-		const totalItems = serviceContext && serviceContext.total_items ? serviceContext.total_items : (result && result.count ? result.count : 0);
-		const onHold = serviceContext && serviceContext.on_hold_count ? serviceContext.on_hold_count : 0;
-		const drafts = serviceContext && serviceContext.draft_count ? serviceContext.draft_count : 0;
-		const payments = serviceContext && serviceContext.payment_count ? serviceContext.payment_count : 0;
-		const topPriority = Array.isArray(priorityItems) && priorityItems.length ? priorityItems[0] : null;
-		let title = 'Customer replies need attention across the queue.';
-		let message = 'Use Start here for the fastest next case, then work through the shortlist below.';
-
-		if (topTopic === 'on_hold_followup') {
-			title = 'Most customer reply pressure is sitting in On hold orders.';
-			message = 'There are ' + onHold + ' On hold follow-ups carrying most of the live backlog, plus ' + drafts + ' saved drafts you can finish quickly.';
-		} else if (topTopic === 'saved_email_drafts') {
-			title = 'Saved drafts give you the fastest route to completed replies.';
-			message = 'There are ' + drafts + ' saved drafts ready now, while the wider queue still holds ' + totalItems + ' customer follow-up items.';
-		} else if (topTopic === 'pending_payment_followup') {
-			title = 'Payment follow-ups are the clearest active customer pressure.';
-			message = 'There are ' + payments + ' pending payment cases to clear, plus ' + drafts + ' saved drafts you can finish quickly.';
-		} else if (topPriority && topPriority.message) {
-			title = topPriority.title || title;
-			message = topPriority.message;
-		}
-
-		return {
-			title: title,
-			message: message
-		};
+		return { title: 'Observed queue memberships', message: 'Review the returned cases and their recorded reasons. Memberships can overlap; counts and limits are listed for each group below.' };
 	}
 
 	function filterCustomerServiceSupportingPriorities(priorityItems, serviceContext) {
@@ -3581,28 +3654,11 @@
 	}
 
 	function getCustomerServiceRowActionLabel(queueKey) {
-		switch (String(queueKey || '')) {
-			case 'saved_email_drafts':
-				return 'Open draft';
-			case 'pending_payment_followup':
-				return 'Draft payment follow-up';
-			case 'on_hold_followup':
-				return 'Draft On hold reply';
-			case 'failed_checkout_followup':
-				return 'Draft support reply';
-			default:
-				return 'Draft reply';
-		}
+		return 'Open order details';
 	}
 
 	function getCustomerServiceRowActionCommand(queueKey, order) {
-		const orderId = order && order.id ? order.id : '';
-
-		if (String(queueKey || '') === 'saved_email_drafts') {
-			return 'Load email drafts for order #' + orderId;
-		}
-
-		return (order && order.suggested_command) || ('Write email for order #' + orderId);
+		return getOperationsAttentionRowCommand(queueKey, order);
 	}
 
 	function humanizeAttentionTopic(topic) {
@@ -3623,75 +3679,16 @@
 	}
 
 	function getOperationsAttentionRowActionLabel(queueKey) {
-		switch (String(queueKey || '')) {
-			case 'pending_payment_older_than_24h':
-				return 'Draft payment follow-up';
-			case 'processing_older_than_72h':
-				return 'Preview delay email';
-			case 'on_hold_older_than_48h':
-				return 'Draft On hold reply';
-			case 'recent_failed_orders':
-				return 'Draft support reply';
-			case 'high_value_open_orders':
-				return 'Open order details';
-			default:
-				return 'Review order';
-		}
+		return 'Open order details';
 	}
 
 	function getOperationsAttentionRowCommand(queueKey, order) {
-		const orderId = parseInt(order && order.id ? order.id : 0, 10);
-		if (!orderId) {
-			return '';
-		}
-
-		switch (String(queueKey || '')) {
-			case 'pending_payment_older_than_24h':
-				return 'Write email for order #' + orderId + ' about: Payment follow-up may be useful.';
-			case 'processing_older_than_72h':
-				return 'Preview shipping delay email for order ' + orderId;
-			case 'on_hold_older_than_48h':
-				return 'Write email for order #' + orderId + ' about: Order is still on hold and may need clarification.';
-			case 'recent_failed_orders':
-				return 'Write email for order #' + orderId + ' about: Failed checkout may need support follow-up.';
-			case 'high_value_open_orders':
-				return 'Show order ' + orderId + ' details';
-			default:
-				return 'Show order ' + orderId + ' details';
-		}
+		const id = Number(order && order.id);
+		return Number.isSafeInteger(id) && id > 0 ? 'Show order ' + id + ' details' : '';
 	}
 
 	function buildOperationsAttentionHeroItem(attentionContext, priorityItems, result) {
-		const topTopic = String(attentionContext && attentionContext.top_topic ? attentionContext.top_topic : '');
-		const pending = attentionContext && attentionContext.pending_count ? attentionContext.pending_count : 0;
-		const processing = attentionContext && attentionContext.processing_count ? attentionContext.processing_count : 0;
-		const onHold = attentionContext && attentionContext.on_hold_count ? attentionContext.on_hold_count : 0;
-		const highValue = attentionContext && attentionContext.high_value_count ? attentionContext.high_value_count : 0;
-		const topPriority = Array.isArray(priorityItems) && priorityItems.length ? priorityItems[0] : null;
-		let title = 'Operations attention still needs a direct pass.';
-		let message = 'Use Start here for the clearest next case, then move through the shortlist below.';
-
-		if (topTopic === 'pending_payment_older_than_24h') {
-			title = 'Pending payment is carrying most of the operations pressure.';
-			message = 'There are ' + pending + ' payment-delay cases, while ' + processing + ' processing orders are still aging behind them.';
-		} else if (topTopic === 'processing_older_than_72h') {
-			title = 'Aging processing orders now need the next manual check.';
-			message = 'There are ' + processing + ' older processing orders to review, plus ' + pending + ' payment-delay cases still waiting.';
-		} else if (topTopic === 'on_hold_older_than_48h') {
-			title = 'On hold orders are waiting for a clear decision.';
-			message = 'There are ' + onHold + ' older orders in On hold status still sitting in backlog, with ' + pending + ' payment-delay cases also active.';
-		} else if (topTopic === 'high_value_open_orders') {
-			title = 'High-value open orders deserve the next direct check.';
-			message = 'There are ' + highValue + ' higher-value open orders still unresolved, alongside ' + processing + ' aging processing cases.';
-		} else if (topPriority && topPriority.message) {
-			title = topPriority.title || title;
-			message = topPriority.message;
-		}
-
-		return {
-			title: title,
-			message: message
-		};
+		return { title: 'Observed queue memberships', message: 'Review the returned cases and their recorded reasons. Memberships can overlap; counts and limits are listed for each group below.' };
 	}
 
 	function filterOperationsAttentionSupportingPriorities(priorityItems, attentionContext) {
@@ -3742,51 +3739,11 @@
 	}
 
 	function getFulfillmentRowActionLabel(queueKey) {
-		switch (String(queueKey || '')) {
-			case 'processing_without_tracking':
-				return 'Preview delay email';
-			case 'missing_shipping_address':
-				return 'Check address issue';
-			case 'processing_older_than_48h':
-				return 'Review aging order';
-			case 'recent_ready_to_fulfill':
-				return 'Preview fulfillment check';
-			default:
-				return 'Preview follow-up';
-		}
+		return 'Open order details';
 	}
 
 	function buildFulfillmentHeroItem(fulfillmentContext, priorityItems, result) {
-		const topTopic = String(fulfillmentContext && fulfillmentContext.top_topic ? fulfillmentContext.top_topic : '');
-		const tracking = fulfillmentContext && fulfillmentContext.tracking_count ? fulfillmentContext.tracking_count : 0;
-		const aging = fulfillmentContext && fulfillmentContext.aging_count ? fulfillmentContext.aging_count : 0;
-		const address = fulfillmentContext && fulfillmentContext.address_count ? fulfillmentContext.address_count : 0;
-		const ready = fulfillmentContext && fulfillmentContext.ready_count ? fulfillmentContext.ready_count : 0;
-		const topPriority = Array.isArray(priorityItems) && priorityItems.length ? priorityItems[0] : null;
-		let title = 'Shippable fulfillment cases still need active review.';
-		let message = 'Use Start here for the clearest next shipping case, then work through the shortlist below.';
-
-		if (topTopic === 'processing_without_tracking') {
-			title = 'Missing tracking is carrying most of the shipping risk.';
-			message = 'There are ' + tracking + ' shippable processing orders without tracking signals, while ' + aging + ' more are aging deeper into the queue.';
-		} else if (topTopic === 'missing_shipping_address') {
-			title = 'Address gaps are blocking otherwise normal shipment work.';
-			message = 'There are ' + address + ' shippable orders with incomplete shipping details, while ' + ready + ' tracked orders are otherwise ready to move.';
-		} else if (topTopic === 'processing_older_than_48h') {
-			title = 'Older shippable processing orders now need the next manual check.';
-			message = 'There are ' + aging + ' older shippable orders to review, plus ' + tracking + ' missing-tracking cases that may need outbound follow-up.';
-		} else if (topTopic === 'recent_ready_to_fulfill') {
-			title = 'Tracked orders are ready for the next fulfillment pass.';
-			message = 'There are ' + ready + ' recent tracked orders with complete shipping details ready to move through the next step.';
-		} else if (topPriority && topPriority.message) {
-			title = topPriority.title || title;
-			message = topPriority.message;
-		}
-
-		return {
-			title: title,
-			message: message
-		};
+		return { title: 'Observed queue memberships', message: 'Review the returned cases and their recorded reasons. Memberships can overlap; counts and limits are listed for each group below.' };
 	}
 
 	function filterFulfillmentSupportingPriorities(priorityItems, fulfillmentContext) {

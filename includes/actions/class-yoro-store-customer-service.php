@@ -50,29 +50,19 @@ class YoRo_Store_Customer_Service {
 			),
 			YoRo_Orders_Read_Service::customer_service_build_saved_email_drafts_queue( $limit ),
 		];
-		$queues = self::rank_customer_service_queue_orders( $queues );
-
-		$total_items = 0;
-		$orders      = [];
-
 		foreach ( $queues as $queue ) {
-			$total_items += absint( $queue['count'] ?? 0 );
-
-			foreach ( $queue['orders'] as $order ) {
-				$orders[ $order['id'] ] = $order;
+			if ( is_wp_error( $queue ) ) {
+				return $queue;
 			}
 		}
+		$queues = self::rank_customer_service_queue_orders( $queues );
 
-		$orders               = array_values( $orders );
-		usort(
-			$orders,
-			function( $a, $b ) {
-				return (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 );
-			}
-		);
+		$total_items = array_sum( array_column( $queues, 'count' ) );
 		$service_context      = self::build_customer_service_orchestrator_context( $queues );
 		$priority_items       = self::build_customer_service_priority_items( $queues, $service_context );
 		$case_rankings        = self::build_customer_service_case_rankings( $queues, $service_context );
+		$orders = array_column( $case_rankings, 'order' );
+		$queue_evidence = YoRo_Orders_Read_Service::queue_evidence( $queues, $orders );
 		$recommended_sequence = self::build_customer_service_recommended_sequence( $case_rankings, $service_context );
 		$next_case            = self::build_customer_service_next_recommended_case( $case_rankings );
 		$batch_candidates     = self::build_customer_service_batch_draft_candidates( $case_rankings );
@@ -86,7 +76,7 @@ class YoRo_Store_Customer_Service {
 		$visible_unique_order_count = count( $orders );
 		$queue_summary        = sprintf(
 			/* translators: 1: queue match count, 2: queue count */
-			__( 'Customer service queue: %1$d queue matches across %2$d queues.', 'yoro-ai-core' ),
+			__( 'Customer service queue: %1$d queue memberships across %2$d queues.', 'yoro-ai-core' ),
 			$total_items,
 			$queue_count
 		);
@@ -107,6 +97,7 @@ class YoRo_Store_Customer_Service {
 			'undo_plan'            => [],
 			'data'                 => [],
 			'meta'                 => [
+				'queue_evidence' => $queue_evidence,
 				'limit_per_queue' => $limit,
 				'auto_send'       => false,
 			],
@@ -140,6 +131,7 @@ class YoRo_Store_Customer_Service {
 			$counts[ $key ] = absint( $queue['count'] ?? 0 );
 		}
 
+		ksort( $counts );
 		arsort( $counts );
 		$top_topic = (string) key( $counts );
 		$top_count = (int) reset( $counts );
@@ -317,7 +309,7 @@ class YoRo_Store_Customer_Service {
 			usort(
 				$queues[ $queue_index ]['orders'],
 				function( $a, $b ) {
-					return (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 );
+					return ( (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 ) ) ?: ( (int) $a['id'] <=> (int) $b['id'] );
 				}
 			);
 		}
@@ -350,14 +342,7 @@ class YoRo_Store_Customer_Service {
 			}
 		}
 
-		usort(
-			$rankings,
-			function( $a, $b ) {
-				return (float) ( $b['score'] ?? 0 ) <=> (float) ( $a['score'] ?? 0 );
-			}
-		);
-
-		return $rankings;
+		return YoRo_Orders_Read_Service::queue_case_rankings( $rankings );
 	}
 
 	private static function score_customer_service_case( $topic, $order, $service_context = [] ) {
@@ -466,7 +451,7 @@ class YoRo_Store_Customer_Service {
 			case 'saved_email_drafts':
 				return __( 'Review the next saved draft', 'yoro-ai-core' );
 			case 'on_hold_followup':
-				return __( 'Reply to the next on-hold case', 'yoro-ai-core' );
+				return __( 'Inspect the next on-hold case', 'yoro-ai-core' );
 			case 'pending_payment_followup':
 				return __( 'Handle the next payment follow-up', 'yoro-ai-core' );
 			case 'failed_checkout_followup':
@@ -477,13 +462,7 @@ class YoRo_Store_Customer_Service {
 	}
 
 	private static function get_customer_service_sequence_command( $topic, $order ) {
-		$topic = sanitize_key( $topic );
-
-		if ( 'saved_email_drafts' === $topic ) {
-			return self::get_customer_service_primary_command( $topic, $order );
-		}
-
-		return 'Who should we answer first today?';
+		return self::get_customer_service_primary_command( $topic, $order );
 	}
 
 	private static function build_customer_service_case_message( $topic, $ranked_case = [] ) {
@@ -496,10 +475,10 @@ class YoRo_Store_Customer_Service {
 				return $age_hours >= 72
 					? sprintf(
 						/* translators: %s: age in hours */
-						__( 'This order has been sitting on hold for %sh and is still waiting on a customer-facing reply.', 'yoro-ai-core' ),
+						__( 'Currently on hold; created %sh ago. Time in this status and reply needs are unknown.', 'yoro-ai-core' ),
 						$age_hours
 					)
-					: __( 'This order is still on hold and looks ready for the next customer-facing reply.', 'yoro-ai-core' );
+					: __( 'This order is on hold. Inspect its details before deciding whether a reply is needed.', 'yoro-ai-core' );
 			case 'saved_email_drafts':
 				return $draft_count > 1
 					? sprintf(
@@ -517,62 +496,28 @@ class YoRo_Store_Customer_Service {
 				return $age_hours >= 48
 					? sprintf(
 						/* translators: %s: age in hours */
-						__( 'Payment is still pending after %sh, so this order is ready for follow-up.', 'yoro-ai-core' ),
+						__( 'Currently pending; created %sh ago. Time in this status is unknown.', 'yoro-ai-core' ),
 						$age_hours
 					)
-					: __( 'Payment is still pending and this order is ready for a quick follow-up.', 'yoro-ai-core' );
+					: __( 'This order is pending. Inspect its payment details before deciding whether to follow up.', 'yoro-ai-core' );
 			case 'failed_checkout_followup':
-				return __( 'Checkout failed recently, so this case is still in a good window for direct support outreach.', 'yoro-ai-core' );
+				return __( 'An order created recently has failed status. This does not establish fraud or the cause of failure.', 'yoro-ai-core' );
 			default:
 				return sanitize_text_field( $order['followup_reason'] ?? $ranked_case['queue_description'] ?? '' );
 		}
 	}
 
 	private static function build_customer_service_case_reason( $topic, $ranked_case = [] ) {
-		$order       = isset( $ranked_case['order'] ) && is_array( $ranked_case['order'] ) ? $ranked_case['order'] : [];
-		$draft_count = absint( $order['draft_count'] ?? 0 );
-		$age_hours   = absint( $order['age_hours'] ?? 0 );
-
-		switch ( sanitize_key( $topic ) ) {
-			case 'on_hold_followup':
-				return $age_hours >= 72
-					? __( 'Use this first if you want to reduce the heaviest live reply backlog instead of letting it age further.', 'yoro-ai-core' )
-					: __( 'This is the cleanest live on-hold reply to move before the queue builds further.', 'yoro-ai-core' );
-			case 'saved_email_drafts':
-				return $draft_count > 1
-					? __( 'Use this first if you want the quickest completed reply before working through the heavier backlog.', 'yoro-ai-core' )
-					: __( 'This is the fastest clean win in the queue because the reply work is already started.', 'yoro-ai-core' );
-			case 'pending_payment_followup':
-				return __( 'This is usually a quick outreach win and is old enough that it should not wait much longer.', 'yoro-ai-core' );
-			case 'failed_checkout_followup':
-				return __( 'This is still recent enough that direct outreach has a realistic chance of recovering the order.', 'yoro-ai-core' );
-			default:
-				return __( 'This case is the clearest next follow-up from the current queue.', 'yoro-ai-core' );
-		}
+		return __( 'Inspect the observed order facts before deciding whether a customer reply is needed. Available actions require the normal permission and confirmation checks.', 'yoro-ai-core' );
 	}
 
 	private static function get_customer_service_primary_action_label( $topic ) {
-		switch ( sanitize_key( $topic ) ) {
-			case 'saved_email_drafts':
-				return __( 'Open draft', 'yoro-ai-core' );
-			case 'pending_payment_followup':
-				return __( 'Draft payment follow-up', 'yoro-ai-core' );
-			case 'on_hold_followup':
-				return __( 'Draft on-hold reply', 'yoro-ai-core' );
-			case 'failed_checkout_followup':
-				return __( 'Draft support reply', 'yoro-ai-core' );
-			default:
-				return __( 'Draft next reply', 'yoro-ai-core' );
-		}
+		return __( 'Review order details', 'yoro-ai-core' );
 	}
 
 	private static function get_customer_service_primary_command( $topic, $order ) {
-		$topic = sanitize_key( $topic );
-
-		if ( 'saved_email_drafts' === $topic ) {
-			return 'Load email drafts for order #' . absint( $order['id'] ?? 0 );
-		}
-
-		return sanitize_text_field( $order['suggested_command'] ?? '' );
+		$order_id = absint( $order['id'] ?? 0 );
+		return $order_id > 0 ? 'Show order ' . $order_id . ' details' : '';
 	}
+
 }
