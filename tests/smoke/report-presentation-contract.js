@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const root = path.resolve(__dirname, '../..');
 const sandbox = { window: {}, console };
 vm.createContext(sandbox);
-for (const file of ['yoro-ai-order-ui.js', 'yoro-ai-result-renderers.js']) {
+for (const file of ['yoro-ai-display-labels.js', 'yoro-ai-order-ui.js', 'yoro-ai-result-renderers.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, 'assets/js', file), 'utf8'), sandbox, { filename: file });
 }
 const escapeHtml = value => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -93,6 +93,32 @@ if (process.env.YORO_REPORT_PRESENTATION_FIXTURE) {
         assert.match(output, /yoro-report-summary/);
         assert.ok(output.includes(escapeHtml(p.summary)));
         assert.equal((output.match(/class="button yoro-report-toggle"/g) || []).length, p.has_details ? 1 : 0);
+        if (p.has_details) {
+            const publicOutput = publicReport(p, p.language === 'vi' ? 'en_US' : 'vi');
+            const rows = (p.report.breakdowns || []).reduce((total, group) => total + (group.items || []).length, 0);
+            assert.equal((publicOutput.match(/class="yoro-report-breakdown-item"/g) || []).length, rows);
+            for (const group of p.report.breakdowns || []) {
+                if (!group.items?.length) continue;
+                assert.ok(publicOutput.includes(escapeHtml(group.label)), group.label);
+                if (group.description) assert.ok(publicOutput.includes(escapeHtml(group.description)));
+                for (const item of group.items) {
+                    for (const value of [item.label, item.value, item.unit, item.subvalue]) {
+                        if (value !== undefined && value !== null && value !== '') assert.ok(publicOutput.includes(escapeHtml(value)), String(value));
+                    }
+                }
+            }
+            if ((p.report.breakdowns || []).some(group => group.items?.some(item => item.label === 'Áo YoRo'))) {
+                const vi = p.language === 'vi';
+                for (const copy of [p, JSON.parse(JSON.stringify(p))]) {
+                    const localized = publicReport(copy, vi ? 'en_US' : 'vi');
+                    for (const label of vi ? ['Sản phẩm bán chạy', 'Danh mục bán chạy', 'Phân bố trạng thái đơn hàng', 'Hàng đợi cần chú ý', 'Cần chú ý', 'mục', 'đơn hàng', 'Đang xử lý']
+                        : ['Top products', 'Top categories', 'Order status mix', 'Attention queues', 'Needs attention', 'items', 'orders', 'Processing']) assert.ok(localized.includes(label), label);
+                    assert.ok(localized.includes('Áo YoRo') && localized.includes('120.00 USD') && localized.includes('10.0%'));
+                    assert.doesNotMatch(localized, /Hidden inventory item/);
+                    assertLocalDetailsToggle(copy, localized, rows);
+                }
+            }
+        }
     }
 }
 assert.equal(calls, 0);
@@ -116,3 +142,98 @@ assert.match(render({ ...base, language: 'vi', expanded: true }), /Hôm nay|hôm
 assert.match(render({ ...base, language: 'en', expanded: true }), /Today|today/);
 
 assert.doesNotMatch(compound, /Unaccepted planning summary/);
+
+// F-001: public dispatch must expose every row already present in the accepted payload.
+function publicReport(p, siteLocale = 'en_US') {
+    return renderer.renderResult({ success: true, stage: 'done', conversation_id: p.conversation_id,
+        parsed: { language: siteLocale }, result: { success: true, locale: siteLocale, action: p.action,
+            display_type: 'report', report_presentation: p } });
+}
+function assertLocalDetailsToggle(p, output, expectedRows) {
+    const target = output.match(/aria-controls="([^"]+)"/)[1];
+    const localAttrs = { 'aria-controls': target, 'aria-expanded': String(p.expanded),
+        'data-open-label': p.open_label, 'data-close-label': p.close_label };
+    const savedHtml = output.substring(output.indexOf('<div class="yoro-report-details"'));
+    const localDetails = { id: target, hidden: !p.expanded, innerHTML: savedHtml };
+    const localCard = { querySelector: () => localDetails,
+        getAttribute: key => key === 'data-conversation-id' ? p.conversation_id : p.result_id };
+    const localButton = { isConnected: true, closest: () => localCard,
+        getAttribute: key => localAttrs[key], setAttribute: (key, value) => { localAttrs[key] = value; } };
+    const click = { target: { closest: selector => selector === '.yoro-report-toggle' ? localButton : null }, preventDefault() {} };
+    for (let step = 0; step < 3; step++) {
+        ui.handleClick(click);
+        assert.equal(localDetails.hidden, step % 2 === 0 ? p.expanded : !p.expanded);
+        assert.equal(localAttrs['aria-expanded'], String(!localDetails.hidden));
+        assert.equal(localDetails.innerHTML, savedHtml, 'Opening/collapsing never replaces the accepted details');
+        assert.equal((localDetails.innerHTML.match(/class="yoro-report-breakdown-item"/g) || []).length, expectedRows);
+        assert.equal(localCard.getAttribute('data-report-result-id'), p.result_id);
+    }
+    assert.equal(calls, 0, 'Reading every accepted row remains local');
+}
+conversation = 'conversation-one';
+for (const rowCount of [5, 6, 10]) {
+    for (const mode of ['summary_first', 'full']) {
+        const report = { ...base.report, type: 'store_insights', breakdowns: Array.from({ length: 4 }, (_, group) => ({
+            key: 'group_' + group, domain: 'products', label: 'Accepted group ' + group, priority: group,
+            items: Array.from({ length: rowCount }, (_, row) => ({ label: 'Áo YoRo ' + group + '/' + row,
+                value: row + 1, unit: 'USD' }))
+        })), alerts: Array.from({ length: 6 }, (_, i) => ({ topic: 'products', title: 'Accepted alert ' + i, message: 'Evidence ' + i })) };
+        const p = { ...base, language: 'en', mode, expanded: mode === 'full', report };
+        const original = JSON.stringify(p);
+        for (const output of [render(p), publicReport(p)]) {
+            assert.equal((output.match(/class="yoro-report-breakdown-item"/g) || []).length, rowCount * 4);
+            for (const group of report.breakdowns) for (const item of group.items) assert.ok(output.includes(escapeHtml(item.label)));
+            for (const warning of report.alerts) assert.ok(output.includes(warning.title));
+            assert.match(output, new RegExp('aria-expanded="' + p.expanded + '"'));
+            assertLocalDetailsToggle(p, output, rowCount * 4);
+        }
+        assert.equal(JSON.stringify(p), original, 'Rendering and toggling preserve accepted payload values and identity');
+    }
+}
+
+// F-002: UI chrome uses API conversation language even when the surrounding site differs.
+for (const language of ['vi', 'en']) {
+    const vi = language === 'vi';
+    const projected = { ...base.report, type: 'store_insights', health: 'risk',
+        metrics: [{ key: 'items_sold', domain: 'products', label: vi ? 'Số sản phẩm đã bán' : 'Items sold', value: 10, unit: vi ? 'sản phẩm' : 'products', trend: 'up' }],
+        metric_groups: [{ domain: 'products', label: vi ? 'Sản phẩm' : 'Products', description: vi ? 'Nhu cầu sản phẩm trong kỳ.' : 'Product demand in this window.' }],
+        breakdowns: [{ key: 'top_products', domain: 'products', label: vi ? 'Sản phẩm hàng đầu' : 'Top products',
+            description: vi ? 'Sản phẩm theo số lượng đã bán.' : 'Products by quantity sold.', items: [{ label: 'Áo YoRo', value: 10, unit: vi ? 'sản phẩm' : 'products', share: '25%' }] }],
+        insights: [{ topic: 'products', title: vi ? 'Tín hiệu đã chấp nhận' : 'Accepted signal', message: 'Áo YoRo 10 USD' }],
+        alerts: [{ topic: 'inventory', title: vi ? 'Cần kiểm tra tồn kho' : 'Inventory needs review', message: '4' }],
+        applicability: { inventory: { applicable: true } } };
+    for (const mode of ['summary_first', 'full']) {
+        const p = { ...base, language, mode, expanded: mode === 'full', report: projected };
+        for (const copy of [p, JSON.parse(JSON.stringify(p))]) {
+            const output = publicReport(copy, vi ? 'en_US' : 'vi');
+            for (const label of vi ? ['Điểm chính', 'Cần chú ý', 'Báo cáo cửa hàng', 'Rủi ro', 'Sản phẩm', 'Tăng', 'tỷ trọng']
+                : ['Key takeaways', 'Needs attention', 'Store report', 'Risk', 'Products', 'Up', 'share']) assert.ok(output.includes(label), label);
+            for (const label of vi ? ['Key takeaways', 'Needs attention', 'Store report', '>Risk<', '>Products<', '>Up<', ' share']
+                : ['Điểm chính', 'Cần chú ý', 'Báo cáo cửa hàng', '>Rủi ro<', '>Sản phẩm<', '>Tăng<', 'tỷ trọng']) assert.ok(!output.includes(label), label);
+            assert.ok(output.includes(escapeHtml(projected.breakdowns[0].label)));
+            assert.ok(output.includes(escapeHtml(projected.metric_groups[0].description)));
+            assert.ok(output.includes(escapeHtml(projected.breakdowns[0].description)));
+            assert.ok(output.includes('Áo YoRo') && output.includes('10 USD') && output.includes('25%'));
+            assertLocalDetailsToggle(copy, output, 1);
+        }
+        const inapplicable = { ...p, report: { ...projected, applicability: { inventory: { applicable: false } } } };
+        assert.doesNotMatch(publicReport(inapplicable, vi ? 'en_US' : 'vi'), /Cần kiểm tra tồn kho|Inventory needs review/);
+    }
+}
+assert.equal(calls, 0);
+console.log('PASS full accepted rows and conversation-localized public report rendering/hydration');
+
+// The global display formatter must not reinterpret names/values in an accepted report.
+conversation = 'conversation-one';
+for (const language of ['vi', 'en']) {
+    const names = ['YoRo_blue-tee', 'Áo onbackorder', '<img src=x onerror=alert(1)>', 'physical_goods'];
+    const p = { ...base, language, mode: 'full', expanded: true, report: { ...base.report,
+        metrics: [{ key: 'accepted_value', label: 'YoRo_metric', value: 'physical_goods', delta: 'Up' }],
+        breakdowns: [{ key: 'top_products', domain: 'products', label: 'API_copy', description: 'Accepted_description',
+            items: names.map(label => ({ label, value: 'physical_goods', subvalue: 'SKU_ABC-123', unit: 'USD' })) }] } };
+    const output = publicReport(p, language === 'vi' ? 'en_US' : 'vi');
+    for (const value of [...names, 'physical_goods', 'SKU_ABC-123', 'YoRo_metric', 'API_copy', 'Accepted_description']) assert.ok(output.includes(escapeHtml(value)), value);
+    assert.doesNotMatch(output, /Yo Ro Blue Tee|Áo On backorder|<img|onerror="/);
+    assertLocalDetailsToggle(p, output, names.length);
+}
+console.log('PASS accepted names and values bypass global display token formatting');
