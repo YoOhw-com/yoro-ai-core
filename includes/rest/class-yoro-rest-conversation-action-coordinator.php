@@ -256,6 +256,34 @@ class YoRo_REST_Conversation_Action_Coordinator {
 		);
 	}
 
+	public static function apply_report_presentation( $result, $response, $conversation_id, $action, $operation_id = '' ) {
+		if ( ! in_array( $action, [ 'store.get_daily_briefing', 'store.get_business_summary', 'operations.get_summary', 'store.get_insights' ], true ) ) {
+			return $result;
+		}
+		$presentation = is_array( $response ) ? ( $response['report_presentation'] ?? null ) : null;
+		$event_id = absint( $response['action_event']['id'] ?? 0 );
+		$valid = is_array( $presentation ) && 1 === ( $presentation['version'] ?? null )
+			&& $event_id > 0 && $event_id === ( $presentation['action_event_id'] ?? null )
+			&& $conversation_id === ( $presentation['conversation_id'] ?? null )
+			&& $conversation_id . ':' . $event_id === ( $presentation['result_id'] ?? null )
+			&& $action === ( $presentation['action'] ?? null )
+			&& $operation_id === ( $presentation['operation_id'] ?? null );
+		if ( ! $valid ) {
+			unset( $result['report'] );
+			$result['report_presentation'] = [ 'version' => 1, 'has_details' => false, 'state' => 'unavailable' ];
+			$result['summary'] = __( 'The report result could not be confirmed. No saved report is available yet.', 'yoro-ai-core' );
+			$result['message'] = $result['summary'];
+			$result['assistant_summary'] = $result['summary'];
+			return $result;
+		}
+		$result['report_presentation'] = $presentation;
+		$result['report'] = is_array( $presentation['report'] ?? null ) ? $presentation['report'] : [];
+		$result['summary'] = (string) $presentation['summary'];
+		$result['message'] = $result['summary'];
+		$result['assistant_summary'] = $result['summary'];
+		return $result;
+	}
+
 	public static function conversation_id_from_parsed( $parsed, $fallback = '' ) {
 		$parsed = is_array( $parsed ) ? $parsed : [];
 		$meta   = isset( $parsed['meta'] ) && is_array( $parsed['meta'] ) ? $parsed['meta'] : [];

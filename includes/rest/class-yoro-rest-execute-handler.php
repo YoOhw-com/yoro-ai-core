@@ -574,7 +574,7 @@ class YoRo_REST_Execute_Handler {
 		];
 	}
 
-	private static function report_conversation_action_events( $conversation_id, $pending_operation_token, $action, $params, $result, $trace_id, $plan = [], $execution_permit = '' ) {
+	private static function report_conversation_action_events( $conversation_id, $pending_operation_token, $action, $params, &$result, $trace_id, $plan = [], $execution_permit = '' ) {
 		$conversation_id = sanitize_text_field( (string) $conversation_id );
 
 		if ( '' === $conversation_id ) {
@@ -599,7 +599,26 @@ class YoRo_REST_Execute_Handler {
 		$client = YoRo_AI_Provider_Resolver::get_client();
 
 		foreach ( $payloads as $payload ) {
-			$client->record_action_execution( $payload );
+			$response = $client->record_action_execution( $payload );
+			if ( self::is_multi_action_execution_result( $result ) ) {
+				$position = 0;
+				foreach ( $result['actions'] as $key => $step ) {
+					$index = $position++;
+					if ( ! is_array( $step ) || ( $step['action'] ?? '' ) !== $payload['action']
+						|| self::operation_id_for_step( $step, $index, $plan ) !== $payload['operation_id'] ) {
+						continue;
+					}
+					$result['actions'][ $key ]['result'] = YoRo_REST_Conversation_Action_Coordinator::apply_report_presentation(
+						is_array( $step['result'] ?? null ) ? $step['result'] : [],
+						is_wp_error( $response ) ? [] : $response, $conversation_id, $payload['action'], $payload['operation_id']
+					);
+					break;
+				}
+			} else {
+				$result = YoRo_REST_Conversation_Action_Coordinator::apply_report_presentation(
+					$result, is_wp_error( $response ) ? [] : $response, $conversation_id, $payload['action'], $payload['operation_id']
+				);
+			}
 		}
 	}
 

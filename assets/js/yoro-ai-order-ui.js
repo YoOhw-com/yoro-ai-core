@@ -144,12 +144,12 @@
 		return displayLabel(value, { key: true });
 	}
 
-	function displayReportValue(value) {
+	function displayReportValue(value, locale) {
 		if (value === undefined || value === null) {
 			return '';
 		}
 
-		return displayText(String(value));
+		return locale ? String(value) : displayText(String(value));
 	}
 
 	function productStockStatusLabel(product) {
@@ -1735,7 +1735,31 @@
 		return html;
 	}
 
-	function renderUnifiedReportPanel(report, h, locale, windowInfo) {
+	function reportPayloadText(value, locale) {
+		return locale ? String(value === undefined || value === null ? '' : value) : displayText(value);
+	}
+
+	// UI chrome only; report content and conversation language come from the API.
+	function reportDetailText(text, locale) {
+		const vi = {
+			'Store report': 'Báo cáo cửa hàng', 'Overview': 'Tổng quan', 'Sales': 'Doanh số',
+			'Orders': 'Đơn hàng', 'Customers': 'Khách hàng', 'Products': 'Sản phẩm',
+			'Operations': 'Vận hành', 'Inventory': 'Tồn kho', 'Signals': 'Tín hiệu',
+			'Good': 'Tốt', 'Watch': 'Theo dõi', 'Risk': 'Rủi ro',
+			'Key takeaways': 'Điểm chính', 'Needs attention': 'Cần chú ý', 'Breakdown': 'Phân tích chi tiết',
+			'Additional signals': 'Tín hiệu bổ sung',
+			'Supporting commercial and operating signals for this window.': 'Các tín hiệu kinh doanh và vận hành bổ sung trong kỳ này.',
+			'Order flow, backlog, and execution pressure': 'Luồng đơn hàng, đơn tồn và áp lực thực thi',
+			'Revenue, orders, customers, and product demand': 'Doanh thu, đơn hàng, khách hàng và nhu cầu sản phẩm',
+			'The broad store picture for this window': 'Bức tranh tổng quan cửa hàng trong kỳ này',
+			'Patterns across orders, customers, products, and inventory': 'Các xu hướng trong đơn hàng, khách hàng, sản phẩm và tồn kho',
+			'Up': 'Tăng', 'Down': 'Giảm', 'Flat': 'Không đổi', 'share': 'tỷ trọng'
+		};
+		return normalizeLocale(locale) === 'vi' && Object.prototype.hasOwnProperty.call(vi, text) ? vi[text] : text;
+	}
+
+	function renderUnifiedReportPanel(report, h, locale, windowInfo, completePresentation) {
+		const detailLocale = completePresentation ? locale : '';
 		const health = ['good', 'watch', 'risk'].indexOf(report.health) !== -1 ? report.health : 'watch';
 		const metrics = filterApplicableReportItems(Array.isArray(report.metrics) ? report.metrics : [], report);
 		const insights = filterApplicableReportItems(Array.isArray(report.insights) ? report.insights : [], report);
@@ -1750,24 +1774,24 @@
 		html += '<div class="yoro-report-header">';
 		html += '<div class="yoro-report-header-main">';
 		html += '<div class="yoro-report-kicker">';
-		html += '<span>' + h.escapeHtml(typeMeta.surface) + '</span>';
-		html += '<span class="yoro-report-scope-badge">' + h.escapeHtml(typeMeta.scope) + '</span>';
+		html += '<span>' + h.escapeHtml(reportDetailText(typeMeta.surface, detailLocale)) + '</span>';
+		html += '<span class="yoro-report-scope-badge">' + h.escapeHtml(reportDetailText(typeMeta.scope, detailLocale)) + '</span>';
 		html += '</div>';
-		html += '<strong class="yoro-report-headline">' + h.escapeHtml(report.headline || 'Store report') + '</strong>';
+		html += '<strong class="yoro-report-headline">' + h.escapeHtml(report.headline || reportDetailText('Store report', detailLocale)) + '</strong>';
 		if (typeMeta.description) {
-			html += '<span class="yoro-report-scope-line">' + h.escapeHtml(typeMeta.description) + '</span>';
+			html += '<span class="yoro-report-scope-line">' + h.escapeHtml(reportDetailText(typeMeta.description, detailLocale)) + '</span>';
 		}
 		html += renderReportWindowMeta(windowInfo || report.window || {}, h, locale);
 		html += '</div>';
-		html += '<span class="yoro-report-health-badge">' + h.escapeHtml(reportHealthLabel(health)) + '</span>';
+		html += '<span class="yoro-report-health-badge">' + h.escapeHtml(reportDetailText(reportHealthLabel(health), detailLocale)) + '</span>';
 		html += '</div>';
 
-		html += renderReportHighlights(report, metrics, h);
-		html += renderReportMetricGroups(metrics, report.metric_groups, h, report);
-		html += renderReportBreakdowns(breakdowns, h);
+		html += renderReportHighlights(report, metrics, h, detailLocale);
+		html += renderReportMetricGroups(metrics, report.metric_groups, h, report, detailLocale);
+		html += renderReportBreakdowns(breakdowns, h, detailLocale, completePresentation);
 
-		html += renderReportInsightList('Key takeaways', insights, h, 'yoro-report-insights');
-		html += renderReportInsightList('Needs attention', alerts, h, 'yoro-report-alerts');
+		html += renderReportInsightList(reportDetailText('Key takeaways', detailLocale), insights, h, 'yoro-report-insights', detailLocale, completePresentation);
+		html += renderReportInsightList(reportDetailText('Needs attention', detailLocale), alerts, h, 'yoro-report-alerts', detailLocale, completePresentation);
 		html += renderReportProfileFollowups(profileFollowups, h);
 		html += renderReportActionGroup('Next actions', recommendedActions, h);
 		html += renderReportActionGroup('Related views', filterDuplicateReportActions(drilldowns, recommendedActions), h);
@@ -1799,7 +1823,7 @@
 		}).join(' · ') + '</span>';
 	}
 
-	function renderReportHighlights(report, metrics, h) {
+	function renderReportHighlights(report, metrics, h, locale) {
 		const highlighted = selectReportHighlights(report, metrics);
 
 		if (!highlighted.length) {
@@ -1811,12 +1835,12 @@
 			const severity = ['positive', 'neutral', 'watch', 'risk'].indexOf(metric.severity) !== -1 ? metric.severity : 'neutral';
 			const unit = metric.unit ? String(metric.unit) : '';
 			html += '<div class="yoro-report-highlight yoro-report-severity-' + h.escapeHtml(severity) + '">';
-			html += '<span class="yoro-report-highlight-label">' + h.escapeHtml(displayText(metric.label || metric.key || '')) + '</span>';
-			html += '<strong class="yoro-report-highlight-value">' + h.escapeHtml(displayReportValue(metric.value)) + '</strong>';
+			html += '<span class="yoro-report-highlight-label">' + h.escapeHtml(reportPayloadText(metric.label || metric.key || '', locale)) + '</span>';
+			html += '<strong class="yoro-report-highlight-value">' + h.escapeHtml(displayReportValue(metric.value, locale)) + '</strong>';
 			if (unit) {
 				html += '<span class="yoro-report-highlight-unit">' + h.escapeHtml(unit) + '</span>';
 			}
-			html += renderReportMetricTrend(metric, h);
+			html += renderReportMetricTrend(metric, h, locale);
 			html += '</div>';
 		});
 		html += '</div>';
@@ -1872,7 +1896,7 @@
 		}
 	}
 
-	function renderReportMetricGroups(metrics, metricGroups, h, report) {
+	function renderReportMetricGroups(metrics, metricGroups, h, report, locale) {
 		if (!Array.isArray(metrics) || !metrics.length) {
 			return '';
 		}
@@ -1889,8 +1913,8 @@
 		if (reportType === 'store_overview') {
 			groupsByDomain.overview = {
 				domain: 'overview',
-				label: 'Additional signals',
-				description: 'Supporting commercial and operating signals for this window.',
+				label: reportDetailText('Additional signals', locale),
+				description: reportDetailText('Supporting commercial and operating signals for this window.', locale),
 				priority: 20,
 				metrics: []
 			};
@@ -1904,7 +1928,7 @@
 
 				groupsByDomain[domain] = {
 					domain: domain,
-					label: group.label || reportMetricDomainLabel(domain),
+					label: group.label || reportMetricDomainLabel(domain, locale),
 					description: group.description || '',
 					priority: parseInt(group.priority, 10) || reportMetricDomainPriority(domain),
 					metrics: []
@@ -1924,7 +1948,7 @@
 			if (!groupsByDomain[domain]) {
 				groupsByDomain[domain] = {
 					domain: domain,
-					label: reportMetricDomainLabel(domain),
+					label: reportMetricDomainLabel(domain, locale),
 					description: '',
 					priority: reportMetricDomainPriority(domain),
 					metrics: []
@@ -1956,14 +1980,14 @@
 			});
 			html += '<div class="yoro-report-metric-group yoro-report-metric-group-' + h.escapeHtml(group.domain) + '">';
 			html += '<div class="yoro-report-metric-group-head">';
-			html += '<h4>' + h.escapeHtml(group.label || reportMetricDomainLabel(group.domain)) + '</h4>';
+			html += '<h4>' + h.escapeHtml(group.label || reportMetricDomainLabel(group.domain, locale)) + '</h4>';
 			if (group.description) {
 				html += '<span>' + h.escapeHtml(group.description) + '</span>';
 			}
 			html += '</div>';
 			html += '<div class="yoro-report-metrics">';
 			group.metrics.forEach(function(metric) {
-				html += renderReportMetric(metric, h, !!highlighted[metric.key]);
+				html += renderReportMetric(metric, h, !!highlighted[metric.key], locale);
 			});
 			html += '</div>';
 			html += '</div>';
@@ -2068,7 +2092,7 @@
 		});
 	}
 
-	function renderReportMetric(metric, h, highlighted) {
+	function renderReportMetric(metric, h, highlighted, locale) {
 		metric = metric || {};
 		const severity = ['positive', 'neutral', 'watch', 'risk'].indexOf(metric.severity) !== -1 ? metric.severity : 'neutral';
 		const unit = metric.unit ? String(metric.unit) : '';
@@ -2082,18 +2106,18 @@
 		}
 
 		let html = '<div class="' + h.escapeHtml(classes.join(' ')) + '">';
-		html += '<span class="yoro-report-metric-label">' + h.escapeHtml(displayText(metric.label || metric.key || '')) + '</span>';
-		html += '<strong class="yoro-report-metric-value">' + h.escapeHtml(displayReportValue(metric.value)) + '</strong>';
+		html += '<span class="yoro-report-metric-label">' + h.escapeHtml(reportPayloadText(metric.label || metric.key || '', locale)) + '</span>';
+		html += '<strong class="yoro-report-metric-value">' + h.escapeHtml(displayReportValue(metric.value, locale)) + '</strong>';
 		if (unit) {
 			html += '<span class="yoro-report-metric-unit">' + h.escapeHtml(unit) + '</span>';
 		}
-		html += renderReportMetricTrend(metric, h);
+		html += renderReportMetricTrend(metric, h, locale);
 		html += '</div>';
 
 		return html;
 	}
 
-	function renderReportMetricTrend(metric, h) {
+	function renderReportMetricTrend(metric, h, locale) {
 		metric = metric || {};
 		const trend = ['up', 'down', 'flat'].indexOf(metric.trend) !== -1 ? metric.trend : '';
 		const delta = metric.delta === undefined || metric.delta === null ? '' : String(metric.delta);
@@ -2102,14 +2126,14 @@
 			return '';
 		}
 
-		const label = delta || trend.replace(/\b\w/g, function(chr) {
+		const label = delta || reportDetailText(trend.replace(/\b\w/g, function(chr) {
 			return chr.toUpperCase();
-		});
+		}), locale);
 
 		return '<span class="yoro-report-metric-trend yoro-report-trend-' + h.escapeHtml(trend || 'neutral') + '">' + h.escapeHtml(label) + '</span>';
 	}
 
-	function renderReportBreakdowns(breakdowns, h) {
+	function renderReportBreakdowns(breakdowns, h, locale, completePresentation) {
 		if (!Array.isArray(breakdowns) || !breakdowns.length) {
 			return '';
 		}
@@ -2120,7 +2144,7 @@
 			.sort(function(a, b) {
 				return (parseInt((a || {}).priority, 10) || 50) - (parseInt((b || {}).priority, 10) || 50);
 			})
-			.slice(0, 3)
+			.slice(0, completePresentation ? breakdowns.length : 3)
 			.forEach(function(breakdown) {
 				const items = Array.isArray(breakdown && breakdown.items) ? breakdown.items : [];
 
@@ -2132,16 +2156,16 @@
 				let section = '<div class="yoro-report-breakdown yoro-report-breakdown-' + h.escapeHtml(domain) + '">';
 				section += '<div class="yoro-report-breakdown-head">';
 				section += '<div>';
-				section += '<h4>' + h.escapeHtml(displayText(breakdown.label || 'Breakdown')) + '</h4>';
+				section += '<h4>' + h.escapeHtml(reportPayloadText(breakdown.label || reportDetailText('Breakdown', locale), locale)) + '</h4>';
 				if (breakdown.description) {
-					section += '<span>' + h.escapeHtml(displayText(breakdown.description)) + '</span>';
+					section += '<span>' + h.escapeHtml(reportPayloadText(breakdown.description, locale)) + '</span>';
 				}
 				section += '</div>';
-				section += renderReportDomainBadge(domain, h);
+				section += renderReportDomainBadge(domain, h, locale);
 				section += '</div>';
 				section += '<div class="yoro-report-breakdown-list">';
-				items.slice(0, 5).forEach(function(item) {
-					section += renderReportBreakdownItem(item, h);
+				items.slice(0, completePresentation ? items.length : 5).forEach(function(item) {
+					section += renderReportBreakdownItem(item, h, locale);
 				});
 				section += '</div>';
 				section += '</div>';
@@ -2155,15 +2179,15 @@
 		return '<div class="yoro-report-breakdowns">' + sections + '</div>';
 	}
 
-	function renderReportBreakdownItem(item, h) {
+	function renderReportBreakdownItem(item, h, locale) {
 		item = item || {};
-		const value = displayReportValue(item.value);
+		const value = displayReportValue(item.value, locale);
 		const unit = item.unit ? String(item.unit) : '';
-		const subvalue = item.subvalue ? displayText(String(item.subvalue)) : '';
+		const subvalue = item.subvalue ? reportPayloadText(item.subvalue, locale) : '';
 		const share = item.share ? String(item.share) : '';
 		let html = '<div class="yoro-report-breakdown-item">';
 		html += '<div class="yoro-report-breakdown-main">';
-		html += '<strong>' + h.escapeHtml(displayText(item.label || '')) + '</strong>';
+		html += '<strong>' + h.escapeHtml(reportPayloadText(item.label || '', locale)) + '</strong>';
 		html += renderReportBreakdownMeta(item, h);
 		html += '</div>';
 		html += '<div class="yoro-report-breakdown-value">';
@@ -2172,7 +2196,7 @@
 			html += '<span>' + h.escapeHtml(unit) + '</span>';
 		}
 		if (subvalue || share) {
-			html += '<small>' + h.escapeHtml([subvalue, share ? (share + ' share') : ''].filter(Boolean).join(' · ')) + '</small>';
+			html += '<small>' + h.escapeHtml([subvalue, share ? (share + ' ' + reportDetailText('share', locale)) : ''].filter(Boolean).join(' · ')) + '</small>';
 		}
 		html += '</div>';
 		html += '</div>';
@@ -2245,23 +2269,9 @@
 		return 'overview';
 	}
 
-	function reportMetricDomainLabel(domain) {
-		switch (domain) {
-			case 'sales':
-				return 'Sales';
-			case 'orders':
-				return 'Orders';
-			case 'customers':
-				return 'Customers';
-			case 'products':
-				return 'Products';
-			case 'operations':
-				return 'Operations';
-			case 'inventory':
-				return 'Inventory';
-			default:
-				return 'Overview';
-		}
+	function reportMetricDomainLabel(domain, locale) {
+		const labels = { sales: 'Sales', orders: 'Orders', customers: 'Customers', products: 'Products', operations: 'Operations', inventory: 'Inventory' };
+		return reportDetailText(labels[domain] || 'Overview', locale);
 	}
 
 	function reportMetricDomainPriority(domain) {
@@ -2283,7 +2293,7 @@
 		}
 	}
 
-	function renderReportInsightList(title, items, h, className) {
+	function renderReportInsightList(title, items, h, className, locale, completePresentation) {
 		if (!Array.isArray(items) || !items.length) {
 			return '';
 		}
@@ -2291,7 +2301,7 @@
 		let html = '<div class="yoro-report-section ' + h.escapeHtml(className || '') + '">';
 		html += '<h4>' + h.escapeHtml(title) + '</h4>';
 		html += '<div class="yoro-report-list">';
-		sortReportItems(items).slice(0, 4).forEach(function(item) {
+		sortReportItems(items).slice(0, completePresentation ? items.length : 4).forEach(function(item) {
 			const severity = item && ['positive', 'neutral', 'watch', 'risk'].indexOf(item.severity) !== -1 ? item.severity : 'neutral';
 			const domain = normalizeReportMetricDomain(item && item.domain, item && item.topic);
 			html += '<div class="yoro-report-list-item yoro-report-severity-' + h.escapeHtml(severity) + '">';
@@ -2299,7 +2309,7 @@
 			if (item && item.title) {
 				html += '<strong>' + h.escapeHtml(item.title) + '</strong>';
 			}
-			html += renderReportDomainBadge(domain, h);
+			html += renderReportDomainBadge(domain, h, locale);
 			html += '</div>';
 			if (item && item.message) {
 				html += '<p>' + h.escapeHtml(item.message) + '</p>';
@@ -2419,10 +2429,10 @@
 		return 'Run';
 	}
 
-	function renderReportDomainBadge(domain, h) {
+	function renderReportDomainBadge(domain, h, locale) {
 		domain = normalizeReportMetricDomain(domain, '');
 
-		return '<span class="yoro-report-domain-badge yoro-report-domain-' + h.escapeHtml(domain) + '">' + h.escapeHtml(reportMetricDomainLabel(domain)) + '</span>';
+		return '<span class="yoro-report-domain-badge yoro-report-domain-' + h.escapeHtml(domain) + '">' + h.escapeHtml(reportMetricDomainLabel(domain, locale)) + '</span>';
 	}
 
 	function sortReportItems(items) {
@@ -2520,11 +2530,45 @@
 		}
 	}
 
+	let reportPresentationSequence = 0;
+
 	function renderReportResult(data, h) {
+		if (data.result && data.result.report_presentation) {
+			return renderReportPresentation(data, h);
+		}
 		const locale = getResultLocale(data);
 
 		return renderUnifiedReportResult(data, h, locale)
 			|| renderReportContractFallback(data, h, locale, 'Store report');
+	}
+
+	function renderReportPresentation(data, h) {
+		const result = data.result || {};
+		const p = result.report_presentation;
+		const state = h.getConversationState ? h.getConversationState() : {};
+		const valid = ['store.get_daily_briefing', 'store.get_business_summary', 'operations.get_summary', 'store.get_insights'].indexOf(p.action) !== -1
+			&& p.version === 1 && typeof p.conversation_id === 'string' && p.action_event_id > 0
+			&& p.result_id === p.conversation_id + ':' + p.action_event_id
+			&& (!h.getConversationState || state.conversation_id === p.conversation_id)
+			&& (!data.conversation_id || data.conversation_id === p.conversation_id)
+			&& (!result.action || result.action === p.action);
+		if (!valid) {
+			return '<p class="yoro-report-unavailable">' + h.escapeHtml(p.state === 'unavailable' ? result.summary : '') + '</p>';
+		}
+		const id = 'yoro-report-details-' + (++reportPresentationSequence);
+		const expanded = p.expanded === true;
+		let html = '<div class="yoro-report-presentation" data-report-result-id="' + h.escapeHtml(p.result_id)
+			+ '" data-conversation-id="' + h.escapeHtml(p.conversation_id) + '">';
+		html += '<p class="yoro-report-summary">' + h.escapeHtml(p.summary || '') + '</p>';
+		if (p.has_details === true && ['complete', 'partial', 'no_data'].indexOf(p.state) !== -1 && p.report && typeof p.report === 'object') {
+			html += '<button type="button" class="button yoro-report-toggle" aria-expanded="' + expanded + '" aria-controls="' + id
+				+ '" data-open-label="' + h.escapeHtml(p.open_label) + '" data-close-label="' + h.escapeHtml(p.close_label) + '">'
+				+ h.escapeHtml(expanded ? p.close_label : p.open_label) + '</button>';
+			html += '<div class="yoro-report-details" id="' + id + '"' + (expanded ? '' : ' hidden') + '>';
+			html += renderUnifiedReportPanel(p.report, h, normalizeLocale(p.language) || getResultLocale(data), p.report.window || {}, true);
+			html += '</div>';
+		}
+		return html + '</div>';
 	}
 
 	function renderQueueWorkbenchIntro(config, h) {
@@ -3974,6 +4018,23 @@
 		
 	function handleOrderClick(event, h) {
 		const rawTarget = event.target;
+
+		const toggle = rawTarget.closest('.yoro-report-toggle');
+		if (toggle) {
+			event.preventDefault();
+			const card = toggle.closest('.yoro-report-presentation');
+			const details = card && card.querySelector('.yoro-report-details');
+			const state = h.getConversationState ? h.getConversationState() : {};
+			if (!card || !details || !toggle.isConnected || details.id !== toggle.getAttribute('aria-controls')
+				|| (h.getConversationState && state.conversation_id !== card.getAttribute('data-conversation-id'))) {
+				return true;
+			}
+			const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+			details.hidden = !expanded;
+			toggle.setAttribute('aria-expanded', String(expanded));
+			toggle.textContent = toggle.getAttribute(expanded ? 'data-close-label' : 'data-open-label');
+			return true;
+		}
 
 		const target =
 			rawTarget.closest(
