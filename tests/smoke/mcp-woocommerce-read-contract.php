@@ -26,6 +26,8 @@ class YoRo_Mcp_Read_Fixture_Item extends WC_Order_Item_Product {
 }
 class YoRo_Mcp_Read_Fixture_Order extends WC_Order {
 	public static $rows = [];
+	public static $unavailable_age = false;
+	public function get_date_created( $context = 'view' ) { return self::$unavailable_age ? null : parent::get_date_created( $context ); }
 	public static $reads = 0;
 	public function __construct( $id = 0 ) {
 		parent::__construct();
@@ -65,14 +67,14 @@ class YoRo_Mcp_Read_Fixture_Order_Store extends WC_Order_Data_Store_CPT {
 			if ( ! empty( $args['billing_email'] ) && $args['billing_email'] !== $order->get_billing_email() ) { continue; }
 			$query = $args['date_created'] ?? '';
 			if ( $query ) {
-				$ts = $order->get_date_created()->getTimestamp();
+				$ts = $row['date_created'];
 				$parse = static function( $value ) { return is_numeric( $value ) ? (int) $value : ( new DateTimeImmutable( $value, wp_timezone() ) )->getTimestamp(); };
 				if ( str_starts_with( $query, '<=' ) && $ts > $parse( substr( $query, 2 ) ) ) { continue; }
 				if ( str_contains( $query, '...' ) ) { [ $start, $end ] = explode( '...', $query ); if ( $ts < $parse( $start ) || $ts > $parse( $end ) ) { continue; } }
 			}
 			$orders[] = $order;
 		}
-		usort( $orders, static function( $a, $b ) { return $b->get_date_created()->getTimestamp() <=> $a->get_date_created()->getTimestamp(); } );
+		usort( $orders, static function( $a, $b ) { return YoRo_Mcp_Read_Fixture_Order::$rows[ $b->get_id() ]['date_created'] <=> YoRo_Mcp_Read_Fixture_Order::$rows[ $a->get_id() ]['date_created']; } );
 		$total = count( $orders );
 		$limit = (int) ( $args['limit'] ?? 20 );
 		$orders = array_slice( $orders, max( 0, ( (int) ( $args['paged'] ?? $args['page'] ?? 1 ) - 1 ) * max( 1, $limit ) ), $limit > 0 ? $limit : null );
@@ -182,7 +184,7 @@ try {
 	if ( $input_path = getenv( 'YORO_MCP_COMMERCE_ENVELOPES' ) ) {
 		$assert( str_starts_with( $input_path, '/' ) && is_readable( $input_path ), 'Envelope exchange must use an absolute readable path.' );
 		$input = json_decode( file_get_contents( $input_path ), true, 512, JSON_THROW_ON_ERROR );
-		$envelopes = $input['operations'] ?? $input;
+		$envelopes = $input['operations'] ?? ( isset( $input['correction_operations'] ) ? $envelopes : $input );
 		$assert( is_array( $envelopes ) && count( $envelopes ) === 8 && array_diff( array_keys( $params_by_action ), array_column( $envelopes, 'action' ) ) === [], 'Exchange requires exactly all eight actions.' );
 	}
 	$runtime = new YoRo_Connector_Runtime();
@@ -242,12 +244,54 @@ try {
 	$visibility = array_column( $cases['orders.get_timeline']['canonical']['data']['events'], 'visibility' );
 	$assert( in_array( 'internal', $visibility, true ) && in_array( 'customer', $visibility, true ), 'Timeline must retain internal/customer visibility.' );
 	$assert( ! empty( $cases['operations.get_attention_queue']['canonical']['data']['items'] ) && ! empty( $cases['store.get_daily_briefing']['canonical']['data']['attention_items'] ), 'Queue and daily briefing must contain actual nonempty fixture evidence.' );
+	$correction_specs = [
+		'queue_age_unavailable' => [ 'action' => 'operations.get_attention_queue', 'params' => [ 'limit' => 1 ], 'age_unavailable' => true ],
+		'briefing_age_unavailable' => [ 'action' => 'store.get_daily_briefing', 'params' => [ 'window' => 'today', 'limit' => 1 ], 'age_unavailable' => true ],
+	];
+	foreach ( [ 'today', 'this_week', 'this_month' ] as $window_key ) {
+		$correction_specs[ 'comparison_' . $window_key ] = [ 'action' => 'store.get_daily_briefing', 'params' => [ 'window' => $window_key, 'limit' => 1 ], 'age_unavailable' => false ];
+	}
+	if ( isset( $input['correction_operations'] ) ) {
+		$assert( is_array( $input['correction_operations'] ) && array_keys( $input['correction_operations'] ) === array_keys( $correction_specs ), 'Correction exchange must cover the five named scenarios exactly.' );
+	}
+	$failed_serializer = new ReflectionMethod( YoRo_Connector_Runtime::class, 'failed_result' );
+	$correction_cases = [];
+	foreach ( $correction_specs as $scenario => $spec ) {
+		$envelope = $input['correction_operations'][ $scenario ] ?? $make_envelope( $spec['action'], $spec['params'] );
+		if ( ! isset( $input['correction_operations'] ) ) {
+			foreach ( [ 'envelope_id', 'workflow_id', 'operation_id', 'idempotency_key', 'trace_id' ] as $key ) { $envelope[ $key ] .= '_' . $scenario; }
+		}
+		$assert( $envelope['action'] === $spec['action'] && $envelope['params'] == $spec['params'], 'Correction envelope must preserve the requested action and period.' );
+		$valid = $validate->invoke( $runtime, $envelope );
+		$assert( is_array( $valid ) && $valid['user_id'] === $actor_id, $scenario . ': actual connector guard must accept.' );
+		$before = [ count( YoRo_Mcp_Read_Fixture_Order_Store::$calls ), count( YoRo_Mcp_Read_Fixture_Product_Store::$calls ) ];
+		YoRo_Mcp_Read_Fixture_Order::$unavailable_age = $spec['age_unavailable'];
+		try {
+			$execution = YoRo_Action_Executor::execute( $envelope['action'], $envelope['params'], true, false, [ 'connector_remote_agent' => true, 'workflow_id' => $envelope['workflow_id'], 'operation_id' => $envelope['operation_id'] ] );
+		} finally {
+			YoRo_Mcp_Read_Fixture_Order::$unavailable_age = false;
+		}
+		if ( $spec['age_unavailable'] ) {
+			$assert( is_wp_error( $execution ) && 'yoro_queue_age_unavailable' === $execution->get_error_code(), $scenario . ': actual provider/executor must return unavailable age.' );
+			$result = $failed_serializer->invoke( $runtime, $envelope, $execution->get_error_code(), $execution->get_error_message() );
+			$assert( 'failed' === $result['status'] && ! isset( $result['result'] ) && 'yoro_queue_age_unavailable' === $result['error']['code'], 'Actual failed serializer has only the canonical outer failure shape.' );
+		} else {
+			$assert( is_array( $execution ) && true === $execution['success'], $scenario . ': actual briefing must succeed.' );
+			$result = $serialize->invoke( $runtime, $envelope, $execution );
+			$report = $result['result']['extensions']['wordpress.execution']['legacy_data']['report'];
+			$current = $report['window'];
+			$previous = $report['comparison']['window'];
+			$assert( $current['key'] === $spec['params']['window'] && $previous['key'] === $current['key'] && $previous['date_to'] < $current['date_from'], 'Actual previous period keeps the current key but has its own earlier resolved range.' );
+		}
+		$correction_cases[ $scenario ] = [ 'action' => $envelope['action'], 'params' => $envelope['params'], 'envelope' => $envelope, 'execution_result' => $result, 'query_counts' => [ 'orders' => count( YoRo_Mcp_Read_Fixture_Order_Store::$calls ) - $before[0], 'products' => count( YoRo_Mcp_Read_Fixture_Product_Store::$calls ) - $before[1] ] ];
+		$assert( $correction_cases[ $scenario ]['query_counts']['orders'] > 0, 'Correction scenario must exercise actual provider queries.' );
+	}
 	$assert( 0 === $sql_writes && 0 === $http_calls, 'No store database writes or outbound HTTP are allowed.' );
 	if ( $output = getenv( 'YORO_MCP_COMMERCE_EXPORT' ) ) {
 		$assert( str_starts_with( $output, '/' ) && is_dir( dirname( $output ) ) && ! str_starts_with( realpath( dirname( $output ) ), $root ), 'Fixture export must be external.' );
 		$revision = trim( (string) shell_exec( 'git -C ' . escapeshellarg( $root ) . ' rev-parse HEAD' ) );
 		$assert( 1 === preg_match( '/^[a-f0-9]{40}$/', $revision ), 'Core revision is required for exchange.' );
-		file_put_contents( $output, wp_json_encode( [ 'core_revision' => $revision, 'test_sha256' => hash_file( 'sha256', __FILE__ ), 'manifest' => $manifest, 'context_pack' => $context_pack, 'cases' => $cases, 'guards' => [ 'sql_writes' => $sql_writes, 'http_calls' => $http_calls ], 'limitations' => [ 'Fixture actor mapping and WooCommerce data stores are in-memory test seams.', 'Actual manifest, context builder, envelope validation, connector permission/input guard, executor, provider callbacks and serializer execute unchanged.', 'Durable transport, grant and API actor-provider authority require the paired API suite; journal is not invoked here.' ] ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR ) );
+		file_put_contents( $output, wp_json_encode( [ 'core_revision' => $revision, 'test_sha256' => hash_file( 'sha256', __FILE__ ), 'manifest' => $manifest, 'context_pack' => $context_pack, 'cases' => $cases, 'correction_cases' => $correction_cases, 'guards' => [ 'sql_writes' => $sql_writes, 'http_calls' => $http_calls ], 'limitations' => [ 'Fixture actor mapping and WooCommerce data stores are in-memory test seams.', 'Actual manifest, context builder, envelope validation, connector permission/input guard, executor, provider callbacks and serializer execute unchanged.', 'Durable transport, grant and API actor-provider authority require the paired API suite; journal is not invoked here.' ] ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR ) );
 	}
 	echo "PASS mcp-woocommerce-read-contract: eight actual reads, normalized permissions, actor/input guards, executor/provider/serializer; zero store writes and HTTP\n";
 } finally {
