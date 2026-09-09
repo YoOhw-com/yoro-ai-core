@@ -150,4 +150,13 @@ if ( $has_action_result_contracts ) {
 	);
 }
 
+$payment_schema = YoRo_Commerce_Contract_Builder::execution_output_schema( 'orders.get_payment_context' );
+$assert( [ 'payment_context' ] === $payment_schema['properties']['data']['required'], 'Payment context uses one bounded canonical data root.' );
+$assert( [ 'not_observed' ] === $payment_schema['properties']['data']['properties']['payment_context']['properties']['evidence']['properties']['gateway_verification']['enum'], 'Shared payment evidence never claims independent gateway verification.' );
+$assert( isset( $action_result_contracts['connector_actions']['orders.get_payment_context'] ), 'The canonical B1 payment fixture must be present.' );
+$payment_fixture = $action_result_contracts['connector_actions']['orders.get_payment_context'];
+$payment_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( array_merge( [ 'success' => true ], $payment_fixture['sample_data'] ), 'orders.get_payment_context' );
+$assert( true === $payment_payload['success'], 'The API payment fixture is accepted by the actual Core projection.' );
+$assert( 'not_observed' === $payment_payload['data']['payment_context']['evidence']['gateway_verification'], 'API/Core fixture evidence semantics agree.' );
+
 echo "YoRo shared commerce fixtures: PASS\n";

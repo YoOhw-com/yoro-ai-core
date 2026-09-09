@@ -727,6 +727,26 @@ try {
 	wp_set_current_user( $original_user_id );
 }
 
+// B1 canonical projection closes the entire envelope, including all legacy extensions.
+$payment_schema = YoRo_Commerce_Contract_Builder::execution_output_schema( 'orders.get_payment_context' );
+$assert( YoRo_Commerce_Contract_Builder::strict_output_validation_ready( 'orders.get_payment_context' ), 'Payment output is strict at every nested object.' );
+$assert( false === $payment_schema['properties']['extensions']['additionalProperties'], 'Payment extensions cannot carry raw gateway or metadata payloads.' );
+$payment_raw = [
+	'success' => true,
+	'payment_context' => [ 'order_id' => 123, 'order_number' => '123', 'status' => 'processing', 'currency' => 'USD', 'total' => '100.00', 'total_refunded' => '25.00', 'is_paid' => true, 'needs_payment' => false, 'raw_gateway' => 'B1-SECRET-SENTINEL', 'evidence' => [ 'gateway_verification' => 'verified' ] ],
+	'meta' => [ 'password' => 'B1-SECRET-SENTINEL' ],
+	'extensions' => [ 'gateway' => 'B1-SECRET-SENTINEL' ],
+	'summary' => 'B1-SECRET-SENTINEL',
+];
+$payment_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $payment_raw, 'orders.get_payment_context' );
+$assert( array_keys( $payment_payload ) === $payment_schema['required'], 'Payment public envelope exactly matches its canonical schema.' );
+$assert( '75.00' === $payment_payload['data']['payment_context']['remaining_refundable'], 'Partial refunds retain existing WooCommerce remaining-amount semantics.' );
+$assert( false === strpos( wp_json_encode( $payment_payload ), 'B1-SECRET-SENTINEL' ), 'No raw payment metadata, summary or legacy extension escapes the allowlist.' );
+$assert( 'not_observed' === $payment_payload['data']['payment_context']['evidence']['gateway_verification'], 'Provider labels cannot overwrite evidence authority.' );
+$assert( null === $payment_payload['data']['payment_context']['transaction_id'] && null === $payment_payload['data']['payment_context']['date_paid'], 'Absent evidence remains unknown.' );
+$payment_unknown = YoRo_Order_Presenter::normalize_payment_context( [ 'order_id' => 123, 'order_number' => '123', 'total' => 'unknown', 'is_paid' => 'true' ] );
+$assert( null === $payment_unknown['total'] && null === $payment_unknown['remaining_refundable'] && null === $payment_unknown['is_paid'], 'Missing or malformed amount and paid facts never become zero or false.' );
+
 if ( $failures ) {
 	foreach ( $failures as $failure ) {
 		fwrite( STDERR, "FAIL: {$failure}\n" );

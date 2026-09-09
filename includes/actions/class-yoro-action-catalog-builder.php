@@ -49,6 +49,7 @@ class YoRo_Action_Catalog_Builder {
 		$families = [
 			'orders.search'                  => 'orders_search',
 			'orders.get_details'             => 'order_details',
+			'orders.get_payment_context'     => 'order_payment_context',
 			'orders.refund_preview'           => 'order_refund',
 			'customers.lookup'                => 'customer_lookup',
 			'orders.find_by_customer'         => 'customer_orders',
@@ -536,6 +537,7 @@ class YoRo_Action_Catalog_Builder {
 	private static function infer_required_params( $action, $input_schema ) {
 		$map = [
 			'orders.get_details'                   => [ 'order_ids' ],
+			'orders.get_payment_context'           => [ 'order_id' ],
 			'orders.refund_preview'                => [ 'order_id' ],
 			'orders.email_customer_preview'        => [ 'order_id', 'template' ],
 			'orders.email_customer_template'       => [ 'order_id', 'template' ],
@@ -600,6 +602,7 @@ class YoRo_Action_Catalog_Builder {
 			'customers.get_service_queue'                   => 'customer_service_review',
 			'orders.search'                                 => 'search_orders',
 			'orders.get_details'                            => 'get_order_details',
+			'orders.get_payment_context'                    => 'order_payment_context',
 			'orders.find_by_customer'                       => 'find_customer_orders',
 			'customers.lookup'                              => 'customer_lookup',
 			'orders.update_status'                          => 'update_order_status',
@@ -646,6 +649,7 @@ class YoRo_Action_Catalog_Builder {
 			'add_note' => 'Use for adding notes to one or more orders. Clarify only when note content or target order is unresolved.',
 			'search_orders' => 'Use for read-only order search, filtering, or listing requests.',
 			'get_order_details' => 'Use for inspecting one specific order in detail.',
+			'order_payment_context' => 'Use for payment-status or payment-evidence questions about one grounded order. WooCommerce facts do not independently verify gateway capture, settlement, or confirmation. Clarify missing or ambiguous targets; never substitute a search, refund, payment link, or communication.',
 		];
 
 		if ( ! empty( $policies[ $intent_family ] ) ) {

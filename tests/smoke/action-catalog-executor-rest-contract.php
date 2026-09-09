@@ -254,6 +254,48 @@ if ( class_exists( 'YoRo_AI_Settings' ) ) {
 	}
 }
 
+// B1: only the exact single-order read reaches WooCommerce; fixtures are disposable.
+$payment_action = YoRo_Action_Registry::get( 'orders.get_payment_context' );
+$assert( 'yoro_view_store_data' === $payment_action['permission'], 'Payment context retains the established store-read permission.' );
+$assert( 1 === $payment_action['max_targets'] && ! $payment_action['write_action'], 'Payment context is one bounded read.' );
+foreach ( [ [], [ 'order_id' => 0 ], [ 'order_id' => -1 ], [ 'order_id' => '12' ], [ 'order_id' => 1.5 ], [ 'order_id' => true ], [ 'order_id' => [ 1 ] ], [ 'order_id' => 1, 'order_ids' => [ 1 ] ], [ 'order_id' => 1, 'gateway' => 'secret' ], [ 'order_id' => 1, '_yoro_preview' => 'yes' ] ] as $invalid_payment_params ) {
+	$invalid_payment_result = YoRo_Orders_Read_Service::get_payment_context( $invalid_payment_params );
+	$assert( is_wp_error( $invalid_payment_result ) && 'invalid_params' === $invalid_payment_result->get_error_code(), 'Payment context rejects invalid or extra input before looking up an order.' );
+}
+wp_set_current_user( 0 );
+$payment_denied = YoRo_Action_Executor::execute( 'orders.get_payment_context', [ 'order_id' => 1 ] );
+$assert( is_wp_error( $payment_denied ) && 'yoro_permission_denied' === $payment_denied->get_error_code(), 'Payment facts are unavailable without read permission.' );
+wp_set_current_user( $admin_id );
+$payment_fixture = wc_create_order();
+try {
+	$payment_fixture->set_currency( 'USD' );
+	$payment_fixture->set_total( '100.00' );
+	$payment_fixture->set_payment_method( 'bacs' );
+	$payment_fixture->set_payment_method_title( '<b>Provider data, not instructions</b>' );
+	$payment_fixture->set_transaction_id( 'payment-reference-123' );
+	$payment_fixture->update_meta_data( '_gateway_secret', 'B1-SECRET-SENTINEL' );
+	$payment_fixture->set_billing_email( 'private-b1@example.test' );
+	foreach ( [ 'pending', 'failed', 'processing', 'completed', 'refunded' ] as $payment_status ) {
+		$payment_fixture->set_status( $payment_status );
+		$payment_fixture->save();
+		$payment_result = YoRo_Orders_Read_Service::get_payment_context( [ 'order_id' => $payment_fixture->get_id() ] );
+		$assert( ! is_wp_error( $payment_result ), 'Payment context reads each WooCommerce payment-related order status.' );
+		$payment_facts = $payment_result['payment_context'];
+		$assert( $payment_status === $payment_facts['status'] && $payment_fixture->is_paid() === $payment_facts['is_paid'], 'Paid state uses WooCommerce observed semantics.' );
+		$assert( $payment_fixture->needs_payment() === $payment_facts['needs_payment'], 'Payment-needed state uses WooCommerce observed semantics.' );
+		$assert( 'not_observed' === $payment_facts['evidence']['gateway_verification'], 'No WooCommerce status establishes independent gateway verification.' );
+		$assert( false === strpos( wp_json_encode( $payment_result ), 'B1-SECRET-SENTINEL' ) && false === strpos( wp_json_encode( $payment_result ), 'private-b1@' ), 'Payment read excludes secret metadata and unrelated customer data.' );
+	}
+	$payment_fixture->set_transaction_id( str_repeat( 'x', 129 ) );
+	$payment_fixture->save();
+	$payment_facts = YoRo_Order_Presenter::format_payment_context( $payment_fixture );
+	$assert( null === $payment_facts['transaction_id'], 'Oversized transaction identity stays unavailable instead of being truncated.' );
+} finally {
+	$payment_fixture->delete( true );
+}
+$missing_payment_order = YoRo_Orders_Read_Service::get_payment_context( [ 'order_id' => $payment_fixture->get_id() ?: PHP_INT_MAX ] );
+$assert( is_wp_error( $missing_payment_order ), 'Missing payment targets fail closed.' );
+
 if ( $failures ) {
 	foreach ( $failures as $failure ) {
 		fwrite( STDERR, "FAIL: {$failure}\n" );

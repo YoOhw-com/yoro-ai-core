@@ -6,6 +6,61 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Order_Presenter {
 
+	const PAYMENT_EVIDENCE_LIMITATION = 'WooCommerce order facts do not independently verify gateway capture, settlement, or confirmation.';
+
+	public static function format_payment_context( WC_Order $order ) {
+		$facts = [ 'order_id' => $order->get_id(), 'order_number' => $order->get_order_number() ];
+		foreach ( [ 'status', 'currency', 'total', 'total_refunded', 'payment_method', 'payment_method_title', 'transaction_id', 'date_created', 'date_paid', 'is_paid', 'needs_payment' ] as $field ) {
+			$method = in_array( $field, [ 'is_paid', 'needs_payment' ], true ) ? $field : 'get_' . $field;
+			$facts[ $field ] = is_callable( [ $order, $method ] ) ? $order->$method() : null;
+		}
+		$facts['status_label'] = is_string( $facts['status'] ) && '' !== $facts['status']
+			? YoRo_Order_Helper::get_order_status_label( $facts['status'] ) : null;
+		foreach ( [ 'date_created', 'date_paid' ] as $field ) {
+			$facts[ $field ] = $facts[ $field ] instanceof DateTimeInterface ? $facts[ $field ]->format( DATE_ATOM ) : null;
+		}
+		return self::normalize_payment_context( $facts );
+	}
+
+	/** Project explicit WooCommerce facts only; never read arbitrary metadata or gateway providers. */
+	public static function normalize_payment_context( $facts ) {
+		if ( ! is_array( $facts ) || ! is_int( $facts['order_id'] ?? null ) || $facts['order_id'] < 1 ) {
+			return null;
+		}
+		$number = self::payment_text( $facts['order_number'] ?? null, 64 );
+		if ( null === $number ) {
+			return null;
+		}
+		$data = [ 'order_id' => $facts['order_id'], 'order_number' => $number ];
+		foreach ( [ 'status' => 64, 'status_label' => 256, 'currency' => 8, 'payment_method' => 128, 'payment_method_title' => 256, 'transaction_id' => 128, 'date_created' => 40, 'date_paid' => 40 ] as $field => $limit ) {
+			$data[ $field ] = self::payment_text( $facts[ $field ] ?? null, $limit );
+		}
+		foreach ( [ 'total', 'total_refunded' ] as $field ) {
+			$value = $facts[ $field ] ?? null;
+			$data[ $field ] = ( is_string( $value ) || is_int( $value ) || is_float( $value ) )
+				&& preg_match( '/^[0-9]{1,18}(?:\.[0-9]{1,8})?$/D', (string) $value )
+				? (string) $value : null;
+		}
+		$data['remaining_refundable'] = null !== $data['total'] && null !== $data['total_refunded']
+			? wc_format_decimal( max( 0, (float) $data['total'] - (float) $data['total_refunded'] ), min( 8, max( 0, (int) wc_get_price_decimals() ) ) ) : null;
+		if ( null !== $data['remaining_refundable'] && ! preg_match( '/^[0-9]{1,18}(?:\.[0-9]{1,8})?$/D', $data['remaining_refundable'] ) ) {
+			$data['remaining_refundable'] = null;
+		}
+		foreach ( [ 'is_paid', 'needs_payment' ] as $field ) {
+			$data[ $field ] = is_bool( $facts[ $field ] ?? null ) ? $facts[ $field ] : null;
+		}
+		$data['evidence'] = [ 'source' => 'woocommerce_order', 'gateway_verification' => 'not_observed', 'limitation' => self::PAYMENT_EVIDENCE_LIMITATION ];
+		return $data;
+	}
+
+	private static function payment_text( $value, $limit ) {
+		if ( ! is_string( $value ) && ! is_int( $value ) ) {
+			return null;
+		}
+		$value = sanitize_text_field( (string) $value );
+		return '' !== $value && strlen( $value ) <= $limit ? $value : null;
+	}
+
 	public static function format_order_summary( WC_Order $order ) {
 		$date_created = $order->get_date_created();
 		$date_paid     = $order->get_date_paid();

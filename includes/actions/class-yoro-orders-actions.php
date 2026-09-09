@@ -69,6 +69,26 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
+			'orders.get_payment_context',
+			[
+				'label' => __( 'Get order payment context', 'yoro-ai-core' ),
+				'description' => __( 'Read bounded WooCommerce payment facts for one order; independent gateway verification is not observed.', 'yoro-ai-core' ),
+				'category' => 'orders',
+				'permission' => 'yoro_view_store_data',
+				'callback' => [ __CLASS__, 'get_payment_context' ],
+				'risk_level' => 'low',
+				'write_action' => false,
+				'input_schema' => [ 'order_id' => 'integer' ],
+				'canonical_input_schema' => [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ] ],
+				'required_params' => [ 'order_id' ],
+				'max_items' => 1,
+				'max_targets' => 1,
+				'target_type' => 'order',
+				'capabilities' => [ 'orders', 'read', 'payment' ],
+			]
+		);
+
+		YoRo_Action_Registry::register(
 			'orders.get_details',
 			[
 				'label'       => __( 'Get order details', 'yoro-ai-core' ),
@@ -1752,6 +1772,10 @@ class YoRo_Orders_Actions {
 
 	public static function get_daily_briefing( $params ) {
 		return YoRo_Orders_Read_Service::get_daily_briefing( $params );
+	}
+
+	public static function get_payment_context( $params ) {
+		return YoRo_Orders_Read_Service::get_payment_context( $params );
 	}
 
 	public static function refund_preview( $params ) {
