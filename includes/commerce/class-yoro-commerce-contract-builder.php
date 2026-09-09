@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:970799ead3248c1d4a6f9231e6b241813c2ba2b867f646d77703df17cf8ea107';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:719064f52513a77618d54161035dda52eddd6b5e157f6afafcb1a03331eb6a6b';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -306,6 +306,22 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function execution_output_schema( $action_name = '' ) {
+		if ( 'orders.get_payment_context' === $action_name ) {
+			$properties = [
+				'success' => [ 'type' => 'boolean' ],
+				'action' => [ 'type' => 'string', 'enum' => [ 'orders.get_payment_context' ] ],
+				'message' => [ 'type' => 'string', 'maxLength' => 256 ],
+				'summary' => [ 'type' => 'string', 'maxLength' => 256 ],
+				'data' => self::closed_object_schema( [ 'payment_context' => self::payment_context_schema() ], [ 'payment_context' ] ),
+				'read_only' => [ 'type' => 'boolean', 'enum' => [ true ] ],
+				'undoable' => [ 'type' => 'boolean', 'enum' => [ false ] ],
+				'result_type' => [ 'type' => 'string', 'enum' => [ 'payment_context' ] ],
+				'display_type' => [ 'type' => 'string', 'enum' => [ 'payment_context' ] ],
+				'assistant_summary' => [ 'type' => 'string', 'maxLength' => 256 ],
+				'extensions' => self::closed_object_schema( [], [] ),
+			];
+			return self::closed_object_schema( $properties, array_keys( $properties ) );
+		}
 		return [
 			'type'                 => 'object',
 			'properties'           => [
@@ -328,6 +344,26 @@ class YoRo_Commerce_Contract_Builder {
 
 	public static function canonical_execution_payload( array $execution, $action_name = '' ) {
 		$action_name = $action_name ?: ( $execution['action'] ?? '' );
+		if ( 'orders.get_payment_context' === $action_name ) {
+			// Close the complete public envelope before generic legacy-data or extension handling.
+			$facts = $execution['payment_context'] ?? ( $execution['data']['payment_context'] ?? null );
+			$context = YoRo_Order_Presenter::normalize_payment_context( $facts );
+			$success = true === ( $execution['success'] ?? false ) && null !== $context;
+			$summary = $success ? 'WooCommerce order payment facts; independent gateway verification is not observed.' : 'The order payment context is unavailable.';
+			return [
+				'success' => $success,
+				'action' => $action_name,
+				'message' => $summary,
+				'summary' => $summary,
+				'data' => [ 'payment_context' => $success ? $context : null ],
+				'read_only' => true,
+				'undoable' => false,
+				'result_type' => 'payment_context',
+				'display_type' => 'payment_context',
+				'assistant_summary' => $summary,
+				'extensions' => (object) [],
+			];
+		}
 		$age_error = self::queue_age_guard( $execution, $action_name );
 		if ( is_wp_error( $age_error ) ) {
 			$execution = [ 'success' => false, 'action' => $action_name, 'summary' => $age_error->get_error_message(), 'read_only' => true, 'result_type' => 'error', 'display_type' => 'error', 'errors' => [ [ 'code' => $age_error->get_error_code(), 'message' => $age_error->get_error_message() ] ] ];
@@ -691,6 +727,32 @@ class YoRo_Commerce_Contract_Builder {
 		}
 
 		return [ 'type' => 'object' ];
+	}
+
+	private static function payment_context_schema() {
+		$properties = [
+			'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+			'order_number' => [ 'type' => 'string', 'minLength' => 1, 'maxLength' => 64 ],
+		];
+		foreach ( [ 'status' => 64, 'status_label' => 256, 'currency' => 8, 'payment_method' => 128, 'payment_method_title' => 256, 'transaction_id' => 128, 'date_created' => 40, 'date_paid' => 40 ] as $field => $limit ) {
+			$properties[ $field ] = [ 'type' => [ 'string', 'null' ], 'maxLength' => $limit ];
+		}
+		foreach ( [ 'total', 'total_refunded', 'remaining_refundable' ] as $field ) {
+			$properties[ $field ] = [ 'type' => [ 'string', 'null' ], 'maxLength' => 27, 'pattern' => '^[0-9]{1,18}(?:\\.[0-9]{1,8})?$' ];
+		}
+		$properties['is_paid'] = [ 'type' => [ 'boolean', 'null' ] ];
+		$properties['needs_payment'] = [ 'type' => [ 'boolean', 'null' ] ];
+		$properties['evidence'] = self::closed_object_schema(
+			[
+				'source' => [ 'type' => 'string', 'enum' => [ 'woocommerce_order' ] ],
+				'gateway_verification' => [ 'type' => 'string', 'enum' => [ 'not_observed' ] ],
+				'limitation' => [ 'type' => 'string', 'enum' => [ YoRo_Order_Presenter::PAYMENT_EVIDENCE_LIMITATION ] ],
+			],
+			[ 'source', 'gateway_verification', 'limitation' ]
+		);
+		$schema = self::closed_object_schema( $properties, array_keys( $properties ) );
+		$schema['type'] = [ 'object', 'null' ];
+		return $schema;
 	}
 
 	private static function canonical_order_schema( $include_details = false ) {

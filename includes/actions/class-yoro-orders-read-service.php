@@ -463,6 +463,38 @@ class YoRo_Orders_Read_Service {
 		return sanitize_key( $status );
 	}
 
+	public static function get_payment_context( $params ) {
+		if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'order_id', '_yoro_confirmed', '_yoro_preview' ] )
+			|| ! isset( $params['order_id'] ) || ! is_int( $params['order_id'] ) || $params['order_id'] < 1 ) {
+			return new WP_Error( 'invalid_params', __( 'Choose exactly one positive integer order ID.', 'yoro-ai-core' ) );
+		}
+		foreach ( [ '_yoro_confirmed', '_yoro_preview' ] as $flag ) {
+			if ( array_key_exists( $flag, $params ) && ! is_bool( $params[ $flag ] ) ) {
+				return new WP_Error( 'invalid_params', __( 'Invalid execution flags.', 'yoro-ai-core' ) );
+			}
+		}
+		if ( ! function_exists( 'wc_get_order' ) ) {
+			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
+		}
+		$order = wc_get_order( $params['order_id'] );
+		if ( ! $order instanceof WC_Order || $order instanceof WC_Order_Refund || $order->get_id() !== $params['order_id'] ) {
+			return new WP_Error( 'order_not_found', __( 'I could not find that order.', 'yoro-ai-core' ) );
+		}
+		$payment_context = YoRo_Order_Presenter::format_payment_context( $order );
+		if ( null === $payment_context ) {
+			return new WP_Error( 'payment_context_unavailable', __( 'The order payment context is unavailable.', 'yoro-ai-core' ) );
+		}
+		return [
+			'success' => true,
+			'action' => 'orders.get_payment_context',
+			'summary' => 'WooCommerce order payment facts; independent gateway verification is not observed.',
+			'payment_context' => $payment_context,
+			'read_only' => true,
+			'result_type' => 'payment_context',
+			'display_type' => 'payment_context',
+		];
+	}
+
 	public static function get_order_details( $params ) {
 		$order_ids = YoRo_Order_Helper::normalize_order_ids( $params );
 
