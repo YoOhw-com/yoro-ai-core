@@ -296,6 +296,80 @@ try {
 $missing_payment_order = YoRo_Orders_Read_Service::get_payment_context( [ 'order_id' => $payment_fixture->get_id() ?: PHP_INT_MAX ] );
 $assert( is_wp_error( $missing_payment_order ), 'Missing payment targets fail closed.' );
 
+$link_action = YoRo_Action_Registry::get( 'orders.get_payment_link' );
+$assert( 'yoro_view_store_data' === $link_action['permission'] && 'low' === $link_action['risk_level'], 'B2 retains established B1 read permission and risk policy.' );
+$assert( 1 === $link_action['max_targets'] && ! $link_action['write_action'], 'B2 is exactly one bounded read.' );
+foreach ( [ [], [ 'order_id' => 0 ], [ 'order_id' => -1 ], [ 'order_id' => '12' ], [ 'order_id' => 1.5 ], [ 'order_id' => true ], [ 'order_id' => [ 1 ] ], [ 'order_id' => 1, 'order_ids' => [ 1 ] ], [ 'order_id' => 1, 'gateway' => 'secret' ], [ 'order_id' => 1, '_yoro_preview' => 'yes' ] ] as $invalid_link_params ) {
+	$invalid_link = YoRo_Orders_Read_Service::get_payment_link( $invalid_link_params );
+	$assert( is_wp_error( $invalid_link ) && 'invalid_params' === $invalid_link->get_error_code(), 'B2 rejects malformed, extra and bulk parameters.' );
+}
+wp_set_current_user( 0 );
+$link_denied = YoRo_Action_Executor::execute( 'orders.get_payment_link', [ 'order_id' => 1 ] );
+$assert( is_wp_error( $link_denied ) && 'yoro_permission_denied' === $link_denied->get_error_code(), 'B2 is unavailable without store read permission.' );
+wp_set_current_user( $admin_id );
+$link_order = wc_create_order();
+$url_calls = 0;
+$url_probe = static function ( $url ) use ( &$url_calls ) { ++$url_calls; return $url; };
+add_filter( 'woocommerce_get_checkout_payment_url', $url_probe );
+try {
+	foreach ( [ 'pending', 'failed', 'processing', 'completed', 'on-hold', 'cancelled', 'refunded' ] as $status ) {
+		foreach ( [ '0.00', '100.00' ] as $total ) {
+			$link_order->set_status( $status );
+			$link_order->set_total( $total );
+			$link_order->save();
+			$url_calls = 0;
+			$link_result = YoRo_Orders_Read_Service::get_payment_link( [ 'order_id' => $link_order->get_id() ] );
+			$assert( ! is_wp_error( $link_result ), 'B2 reads existing orders regardless of payment eligibility.' );
+			$link = $link_result['payment_link'];
+			$needs = $link_order->needs_payment();
+			$assert( $needs === $link['needs_payment'] && $needs === $link['payment_link_available'], 'B2 uses current WooCommerce eligibility for every status/total pair.' );
+			$assert( ( $needs ? 1 : 0 ) === $url_calls, 'B2 asks for a URL only when the owner reports payment is needed.' );
+			$assert( ( $needs ? $link_order->get_checkout_payment_url() : null ) === $link['payment_url'], 'B2 returns the exact WooCommerce URL or null.' );
+		}
+	}
+	$link_order->set_status( 'pending' );
+	$link_order->set_total( '100.00' );
+	$link_order->save();
+	$filtered_url = 'https://example.invalid/provider/custom/?key=wc_order_fixture_only&label=provider_data';
+	$url_filter = static function () use ( $filtered_url ) { return $filtered_url; };
+	add_filter( 'woocommerce_get_checkout_payment_url', $url_filter, 99 );
+	try {
+		$filtered = YoRo_Orders_Read_Service::get_payment_link( [ 'order_id' => $link_order->get_id() ] );
+		$assert( $filtered_url === $filtered['payment_link']['payment_url'], 'Filter-authored URL remains opaque, unchanged data.' );
+		$payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $filtered, 'orders.get_payment_link' );
+		$assert( $filtered_url === $payload['data']['payment_link']['payment_url'], 'Canonical result preserves the capability URL.' );
+		$context = YoRo_Orders_Read_Service::get_payment_context( [ 'order_id' => $link_order->get_id() ] );
+		$details = YoRo_Orders_Read_Service::get_order_details( [ 'order_id' => $link_order->get_id() ] );
+		$assert( false === strpos( wp_json_encode( [ $context, $details ] ), 'wc_order_fixture_only' ), 'B2 never adds its URL to B1 or generic details.' );
+	} finally {
+		remove_filter( 'woocommerce_get_checkout_payment_url', $url_filter, 99 );
+	}
+	foreach ( [ 'javascript:alert(1)', '', str_repeat( 'x', 4097 ) ] as $invalid_url ) {
+		$invalid_filter = static function () use ( $invalid_url ) { return $invalid_url; };
+		add_filter( 'woocommerce_get_checkout_payment_url', $invalid_filter, 99 );
+		try {
+			$invalid_result = YoRo_Orders_Read_Service::get_payment_link( [ 'order_id' => $link_order->get_id() ] );
+			$assert( is_wp_error( $invalid_result ), 'Malformed filter URL fails closed without reconstruction or truncation.' );
+		} finally {
+			remove_filter( 'woocommerce_get_checkout_payment_url', $invalid_filter, 99 );
+		}
+	}
+	$not_payable = static function () { return false; };
+	add_filter( 'woocommerce_order_needs_payment', $not_payable, 99 );
+	try {
+		$url_calls = 0;
+		$filtered = YoRo_Orders_Read_Service::get_payment_link( [ 'order_id' => $link_order->get_id() ] );
+		$assert( null === $filtered['payment_link']['payment_url'] && 0 === $url_calls, 'Owner eligibility filter overrides status without a duplicate payment engine.' );
+	} finally {
+		remove_filter( 'woocommerce_order_needs_payment', $not_payable, 99 );
+	}
+} finally {
+	remove_filter( 'woocommerce_get_checkout_payment_url', $url_probe );
+	$link_id = $link_order->get_id();
+	$link_order->delete( true );
+}
+$assert( is_wp_error( YoRo_Orders_Read_Service::get_payment_link( [ 'order_id' => $link_id ] ) ), 'Missing order cannot expose a payment link.' );
+
 if ( $failures ) {
 	foreach ( $failures as $failure ) {
 		fwrite( STDERR, "FAIL: {$failure}\n" );

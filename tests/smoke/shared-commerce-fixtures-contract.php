@@ -159,4 +159,10 @@ $payment_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( 
 $assert( true === $payment_payload['success'], 'The API payment fixture is accepted by the actual Core projection.' );
 $assert( 'not_observed' === $payment_payload['data']['payment_context']['evidence']['gateway_verification'], 'API/Core fixture evidence semantics agree.' );
 
+$link_fixture = $action_result_contracts['connector_actions']['orders.get_payment_link'];
+$link_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( array_merge( [ 'success' => true ], $link_fixture['sample_data'] ), 'orders.get_payment_link' );
+$assert( true === $link_payload['success'], 'The canonical B2 fixture is accepted by the Core owner.' );
+$assert( $link_fixture['sample_data'] === $link_payload['data'], 'B2 fixture preserves the exact opaque URL and fixed provenance.' );
+$assert( YoRo_Commerce_Contract_Builder::strict_output_validation_ready( 'orders.get_payment_link' ), 'B2 output is recursively closed.' );
+
 echo "YoRo shared commerce fixtures: PASS\n";
