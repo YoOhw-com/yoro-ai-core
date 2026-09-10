@@ -747,6 +747,17 @@ $assert( null === $payment_payload['data']['payment_context']['transaction_id'] 
 $payment_unknown = YoRo_Order_Presenter::normalize_payment_context( [ 'order_id' => 123, 'order_number' => '123', 'total' => 'unknown', 'is_paid' => 'true' ] );
 $assert( null === $payment_unknown['total'] && null === $payment_unknown['remaining_refundable'] && null === $payment_unknown['is_paid'], 'Missing or malformed amount and paid facts never become zero or false.' );
 
+$link_url = 'https://example.invalid/custom/?key=wc_order_fixture_only';
+$link_raw = [
+	'success' => true, 'summary' => 'B2-SECRET-SENTINEL', 'extensions' => [ 'raw_key' => 'B2-SECRET-SENTINEL' ],
+	'payment_link' => [ 'order_id' => 91, 'order_number' => '91', 'status' => 'pending', 'needs_payment' => true, 'payment_link_available' => true, 'payment_url' => $link_url, 'order_key' => 'B2-SECRET-SENTINEL', 'query_params' => [ 'key' => 'B2-SECRET-SENTINEL' ] ],
+];
+$link_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $link_raw, 'orders.get_payment_link' );
+$assert( true === $link_payload['success'] && $link_url === $link_payload['data']['payment_link']['payment_url'], 'B2 returns the exact owner URL to the canonical result consumer.' );
+$assert( false === strpos( wp_json_encode( $link_payload ), 'B2-SECRET-SENTINEL' ), 'B2 closes raw keys, query parameters, summaries and extensions.' );
+$link_raw['payment_link']['needs_payment'] = false;
+$assert( null === YoRo_Commerce_Contract_Builder::normalize_payment_link( $link_raw['payment_link'] ), 'Nonpayable output cannot carry an available payment capability.' );
+
 if ( $failures ) {
 	foreach ( $failures as $failure ) {
 		fwrite( STDERR, "FAIL: {$failure}\n" );

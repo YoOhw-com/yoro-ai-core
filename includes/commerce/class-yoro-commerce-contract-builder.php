@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:719064f52513a77618d54161035dda52eddd6b5e157f6afafcb1a03331eb6a6b';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:8622b1e95e57e058c72f9a2af79aae2f8e9fcf3053cff33e69e367e47b94122a';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -305,7 +305,78 @@ class YoRo_Commerce_Contract_Builder {
 			&& self::is_strict_schema_node( $output_schema );
 	}
 
+	public static function payment_link_schema() {
+		$properties = [
+			'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+			'order_number' => [ 'type' => 'string', 'minLength' => 1, 'maxLength' => 128 ],
+			'status' => [ 'type' => 'string', 'minLength' => 1, 'maxLength' => 64 ],
+			'needs_payment' => [ 'type' => 'boolean' ],
+			'payment_link_available' => [ 'type' => 'boolean' ],
+			'payment_url' => [ 'type' => [ 'string', 'null' ], 'minLength' => 1, 'maxLength' => 4096 ],
+			'evidence' => self::closed_object_schema( [
+				'source' => [ 'type' => 'string', 'enum' => [ 'woocommerce_order' ] ],
+				'limitation' => [ 'type' => 'string', 'enum' => [ 'Current WooCommerce eligibility and opaque checkout URL only; no payment initiation or independent gateway verification.' ] ],
+			], [ 'source', 'limitation' ] ),
+		];
+		return self::closed_object_schema( $properties, array_keys( $properties ) );
+	}
+
+	public static function normalize_payment_link( $value ) {
+		if ( ! is_array( $value ) || ! isset( $value['order_id'], $value['order_number'], $value['status'], $value['needs_payment'], $value['payment_link_available'] )
+			|| ! is_int( $value['order_id'] ) || $value['order_id'] < 1
+			|| ! is_string( $value['order_number'] ) || '' === $value['order_number'] || strlen( $value['order_number'] ) > 128
+			|| ! is_string( $value['status'] ) || '' === $value['status'] || strlen( $value['status'] ) > 64
+			|| ! is_bool( $value['needs_payment'] ) || ! is_bool( $value['payment_link_available'] )
+			|| ! array_key_exists( 'payment_url', $value ) ) {
+			return null;
+		}
+		$number = sanitize_text_field( $value['order_number'] );
+		$status = sanitize_key( $value['status'] );
+		if ( '' === $number || '' === $status ) {
+			return null;
+		}
+		$url = $value['payment_url'];
+		$available = $value['payment_link_available'];
+		if ( $available ) {
+			if ( ! $value['needs_payment'] || ! is_string( $url ) || strlen( $url ) > 4096
+				|| preg_match( '~[\x00-\x20\x7f<>"]~', $url )
+				|| ! preg_match( '~^https?://~i', $url ) || ! filter_var( $url, FILTER_VALIDATE_URL ) ) {
+				return null;
+			}
+		} elseif ( null !== $url ) {
+			return null;
+		}
+		return [
+			'order_id' => $value['order_id'],
+			'order_number' => $number,
+			'status' => $status,
+			'needs_payment' => $value['needs_payment'],
+			'payment_link_available' => $available,
+			'payment_url' => $url,
+			'evidence' => [
+				'source' => 'woocommerce_order',
+				'limitation' => 'Current WooCommerce eligibility and opaque checkout URL only; no payment initiation or independent gateway verification.',
+			],
+		];
+	}
+
 	public static function execution_output_schema( $action_name = '' ) {
+		if ( 'orders.get_payment_link' === $action_name ) {
+			$properties = [
+				'success' => [ 'type' => 'boolean' ],
+				'action' => [ 'type' => 'string', 'enum' => [ 'orders.get_payment_link' ] ],
+				'message' => [ 'type' => 'string', 'maxLength' => 256 ],
+				'summary' => [ 'type' => 'string', 'maxLength' => 256 ],
+				'data' => self::closed_object_schema( [ 'payment_link' => self::payment_link_schema() ], [ 'payment_link' ] ),
+				'read_only' => [ 'type' => 'boolean', 'enum' => [ true ] ],
+				'undoable' => [ 'type' => 'boolean', 'enum' => [ false ] ],
+				'result_type' => [ 'type' => 'string', 'enum' => [ 'payment_link' ] ],
+				'display_type' => [ 'type' => 'string', 'enum' => [ 'payment_link' ] ],
+				'assistant_summary' => [ 'type' => 'string', 'maxLength' => 256 ],
+				'extensions' => self::closed_object_schema( [], [] ),
+			];
+			return self::closed_object_schema( $properties, array_keys( $properties ) );
+		}
 		if ( 'orders.get_payment_context' === $action_name ) {
 			$properties = [
 				'success' => [ 'type' => 'boolean' ],
@@ -344,6 +415,27 @@ class YoRo_Commerce_Contract_Builder {
 
 	public static function canonical_execution_payload( array $execution, $action_name = '' ) {
 		$action_name = $action_name ?: ( $execution['action'] ?? '' );
+		if ( 'orders.get_payment_link' === $action_name ) {
+			// Close the complete public envelope before generic legacy-data or extension handling.
+			$facts = $execution['payment_link'] ?? ( $execution['data']['payment_link'] ?? null );
+			$context = self::normalize_payment_link( $facts );
+			$success = true === ( $execution['success'] ?? false ) && null !== $context;
+			$summary = $success ? 'Current WooCommerce payment link; no payment was initiated.' : 'The order payment link is unavailable.';
+			return [
+				'success' => $success,
+				'action' => $action_name,
+				'message' => $summary,
+				'summary' => $summary,
+				'data' => [ 'payment_link' => $success ? $context : null ],
+				'read_only' => true,
+				'undoable' => false,
+				'result_type' => 'payment_link',
+				'display_type' => 'payment_link',
+				'assistant_summary' => $summary,
+				'extensions' => (object) [],
+			];
+		}
+
 		if ( 'orders.get_payment_context' === $action_name ) {
 			// Close the complete public envelope before generic legacy-data or extension handling.
 			$facts = $execution['payment_context'] ?? ( $execution['data']['payment_context'] ?? null );
