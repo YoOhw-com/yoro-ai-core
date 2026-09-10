@@ -628,6 +628,43 @@ try {
 
 	update_option( YoRo_WordPress_Admin_Actions::POLICY_OPTION, 'yes', false );
 	update_option( YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION, time(), false );
+	$b3_order = wc_create_order( [ 'status' => 'pending', 'customer_id' => 0 ] );
+	$b3_operation = $operation;
+	try {
+		$b3_order->set_shipping_city( 'Before' );
+		$b3_order->save();
+		$b3_operation['envelope_id'] = 'envelope_' . hash( 'sha256', 'b3-' . wp_generate_uuid4() );
+		$b3_operation['idempotency_key'] = 'operation_' . hash( 'sha256', 'b3-' . wp_generate_uuid4() );
+		$b3_operation['operation_id'] = 'operation_b3';
+		$b3_operation['action'] = 'orders.update_addresses';
+		$b3_operation['params'] = [ 'order_id' => $b3_order->get_id(), 'expected_version' => YoRo_Order_Presenter::order_version( wc_get_order( $b3_order->get_id() ) ), 'shipping' => [ 'city' => 'After' ] ];
+		$b3_operation['actor']['permissions'] = [ YoRo_Action_Registry::get( 'orders.update_addresses' )['permission'] ];
+		$b3_client = new YoRo_Connector_Smoke_Client();
+		$b3_client->claim = $client->claim;
+		$b3_client->claim['delivery']['operations'] = [ $b3_operation ];
+		$b3_calls = 0;
+		$b3_probe = static function ( $executed_action ) use ( &$b3_calls ) {
+			if ( 'orders.update_addresses' === $executed_action ) { ++$b3_calls; }
+		};
+		add_action( 'yoro_before_action_execute', $b3_probe, 10, 1 );
+		try {
+			( new YoRo_Connector_Runtime( $b3_client ) )->run_once();
+			$assert( 1 === $b3_calls, 'B3 remote runtime executes through the shared executor exactly once.' );
+			$b3_result = $b3_client->results[0]['payload'] ?? [];
+			$assert( 'executed' === ( $b3_result['status'] ?? '' ), 'B3 runtime returns a canonical successful write result.' );
+			$assert( [ 'order_id', 'changed_fields', 'current_version' ] === array_keys( $b3_result['result']['data'] ?? [] ), 'B3 runtime output has only bounded canonical data roots.' );
+			$assert( 'After' === wc_get_order( $b3_order->get_id() )->get_shipping_city(), 'B3 runtime persists the exact patch.' );
+			( new YoRo_Connector_Runtime( $b3_client ) )->run_once();
+			$assert( 1 === $b3_calls && 2 === count( $b3_client->results ), 'B3 journal replay republishes the prior result without executing or saving again.' );
+			$assert( wp_json_encode( $b3_client->results[0]['payload'] ) === wp_json_encode( $b3_client->results[1]['payload'] ), 'B3 replay retains the exact recorded outcome.' );
+		} finally {
+			remove_action( 'yoro_before_action_execute', $b3_probe, 10 );
+		}
+	} finally {
+		YoRo_Connector_Execution_Journal::clear( $b3_operation );
+		if ( $b3_order instanceof WC_Order ) { $b3_order->delete( true ); }
+	}
+
 	$admin_action = YoRo_Action_Registry::get( 'plugins.activate' );
 	$assert( is_array( $admin_action ) && empty( $admin_action['ai_exposed'] ), 'Administration actions must be non-exposable at the registry boundary.' );
 	$admin_operation = $operation;

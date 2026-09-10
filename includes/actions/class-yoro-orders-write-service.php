@@ -709,6 +709,102 @@ class YoRo_Orders_Write_Service {
 		];
 	}
 
+	public static function prepare_order_address_write( $params ) {
+		$fields = [ 'first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country' ];
+		if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'order_id', 'expected_version', 'shipping' ] )
+			|| ! is_int( $params['order_id'] ?? null ) || $params['order_id'] < 1
+			|| ! is_string( $params['expected_version'] ?? null ) || ! preg_match( '/^[a-f0-9]{64}$/D', $params['expected_version'] )
+			|| ! is_array( $params['shipping'] ?? null ) || ! $params['shipping']
+			|| array_diff( array_keys( $params['shipping'] ), $fields ) ) {
+			return new WP_Error( 'invalid_address_params', __( 'Supply one order, its current version and supported shipping fields.', 'yoro-ai-core' ) );
+		}
+		if ( ! current_user_can( 'manage_woocommerce' ) || ! current_user_can( 'edit_shop_order', $params['order_id'] ) ) {
+			return new WP_Error( 'forbidden', __( 'You cannot edit this order.', 'yoro-ai-core' ) );
+		}
+		$validation = self::validate_order_versions( [ $params['order_id'] ], [ 'expected_versions' => [ [ 'order_id' => $params['order_id'], 'expected_version' => $params['expected_version'] ] ] ] );
+		if ( is_wp_error( $validation ) ) {
+			return $validation;
+		}
+		$order = $validation['orders'][ $params['order_id'] ];
+		$changes = [];
+		foreach ( $fields as $field ) {
+			if ( ! array_key_exists( $field, $params['shipping'] ) ) {
+				continue;
+			}
+			$raw = $params['shipping'][ $field ];
+			if ( ! is_string( $raw ) || mb_strlen( $raw ) > 200 || false !== strpos( $raw, chr( 0 ) ) ) {
+				return new WP_Error( 'invalid_shipping_value', __( 'Shipping fields must contain bounded text.', 'yoro-ai-core' ) );
+			}
+			$value = sanitize_text_field( $raw );
+			if ( '' === $value && ! in_array( $field, [ 'company', 'address_2', 'state', 'postcode' ], true ) ) {
+				return new WP_Error( 'shipping_field_required', __( 'This shipping field cannot be cleared.', 'yoro-ai-core' ) );
+			}
+			if ( 'country' === $field ) {
+				$value = strtoupper( $value );
+				$countries = function_exists( 'WC' ) && WC()->countries ? WC()->countries->get_countries() : [];
+				if ( ! preg_match( '/^[A-Z]{2}$/D', $value ) || ( $countries && ! array_key_exists( $value, $countries ) ) ) {
+					return new WP_Error( 'unsupported_shipping_country', __( 'Choose a recognized shipping country.', 'yoro-ai-core' ) );
+				}
+			}
+			$before = (string) $order->{ 'get_shipping_' . $field }( 'edit' );
+			if ( mb_strlen( $before ) > 200 ) {
+				return new WP_Error( 'shipping_preview_too_long', __( 'This address requires manual review before changing it.', 'yoro-ai-core' ) );
+			}
+			if ( $before !== $value ) {
+				$changes[ $field ] = [ 'before' => $before, 'after' => $value ];
+			}
+		}
+		if ( ! $changes ) {
+			return new WP_Error( 'shipping_address_unchanged', __( 'The shipping address already matches the requested values.', 'yoro-ai-core' ) );
+		}
+		return [ 'order' => $order, 'changes' => $changes, 'expected_version' => $params['expected_version'] ];
+	}
+
+	public static function preview_update_order_addresses( $params ) {
+		$prepared = self::prepare_order_address_write( $params );
+		if ( is_wp_error( $prepared ) ) {
+			return [ 'type' => 'write', 'will_execute' => false, 'blocked' => true, 'block_reason' => $prepared->get_error_code(), 'message' => $prepared->get_error_message(), 'changes_store' => false ];
+		}
+		$changes = [];
+		foreach ( $prepared['changes'] as $field => $change ) {
+			$changes[ $field ] = [ 'before' => esc_html( mb_substr( $change['before'], 0, 200 ) ), 'after' => esc_html( mb_substr( $change['after'], 0, 200 ) ) ];
+		}
+		$lines = [ sprintf( __( 'Update shipping address for order #%d:', 'yoro-ai-core' ), $prepared['order']->get_id() ) ];
+		foreach ( $prepared['changes'] as $field => $change ) {
+			$lines[] = sprintf( '%s: %s → %s', $field, wp_json_encode( $change['before'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ), wp_json_encode( $change['after'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) );
+		}
+		$lines[] = __( 'Customer profile, billing, totals, tax, shipping lines/method and payment state remain unchanged.', 'yoro-ai-core' );
+		// The existing confirmation renderer escapes this plain-text message.
+		$message = implode( "\n", $lines );
+		return [ 'type' => 'write', 'will_execute' => false, 'blocked' => false, 'block_reason' => '', 'changes_store' => true, 'order_id' => $prepared['order']->get_id(), 'changes' => $changes, 'expected_version' => $prepared['expected_version'], 'current_version' => YoRo_Order_Presenter::order_version( $prepared['order'] ), 'summary' => $message, 'message' => $message ];
+	}
+
+	public static function update_order_addresses( $params ) {
+		$prepared = self::prepare_order_address_write( $params );
+		if ( is_wp_error( $prepared ) ) {
+			return $prepared;
+		}
+		$order = $prepared['order'];
+		try {
+			foreach ( $prepared['changes'] as $field => $change ) {
+				$order->{ 'set_shipping_' . $field }( $change['after'] );
+			}
+			$order->save();
+		} catch ( Throwable $error ) {
+			return new WP_Error( 'shipping_save_outcome_unknown', __( 'The update could not be verified. Read the order again before any further change; do not retry automatically.', 'yoro-ai-core' ) );
+		}
+		$persisted = wc_get_order( $order->get_id() );
+		if ( ! $persisted instanceof WC_Order ) {
+			return new WP_Error( 'shipping_verification_failed', __( 'Read the order again to reconcile the update.', 'yoro-ai-core' ) );
+		}
+		foreach ( $prepared['changes'] as $field => $change ) {
+			if ( (string) $persisted->{ 'get_shipping_' . $field }( 'edit' ) !== $change['after'] ) {
+				return new WP_Error( 'shipping_verification_failed', __( 'Read the order again to reconcile the update.', 'yoro-ai-core' ) );
+			}
+		}
+		return [ 'success' => true, 'order_id' => $persisted->get_id(), 'changed_fields' => array_keys( $prepared['changes'] ), 'current_version' => YoRo_Order_Presenter::order_version( $persisted ), 'message' => __( 'Order shipping address updated.', 'yoro-ai-core' ), 'summary' => __( 'Order shipping address updated.', 'yoro-ai-core' ), 'read_only' => false, 'undoable' => false ];
+	}
+
 	private static function validate_order_versions( $order_ids, $params ) {
 		$order_ids = array_values( array_filter( array_unique( array_map( 'absint', (array) $order_ids ) ) ) );
 		$expected_versions = is_array( $params['expected_versions'] ?? null ) ? $params['expected_versions'] : [];

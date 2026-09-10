@@ -166,3 +166,13 @@ $assert( $link_fixture['sample_data'] === $link_payload['data'], 'B2 fixture pre
 $assert( YoRo_Commerce_Contract_Builder::strict_output_validation_ready( 'orders.get_payment_link' ), 'B2 output is recursively closed.' );
 
 echo "YoRo shared commerce fixtures: PASS\n";
+
+$address_fixture = $action_result_contracts['connector_actions']['orders.update_addresses'] ?? null;
+$assert( is_array( $address_fixture ), 'The B3 shipping-address fixture must be supplied by the API owner.' );
+$address_execution = array_merge( [ 'success' => true, 'debug' => 'unrelated secret', 'billing' => [ 'city' => 'private' ], 'extensions' => [ 'raw' => 'secret' ] ], $address_fixture['sample_data'] );
+$address_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $address_execution, 'orders.update_addresses' );
+$address_schema = YoRo_Commerce_Contract_Builder::execution_output_schema( 'orders.update_addresses' );
+$assert( $address_fixture['data_required'] === $address_schema['properties']['data']['required'], 'B3 output data roots match the API fixture.' );
+$assert( $address_fixture['sample_data'] === $address_payload['data'], 'B3 fixture projects without coercion or unrelated order data.' );
+$assert( [] === (array) $address_payload['extensions'] && false === $address_payload['read_only'] && false === $address_payload['undoable'], 'B3 output is bounded and has no invented undo.' );
+$assert( false === strpos( wp_json_encode( $address_payload ), 'secret' ), 'B3 canonical payload strips provider debug and arbitrary extensions.' );
