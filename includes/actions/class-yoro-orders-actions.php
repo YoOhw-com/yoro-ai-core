@@ -7,6 +7,33 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Orders_Actions {
 
 	public static function register() {
+		$shipping_fields = [];
+		foreach ( [ 'first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country' ] as $field ) {
+			$shipping_fields[ $field ] = [ 'type' => 'string', 'maxLength' => 200 ];
+		}
+		YoRo_Action_Registry::register( 'orders.update_addresses', [
+			'label' => __( 'Update order shipping address', 'yoro-ai-core' ),
+			'description' => __( 'Patch only explicitly supplied shipping fields on one order after a current read and confirmation.', 'yoro-ai-core' ),
+			'category' => 'orders', 'permission' => 'manage_woocommerce',
+			'callback' => [ __CLASS__, 'update_order_addresses' ],
+			'preview_callback' => [ 'YoRo_Orders_Write_Service', 'preview_update_order_addresses' ],
+			'requires_confirmation' => true, 'risk_level' => 'medium', 'write_action' => true,
+			'concurrency_strategy' => 'optimistic_version', 'max_items' => 1,
+			'reversibility' => 'none',
+			'input_schema' => [ 'order_id' => 'int', 'expected_version' => 'string', 'shipping' => 'object' ],
+			'canonical_input_schema' => [
+				'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+				'shipping' => [ 'type' => 'object', 'properties' => $shipping_fields, 'required' => [], 'additionalProperties' => false ],
+			],
+			'required_params' => [ 'order_id', 'expected_version', 'shipping' ],
+			'capabilities' => [ 'orders', 'write' ],
+			'param_hints' => [
+				'order_id' => __( 'One grounded order ID, never a bulk target.', 'yoro-ai-core' ),
+				'expected_version' => __( 'Bind only from the matching trusted order context after a fresh read.', 'yoro-ai-core' ),
+				'shipping' => __( 'Only explicitly requested shipping fields; omitted fields remain unchanged. Never include billing or customer-profile data.', 'yoro-ai-core' ),
+			],
+		] );
 		YoRo_Action_Registry::register(
 			'orders.search',
 			[
@@ -1997,6 +2024,14 @@ class YoRo_Orders_Actions {
 
 	public static function preview_restore_order_statuses( $params ) {
 		return YoRo_Orders_Write_Service::preview_restore_order_statuses( $params );
+	}
+
+	public static function update_order_addresses( $params ) {
+		if ( ! is_array( $params ) || true !== ( $params['_yoro_confirmed'] ?? false ) || ! empty( $params['_yoro_preview'] ) ) {
+			return new WP_Error( 'shipping_confirmation_required', __( 'Confirm the shipping-address change before execution.', 'yoro-ai-core' ) );
+		}
+		unset( $params['_yoro_confirmed'], $params['_yoro_preview'] );
+		return YoRo_Orders_Write_Service::update_order_addresses( $params );
 	}
 
 	public static function update_order_status( $params ) {

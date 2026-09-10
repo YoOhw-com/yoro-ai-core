@@ -56,6 +56,7 @@ class YoRo_Action_Catalog_Builder {
 			'orders.find_by_customer'         => 'customer_orders',
 			'coupons.lookup'                  => 'coupon_lookup',
 			'coupons.create'                  => 'coupon_create',
+			'orders.update_addresses'         => 'update_order_addresses',
 			'orders.update_status'            => 'update_order_status',
 			'products.update_stock'           => 'update_product_stock',
 			'products.update_stock_status'    => 'update_product_stock_status',

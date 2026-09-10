@@ -103,6 +103,15 @@ class YoRo_Order_Presenter {
 					$order->get_status(),
 					$order->get_total(),
 					$order->get_currency(),
+					$order->get_shipping_first_name( 'edit' ),
+					$order->get_shipping_last_name( 'edit' ),
+					$order->get_shipping_company( 'edit' ),
+					$order->get_shipping_address_1( 'edit' ),
+					$order->get_shipping_address_2( 'edit' ),
+					$order->get_shipping_city( 'edit' ),
+					$order->get_shipping_state( 'edit' ),
+					$order->get_shipping_postcode( 'edit' ),
+					$order->get_shipping_country( 'edit' ),
 				]
 			)
 		);

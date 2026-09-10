@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:8622b1e95e57e058c72f9a2af79aae2f8e9fcf3053cff33e69e367e47b94122a';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:7aef7cf9f8b9517038e6ebee301804a4c7207610a2e37cf32d83307e69ca6f67';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -361,6 +361,21 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function execution_output_schema( $action_name = '' ) {
+		if ( 'orders.update_addresses' === $action_name ) {
+			$properties = [
+				'success' => [ 'type' => 'boolean' ], 'action' => [ 'type' => 'string', 'enum' => [ 'orders.update_addresses' ] ],
+				'message' => [ 'type' => 'string', 'maxLength' => 256 ], 'summary' => [ 'type' => 'string', 'maxLength' => 256 ],
+				'data' => self::closed_object_schema( [
+					'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+					'changed_fields' => [ 'type' => 'array', 'items' => [ 'type' => 'string', 'enum' => [ 'first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country' ] ], 'minItems' => 1, 'maxItems' => 9, 'uniqueItems' => true ],
+					'current_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+				], [ 'order_id', 'changed_fields', 'current_version' ] ),
+				'read_only' => [ 'type' => 'boolean', 'enum' => [ false ] ], 'undoable' => [ 'type' => 'boolean', 'enum' => [ false ] ],
+				'result_type' => [ 'type' => 'string' ], 'display_type' => [ 'type' => 'string' ],
+				'assistant_summary' => [ 'type' => 'string', 'maxLength' => 256 ], 'extensions' => self::closed_object_schema( [], [] ),
+			];
+			return self::closed_object_schema( $properties, array_keys( $properties ) );
+		}
 		if ( 'orders.get_payment_link' === $action_name ) {
 			$properties = [
 				'success' => [ 'type' => 'boolean' ],
@@ -414,6 +429,17 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function canonical_execution_payload( array $execution, $action_name = '' ) {
+		$action_name = $action_name ?: ( $execution['action'] ?? '' );
+		if ( 'orders.update_addresses' === $action_name ) {
+			$summary = true === ( $execution['success'] ?? false ) ? 'Order shipping address updated.' : 'Read the order again to reconcile the update.';
+			return [
+				'success' => true === ( $execution['success'] ?? false ), 'action' => $action_name,
+				'message' => $summary, 'summary' => $summary,
+				'data' => self::canonical_write_data( $action_name, $execution ),
+				'read_only' => false, 'undoable' => false, 'result_type' => 'shipping_address_update', 'display_type' => 'shipping_address_update',
+				'assistant_summary' => $summary, 'extensions' => (object) [],
+			];
+		}
 		$action_name = $action_name ?: ( $execution['action'] ?? '' );
 		if ( 'orders.get_payment_link' === $action_name ) {
 			// Close the complete public envelope before generic legacy-data or extension handling.
@@ -1460,12 +1486,15 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_write_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.update_status', 'products.update_stock', 'products.update_stock_status' ],
+			[ 'orders.update_addresses', 'orders.update_status', 'products.update_stock', 'products.update_stock_status' ],
 			true
 		);
 	}
 
 	private static function canonical_write_data( $action_name, array $execution ) {
+		if ( 'orders.update_addresses' === $action_name ) {
+			return [ 'order_id' => $execution['order_id'] ?? null, 'changed_fields' => $execution['changed_fields'] ?? null, 'current_version' => $execution['current_version'] ?? null ];
+		}
 		if ( 'orders.update_status' === $action_name ) {
 			$current_versions = [];
 
