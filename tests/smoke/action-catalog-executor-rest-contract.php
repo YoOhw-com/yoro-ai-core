@@ -330,7 +330,7 @@ try {
 	$link_order->set_status( 'pending' );
 	$link_order->set_total( '100.00' );
 	$link_order->save();
-	$filtered_url = 'https://example.invalid/provider/custom/?key=wc_order_fixture_only&label=provider_data';
+	$filtered_url = "https://example.invalid/provider/o'reilly?key=wc_order_fixture_only&label=provider_data";
 	$url_filter = static function () use ( $filtered_url ) { return $filtered_url; };
 	add_filter( 'woocommerce_get_checkout_payment_url', $url_filter, 99 );
 	try {
@@ -344,7 +344,7 @@ try {
 	} finally {
 		remove_filter( 'woocommerce_get_checkout_payment_url', $url_filter, 99 );
 	}
-	foreach ( [ 'javascript:alert(1)', '', str_repeat( 'x', 4097 ) ] as $invalid_url ) {
+	foreach ( [ 'javascript:alert(1)', '', str_repeat( 'x', 4097 ), 'https://example.invalid/custom/o"reilly?key=wc_order_fixture_only', 'https://example.invalid/custom/o<reilly?key=wc_order_fixture_only', 'https://example.invalid/custom/o>reilly?key=wc_order_fixture_only' ] as $invalid_url ) {
 		$invalid_filter = static function () use ( $invalid_url ) { return $invalid_url; };
 		add_filter( 'woocommerce_get_checkout_payment_url', $invalid_filter, 99 );
 		try {

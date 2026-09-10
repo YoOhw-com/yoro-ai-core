@@ -339,6 +339,7 @@ class YoRo_Commerce_Contract_Builder {
 		$available = $value['payment_link_available'];
 		if ( $available ) {
 			if ( ! $value['needs_payment'] || ! is_string( $url ) || strlen( $url ) > 4096
+				|| preg_match( '~[\x00-\x20\x7f<>"]~', $url )
 				|| ! preg_match( '~^https?://~i', $url ) || ! filter_var( $url, FILTER_VALIDATE_URL ) ) {
 				return null;
 			}
