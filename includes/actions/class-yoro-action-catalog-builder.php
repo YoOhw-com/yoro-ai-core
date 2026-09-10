@@ -552,6 +552,7 @@ class YoRo_Action_Catalog_Builder {
 			'orders.delete_customer_email_draft'   => [ 'order_id', 'draft_id' ],
 			'orders.render_customer_email_preview' => [ 'order_id', 'subject', 'body' ],
 			'orders.send_customer_email'           => [ 'order_id', 'subject', 'body' ],
+			'orders.send_transactional_email'      => [ 'order_id', 'expected_version', 'email_type' ],
 			'orders.add_private_note_template'     => [ 'order_ids', 'template' ],
 			'orders.add_note'                      => [ 'order_ids', 'note' ],
 			'orders.remove_note'                   => [ 'note_ids' ],

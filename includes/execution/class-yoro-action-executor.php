@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Action_Executor {
 
-	public static function execute( $action_name, $params = [], $confirm = false, $preview = false, $context = [] ) {
+	public static function execute( $action_name, $params = [], $confirm = false, $preview = false, $context = [], $claimed_execution_context = null ) {
 		$action = YoRo_Action_Registry::get( $action_name );
 
 		if ( ! $action ) {
@@ -51,6 +51,18 @@ class YoRo_Action_Executor {
 				],
 				$action
 			);
+		}
+
+		if ( 'orders.send_transactional_email' === $action_name ) {
+			// Connector context is emitted only by the validated, journal-owning runtime call site.
+			// PlanExecutor strips all caller/captured context for this action before reaching here.
+			$connector_owned = is_array( $context ) && true === ( $context['connector_remote_agent'] ?? false )
+				&& is_string( $context['workflow_id'] ?? null ) && '' !== $context['workflow_id']
+				&& is_string( $context['operation_id'] ?? null ) && '' !== $context['operation_id'];
+			$claimed = $confirm && $claimed_execution_context instanceof Closure && $claimed_execution_context( $action_name, $params );
+			if ( ! $confirm || ( ! $connector_owned && ! $claimed ) ) {
+				return new WP_Error( 'transactional_email_execution_permit_required', 'A successfully claimed pending-operation permit is required for this transactional email. Reconcile unknown outcomes before creating a new operation.' );
+			}
 		}
 
 		if ( is_array( $params ) ) {

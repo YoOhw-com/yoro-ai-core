@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:7aef7cf9f8b9517038e6ebee301804a4c7207610a2e37cf32d83307e69ca6f67';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:24978e6b0e07cbb6bd72d059b70a80c5c5a7b9a6cd2fbd154b06f519e60d2660';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -361,6 +361,24 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function execution_output_schema( $action_name = '' ) {
+		if ( 'orders.send_transactional_email' === $action_name ) {
+			$properties = [
+				'success' => [ 'type' => 'boolean' ], 'action' => [ 'type' => 'string', 'enum' => [ 'orders.send_transactional_email' ] ],
+				'message' => [ 'type' => 'string', 'maxLength' => 256 ], 'summary' => [ 'type' => 'string', 'maxLength' => 256 ],
+				'data' => self::closed_object_schema( [
+					'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+					'email_type' => [ 'type' => 'string', 'enum' => [ 'customer_processing_order', 'customer_completed_order' ] ],
+					'current_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$', 'minLength' => 64, 'maxLength' => 64 ],
+					'outcome' => [ 'type' => 'string', 'enum' => [ 'mailer_accepted' ] ],
+					'confirmation_accepted' => [ 'type' => 'boolean', 'enum' => [ true ] ],
+					'recipient_masked' => [ 'type' => 'string', 'maxLength' => 254 ],
+				], [ 'order_id', 'email_type', 'current_version', 'outcome', 'confirmation_accepted', 'recipient_masked' ] ),
+				'read_only' => [ 'type' => 'boolean', 'enum' => [ false ] ], 'undoable' => [ 'type' => 'boolean', 'enum' => [ false ] ],
+				'result_type' => [ 'type' => 'string' ], 'display_type' => [ 'type' => 'string' ],
+				'assistant_summary' => [ 'type' => 'string', 'maxLength' => 256 ], 'extensions' => self::closed_object_schema( [], [] ),
+			];
+			return self::closed_object_schema( $properties, array_keys( $properties ) );
+		}
 		if ( 'orders.update_addresses' === $action_name ) {
 			$properties = [
 				'success' => [ 'type' => 'boolean' ], 'action' => [ 'type' => 'string', 'enum' => [ 'orders.update_addresses' ] ],
@@ -430,6 +448,21 @@ class YoRo_Commerce_Contract_Builder {
 
 	public static function canonical_execution_payload( array $execution, $action_name = '' ) {
 		$action_name = $action_name ?: ( $execution['action'] ?? '' );
+		if ( 'orders.send_transactional_email' === $action_name ) {
+			$summary = true === ( $execution['success'] ?? false ) && 'mailer_accepted' === ( $execution['outcome'] ?? '' )
+				? 'WooCommerce mailer accepted the native email request; delivery is not verified.'
+				: 'Native email outcome is not verified. Reconcile before any further attempt.';
+			$data = [];
+			foreach ( [ 'order_id', 'email_type', 'current_version', 'outcome', 'confirmation_accepted', 'recipient_masked' ] as $field ) {
+				$data[ $field ] = $execution[ $field ] ?? null;
+			}
+			return [
+				'success' => true === ( $execution['success'] ?? false ), 'action' => $action_name,
+				'message' => $summary, 'summary' => $summary, 'data' => $data,
+				'read_only' => false, 'undoable' => false, 'result_type' => 'transactional_email', 'display_type' => 'transactional_email',
+				'assistant_summary' => $summary, 'extensions' => (object) [],
+			];
+		}
 		if ( 'orders.update_addresses' === $action_name ) {
 			$summary = true === ( $execution['success'] ?? false ) ? 'Order shipping address updated.' : 'Read the order again to reconcile the update.';
 			return [
