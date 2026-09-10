@@ -91,7 +91,7 @@ class YoRo_Order_Presenter {
 		];
 	}
 
-	public static function order_version( WC_Order $order ) {
+	public static function order_version( WC_Order $order, $native_email_material = null ) {
 		$date_modified = $order->get_date_modified();
 
 		return hash(
@@ -112,6 +112,8 @@ class YoRo_Order_Presenter {
 					$order->get_shipping_state( 'edit' ),
 					$order->get_shipping_postcode( 'edit' ),
 					$order->get_shipping_country( 'edit' ),
+					$order->get_billing_email( 'edit' ),
+					null === $native_email_material ? YoRo_Orders_Email_Service::transactional_version_material( $order ) : $native_email_material,
 				]
 			)
 		);

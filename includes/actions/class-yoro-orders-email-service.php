@@ -6,6 +6,290 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Orders_Email_Service {
 
+	/** Native types intentionally exclude invoices, admin notices and plugin-defined classes. */
+	private const TRANSACTIONAL_TYPES = [
+		'customer_processing_order' => [ 'WC_Email_Customer_Processing_Order', 'processing' ],
+		'customer_completed_order' => [ 'WC_Email_Customer_Completed_Order', 'completed' ],
+	];
+
+	/** Shared read-version material, not an action-local confirmation token. */
+	public static function transactional_version_material( WC_Order $order ) {
+		$material = [ 'billing_email' => $order->get_billing_email( 'edit' ), 'order_data' => $order->get_data(), 'native' => [] ];
+		foreach ( self::TRANSACTIONAL_TYPES as $type => $definition ) {
+			$context = self::transactional_context( $order, $type );
+			$material['native'][ $type ] = is_wp_error( $context )
+				? [ 'unavailable' => $context->get_error_code() ] : $context['material'];
+		}
+		return $material;
+	}
+
+	private static function transactional_context( WC_Order $order, $type ) {
+		try {
+			return self::resolve_transactional_context( $order, $type );
+		} catch ( Throwable $error ) {
+			return new WP_Error( 'transactional_email_context_unavailable', 'Native email context could not be read safely.' );
+		}
+	}
+
+	private static function resolve_transactional_context( WC_Order $order, $type ) {
+		if ( ! isset( self::TRANSACTIONAL_TYPES[ $type ] ) || ! function_exists( 'WC' ) ) {
+			return new WP_Error( 'transactional_email_unsupported', 'Unsupported native transactional email.' );
+		}
+		$definition = self::TRANSACTIONAL_TYPES[ $type ];
+		$emails = WC()->mailer()->get_emails();
+		$native = $emails[ $definition[0] ] ?? null;
+		if ( ! is_object( $native ) || get_class( $native ) !== $definition[0] || $native->id !== $type ) {
+			return new WP_Error( 'transactional_email_unsupported', 'The exact native WooCommerce email is unavailable.' );
+		}
+		$native_file = new ReflectionClass( $native );
+		$expected_file = WC()->plugin_path() . '/includes/emails/class-wc-email-' . str_replace( '_', '-', $type ) . '.php';
+		if ( realpath( $native_file->getFileName() ) !== realpath( $expected_file ) || ! $order->get_date_created() instanceof DateTimeInterface ) {
+			return new WP_Error( 'transactional_email_unsupported', 'Native email class or required order context is unavailable.' );
+		}
+		// Clone the registered native instance, preserving its own trigger/render implementation.
+		$email = clone $native;
+		$email->init_settings();
+		$email->enabled = $email->get_option( 'enabled' );
+		$email->email_type = $email->get_option( 'email_type' );
+		foreach ( [ 'cc', 'bcc' ] as $field ) {
+			if ( property_exists( $email, $field ) ) {
+				$email->$field = $email->get_option( $field, '' );
+			}
+		}
+		$email->object = $order;
+		$email->recipient = $order->get_billing_email();
+		$email->placeholders['{order_date}'] = wc_format_datetime( $order->get_date_created() );
+		$email->placeholders['{order_number}'] = $order->get_order_number();
+		$email->setup_locale();
+		try {
+			$material = [
+				'type' => $type, 'class' => get_class( $email ),
+				'eligible' => $order->get_status() === $definition[1],
+				'enabled' => (bool) $email->is_enabled(),
+				'recipient' => $email->get_recipient(),
+				'headers' => $email->get_headers(),
+				'settings' => $email->settings,
+			];
+		} finally {
+			$email->restore_locale();
+		}
+		return [ 'email' => $email, 'material' => $material ];
+	}
+
+	private static function transactional_preflight( $params ) {
+		if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'order_id', 'expected_version', 'email_type', '_yoro_confirmed', '_yoro_preview' ] )
+			|| ! is_int( $params['order_id'] ?? null ) || $params['order_id'] < 1
+			|| ! is_string( $params['expected_version'] ?? null ) || ! preg_match( '/^[a-f0-9]{64}$/D', $params['expected_version'] )
+			|| ! is_string( $params['email_type'] ?? null ) || ! isset( self::TRANSACTIONAL_TYPES[ $params['email_type'] ] ) ) {
+			return new WP_Error( 'invalid_params', 'Use one exact order, current version and supported native email type only.' );
+		}
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return new WP_Error( 'forbidden', 'WooCommerce management permission is required.' );
+		}
+		$order = wc_get_order( $params['order_id'] );
+		if ( ! $order instanceof WC_Order ) {
+			return new WP_Error( 'order_not_found', 'The exact order is unavailable.' );
+		}
+		// Resolve each native context exactly once, and hash that same snapshot in the shared owner.
+		// Recomputing version and selecting a recipient separately permits stateful-filter ABA races.
+		$native_material = [ 'billing_email' => $order->get_billing_email( 'edit' ), 'order_data' => $order->get_data(), 'native' => [] ];
+		$context = null;
+		foreach ( self::TRANSACTIONAL_TYPES as $type => $definition ) {
+			$candidate = self::transactional_context( $order, $type );
+			$native_material['native'][ $type ] = is_wp_error( $candidate )
+				? [ 'unavailable' => $candidate->get_error_code() ] : $candidate['material'];
+			if ( $type === $params['email_type'] ) {
+				$context = $candidate;
+			}
+		}
+		$version = YoRo_Order_Presenter::order_version( $order, $native_material );
+		if ( ! hash_equals( $version, $params['expected_version'] ) ) {
+			return new WP_Error( 'stale_version', 'Order or native email context changed. Read and preview again.' );
+		}
+		if ( is_wp_error( $context ) ) {
+			return $context;
+		}
+		$material = $context['material'];
+		if ( ! $material['eligible'] || ! $material['enabled'] ) {
+			return new WP_Error( 'transactional_email_ineligible', 'Native email is disabled or does not match current order status.' );
+		}
+		if ( ! is_string( $material['recipient'] ) || ! is_email( $material['recipient'] ) || preg_match( '/[\r\n,]/', $material['recipient'] )
+			|| ! is_string( $material['headers'] ) || preg_match( '/(?:^|\r?\n)(?:cc|bcc|to)\s*:/i', $material['headers'] ) ) {
+			return new WP_Error( 'invalid_recipient', 'A single valid native customer recipient without Cc/Bcc is required.' );
+		}
+		return $context + [ 'order' => $order, 'version' => $version ];
+	}
+
+	private static function transactional_recipient_label( $recipient ) {
+		$parts = explode( '@', $recipient, 2 );
+		return substr( $parts[0], 0, 1 ) . '***@' . $parts[1];
+	}
+
+	public static function preview_send_transactional_email( $params ) {
+		$context = self::transactional_preflight( $params );
+		if ( is_wp_error( $context ) ) {
+			return $context;
+		}
+		return [
+			'success' => true, 'read_only' => true, 'action' => 'orders.send_transactional_email',
+			'order_id' => $context['order']->get_id(), 'email_type' => $params['email_type'],
+			'current_version' => $context['version'],
+			'order_number' => $context['order']->get_order_number(), 'order_status' => $context['order']->get_status(),
+			'email_label' => $context['email']->get_title(),
+			'unchanged' => [ 'billing_email', 'customer_profile', 'order_status', 'native_templates', 'email_settings' ],
+			'recipient_masked' => self::transactional_recipient_label( $context['material']['recipient'] ),
+			'summary' => 'Resend the selected native WooCommerce transactional email to the current native customer recipient.',
+		];
+	}
+
+	private static function transactional_guard_is_last( $tag, $guard ) {
+		global $wp_filter;
+		$last = null;
+		foreach ( ( $wp_filter[ $tag ]->callbacks ?? [] ) as $callbacks ) {
+			foreach ( $callbacks as $callback ) {
+				$last = $callback['function'];
+			}
+		}
+		return $last === $guard;
+	}
+
+	private static function transactional_has_short_circuit( $own = null ) {
+		global $wp_filter;
+		foreach ( ( $wp_filter['pre_wp_mail']->callbacks ?? [] ) as $callbacks ) {
+			foreach ( $callbacks as $callback ) {
+				if ( $callback['function'] !== $own ) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	public static function send_transactional_email( $params ) {
+		if ( true !== ( $params['_yoro_confirmed'] ?? false ) ) {
+			return new WP_Error( 'confirmation_required', 'Explicit confirmation is required.' );
+		}
+		$context = self::transactional_preflight( $params );
+		if ( is_wp_error( $context ) ) {
+			return $context;
+		}
+		// A short-circuit transport has no final recipient observation point. Never substitute it.
+		$reflection = new ReflectionFunction( 'wp_mail' );
+		if ( realpath( $reflection->getFileName() ) !== realpath( ABSPATH . WPINC . '/pluggable.php' ) || self::transactional_has_short_circuit() ) {
+			return new WP_Error( 'transactional_email_transport_unsupported', 'Native observable WordPress mail transport is required.' );
+		}
+		$email = $context['email'];
+		$recipient = $context['material']['recipient'];
+		$observed = null;
+		$transport_seen = false;
+		$callback_seen = false;
+		$guard_callback = null;
+		$guard_callback = static function ( $callback, $instance ) use ( $email, &$guard_callback ) {
+			if ( $instance === $email && ( 'wp_mail' !== $callback || ! self::transactional_guard_is_last( 'woocommerce_mail_callback', $guard_callback ) ) ) {
+				throw new RuntimeException( 'transactional_email_transport_unsupported' );
+			}
+			return $callback;
+		};
+		$guard_params = null;
+		$guard_params = static function ( $args, $instance ) use ( $email, $context, $params, $recipient, &$callback_seen, &$guard_params ) {
+			if ( $instance !== $email ) {
+				return $args;
+			}
+			$fresh = self::transactional_preflight( $params );
+			if ( $callback_seen || is_wp_error( $fresh ) || $fresh['material'] !== $context['material']
+				|| ! is_array( $args ) || ( $args[0] ?? null ) !== $recipient || ( $args[3] ?? null ) !== $context['material']['headers']
+				|| self::transactional_has_short_circuit() || ! self::transactional_guard_is_last( 'woocommerce_mail_callback_params', $guard_params ) ) {
+				throw new RuntimeException( 'transactional_email_context_changed' );
+			}
+			$callback_seen = true;
+			return $args;
+		};
+		$guard_pre = null;
+		$guard_pre = static function ( $value, $atts ) use ( &$guard_pre, $recipient, &$callback_seen ) {
+			if ( null !== $value || ! $callback_seen || ( $atts['to'] ?? null ) !== $recipient || self::transactional_has_short_circuit( $guard_pre ) ) {
+				throw new RuntimeException( 'transactional_email_transport_unsupported' );
+			}
+			return $value;
+		};
+		$guard_mail = null;
+		$guard_mail = static function ( $atts ) use ( $recipient, &$callback_seen, &$guard_pre, &$guard_mail ) {
+			if ( ! $callback_seen || ( $atts['to'] ?? null ) !== $recipient || has_filter( 'pre_wp_mail' ) || ! self::transactional_guard_is_last( 'wp_mail', $guard_mail ) ) {
+				throw new RuntimeException( 'transactional_email_context_changed' );
+			}
+			add_filter( 'pre_wp_mail', $guard_pre, PHP_INT_MIN, 2 );
+			return $atts;
+		};
+		$guard_transport = null;
+		$guard_transport = static function ( $mailer ) use ( $recipient, &$transport_seen, &$callback_seen, &$guard_transport ) {
+			$class = new ReflectionClass( $mailer );
+			$expected_file = ABSPATH . WPINC . ( 'WP_PHPMailer' === get_class( $mailer ) ? '/class-wp-phpmailer.php' : '/PHPMailer/PHPMailer.php' );
+			if ( realpath( $class->getFileName() ) !== realpath( $expected_file ) || ! $callback_seen || $transport_seen || ! in_array( get_class( $mailer ), [ 'WP_PHPMailer', 'PHPMailer\\PHPMailer\\PHPMailer' ], true )
+				|| array_column( $mailer->getToAddresses(), 0 ) !== [ $recipient ] || $mailer->getCcAddresses() || $mailer->getBccAddresses() || ! self::transactional_guard_is_last( 'phpmailer_init', $guard_transport ) ) {
+				throw new RuntimeException( 'transactional_email_context_changed' );
+			}
+			if ( 'smtp' === $mailer->Mailer ) {
+				$smtp = $mailer->getSMTPInstance();
+				$source = new ReflectionClass( $smtp );
+				if ( get_class( $smtp ) !== 'PHPMailer\\PHPMailer\\SMTP' || realpath( $source->getFileName() ) !== realpath( ABSPATH . WPINC . '/PHPMailer/SMTP.php' ) ) {
+					throw new RuntimeException( 'transactional_email_transport_unsupported' );
+				}
+			}
+			$transport_seen = true;
+		};
+		$capture = static function ( $sent, $type, $instance ) use ( $email, &$observed, &$transport_seen ) {
+			if ( $instance === $email && $type === $email->id && $transport_seen ) {
+				$observed = is_bool( $sent ) ? $sent : null;
+			}
+		};
+		$hooks = [
+			[ 'woocommerce_mail_callback', $guard_callback, 2 ],
+			[ 'woocommerce_mail_callback_params', $guard_params, 2 ],
+			[ 'wp_mail', $guard_mail, 1 ],
+			[ 'phpmailer_init', $guard_transport, 1 ],
+			[ 'woocommerce_email_sent', $capture, 3 ],
+		];
+		foreach ( $hooks as $hook ) {
+			add_filter( $hook[0], $hook[1], PHP_INT_MAX, $hook[2] );
+		}
+		add_action( 'phpmailer_init', [ $email, 'handle_multipart' ], 10, 1 );
+		$interrupted = false;
+		try {
+			$email->trigger( $context['order']->get_id(), $context['order'] );
+		} catch ( Throwable $error ) {
+			$interrupted = true;
+			$observed = null;
+		} finally {
+			foreach ( $hooks as $hook ) {
+				remove_filter( $hook[0], $hook[1], PHP_INT_MAX );
+			}
+			remove_filter( 'pre_wp_mail', $guard_pre, PHP_INT_MIN );
+			remove_action( 'phpmailer_init', [ $email, 'handle_multipart' ], 10 );
+			// Native send/trigger cleanup is not exception-safe; remove only this clone's hooks.
+			remove_filter( 'wp_mail_from', [ $email, 'get_from_address' ] );
+			remove_filter( 'wp_mail_from_name', [ $email, 'get_from_name' ] );
+			remove_filter( 'wp_mail_content_type', [ $email, 'get_content_type' ] );
+			if ( $interrupted ) {
+				global $phpmailer;
+				if ( $phpmailer instanceof \PHPMailer\PHPMailer\PHPMailer ) {
+					$phpmailer->AltBody = '';
+				}
+				$email->restore_locale();
+			}
+		}
+		if ( true !== $observed ) {
+			return new WP_Error( 'transactional_email_outcome_unknown', 'Native email was attempted without proven mailer acceptance. Reconcile before any retry.' );
+		}
+		return [
+			'success' => true, 'action' => 'orders.send_transactional_email', 'read_only' => false,
+			'order_id' => $context['order']->get_id(), 'email_type' => $params['email_type'],
+			'current_version' => $context['version'], 'confirmation_accepted' => true,
+			'outcome' => 'mailer_accepted', 'recipient_masked' => self::transactional_recipient_label( $recipient ),
+			'summary' => 'The native WooCommerce email was accepted by the mailer. Delivery is not verified.',
+			'processed' => [ $context['order']->get_id() ], 'count' => 1, 'undoable' => false,
+		];
+	}
+
+
 	public static function email_customer_preview( $params ) {
 		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
 		$template = ! empty( $params['template'] ) ? sanitize_key( $params['template'] ) : '';

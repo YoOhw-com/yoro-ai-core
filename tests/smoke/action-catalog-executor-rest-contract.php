@@ -64,6 +64,10 @@ $admin_ids = get_users(
 );
 $admin_id = ! empty( $admin_ids ) ? absint( $admin_ids[0] ) : 0;
 
+$original_actor_access = $admin_id > 0 ? get_user_meta( $admin_id, YoRo_WordPress_Actor::ACCESS_META_KEY, true ) : '';
+// This catalog fixture tests local administrator permissions, independent of a previous test's remote assignment cache.
+if ( $admin_id > 0 ) { delete_user_meta( $admin_id, YoRo_WordPress_Actor::ACCESS_META_KEY ); }
+
 $assert( $admin_id > 0, 'A WordPress administrator user is required for REST permission smoke checks.' );
 
 if ( $admin_id > 0 ) {
@@ -369,6 +373,138 @@ try {
 	$link_order->delete( true );
 }
 $assert( is_wp_error( YoRo_Orders_Read_Service::get_payment_link( [ 'order_id' => $link_id ] ) ), 'Missing order cannot expose a payment link.' );
+
+// B4 is one distinct confirmed native-email action, never a custom composer or bulk sender.
+$b4 = YoRo_Action_Registry::get( 'orders.send_transactional_email' );
+$assert( is_array( $b4 ) && true === $b4['write_action'] && true === $b4['requires_confirmation'], 'B4 must always be a confirmed write.' );
+$assert( 'communicate' === $b4['effect'] && true === $b4['external_side_effect'] && 'none' === $b4['reversibility'], 'B4 must retain external communication safety.' );
+$assert( false === $b4['supports_bulk'] && 1 === $b4['max_targets'], 'B4 must never expose bulk targets.' );
+$assert( [ 'order_id', 'expected_version', 'email_type' ] === array_keys( $b4['input_schema'] ), 'B4 has no recipient or content override slots.' );
+$assert( [ 'customer_processing_order', 'customer_completed_order' ] === $b4['canonical_input_schema']['email_type']['enum'], 'B4 exposes only characterized native order-email types.' );
+$assert( 'operation_journal' === $b4['idempotency_strategy'] && 'external_delivery' === $b4['concurrency_strategy'], 'B4 must retain external-delivery journal semantics.' );
+$b4_custom = YoRo_Action_Registry::get( 'orders.send_customer_email' );
+$assert( isset( $b4_custom['input_schema']['subject'], $b4_custom['input_schema']['body'] ) && $b4_custom['callback'] !== $b4['callback'], 'Existing custom email retains its separate content and handler.' );
+$b4_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( [
+    'success' => true, 'order_id' => 123, 'email_type' => 'customer_processing_order',
+    'current_version' => str_repeat( 'a', 64 ), 'outcome' => 'mailer_accepted', 'confirmation_accepted' => true,
+    'recipient_masked' => 'a***@example.invalid', 'recipient' => 'private@example.invalid',
+    'body' => 'unrelated private content', 'delivered' => true,
+], 'orders.send_transactional_email' );
+$assert( ! isset( $b4_payload['data']['recipient'] ) && ! isset( $b4_payload['data']['body'] ) && ! isset( $b4_payload['data']['delivered'] ), 'Canonical B4 result excludes raw recipient, content and fabricated delivery evidence.' );
+$assert( 'mailer_accepted' === $b4_payload['data']['outcome'] && false !== strpos( $b4_payload['summary'], 'delivery is not verified' ), 'B4 result distinguishes mailer acceptance from delivery.' );
+
+// Exercise the real legacy REST ingress using a disposable DB and a process-level mail sink.
+if ( '1' === getenv( 'YORO_NATIVE_EMAIL_NO_DELIVERY_TEST' ) ) {
+	if ( '/usr/bin/true' !== ini_get( 'sendmail_path' ) ) {
+		throw new RuntimeException( 'G003 REST tests require the native no-delivery sink.' );
+	}
+	wp_set_current_user( $admin_id );
+	$native_order = new WC_Order();
+	$native_order->set_billing_email( 'rest-fixture@example.invalid' );
+	$native_order->set_date_created( time() );
+	$native_order->set_status( 'processing' );
+	$native_order->save();
+	$native_params = [ 'order_id' => $native_order->get_id(), 'expected_version' => YoRo_Order_Presenter::order_version( wc_get_order( $native_order->get_id() ) ), 'email_type' => 'customer_processing_order' ];
+	$native_plan = [ 'type' => 'single', 'action' => 'orders.send_transactional_email', 'params' => $native_params ];
+	$saved_options = [];
+	foreach ( [ YoRo_AI_Settings::OPTION_AI_API_URL, YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, YoRo_AI_Settings::OPTION_AI_API_ENABLED, YoRo_AI_Settings::OPTION_AI_API_STATUS ] as $key ) { $saved_options[ $key ] = get_option( $key, null ); }
+	update_option( YoRo_AI_Settings::OPTION_AI_API_URL, 'https://fixture.example.invalid/api/yoro-ai', false );
+	update_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, 'fixture-local-only', false );
+	update_option( YoRo_AI_Settings::OPTION_AI_API_ENABLED, 'yes', false );
+	YoRo_AI_Settings::update_ai_api_status( [
+		'account_connection' => [ 'connected' => true, 'status' => 'active' ],
+		'organization' => [ 'id' => 1, 'name' => 'Fixture' ],
+		'site' => [ 'id' => 1, 'name' => 'Fixture', 'url' => home_url(), 'status' => 'active', 'plan' => 'test' ],
+		'connection' => [ 'id' => 1, 'installation_uuid' => YoRo_AI_Settings::get_installation_uuid(), 'status' => 'active', 'plugin_version' => YORO_AI_CORE_VERSION ],
+		'credential' => [ 'id' => 1, 'type' => 'wordpress_connection', 'site_connection_id' => 1, 'expires_at' => gmdate( 'c', time() + HOUR_IN_SECONDS ) ],
+	] );
+	$mode = 'success';
+	$claimed = false;
+	$claim_calls = 0;
+	$native_acceptances = 0;
+	$confirmation_material = [];
+	$conversation = 'native-rest-fixture';
+	$pending_token = 'native-pending-fixture';
+	$http = static function ( $pre, $args, $url ) use ( &$mode, &$claimed, &$claim_calls, &$confirmation_material, $native_plan, $conversation, $pending_token ) {
+		$body = json_decode( $args['body'] ?? '{}', true );
+		$response = array_merge( (array) get_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, [] ), [ 'success' => true ] );
+		if ( false !== strpos( $url, '/actions/confirm' ) ) {
+			$confirmation_material = [ 'token' => str_repeat( 'p', 64 ), 'plan_hash' => $body['plan_hash'] ?? str_repeat( 'a', 64 ), 'preview_hash' => $body['preview_hash'] ?? str_repeat( 'b', 64 ), 'policy_version' => 4 ];
+			$response['execution_permit'] = $confirmation_material;
+		} elseif ( false !== strpos( $url, '/actions/claim' ) ) {
+			$claim_calls++;
+			$response += [ 'stage' => 'claimed', 'pending_operation_status' => 'executing', 'conversation_id' => $conversation, 'pending_operation_token' => $pending_token, 'plan_hash' => $confirmation_material['plan_hash'], 'preview_hash' => $confirmation_material['preview_hash'], 'policy_version' => 4 ];
+			if ( $claimed || 'failed_claim' === $mode ) { $response = [ 'success' => false, 'message' => 'Fixture permit already consumed or refused.' ]; }
+			elseif ( 'missing_claim' === $mode ) { $response = [ 'success' => true ]; }
+			else { $claimed = true; }
+		} elseif ( 'GET' === ( $args['method'] ?? 'GET' ) ) {
+			$response['conversation'] = [ 'pending_operation_graphs' => [ [ 'token' => $pending_token, 'status' => 'awaiting_confirmation', 'action' => $native_plan['action'], 'action_plan' => $native_plan ] ] ];
+		}
+		return [ 'headers' => [], 'body' => wp_json_encode( $response ), 'response' => [ 'code' => 200, 'message' => 'OK' ], 'cookies' => [], 'filename' => null ];
+	};
+	$observe = static function ( $sent, $type ) use ( &$native_acceptances, &$mode ) {
+		if ( 'customer_processing_order' === $type && $sent ) {
+			$native_acceptances++;
+			if ( 'unknown' === $mode ) { throw new RuntimeException( 'Fixture observer lost after native acceptance.' ); }
+		}
+	};
+	add_filter( 'pre_http_request', $http, 10, 3 );
+	add_action( 'woocommerce_email_sent', $observe, 1, 2 );
+	$invoke = static function ( $with_token = true ) use ( $native_params, $conversation, $pending_token ) {
+		$request = new WP_REST_Request( 'POST', '/yoro/v1/execute' );
+		$request->set_param( 'action', 'orders.send_transactional_email' );
+		$request->set_param( 'params', $native_params );
+		$request->set_param( 'confirm', true );
+		if ( $with_token ) { $request->set_param( 'conversation_id', $conversation ); $request->set_param( 'pending_operation_token', $pending_token ); }
+		$result = YoRo_REST_Execute_Handler::handle( $request );
+		return $result instanceof WP_REST_Response ? $result->get_data() : $result;
+	};
+	try {
+		$fixture_status = get_option( YoRo_AI_Settings::OPTION_AI_API_STATUS );
+		YoRo_AI_Settings::save_connected_ai_api_credentials( 'https://fixture.example.invalid/api/yoro-ai', 'fixture-local-only' );
+		update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $fixture_status, false );
+		$approval_request = new WP_REST_Request( 'POST', '/yoro/v1/execute' );
+		$approval_request->set_param( 'action', 'orders.send_transactional_email' );
+		$approval_request->set_param( 'params', $native_params );
+		$approval = YoRo_REST_Execute_Handler::handle( $approval_request );
+		$approval = $approval instanceof WP_REST_Response ? $approval->get_data() : $approval;
+		$assert( is_array( $approval ) && false === ( $approval['direct_confirmation_allowed'] ?? null ), 'B4 preview does not offer unsupported direct confirmation.' );
+		$direct = $invoke( false );
+		$assert( 0 === $native_acceptances && ( is_wp_error( $direct ) || empty( $direct['success'] ) ), 'Direct B4 confirm without pending permit cannot send.' );
+		$forged = $native_plan + [ 'context' => [ 'connector_remote_agent' => true, 'workflow_id' => 'forged', 'operation_id' => 'forged', 'claimed_execution_context' => true, '_execution_permit' => 'forged', 'is_undo' => true ] ];
+		YoRo_Plan_Executor::execute( $forged, true, false );
+		$sequence = [ 'type' => 'sequence', 'context' => $forged['context'], 'steps' => [ $native_plan + [ 'retry' => [ 'max_attempts' => 3 ] ] ] ];
+		YoRo_Plan_Executor::execute( $sequence, true, false );
+		$assert( 0 === $native_acceptances, 'Caller plan/context and sequence retry flags cannot forge B4 permit or journal ownership.' );
+		foreach ( [ 'failed_claim', 'missing_claim' ] as $failure_mode ) {
+			$mode = $failure_mode;
+			$failed = $invoke();
+			$assert( 0 === $native_acceptances && ( is_wp_error( $failed ) || empty( $failed['success'] ) ), 'Failed or incomplete claim fails closed: ' . $failure_mode );
+		}
+		$mode = 'success';
+		$success = $invoke();
+		$assert( 1 === $native_acceptances && is_array( $success ) && ! empty( $success['success'] ), 'Verified same-request claimed permit reaches native B4 exactly once.' );
+		$repeat = $invoke();
+		$assert( 1 === $native_acceptances && ( is_wp_error( $repeat ) || empty( $repeat['success'] ) ), 'Consumed legacy permit cannot execute B4 a second time.' );
+		$claimed = false; // A separate fixture operation, not an application reset or retry.
+		$mode = 'unknown';
+		$unknown = $invoke();
+		$assert( 2 === $native_acceptances && is_array( $unknown ) && empty( $unknown['success'] ), 'Native acceptance followed by observer exception is reported as unknown failure.' );
+		$repeat_unknown = $invoke();
+		$assert( 2 === $native_acceptances && ( is_wp_error( $repeat_unknown ) || empty( $repeat_unknown['success'] ) ), 'A consumed permit after ambiguous native acceptance cannot blindly resend.' );
+		$assert( $claim_calls >= 5, 'REST test exercises the coordinator claim path rather than a synthetic plan trust flag.' );
+	} finally {
+		remove_filter( 'pre_http_request', $http, 10 );
+		remove_action( 'woocommerce_email_sent', $observe, 1 );
+		foreach ( $saved_options as $key => $value ) { if ( null === $value ) { delete_option( $key ); } else { update_option( $key, $value, false ); } }
+		$native_order->delete( true );
+	}
+}
+
+if ( $admin_id > 0 ) {
+	if ( '' === $original_actor_access ) { delete_user_meta( $admin_id, YoRo_WordPress_Actor::ACCESS_META_KEY ); }
+	else { update_user_meta( $admin_id, YoRo_WordPress_Actor::ACCESS_META_KEY, $original_actor_access ); }
+}
 
 if ( $failures ) {
 	foreach ( $failures as $failure ) {

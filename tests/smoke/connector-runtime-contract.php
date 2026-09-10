@@ -108,6 +108,9 @@ $original_subject = $admin_id > 0
 	? get_user_meta( $admin_id, YoRo_WordPress_Actor::SUBJECT_META_KEY, true )
 	: '';
 
+$original_access_exists = $admin_id > 0 && metadata_exists( 'user', $admin_id, YoRo_WordPress_Actor::ACCESS_META_KEY );
+$original_access = $admin_id > 0 ? get_user_meta( $admin_id, YoRo_WordPress_Actor::ACCESS_META_KEY, true ) : null;
+
 class YoRo_Connector_Smoke_Client extends YoRo_Connector_Client {
 	public $manifest = [];
 	public $context_pack = [];
@@ -665,6 +668,89 @@ try {
 		if ( $b3_order instanceof WC_Order ) { $b3_order->delete( true ); }
 	}
 
+	// Native B4 replay tests require a disposable database and a process-level mail sink.
+	if ( '1' === getenv( 'YORO_NATIVE_EMAIL_NO_DELIVERY_TEST' ) ) {
+		if ( '/usr/bin/true' !== ini_get( 'sendmail_path' ) ) {
+			throw new RuntimeException( 'B4 journal tests require the process-level no-delivery sink.' );
+		}
+		$b4_type = 'customer_processing_order';
+		$b4_option = 'woocommerce_' . $b4_type . '_settings';
+		$b4_original = get_option( $b4_option, null );
+		$b4_settings = is_array( $b4_original ) ? $b4_original : [];
+		$b4_settings['enabled'] = 'yes';
+		update_option( $b4_option, $b4_settings );
+		try {
+			foreach ( [ false, true ] as $b4_ambiguous ) {
+				$b4_order = new WC_Order();
+				$b4_order->set_billing_email( 'journal-recipient@example.invalid' );
+				$b4_order->set_status( 'processing' );
+				$b4_order->save();
+				$b4_operation = $operation;
+				$b4_operation['envelope_id'] = 'envelope_' . hash( 'sha256', 'b4-' . wp_generate_uuid4() );
+				$b4_operation['idempotency_key'] = 'operation_' . hash( 'sha256', 'b4-' . wp_generate_uuid4() );
+				$b4_operation['operation_id'] = $b4_ambiguous ? 'operation_b4_unknown' : 'operation_b4_success';
+				$b4_operation['action'] = 'orders.send_transactional_email';
+				$b4_operation['params'] = [ 'order_id' => $b4_order->get_id(), 'expected_version' => YoRo_Order_Presenter::order_version( wc_get_order( $b4_order->get_id() ) ), 'email_type' => $b4_type ];
+				$b4_operation['actor']['permissions'] = [ YoRo_Action_Registry::get( 'orders.send_transactional_email' )['permission'] ];
+				$b4_client = new YoRo_Connector_Smoke_Client();
+				$b4_client->claim = $client->claim;
+				$b4_client->claim['delivery']['operations'] = [ $b4_operation ];
+				$b4_calls = 0;
+				$b4_sends = 0;
+				$b4_attempts = 0;
+				$b4_probe = static function ( $action ) use ( &$b4_calls ) {
+					if ( 'orders.send_transactional_email' === $action ) { ++$b4_calls; }
+				};
+				$b4_sent = static function ( $sent, $type ) use ( &$b4_sends, $b4_type ) {
+					if ( $b4_type === $type && true === $sent ) { ++$b4_sends; }
+				};
+				$b4_callback = static function ( $args, $email ) use ( &$b4_attempts, $b4_type ) {
+					if ( $b4_type === $email->id ) {
+						++$b4_attempts;
+					}
+					return $args;
+				};
+				$b4_corruptor = static function ( $sent, $type ) use ( $b4_type, $b4_ambiguous ) {
+					if ( $b4_ambiguous && $b4_type === $type && true === $sent ) {
+						throw new RuntimeException( 'Disposable fixture: observation lost after native acceptance.' );
+					}
+				};
+				add_action( 'woocommerce_email_sent', $b4_corruptor, 20, 2 );
+				add_action( 'yoro_before_action_execute', $b4_probe, 10, 1 );
+				add_action( 'woocommerce_email_sent', $b4_sent, 10, 2 );
+				add_filter( 'woocommerce_mail_callback_params', $b4_callback, 10, 2 );
+				try {
+					( new YoRo_Connector_Runtime( $b4_client ) )->run_once();
+					$b4_result = $b4_client->results[0]['payload'] ?? [];
+					$assert( 1 === $b4_calls && 1 === $b4_attempts, 'B4 initial runtime invokes one executor and one native callback attempt.' );
+					if ( $b4_ambiguous ) {
+						$assert( 'failed' === ( $b4_result['status'] ?? '' ) && 'local_execution_failed' === ( $b4_result['error']['code'] ?? '' ) && 'Native email was attempted without proven mailer acceptance. Reconcile before any retry.' === ( $b4_result['error']['message'] ?? '' ), 'B4 lost observation after native acceptance publishes the canonical ambiguous failure.' );
+						$assert( false === ( $b4_result['error']['retryable'] ?? null ) && 1 === $b4_sends, 'B4 accepted-but-unobserved outcome is unknown and cannot auto-retry.' );
+					} else {
+						$assert( 'executed' === ( $b4_result['status'] ?? '' ) && 1 === $b4_sends, 'B4 native sink success records one accepted mailer call.' );
+						$b4_data = $b4_result['result']['data'] ?? [];
+						$assert( [ 'order_id', 'email_type', 'current_version', 'outcome', 'confirmation_accepted', 'recipient_masked' ] === array_keys( $b4_data ), 'B4 successful runtime result has only bounded canonical data roots.' );
+						$assert( 'mailer_accepted' === ( $b4_data['outcome'] ?? '' ) && false === strpos( wp_json_encode( $b4_result ), 'journal-recipient@example.invalid' ), 'B4 success reports acceptance with no raw recipient disclosure.' );
+					}
+					// Removing the failure injector cannot turn a recorded unknown into a fresh send.
+					remove_action( 'woocommerce_email_sent', $b4_corruptor, 20 );
+					( new YoRo_Connector_Runtime( $b4_client ) )->run_once();
+					$assert( 1 === $b4_calls && 1 === $b4_attempts && 1 === $b4_sends, 'B4 replay performs no executor, callback, or mailer reexecution.' );
+					$assert( 2 === count( $b4_client->results ) && wp_json_encode( $b4_result ) === wp_json_encode( $b4_client->results[1]['payload'] ?? [] ), 'B4 journal replay republishes the exact recorded success or ambiguous failure.' );
+				} finally {
+					remove_action( 'woocommerce_email_sent', $b4_corruptor, 20 );
+					remove_action( 'yoro_before_action_execute', $b4_probe, 10 );
+					remove_action( 'woocommerce_email_sent', $b4_sent, 10 );
+					remove_filter( 'woocommerce_mail_callback_params', $b4_callback, 10 );
+					YoRo_Connector_Execution_Journal::clear( $b4_operation );
+					$b4_order->delete( true );
+				}
+			}
+		} finally {
+			if ( null === $b4_original ) { delete_option( $b4_option ); } else { update_option( $b4_option, $b4_original ); }
+		}
+	}
+
 	$admin_action = YoRo_Action_Registry::get( 'plugins.activate' );
 	$assert( is_array( $admin_action ) && empty( $admin_action['ai_exposed'] ), 'Administration actions must be non-exposable at the registry boundary.' );
 	$admin_operation = $operation;
@@ -754,6 +840,11 @@ try {
 	}
 
 	if ( $admin_id > 0 ) {
+		if ( $original_access_exists ) {
+			update_user_meta( $admin_id, YoRo_WordPress_Actor::ACCESS_META_KEY, $original_access );
+		} else {
+			delete_user_meta( $admin_id, YoRo_WordPress_Actor::ACCESS_META_KEY );
+		}
 		if ( '' === $original_subject ) {
 			delete_user_meta( $admin_id, YoRo_WordPress_Actor::SUBJECT_META_KEY );
 		} else {

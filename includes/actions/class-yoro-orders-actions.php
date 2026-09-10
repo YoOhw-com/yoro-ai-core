@@ -7,6 +7,31 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Orders_Actions {
 
 	public static function register() {
+		YoRo_Action_Registry::register( 'orders.send_transactional_email', [
+			'label' => __( 'Resend native order email', 'yoro-ai-core' ),
+			'description' => __( 'Resend one eligible native WooCommerce customer transactional email after a current read and explicit confirmation. No custom content or recipient override.', 'yoro-ai-core' ),
+			'category' => 'orders', 'permission' => 'manage_woocommerce',
+			'callback' => [ 'YoRo_Orders_Email_Service', 'send_transactional_email' ],
+			'preview_callback' => [ 'YoRo_Orders_Email_Service', 'preview_send_transactional_email' ],
+			'requires_confirmation' => true, 'risk_level' => 'medium', 'write_action' => true,
+			'effect' => 'communicate', 'external_side_effect' => true, 'reversibility' => 'none',
+			'idempotency_strategy' => 'operation_journal', 'concurrency_strategy' => 'external_delivery',
+			'target_type' => 'order', 'supports_bulk' => false, 'max_items' => 1, 'max_targets' => 1,
+			'input_schema' => [ 'order_id' => 'integer', 'expected_version' => 'string', 'email_type' => 'string' ],
+			'canonical_input_schema' => [
+				'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$', 'minLength' => 64, 'maxLength' => 64 ],
+				'email_type' => [ 'type' => 'string', 'enum' => [ 'customer_processing_order', 'customer_completed_order' ] ],
+			],
+			'required_params' => [ 'order_id', 'expected_version', 'email_type' ],
+			'capabilities' => [ 'orders', 'write', 'email', 'customer_communication' ],
+			'ai_description' => __( 'Resend an explicitly selected native processing or completed order email. Clarify ambiguous email intent; custom messages, saved templates and mailbox replies are different actions.', 'yoro-ai-core' ),
+			'param_hints' => [
+				'order_id' => __( 'One grounded order only.', 'yoro-ai-core' ),
+				'expected_version' => __( 'Copy only the current version from the matching authorized order read.', 'yoro-ai-core' ),
+				'email_type' => __( 'An explicit supported native transactional email type, never inferred from an ambiguous request to email the customer.', 'yoro-ai-core' ),
+			],
+		] );
 		$shipping_fields = [];
 		foreach ( [ 'first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country' ] as $field ) {
 			$shipping_fields[ $field ] = [ 'type' => 'string', 'maxLength' => 200 ];

@@ -33,7 +33,8 @@ class YoRo_REST_Execute_Handler {
 		$stored_action_state = null;
 		$pending_operation = [];
 		$execution_permit = '';
-		$direct_confirmation_allowed = '' === $pending_operation_token;
+		$claimed_execution_context = null;
+		$direct_confirmation_allowed = '' === $pending_operation_token && 'orders.send_transactional_email' !== $action;
 
 		if ( $confirm && '' !== $conversation_id && '' !== $pending_operation_token ) {
 			$stored_action_state = YoRo_REST_Conversation_Action_Coordinator::get_pending_operation_state(
@@ -263,7 +264,31 @@ class YoRo_REST_Execute_Handler {
 			}
 		}
 
-		$result = YoRo_Plan_Executor::execute( $plan, $confirm, $preview );
+		// Only a successful claim in this request can create this non-serializable handoff.
+		// Confirmation without a pending token keeps its legacy meaning for existing actions.
+		$issued_permit = is_array( $confirmation ?? null ) ? ( $confirmation['execution_permit']['token'] ?? '' ) : '';
+		if ( $confirm && '' !== $conversation_id && '' !== $pending_operation_token && '' !== $execution_permit
+			&& is_string( $issued_permit ) && hash_equals( $issued_permit, $execution_permit )
+			&& true === ( $claim['success'] ?? false ) && 'claimed' === ( $claim['stage'] ?? '' )
+			&& 'executing' === ( $claim['pending_operation_status'] ?? '' )
+			&& $conversation_id === ( $claim['conversation_id'] ?? null ) && $pending_operation_token === ( $claim['pending_operation_token'] ?? null ) ) {
+			$native_steps = 'single' === ( $plan['type'] ?? '' ) ? [ $plan ] : ( $plan['steps'] ?? [] );
+			$native_steps = array_values( array_filter( (array) $native_steps, static function ( $step ) {
+				return is_array( $step ) && 'orders.send_transactional_email' === ( $step['action'] ?? '' );
+			} ) );
+			if ( 1 === count( $native_steps ) ) {
+				$approved_params = $native_steps[0]['params'] ?? [];
+				$used = false;
+				$claimed_execution_context = static function ( $action_name, $execution_params ) use ( $approved_params, &$used ) {
+					if ( $used || 'orders.send_transactional_email' !== $action_name || $execution_params !== $approved_params ) {
+						return false;
+					}
+					$used = true;
+					return true;
+				};
+			}
+		}
+		$result = YoRo_Plan_Executor::execute( $plan, $confirm, $preview, $claimed_execution_context );
 
 		if ( is_wp_error( $result ) ) {
 			$result = YoRo_REST_Response_Helper::normalize_error_result( $action, $result );
