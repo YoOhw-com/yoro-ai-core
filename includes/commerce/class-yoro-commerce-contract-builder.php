@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:7be221f659d782a241937f5c11497310cad933e1e3bfa11e04eaa0454b63b37d';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:e8c33c865a073b8ea133bc9db271b184a7e7928b5aa3cd9a0fd852ba8eeada95';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -387,6 +387,234 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function execution_output_schema( $action_name = '' ) {
+		if ( 'orders.get_download_permissions' === $action_name ) {
+			return [
+				'type' => 'object',
+				'properties' => [
+					'success' => [
+						'type' => 'boolean',
+					],
+					'action' => [
+						'type' => 'string',
+						'enum' => [
+							'orders.get_download_permissions',
+						],
+					],
+					'message' => [
+						'type' => 'string',
+						'maxLength' => 256,
+					],
+					'summary' => [
+						'type' => 'string',
+						'maxLength' => 256,
+					],
+					'data' => [
+						'type' => 'object',
+						'properties' => [
+							'download_permissions' => [
+								'type' => [
+									'object',
+									'null',
+								],
+								'properties' => [
+									'order_id' => [
+										'type' => 'integer',
+										'minimum' => 1,
+									],
+									'permissions' => [
+										'type' => 'array',
+										'maxItems' => 50,
+										'items' => [
+											'type' => 'object',
+											'properties' => [
+												'product_id' => [
+													'type' => 'integer',
+													'minimum' => 1,
+												],
+												'download_id' => [
+													'type' => 'string',
+													'minLength' => 1,
+													'maxLength' => 64,
+													'pattern' => '^[A-Za-z0-9_-]{1,64}$',
+												],
+												'downloads_remaining' => [
+													'type' => [
+														'integer',
+														'null',
+													],
+													'minimum' => 0,
+												],
+												'unlimited_downloads' => [
+													'type' => 'boolean',
+												],
+												'download_count' => [
+													'type' => 'integer',
+													'minimum' => 0,
+												],
+												'access_granted' => [
+													'type' => [
+														'string',
+														'null',
+													],
+													'minLength' => 20,
+													'maxLength' => 20,
+													'pattern' => '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$',
+												],
+												'access_expires' => [
+													'type' => [
+														'string',
+														'null',
+													],
+													'minLength' => 20,
+													'maxLength' => 20,
+													'pattern' => '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$',
+												],
+											],
+											'required' => [
+												'product_id',
+												'download_id',
+												'downloads_remaining',
+												'unlimited_downloads',
+												'download_count',
+												'access_granted',
+												'access_expires',
+											],
+											'additionalProperties' => false,
+										],
+									],
+									'pagination' => [
+										'type' => 'object',
+										'properties' => [
+											'limit' => [
+												'type' => 'integer',
+												'minimum' => 1,
+												'maximum' => 50,
+											],
+											'page' => [
+												'type' => 'integer',
+												'minimum' => 1,
+												'maximum' => 100,
+											],
+											'has_more' => [
+												'type' => 'boolean',
+											],
+											'next_page' => [
+												'type' => [
+													'integer',
+													'null',
+												],
+												'minimum' => 2,
+												'maximum' => 100,
+											],
+										],
+										'required' => [
+											'limit',
+											'page',
+											'has_more',
+											'next_page',
+										],
+										'additionalProperties' => false,
+									],
+									'coverage' => [
+										'type' => 'object',
+										'properties' => [
+											'source' => [
+												'type' => 'string',
+												'enum' => [
+													'woocommerce_customer_download',
+												],
+											],
+											'limitations' => [
+												'type' => 'array',
+												'items' => [
+													'type' => 'string',
+													'enum' => [
+														'download_permission_not_license',
+														'download_url_not_exposed',
+														'file_delivery_not_verified',
+														'permission_regeneration_not_performed',
+														'live_view_not_snapshot',
+														'empty_means_no_permission_rows_observed',
+														'current_product_file_metadata_not_observed',
+													],
+												],
+												'minItems' => 7,
+												'maxItems' => 7,
+												'uniqueItems' => true,
+											],
+										],
+										'required' => [
+											'source',
+											'limitations',
+										],
+										'additionalProperties' => false,
+									],
+								],
+								'required' => [
+									'order_id',
+									'permissions',
+									'pagination',
+									'coverage',
+								],
+								'additionalProperties' => false,
+							],
+						],
+						'required' => [
+							'download_permissions',
+						],
+						'additionalProperties' => false,
+					],
+					'read_only' => [
+						'type' => 'boolean',
+						'enum' => [
+							true,
+						],
+					],
+					'undoable' => [
+						'type' => 'boolean',
+						'enum' => [
+							false,
+						],
+					],
+					'result_type' => [
+						'type' => 'string',
+						'enum' => [
+							'generic',
+						],
+					],
+					'display_type' => [
+						'type' => 'string',
+						'enum' => [
+							'generic',
+						],
+					],
+					'assistant_summary' => [
+						'type' => 'string',
+						'maxLength' => 256,
+					],
+					'extensions' => [
+						'type' => 'object',
+						'properties' => [],
+						'required' => [],
+						'additionalProperties' => false,
+					],
+				],
+				'required' => [
+					'success',
+					'action',
+					'message',
+					'summary',
+					'data',
+					'read_only',
+					'undoable',
+					'result_type',
+					'display_type',
+					'assistant_summary',
+					'extensions',
+				],
+				'additionalProperties' => false,
+			];
+		}
 		if ( 'orders.get_email_history' === $action_name ) {
 			return [
 				'type' => 'object',
@@ -725,6 +953,25 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function canonical_execution_payload( array $execution, $action_name = '' ) {
+		if ( 'orders.get_download_permissions' === ( $action_name ?: ( $execution['action'] ?? '' ) ) ) {
+			$facts = $execution['download_permissions'] ?? ( $execution['data']['download_permissions'] ?? null );
+			$schema = self::execution_output_schema( 'orders.get_download_permissions' )['properties']['data']['properties']['download_permissions'];
+			$valid = is_array( $facts ) && self::email_history_schema_value( $facts, $schema );
+			if ( $valid ) {
+				$page = $facts['pagination'];
+				$expected_next = $page['has_more'] && $page['page'] < 100 ? $page['page'] + 1 : null;
+				$valid = $page['next_page'] === $expected_next && count( $facts['permissions'] ) <= $page['limit'];
+				foreach ( $facts['permissions'] as $permission ) {
+					$valid = $valid && $permission['unlimited_downloads'] === ( null === $permission['downloads_remaining'] );
+				}
+			}
+			$success = true === ( $execution['success'] ?? false ) && $valid;
+			$summary = $success ? 'Observed WooCommerce download permissions only; not a license or proof of file delivery. No download URL is exposed.' : 'Download permissions are unavailable.';
+			return [ 'success' => $success, 'action' => 'orders.get_download_permissions', 'message' => $summary, 'summary' => $summary,
+				'data' => [ 'download_permissions' => $success ? $facts : null ], 'read_only' => true, 'undoable' => false,
+				'result_type' => 'generic', 'display_type' => 'generic', 'assistant_summary' => $summary, 'extensions' => (object) [] ];
+		}
+
 		if ( 'orders.get_email_history' === ( $action_name ?: ( $execution['action'] ?? '' ) ) ) {
 			$facts = $execution['email_history'] ?? ( $execution['data']['email_history'] ?? null );
 			$schema = self::execution_output_schema( 'orders.get_email_history' )['properties']['data']['properties']['email_history'];
