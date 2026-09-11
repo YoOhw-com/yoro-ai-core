@@ -6,6 +6,87 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Orders_Write_Service {
 
+	const DOWNLOAD_REGENERATION_LIMITATIONS = [ 'download_permission_not_license', 'download_url_not_exposed', 'file_delivery_not_verified', 'regeneration_uses_current_product_download_configuration', 'regeneration_resets_permission_consumption_state', 'partial_failure_requires_fresh_reconciliation' ];
+
+	private static function prepare_download_regeneration( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) { return new WP_Error( 'yoro_permission_denied', 'Store management permission is required.' ); }
+		if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'order_id', 'expected_version', 'expected_download_permissions_state', '_yoro_confirmed', '_yoro_preview' ] )
+			|| ! is_int( $params['order_id'] ?? null ) || $params['order_id'] < 1 ) { return new WP_Error( 'invalid_params', 'Supply exactly one order and its current guards.' ); }
+		foreach ( [ 'expected_version', 'expected_download_permissions_state' ] as $field ) {
+			if ( ! is_string( $params[ $field ] ?? null ) || ! preg_match( '/^[a-f0-9]{64}$/D', $params[ $field ] ) ) { return new WP_Error( 'invalid_params', 'Supply the exact current guarded read state.' ); }
+		}
+		foreach ( [ '_yoro_confirmed', '_yoro_preview' ] as $field ) {
+			if ( array_key_exists( $field, $params ) && ! is_bool( $params[ $field ] ) ) { return new WP_Error( 'invalid_params', 'Invalid execution flags.' ); }
+		}
+		try {
+			$order = wc_get_order( $params['order_id'] );
+			if ( ! $order instanceof WC_Order || $order instanceof WC_Order_Refund || $order->get_id() !== $params['order_id'] ) { return new WP_Error( 'order_not_found', 'The selected order was not found.' ); }
+			$state = YoRo_Orders_Read_Service::download_regeneration_state( $order );
+			$guard = $state['guard'];
+			if ( ! $guard['eligible'] || ! hash_equals( $guard['current_version'], $params['expected_version'] )
+				|| ! hash_equals( $guard['state_token'], $params['expected_download_permissions_state'] ) ) { return new WP_Error( 'download_regeneration_guard_conflict', 'A fresh eligible orders.get_download_permissions read is required before confirmation.' ); }
+			return [ 'order' => $order, 'state' => $state ];
+		} catch ( Throwable $error ) { return new WP_Error( 'download_regeneration_unavailable', 'The current regeneration state is unavailable.' ); }
+	}
+
+	public static function preview_regenerate_download_permissions( $params ) {
+		$prepared = self::prepare_download_regeneration( $params );
+		if ( is_wp_error( $prepared ) ) { return $prepared; }
+		$guard = $prepared['state']['guard'];
+		$summary = 'Delete and recreate all order download permissions from current product files. Counters, quota and dates reset; historical grants may disappear. Software licenses are unchanged; file delivery is not verified.';
+		return [ 'type' => 'write', 'will_execute' => false, 'blocked' => false, 'changes_store' => true, 'order_id' => $guard['order_id'],
+			'permission_count' => $guard['permission_count'], 'source_file_grant_count' => $guard['source_file_grant_count'], 'message' => $summary, 'summary' => $summary ];
+	}
+
+	public static function regenerate_download_permissions( $params ) {
+		if ( true !== ( $params['_yoro_confirmed'] ?? false ) ) { return new WP_Error( 'confirmation_required', 'Explicit claimed confirmation is required.' ); }
+		$prepared = self::prepare_download_regeneration( $params );
+		if ( is_wp_error( $prepared ) ) { return $prepared; }
+		$before = $prepared['state'];
+		$id = $prepared['order']->get_id();
+		$facts = [ 'order_id' => $id, 'status' => 'reconciliation_required', 'before_permission_count' => $before['guard']['permission_count'],
+			'after_permission_count' => null, 'source_file_grant_count' => $before['guard']['source_file_grant_count'], 'current_version' => null,
+			'next_action' => 'orders.get_download_permissions', 'limitations' => self::DOWNLOAD_REGENERATION_LIMITATIONS ];
+		try {
+			$store = WC_Data_Store::load( 'customer-download' );
+			$started = time();
+			$store->delete_by_order_id( $id );
+			wc_downloadable_product_permissions( $id, true );
+			$order = wc_get_order( $id );
+			$after = YoRo_Orders_Read_Service::download_regeneration_state( $order );
+			if ( ! self::verify_download_regeneration( $before, $after, $started ) ) { throw new UnexpectedValueException(); }
+			$facts['status'] = 'regenerated'; $facts['after_permission_count'] = $after['guard']['permission_count'];
+			$facts['current_version'] = $after['guard']['current_version']; $facts['next_action'] = null;
+			return [ 'success' => true, 'action' => 'orders.regenerate_download_permissions', 'download_permissions_regeneration' => $facts,
+				'message' => 'WooCommerce permissions regenerated and verified. No license or file delivery was verified.', 'read_only' => false, 'undoable' => false ];
+		} catch ( Throwable $error ) {
+			return [ 'success' => false, 'action' => 'orders.regenerate_download_permissions', 'download_permissions_regeneration' => $facts,
+				'message' => 'Regeneration outcome requires reconciliation. Read orders.get_download_permissions before any new confirmation; do not retry this operation.', 'read_only' => false, 'undoable' => false ];
+		}
+	}
+
+	private static function verify_download_regeneration( $before, $after, $started ) {
+		if ( empty( $after['guard']['eligible'] ) || $before['sources'] !== $after['sources'] || $before['eligibility'] !== $after['eligibility']
+			|| $before['guard']['current_version'] !== $after['guard']['current_version'] || count( $after['permissions'] ) !== count( $before['sources'] ) ) { return false; }
+		$expected = [];
+		foreach ( $before['sources'] as $source ) {
+			$expiry = $source['download_expiry'];
+			$from = $before['eligibility']['date_completed'] ?: gmdate( 'Y-m-d H:i:s', $started );
+			$expected[] = [ 'product_id' => $source['product_id'], 'download_id' => $source['download_id'],
+				'downloads_remaining' => $source['download_limit'] < 0 ? null : $source['download_limit'] * $source['quantity'],
+				'unlimited_downloads' => $source['download_limit'] < 0, 'download_count' => 0,
+				'access_expires' => $expiry > 0 ? gmdate( 'Y-m-d\T00:00:00\Z', strtotime( $from . ' + ' . $expiry . ' DAY' ) ) : null ];
+		}
+		$actual = [];
+		foreach ( $after['permissions'] as $permission ) {
+			if ( ! in_array( $permission['access_granted'], [ gmdate( 'Y-m-d\T00:00:00\Z', $started ), gmdate( 'Y-m-d\T00:00:00\Z' ) ], true ) ) { return false; }
+			unset( $permission['access_granted'] ); $actual[] = $permission;
+		}
+		$encode = static function ( $row ) { ksort( $row ); return wp_json_encode( $row ); };
+		$expected = array_map( $encode, $expected ); $actual = array_map( $encode, $actual ); sort( $expected ); sort( $actual );
+		return $expected === $actual;
+	}
+
 	const YORO_NOTE_META_KEY = '_yoro_note_origin';
 	const YORO_NOTE_META_VALUE = 'chat';
 

@@ -92,6 +92,7 @@ try {
 	$assert( [
 		[ 'order_id' => $id, 'orderby' => 'permission_id', 'order' => 'ASC', 'return' => 'objects', 'limit' => 1, 'page' => 100 ],
 		[ 'order_id' => $id, 'orderby' => 'permission_id', 'order' => 'ASC', 'return' => 'objects', 'limit' => 1, 'page' => 101 ],
+		[ 'order_id' => $id, 'orderby' => 'permission_id', 'order' => 'ASC', 'return' => 'objects', 'limit' => 501, 'page' => 1 ],
 	] === YoRo_Download_Permission_Test_Store::$calls, 'Only exact-order bounded deterministic owner queries are permitted.' );
 	$bad_id = clone $a; $bad_id->set_download_id( 'https://secret.test/file?key=token' );
 	foreach ( [ [ [ $d ], [] ], [ [ $a ], [ $d ] ], [ [ $bad_id ], [] ], [ [ new stdClass() ], [] ], [ [ $a, $b ], [] ], [ [], [ $a, $b ] ], [ new RuntimeException( 'private@example.test SQL secret' ), [] ], [ null, [] ] ] as $responses ) {

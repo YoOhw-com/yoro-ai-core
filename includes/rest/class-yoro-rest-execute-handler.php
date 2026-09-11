@@ -34,7 +34,7 @@ class YoRo_REST_Execute_Handler {
 		$pending_operation = [];
 		$execution_permit = '';
 		$claimed_execution_context = null;
-		$direct_confirmation_allowed = '' === $pending_operation_token && 'orders.send_transactional_email' !== $action;
+		$direct_confirmation_allowed = '' === $pending_operation_token && ! in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions' ], true );
 
 		if ( $confirm && '' !== $conversation_id && '' !== $pending_operation_token ) {
 			$stored_action_state = YoRo_REST_Conversation_Action_Coordinator::get_pending_operation_state(
@@ -274,13 +274,14 @@ class YoRo_REST_Execute_Handler {
 			&& $conversation_id === ( $claim['conversation_id'] ?? null ) && $pending_operation_token === ( $claim['pending_operation_token'] ?? null ) ) {
 			$native_steps = 'single' === ( $plan['type'] ?? '' ) ? [ $plan ] : ( $plan['steps'] ?? [] );
 			$native_steps = array_values( array_filter( (array) $native_steps, static function ( $step ) {
-				return is_array( $step ) && 'orders.send_transactional_email' === ( $step['action'] ?? '' );
+				return is_array( $step ) && in_array( $step['action'] ?? '', [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions' ], true );
 			} ) );
 			if ( 1 === count( $native_steps ) ) {
 				$approved_params = $native_steps[0]['params'] ?? [];
+				$approved_action = $native_steps[0]['action'];
 				$used = false;
-				$claimed_execution_context = static function ( $action_name, $execution_params ) use ( $approved_params, &$used ) {
-					if ( $used || 'orders.send_transactional_email' !== $action_name || $execution_params !== $approved_params ) {
+				$claimed_execution_context = static function ( $action_name, $execution_params ) use ( $approved_params, $approved_action, &$used ) {
+					if ( $used || $approved_action !== $action_name || $execution_params !== $approved_params ) {
 						return false;
 					}
 					$used = true;

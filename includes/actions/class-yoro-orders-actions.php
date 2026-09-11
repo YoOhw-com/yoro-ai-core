@@ -7,6 +7,23 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Orders_Actions {
 
 	public static function register() {
+		YoRo_Action_Registry::register( 'orders.regenerate_download_permissions', [
+			'label' => __( 'Regenerate order download permissions', 'yoro-ai-core' ),
+			'description' => __( 'Delete and recreate exact-order permissions from current product files; counters and dates reset. Requires a fresh guarded read and separate claimed confirmation.', 'yoro-ai-core' ),
+			'category' => 'orders', 'permission' => 'manage_woocommerce',
+			'callback' => [ 'YoRo_Orders_Write_Service', 'regenerate_download_permissions' ],
+			'preview_callback' => [ 'YoRo_Orders_Write_Service', 'preview_regenerate_download_permissions' ],
+			'risk_level' => 'high', 'write_action' => true, 'requires_confirmation' => true, 'reversibility' => 'none',
+			'idempotency_strategy' => 'operation_journal', 'concurrency_strategy' => 'optimistic_version',
+			'input_schema' => [ 'order_id' => 'integer', 'expected_version' => 'string', 'expected_download_permissions_state' => 'string' ],
+			'canonical_input_schema' => [
+				'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$', 'minLength' => 64, 'maxLength' => 64 ],
+				'expected_download_permissions_state' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$', 'minLength' => 64, 'maxLength' => 64 ],
+			],
+			'required_params' => [ 'order_id', 'expected_version', 'expected_download_permissions_state' ], 'max_items' => 1, 'max_targets' => 1,
+			'target_type' => 'order', 'supports_bulk' => false, 'capabilities' => [ 'orders', 'write', 'downloads' ],
+		] );
 		YoRo_Action_Registry::register( 'orders.get_download_permissions', [
 			'label' => __( 'Get order download permissions', 'yoro-ai-core' ),
 			'description' => __( 'Observe bounded WooCommerce download permissions for one order. No URL, license or file delivery.', 'yoro-ai-core' ),

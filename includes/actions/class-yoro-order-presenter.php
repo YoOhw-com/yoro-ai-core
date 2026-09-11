@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Order_Presenter {
 
-	const DOWNLOAD_PERMISSION_LIMITATIONS = [ 'download_permission_not_license', 'download_url_not_exposed', 'file_delivery_not_verified', 'permission_regeneration_not_performed', 'live_view_not_snapshot', 'empty_means_no_permission_rows_observed', 'current_product_file_metadata_not_observed' ];
+	const DOWNLOAD_PERMISSION_LIMITATIONS = [ 'download_permission_not_license', 'download_url_not_exposed', 'file_delivery_not_verified', 'permission_regeneration_not_performed', 'live_view_not_snapshot', 'empty_means_no_permission_rows_observed', 'current_product_file_display_metadata_not_observed' ];
 
 	/** Getter allowlist excludes customer identity, order keys, URLs and metadata. */
 	public static function format_download_permission( $permission, $order_id ) {
