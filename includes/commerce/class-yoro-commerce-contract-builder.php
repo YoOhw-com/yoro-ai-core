@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:e8c33c865a073b8ea133bc9db271b184a7e7928b5aa3cd9a0fd852ba8eeada95';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:84b9b07dcbb3a786a065fb3804b11ec962fcc85946abff2791ac85ddf000a0a6';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -535,7 +535,7 @@ class YoRo_Commerce_Contract_Builder {
 														'permission_regeneration_not_performed',
 														'live_view_not_snapshot',
 														'empty_means_no_permission_rows_observed',
-														'current_product_file_metadata_not_observed',
+														'current_product_file_display_metadata_not_observed',
 													],
 												],
 												'minItems' => 7,
@@ -546,6 +546,73 @@ class YoRo_Commerce_Contract_Builder {
 										'required' => [
 											'source',
 											'limitations',
+										],
+										'additionalProperties' => false,
+									],
+									'regeneration_guard' => [
+										'type' => 'object',
+										'properties' => [
+											'order_id' => [
+												'type' => 'integer',
+												'minimum' => 1,
+											],
+											'eligible' => [
+												'type' => 'boolean',
+											],
+											'state_token' => [
+												'type' => [
+													'string',
+													'null',
+												],
+												'pattern' => '^[a-f0-9]{64}$',
+												'minLength' => 64,
+												'maxLength' => 64,
+											],
+											'current_version' => [
+												'type' => [
+													'string',
+													'null',
+												],
+												'pattern' => '^[a-f0-9]{64}$',
+												'minLength' => 64,
+												'maxLength' => 64,
+											],
+											'blocked_reason' => [
+												'type' => 'string',
+												'enum' => [
+													'eligible',
+													'ineligible_order',
+													'no_source_grants',
+													'unsafe_state',
+													'permission_cap_exceeded',
+													'source_cap_exceeded',
+												],
+											],
+											'permission_count' => [
+												'type' => [
+													'integer',
+													'null',
+												],
+												'minimum' => 0,
+												'maximum' => 500,
+											],
+											'source_file_grant_count' => [
+												'type' => [
+													'integer',
+													'null',
+												],
+												'minimum' => 0,
+												'maximum' => 200,
+											],
+										],
+										'required' => [
+											'order_id',
+											'eligible',
+											'state_token',
+											'current_version',
+											'blocked_reason',
+											'permission_count',
+											'source_file_grant_count',
 										],
 										'additionalProperties' => false,
 									],
@@ -568,6 +635,177 @@ class YoRo_Commerce_Contract_Builder {
 						'type' => 'boolean',
 						'enum' => [
 							true,
+						],
+					],
+					'undoable' => [
+						'type' => 'boolean',
+						'enum' => [
+							false,
+						],
+					],
+					'result_type' => [
+						'type' => 'string',
+						'enum' => [
+							'generic',
+						],
+					],
+					'display_type' => [
+						'type' => 'string',
+						'enum' => [
+							'generic',
+						],
+					],
+					'assistant_summary' => [
+						'type' => 'string',
+						'maxLength' => 256,
+					],
+					'extensions' => [
+						'type' => 'object',
+						'properties' => [],
+						'required' => [],
+						'additionalProperties' => false,
+					],
+				],
+				'required' => [
+					'success',
+					'action',
+					'message',
+					'summary',
+					'data',
+					'read_only',
+					'undoable',
+					'result_type',
+					'display_type',
+					'assistant_summary',
+					'extensions',
+				],
+				'additionalProperties' => false,
+			];
+		}
+		if ( 'orders.regenerate_download_permissions' === $action_name ) {
+			return [
+				'type' => 'object',
+				'properties' => [
+					'success' => [
+						'type' => 'boolean',
+					],
+					'action' => [
+						'type' => 'string',
+						'enum' => [
+							'orders.regenerate_download_permissions',
+						],
+					],
+					'message' => [
+						'type' => 'string',
+						'maxLength' => 256,
+					],
+					'summary' => [
+						'type' => 'string',
+						'maxLength' => 256,
+					],
+					'data' => [
+						'type' => 'object',
+						'properties' => [
+							'download_permissions_regeneration' => [
+								'type' => [
+									'object',
+									'null',
+								],
+								'properties' => [
+									'order_id' => [
+										'type' => 'integer',
+										'minimum' => 1,
+									],
+									'status' => [
+										'type' => 'string',
+										'enum' => [
+											'regenerated',
+											'reconciliation_required',
+										],
+									],
+									'before_permission_count' => [
+										'type' => [
+											'integer',
+											'null',
+										],
+										'minimum' => 0,
+										'maximum' => 500,
+									],
+									'after_permission_count' => [
+										'type' => [
+											'integer',
+											'null',
+										],
+										'minimum' => 0,
+										'maximum' => 500,
+									],
+									'source_file_grant_count' => [
+										'type' => [
+											'integer',
+											'null',
+										],
+										'minimum' => 0,
+										'maximum' => 200,
+									],
+									'current_version' => [
+										'type' => [
+											'string',
+											'null',
+										],
+										'pattern' => '^[a-f0-9]{64}$',
+										'minLength' => 64,
+										'maxLength' => 64,
+									],
+									'next_action' => [
+										'type' => [
+											'string',
+											'null',
+										],
+										'enum' => [
+											'orders.get_download_permissions',
+											null,
+										],
+									],
+									'limitations' => [
+										'type' => 'array',
+										'items' => [
+											'type' => 'string',
+											'enum' => [
+												'download_permission_not_license',
+												'download_url_not_exposed',
+												'file_delivery_not_verified',
+												'regeneration_uses_current_product_download_configuration',
+												'regeneration_resets_permission_consumption_state',
+												'partial_failure_requires_fresh_reconciliation',
+											],
+										],
+										'minItems' => 6,
+										'maxItems' => 6,
+										'uniqueItems' => true,
+									],
+								],
+								'required' => [
+									'order_id',
+									'status',
+									'before_permission_count',
+									'after_permission_count',
+									'source_file_grant_count',
+									'current_version',
+									'next_action',
+									'limitations',
+								],
+								'additionalProperties' => false,
+							],
+						],
+						'required' => [
+							'download_permissions_regeneration',
+						],
+						'additionalProperties' => false,
+					],
+					'read_only' => [
+						'type' => 'boolean',
+						'enum' => [
+							false,
 						],
 					],
 					'undoable' => [
@@ -953,6 +1191,23 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function canonical_execution_payload( array $execution, $action_name = '' ) {
+		if ( 'orders.regenerate_download_permissions' === ( $action_name ?: ( $execution['action'] ?? '' ) ) ) {
+			$facts = $execution['download_permissions_regeneration'] ?? ( $execution['data']['download_permissions_regeneration'] ?? null );
+			$schema = self::execution_output_schema( 'orders.regenerate_download_permissions' )['properties']['data']['properties']['download_permissions_regeneration'];
+			$valid = is_array( $facts ) && self::email_history_schema_value( $facts, $schema );
+			if ( $valid ) {
+				$regenerated = 'regenerated' === $facts['status'];
+				$valid = $regenerated ? ( null === $facts['next_action'] && null !== $facts['current_version'] && null !== $facts['before_permission_count']
+					&& $facts['after_permission_count'] === $facts['source_file_grant_count'] && $facts['after_permission_count'] > 0 )
+					: ( 'orders.get_download_permissions' === $facts['next_action'] && null === $facts['current_version'] && null === $facts['after_permission_count'] );
+			}
+			$success = true === ( $execution['success'] ?? false ) && $valid && 'regenerated' === $facts['status'];
+			$summary = $success ? 'WooCommerce permissions regenerated and verified. No license or file delivery was verified.' : 'Regeneration requires reconciliation. Read orders.get_download_permissions before any new confirmation; do not retry this operation.';
+			return [ 'success' => $success, 'action' => 'orders.regenerate_download_permissions', 'message' => $summary, 'summary' => $summary,
+				'data' => [ 'download_permissions_regeneration' => $valid && ( $success || 'reconciliation_required' === $facts['status'] ) ? $facts : null ],
+				'read_only' => false, 'undoable' => false, 'result_type' => 'generic', 'display_type' => 'generic', 'assistant_summary' => $summary, 'extensions' => (object) [] ];
+		}
+
 		if ( 'orders.get_download_permissions' === ( $action_name ?: ( $execution['action'] ?? '' ) ) ) {
 			$facts = $execution['download_permissions'] ?? ( $execution['data']['download_permissions'] ?? null );
 			$schema = self::execution_output_schema( 'orders.get_download_permissions' )['properties']['data']['properties']['download_permissions'];
@@ -961,6 +1216,13 @@ class YoRo_Commerce_Contract_Builder {
 				$page = $facts['pagination'];
 				$expected_next = $page['has_more'] && $page['page'] < 100 ? $page['page'] + 1 : null;
 				$valid = $page['next_page'] === $expected_next && count( $facts['permissions'] ) <= $page['limit'];
+				if ( isset( $facts['regeneration_guard'] ) ) {
+					$guard = $facts['regeneration_guard'];
+					$valid = $valid && $guard['order_id'] === $facts['order_id']
+						&& ( $guard['eligible'] ? ( null !== $guard['state_token'] && null !== $guard['current_version'] && 'eligible' === $guard['blocked_reason']
+							&& null !== $guard['permission_count'] && $guard['source_file_grant_count'] > 0 )
+							: ( null === $guard['state_token'] && 'eligible' !== $guard['blocked_reason'] ) );
+				}
 				foreach ( $facts['permissions'] as $permission ) {
 					$valid = $valid && $permission['unlimited_downloads'] === ( null === $permission['downloads_remaining'] );
 				}

@@ -6,6 +6,69 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Orders_Read_Service {
 
+	/** Complete safe state for concurrency binding. No permission IDs or secret-bearing getters. */
+	public static function download_regeneration_state( WC_Order $order ) {
+		$guard = [ 'order_id' => $order->get_id(), 'eligible' => false, 'state_token' => null, 'current_version' => null,
+			'blocked_reason' => 'unsafe_state', 'permission_count' => null, 'source_file_grant_count' => null ];
+		$result = [ 'guard' => $guard, 'permissions' => [], 'sources' => [] ];
+		try {
+			if ( $order instanceof WC_Order_Refund || $order->get_id() < 1 ) { return $result; }
+			$guard['current_version'] = YoRo_Order_Presenter::order_version( $order );
+			$rows = WC_Data_Store::load( 'customer-download' )->get_downloads( [ 'order_id' => $order->get_id(), 'orderby' => 'permission_id', 'order' => 'ASC', 'return' => 'objects', 'limit' => 501, 'page' => 1 ] );
+			if ( ! is_array( $rows ) ) { throw new UnexpectedValueException(); }
+			if ( count( $rows ) > 500 ) { $guard['blocked_reason'] = 'permission_cap_exceeded'; return [ 'guard' => $guard ] + $result; }
+			$permissions = [];
+			$previous_id = 0;
+			foreach ( $rows as $row ) {
+				// Row IDs are used only to reject duplicate/out-of-order owner responses, never token material or output.
+				if ( ! $row instanceof WC_Customer_Download || $row->get_id() <= $previous_id ) { throw new UnexpectedValueException(); }
+				$previous_id = $row->get_id();
+				$fact = YoRo_Order_Presenter::format_download_permission( $row, $order->get_id() );
+				if ( null === $fact ) { throw new UnexpectedValueException(); }
+				$permissions[] = $fact;
+			}
+			$guard['permission_count'] = count( $permissions );
+			$items = $order->get_items( 'line_item' );
+			if ( ! is_array( $items ) || count( $items ) > 200 ) { throw new UnexpectedValueException(); }
+			$sources = [];
+			foreach ( $items as $item ) {
+				if ( ! $item instanceof WC_Order_Item_Product ) { throw new UnexpectedValueException(); }
+				$product = $item->get_product();
+				if ( ! $product || ! $product->exists() ) { throw new UnexpectedValueException(); }
+				if ( ! $product->is_downloadable() ) { continue; }
+				$quantity = $item->get_quantity();
+				$limit = $product->get_download_limit();
+				$expiry = $product->get_download_expiry();
+				if ( ! is_int( $quantity ) || $quantity < 1 || $quantity > 1000000 || ! is_int( $limit ) || $limit < -1 || $limit > 1000000
+					|| ! is_int( $expiry ) || $expiry < -1 || $expiry > 36500 ) { throw new UnexpectedValueException(); }
+				$files = $product->get_downloads();
+				if ( ! is_array( $files ) ) { throw new UnexpectedValueException(); }
+				foreach ( $files as $download_id => $file ) {
+					if ( count( $sources ) === 200 ) { $guard['blocked_reason'] = 'source_cap_exceeded'; return [ 'guard' => $guard ] + $result; }
+					if ( ! is_string( $download_id ) || ! preg_match( '/^[A-Za-z0-9_-]{1,64}$/D', $download_id ) || ! $file instanceof WC_Product_Download || $file->get_id() !== $download_id ) { throw new UnexpectedValueException(); }
+					$sources[] = [ 'item_id' => $item->get_id(), 'product_id' => $product->get_id(), 'variation_id' => $item->get_variation_id(),
+						'quantity' => $quantity, 'download_id' => $download_id, 'download_limit' => $limit, 'download_expiry' => $expiry ];
+				}
+			}
+			$guard['source_file_grant_count'] = count( $sources );
+			$grant_setting = get_option( 'woocommerce_downloads_grant_access_after_payment' );
+			$eligible = $order->is_download_permitted() && ( $order->has_status( 'completed' ) || ( $order->has_status( 'processing' ) && 'yes' === $grant_setting ) );
+			$guard['blocked_reason'] = ! $eligible ? 'ineligible_order' : ( ! $sources ? 'no_source_grants' : 'eligible' );
+			$guard['eligible'] = $eligible && (bool) $sources;
+			$completed = $order->get_date_completed();
+			$eligibility = [ 'status' => $order->get_status(), 'grant_after_payment' => 'yes' === $grant_setting, 'date_completed' => $completed ? $completed->format( 'Y-m-d' ) : null ];
+			if ( $guard['eligible'] ) {
+				$material = [ 'protocol' => 'yoro-download-regeneration-v1', 'blog_id' => get_current_blog_id(), 'order_id' => $order->get_id(),
+					'version' => $guard['current_version'], 'eligibility' => $eligibility, 'permissions' => $permissions, 'sources' => $sources ];
+				$guard['state_token'] = hash_hmac( 'sha256', wp_json_encode( $material ), wp_salt( 'auth' ) );
+			}
+			return [ 'guard' => $guard, 'permissions' => $permissions, 'sources' => $sources, 'eligibility' => $eligibility ];
+		} catch ( Throwable $error ) {
+			$guard['eligible'] = false; $guard['state_token'] = null; $guard['blocked_reason'] = 'unsafe_state';
+			return [ 'guard' => $guard ] + $result;
+		}
+	}
+
 	/** Read the owner store only; page and one-row lookahead keep offsets independent. */
 	public static function get_download_permissions( $params ) {
 		if ( ! current_user_can( 'yoro_view_store_data' ) ) {
@@ -51,6 +114,7 @@ class YoRo_Orders_Read_Service {
 			}
 			$has_more = 1 === count( $probe );
 			$facts = [ 'order_id' => $params['order_id'], 'permissions' => $permissions,
+				'regeneration_guard' => self::download_regeneration_state( $order )['guard'],
 				'pagination' => [ 'limit' => $limit, 'page' => $page, 'has_more' => $has_more, 'next_page' => $has_more && $page < 100 ? $page + 1 : null ],
 				'coverage' => [ 'source' => 'woocommerce_customer_download', 'limitations' => YoRo_Order_Presenter::DOWNLOAD_PERMISSION_LIMITATIONS ],
 			];

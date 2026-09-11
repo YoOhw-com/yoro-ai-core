@@ -668,6 +668,39 @@ try {
 		if ( $b3_order instanceof WC_Order ) { $b3_order->delete( true ); }
 	}
 
+	// C2 remote authority must originate at this validated journal-owning call site.
+	$c2_product = new WC_Product_Simple(); $c2_order = null; $c2_operations = [];
+	try {
+		$c2_file = new WC_Product_Download(); $c2_file->set_id( 'c2-file' ); $c2_file->set_name( 'Fixture' ); $c2_file->set_file( 'https://example.invalid/fixture.zip' );
+		$c2_product->set_name( 'C2 runtime fixture' ); $c2_product->set_downloadable( true ); $c2_product->set_downloads( [ $c2_file ] ); $c2_product->set_download_limit( -1 ); $c2_product->set_download_expiry( -1 ); $c2_product->save();
+		foreach ( [ false, true ] as $c2_fail ) {
+			$c2_order = wc_create_order(); $c2_order->add_product( $c2_product, 1 ); $c2_order->set_status( 'completed' ); $c2_order->save();
+			WC_Data_Store::load( 'customer-download' )->delete_by_order_id( $c2_order->get_id() );
+			$c2_guard = YoRo_Orders_Read_Service::download_regeneration_state( wc_get_order( $c2_order->get_id() ) )['guard'];
+			$c2_operation = $operation; $c2_operation['envelope_id'] = 'envelope_' . hash( 'sha256', wp_generate_uuid4() );
+			$c2_operation['idempotency_key'] = 'operation_' . hash( 'sha256', wp_generate_uuid4() ); $c2_operation['action'] = 'orders.regenerate_download_permissions';
+			$c2_operation['params'] = [ 'order_id' => $c2_order->get_id(), 'expected_version' => $c2_guard['current_version'], 'expected_download_permissions_state' => $c2_guard['state_token'] ];
+			$c2_operation['actor']['permissions'] = [ YoRo_Action_Registry::get( 'orders.regenerate_download_permissions' )['permission'] ]; $c2_operations[] = $c2_operation;
+			$c2_client = new YoRo_Connector_Smoke_Client(); $c2_client->claim = $client->claim; $c2_client->claim['delivery']['operations'] = [ $c2_operation ];
+			$c2_calls = 0; $c2_probe = static function ( $name ) use ( &$c2_calls ) { if ( 'orders.regenerate_download_permissions' === $name ) { $c2_calls++; } };
+			$c2_throw = static function () { throw new RuntimeException( 'private fixture failure' ); };
+			add_action( 'yoro_before_action_execute', $c2_probe ); if ( $c2_fail ) { add_filter( 'woocommerce_downloadable_file_permission', $c2_throw ); }
+			try {
+				( new YoRo_Connector_Runtime( $c2_client ) )->run_once();
+				$c2_result = $c2_client->results[0]['payload'] ?? [];
+				if ( ( $c2_fail ? 'failed' : 'executed' ) !== ( $c2_result['status'] ?? '' ) || 1 !== $c2_calls ) { fwrite( STDERR, wp_json_encode( [ 'c2_calls' => $c2_calls, 'status' => $c2_result['status'] ?? null, 'error' => $c2_result['error'] ?? null ] ) . PHP_EOL ); }
+				$assert( ( $c2_fail ? 'failed' : 'executed' ) === ( $c2_result['status'] ?? '' ), 'C2 validated remote runtime preserves verified success or ambiguous failure.' );
+				( new YoRo_Connector_Runtime( $c2_client ) )->run_once();
+				$assert( 1 === $c2_calls && 2 === count( $c2_client->results ) && wp_json_encode( $c2_result ) === wp_json_encode( $c2_client->results[1]['payload'] ), 'C2 journal replay never repeats destructive execution, including partial failure.' );
+			} finally { remove_action( 'yoro_before_action_execute', $c2_probe ); remove_filter( 'woocommerce_downloadable_file_permission', $c2_throw ); }
+			WC_Data_Store::load( 'customer-download' )->delete_by_order_id( $c2_order->get_id() ); $c2_order->delete( true ); $c2_order = null;
+		}
+	} finally {
+		foreach ( $c2_operations as $c2_operation ) { YoRo_Connector_Execution_Journal::clear( $c2_operation ); }
+		if ( $c2_order instanceof WC_Order ) { WC_Data_Store::load( 'customer-download' )->delete_by_order_id( $c2_order->get_id() ); $c2_order->delete( true ); }
+		$c2_product->delete( true );
+	}
+
 	// Native B4 replay tests require a disposable database and a process-level mail sink.
 	if ( '1' === getenv( 'YORO_NATIVE_EMAIL_NO_DELIVERY_TEST' ) ) {
 		if ( '/usr/bin/true' !== ini_get( 'sendmail_path' ) ) {

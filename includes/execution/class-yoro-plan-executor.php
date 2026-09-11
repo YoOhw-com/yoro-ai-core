@@ -16,6 +16,12 @@ class YoRo_Plan_Executor {
 		}
 
 		$type = sanitize_key( $plan['type'] );
+		if ( 'single' !== $type ) {
+			foreach ( (array) ( $plan['steps'] ?? [] ) as $step ) {
+				if ( 'orders.regenerate_download_permissions' === ( $step['action'] ?? '' ) ) { return new WP_Error( 'regeneration_separate_confirmation_required', 'Download regeneration requires its own separate confirmation.' ); }
+			}
+		}
+
 
 		do_action(
 			'yoro_before_plan_execute',
@@ -43,7 +49,7 @@ class YoRo_Plan_Executor {
 
 	private static function action_context( $action, $context ) {
 		// Plan/captured context is caller-controlled and cannot assert journal or permit ownership.
-		return 'orders.send_transactional_email' === $action ? [] : $context;
+		return in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions' ], true ) ? [] : $context;
 	}
 
 	private static function execute_single( $plan, $confirm, $preview, $claimed_execution_context ) {
@@ -300,7 +306,7 @@ class YoRo_Plan_Executor {
 				? max( 1, absint( $retry['max_attempts'] ) )
 				: 1;
 
-			if ( 'orders.send_transactional_email' === $action ) {
+			if ( in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions' ], true ) ) {
 				$max_attempts = 1; // External communication is never blindly retried by a sequence.
 			}
 			$attempt = 0;
