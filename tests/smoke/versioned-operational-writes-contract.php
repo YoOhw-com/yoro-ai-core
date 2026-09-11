@@ -40,7 +40,8 @@ $registry = YoRo_Action_Registry::all();
 
 foreach ( [
 	'orders.update_addresses' => 'optimistic_version',
-	'orders.update_status' => 'per_item_optimistic_version',
+		'orders.update_status' => 'per_item_optimistic_version',
+		'products.update_pricing' => 'optimistic_version',
 	'products.update_stock' => 'optimistic_version',
 	'products.update_stock_status' => 'optimistic_version',
 ] as $action_name => $concurrency_strategy ) {
@@ -61,12 +62,13 @@ foreach ( $catalog as $item ) {
 	}
 }
 
-foreach ( [ 'orders.update_addresses', 'orders.update_status', 'products.update_stock', 'products.update_stock_status' ] as $action_name ) {
+	foreach ( [ 'orders.update_addresses', 'orders.update_status', 'products.update_pricing', 'products.update_stock', 'products.update_stock_status' ] as $action_name ) {
 	$assert( isset( $catalog_by_name[ $action_name ] ), sprintf( '%s must be published to Chat only after its safety contract is complete.', $action_name ) );
 }
 
 $assert( ! isset( $catalog_by_name['orders.restore_statuses'] ), 'Order recovery must remain hidden from AI selection.' );
-$assert( ! isset( $catalog_by_name['products.restore_stock_state'] ), 'Product recovery must remain hidden from AI selection.' );
+	$assert( ! isset( $catalog_by_name['products.restore_stock_state'] ), 'Product recovery must remain hidden from AI selection.' );
+	$assert( ! isset( $catalog_by_name['products.restore_pricing_state'] ), 'Pricing recovery must remain hidden from AI selection.' );
 
 global $wpdb;
 

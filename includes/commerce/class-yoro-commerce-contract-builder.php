@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:54a04f15e52f974a4d343ddc947dbfe690bdf7a340383440990128971b0394ce';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:d8dbb3f5e7116b4ae7bb5f5948bda83c29f7e017dca19107a9489354da40cbda';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1483,6 +1483,17 @@ class YoRo_Commerce_Contract_Builder {
 			], [ 'product_id', 'stock_quantity', 'stock_status', 'manage_stock', 'current_version', 'stock_delta', 'previous_stock_quantity' ] );
 		}
 
+		if ( 'products.update_pricing' === $action_name ) {
+			return self::closed_object_schema( [
+				'product_id' => [ 'type' => 'integer' ],
+				'previous_regular_price' => [ 'type' => 'string' ],
+				'regular_price' => [ 'type' => 'string' ],
+				'active_price' => [ 'type' => 'string' ],
+				'currency' => [ 'type' => 'string' ],
+				'current_version' => [ 'type' => 'string' ],
+			], [ 'product_id', 'previous_regular_price', 'regular_price', 'active_price', 'currency', 'current_version' ] );
+		}
+
 		if ( 'products.update_stock' === $action_name ) {
 			return self::closed_object_schema(
 				[
@@ -2329,7 +2340,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_write_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.update_addresses', 'orders.update_status', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
+			[ 'orders.update_addresses', 'orders.update_status', 'products.update_pricing', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
 			true
 		);
 	}
@@ -2365,6 +2376,16 @@ class YoRo_Commerce_Contract_Builder {
 			foreach ( [ 'product_id', 'stock_quantity', 'stock_status', 'manage_stock', 'current_version', 'stock_delta', 'previous_stock_quantity' ] as $key ) {
 				if ( array_key_exists( $key, $execution ) ) { $data[ $key ] = $execution[ $key ]; }
 			}
+			return $data;
+		}
+		if ( 'products.update_pricing' === $action_name ) {
+			$data = [];
+			foreach ( [ 'product_id', 'previous_regular_price', 'regular_price', 'active_price', 'currency', 'current_version' ] as $key ) {
+				if ( array_key_exists( $key, $execution ) ) {
+					$data[ $key ] = $execution[ $key ];
+				}
+			}
+
 			return $data;
 		}
 		$data = [

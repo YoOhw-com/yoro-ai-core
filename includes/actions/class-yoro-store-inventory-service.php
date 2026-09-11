@@ -6,6 +6,127 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Store_Inventory_Service {
 
+	public static function prepare_product_pricing_update( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return new WP_Error( 'yoro_permission_denied', 'Pricing updates require manage_woocommerce.' );
+		}
+
+		$params = is_array( $params ) ? $params : [];
+		$unknown = array_diff( array_keys( $params ), [ 'product_id', 'regular_price', 'expected_version', '_yoro_confirmed', '_yoro_preview' ] );
+		if ( $unknown || ! is_int( $params['product_id'] ?? null ) || $params['product_id'] <= 0
+			|| ! is_string( $params['regular_price'] ?? null ) || ! self::is_bounded_regular_price( $params['regular_price'], false )
+			|| ! is_string( $params['expected_version'] ?? null ) || ! preg_match( '/^[a-f0-9]{64}$/D', $params['expected_version'] ) ) {
+			return new WP_Error( 'invalid_product_pricing_update', 'Use one product ID, one bounded non-negative decimal regular price and its current version.' );
+		}
+
+		clean_post_cache( $params['product_id'] );
+		$product = function_exists( 'wc_get_product' ) ? wc_get_product( $params['product_id'] ) : false;
+		$eligibility = self::validate_product_pricing_eligibility( $product );
+		if ( is_wp_error( $eligibility ) ) {
+			return $eligibility;
+		}
+
+		$version = self::validate_product_version( $product, $params );
+		if ( is_wp_error( $version ) ) {
+			return $version;
+		}
+
+		$normalized = self::normalize_store_regular_price( $params['regular_price'] );
+		if ( is_wp_error( $normalized ) ) {
+			return $normalized;
+		}
+
+		$current_regular_price = (string) $product->get_regular_price( 'edit' );
+		$current_normalized = '' === $current_regular_price ? '' : self::normalize_store_regular_price( $current_regular_price );
+		if ( is_wp_error( $current_normalized ) ) {
+			return $current_normalized;
+		}
+		if ( $current_normalized === $normalized ) {
+			return new WP_Error( 'product_pricing_no_change', 'The requested regular price already matches the current regular price.' );
+		}
+
+		return [
+			'product' => $product,
+			'previous_regular_price' => $current_regular_price,
+			'regular_price' => $normalized,
+			'active_price' => (string) $product->get_price( 'edit' ),
+			'currency' => function_exists( 'get_woocommerce_currency' ) ? get_woocommerce_currency() : '',
+		];
+	}
+
+	public static function preview_update_product_pricing( $params ) {
+		$prepared = self::prepare_product_pricing_update( $params );
+		$blocked = is_wp_error( $prepared );
+
+		return [
+			'type' => 'write',
+			'will_execute' => false,
+			'blocked' => $blocked,
+			'block_reason' => $blocked ? $prepared->get_error_code() : '',
+			'message' => $blocked ? $prepared->get_error_message() : 'Only the exact product regular price will change after claimed confirmation. Sale pricing, stock, content and store settings remain untouched.',
+			'product_id' => $blocked ? null : $prepared['product']->get_id(),
+			'product_name' => $blocked ? '' : wp_html_excerpt( sanitize_text_field( $prepared['product']->get_name() ), 200, '' ),
+			'current_regular_price' => $blocked ? '' : $prepared['previous_regular_price'],
+			'proposed_regular_price' => $blocked ? '' : $prepared['regular_price'],
+			'current_active_price' => $blocked ? '' : $prepared['active_price'],
+			'currency' => $blocked ? '' : $prepared['currency'],
+			'expected_version' => $blocked ? '' : $params['expected_version'],
+			'current_version' => $blocked ? '' : YoRo_Commerce_Discovery_Service::product_version( $prepared['product'] ),
+		];
+	}
+
+	public static function update_product_pricing( $params ) {
+		$prepared = self::prepare_product_pricing_update( $params );
+		if ( is_wp_error( $prepared ) ) {
+			return $prepared;
+		}
+
+		$product = $prepared['product'];
+		try {
+			$product->set_regular_price( $prepared['regular_price'] );
+			if ( ! $product->save() ) {
+				return new WP_Error( 'product_pricing_reconciliation_required', 'The price outcome could not be verified. Read and reconcile the product; do not retry this operation.' );
+			}
+			clean_post_cache( $product->get_id() );
+			$current = function_exists( 'wc_get_product' ) ? wc_get_product( $product->get_id() ) : false;
+			$eligibility = self::validate_product_pricing_eligibility( $current );
+			if ( is_wp_error( $eligibility )
+				|| self::normalize_store_regular_price( (string) $current->get_regular_price( 'edit' ) ) !== $prepared['regular_price']
+				|| (string) $current->get_price( 'edit' ) !== (string) $current->get_regular_price( 'edit' ) ) {
+				return new WP_Error( 'product_pricing_reconciliation_required', 'The price may have changed but its persisted state is ambiguous. Read and reconcile the product; do not retry this operation.' );
+			}
+
+			$current_version = YoRo_Commerce_Discovery_Service::product_version( $current );
+
+			return [
+				'success' => true,
+				'action' => 'products.update_pricing',
+				'product_id' => $current->get_id(),
+				'previous_regular_price' => $prepared['previous_regular_price'],
+				'regular_price' => (string) $current->get_regular_price( 'edit' ),
+				'active_price' => (string) $current->get_price( 'edit' ),
+				'currency' => $prepared['currency'],
+				'current_version' => $current_version,
+				'message' => 'Product regular price updated.',
+				'summary' => 'Product regular price updated.',
+				'read_only' => false,
+				'undoable' => false,
+				'undo_plan' => [ [
+					'action' => 'products.restore_pricing_state',
+					'params' => [
+						'product_id' => $current->get_id(),
+						'expected_version' => $current_version,
+						'previous_regular_price' => $prepared['previous_regular_price'],
+					],
+				] ],
+				'result_type' => 'generic',
+				'display_type' => 'generic',
+			];
+		} catch ( Throwable $exception ) {
+			return new WP_Error( 'product_pricing_reconciliation_required', 'The price outcome could not be verified. Read and reconcile the product; do not retry this operation.' );
+		}
+	}
+
 	public static function prepare_product_stock_adjustment( $params ) {
 		if ( ! current_user_can( 'manage_woocommerce' ) ) { return new WP_Error( 'yoro_permission_denied', 'Stock adjustment requires manage_woocommerce.' ); }
 		$params = is_array( $params ) ? $params : [];
@@ -847,6 +968,64 @@ class YoRo_Store_Inventory_Service {
 		];
 	}
 
+	public static function restore_product_pricing_state( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return new WP_Error( 'yoro_permission_denied', 'Pricing recovery requires manage_woocommerce.' );
+		}
+
+		$params = is_array( $params ) ? $params : [];
+		$unknown = array_diff( array_keys( $params ), [ 'product_id', 'expected_version', 'previous_regular_price', '_yoro_confirmed', '_yoro_preview' ] );
+		if ( $unknown || ! is_int( $params['product_id'] ?? null ) || $params['product_id'] <= 0
+			|| ! is_string( $params['expected_version'] ?? null ) || ! preg_match( '/^[a-f0-9]{64}$/D', $params['expected_version'] )
+			|| ! is_string( $params['previous_regular_price'] ?? null ) || ! self::is_bounded_regular_price( $params['previous_regular_price'], true ) ) {
+			return new WP_Error( 'invalid_product_pricing_restore', 'Pricing recovery requires one product, its current version and the captured previous regular price.' );
+		}
+
+		clean_post_cache( $params['product_id'] );
+		$product = function_exists( 'wc_get_product' ) ? wc_get_product( $params['product_id'] ) : false;
+		$eligibility = self::validate_product_pricing_eligibility( $product );
+		if ( is_wp_error( $eligibility ) ) {
+			return $eligibility;
+		}
+		$version = self::validate_product_version( $product, $params );
+		if ( is_wp_error( $version ) ) {
+			return $version;
+		}
+
+		$previous = '' === $params['previous_regular_price'] ? '' : self::normalize_store_regular_price( $params['previous_regular_price'] );
+		if ( is_wp_error( $previous ) ) {
+			return $previous;
+		}
+
+		try {
+			$product->set_regular_price( $previous );
+			if ( ! $product->save() ) {
+				return new WP_Error( 'product_pricing_restore_reconciliation_required', 'The recovered price could not be verified. Read and reconcile the product.' );
+			}
+			clean_post_cache( $product->get_id() );
+			$current = function_exists( 'wc_get_product' ) ? wc_get_product( $product->get_id() ) : false;
+			$eligibility = self::validate_product_pricing_eligibility( $current );
+			if ( is_wp_error( $eligibility ) || (string) $current->get_regular_price( 'edit' ) !== $previous
+				|| (string) $current->get_price( 'edit' ) !== $previous ) {
+				return new WP_Error( 'product_pricing_restore_reconciliation_required', 'The recovered price is ambiguous. Read and reconcile the product.' );
+			}
+
+			return [
+				'success' => true,
+				'action' => 'products.restore_pricing_state',
+				'summary' => sprintf( __( 'Restored regular price for product #%d.', 'yoro-ai-core' ), $current->get_id() ),
+				'processed' => [ $current->get_id() ],
+				'count' => 1,
+				'read_only' => false,
+				'undoable' => false,
+				'undo_plan' => [],
+				'current_version' => YoRo_Commerce_Discovery_Service::product_version( $current ),
+			];
+		} catch ( Throwable $exception ) {
+			return new WP_Error( 'product_pricing_restore_reconciliation_required', 'The recovered price could not be verified. Read and reconcile the product.' );
+		}
+	}
+
 	private static function reload_product_after_inventory_write( WC_Product $product ) {
 		$product_id = absint( $product->get_id() );
 		$persisted_product = function_exists( 'wc_get_product' ) ? wc_get_product( $product_id ) : false;
@@ -874,6 +1053,51 @@ class YoRo_Store_Inventory_Service {
 		}
 
 		return true;
+	}
+
+	private static function validate_product_pricing_eligibility( $product ) {
+		if ( ! $product instanceof WC_Product || ! in_array( $product->get_type(), [ 'simple', 'variation' ], true ) ) {
+			return new WP_Error( 'product_pricing_target_not_supported', 'Only one exact simple product or exact variation is supported.' );
+		}
+
+		$regular_price = (string) $product->get_regular_price( 'edit' );
+		$active_price = (string) $product->get_price( 'edit' );
+		$sale_price = (string) $product->get_sale_price( 'edit' );
+		if ( ! self::is_bounded_regular_price( $regular_price, true ) ) {
+			return new WP_Error( 'product_pricing_state_not_supported', 'The current regular price is outside the supported bounded decimal state.' );
+		}
+		if ( '' !== $sale_price || null !== $product->get_date_on_sale_from( 'edit' ) || null !== $product->get_date_on_sale_to( 'edit' ) ) {
+			return new WP_Error( 'product_pricing_sale_state_not_supported', 'Products with a sale price or sale schedule are not supported by this regular-price action.' );
+		}
+		if ( ( '' === $regular_price && '' !== $active_price ) || ( '' !== $regular_price && $active_price !== $regular_price ) ) {
+			return new WP_Error( 'product_pricing_active_price_not_supported', 'The active price must match the regular price before this action can run.' );
+		}
+
+		return true;
+	}
+
+	private static function normalize_store_regular_price( $regular_price ) {
+		if ( ! is_string( $regular_price ) || ! self::is_bounded_regular_price( $regular_price, false ) || ! function_exists( 'wc_format_decimal' ) ) {
+			return new WP_Error( 'invalid_product_regular_price', 'The regular price must be a bounded non-negative decimal string.' );
+		}
+
+		$decimals = function_exists( 'wc_get_price_decimals' ) ? max( 0, absint( wc_get_price_decimals() ) ) : 2;
+		$normalized = (string) wc_format_decimal( $regular_price, $decimals );
+
+		return '' !== $normalized && self::is_bounded_regular_price( $normalized, false )
+			? $normalized
+			: new WP_Error( 'invalid_product_regular_price', 'The regular price cannot be represented at the current store precision.' );
+	}
+
+	private static function is_bounded_regular_price( $regular_price, $allow_empty ) {
+		if ( ! is_string( $regular_price ) ) {
+			return false;
+		}
+		if ( $allow_empty && '' === $regular_price ) {
+			return true;
+		}
+
+		return 1 === preg_match( '/^(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,6})?$/D', $regular_price );
 	}
 
 	private static function variable_parent_requires_explicit_stock_quantity_scope( $product ) {
