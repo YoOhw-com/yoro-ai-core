@@ -49,6 +49,7 @@ class YoRo_Action_Catalog_Builder {
 		$families = [
 			'orders.search'                  => 'orders_search',
 			'orders.get_details'             => 'order_details',
+			'orders.get_email_history' => 'order_email_history',
 			'orders.get_payment_context'     => 'order_payment_context',
 			'orders.get_payment_link'     => 'order_payment_link',
 			'orders.refund_preview'           => 'order_refund',
@@ -539,6 +540,7 @@ class YoRo_Action_Catalog_Builder {
 	private static function infer_required_params( $action, $input_schema ) {
 		$map = [
 			'orders.get_details'                   => [ 'order_ids' ],
+			'orders.get_email_history' => [ 'order_id' ],
 			'orders.get_payment_context'           => [ 'order_id' ],
 			'orders.get_payment_link'           => [ 'order_id' ],
 			'orders.refund_preview'                => [ 'order_id' ],
@@ -606,6 +608,7 @@ class YoRo_Action_Catalog_Builder {
 			'customers.get_service_queue'                   => 'customer_service_review',
 			'orders.search'                                 => 'search_orders',
 			'orders.get_details'                            => 'get_order_details',
+			'orders.get_email_history' => 'order_email_history',
 			'orders.get_payment_context'                    => 'order_payment_context',
 			'orders.get_payment_link'                    => 'order_payment_link',
 			'orders.find_by_customer'                       => 'find_customer_orders',
