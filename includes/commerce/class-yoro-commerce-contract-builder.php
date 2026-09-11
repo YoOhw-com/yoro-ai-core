@@ -2361,7 +2361,11 @@ class YoRo_Commerce_Contract_Builder {
 		}
 
 		if ( 'products.adjust_stock' === $action_name ) {
-			return array_intersect_key( $execution, array_flip( [ 'product_id', 'stock_delta', 'previous_stock_quantity', 'stock_quantity', 'stock_status', 'manage_stock', 'current_version' ] ) );
+			$data = [];
+			foreach ( [ 'product_id', 'stock_quantity', 'stock_status', 'manage_stock', 'current_version', 'stock_delta', 'previous_stock_quantity' ] as $key ) {
+				if ( array_key_exists( $key, $execution ) ) { $data[ $key ] = $execution[ $key ]; }
+			}
+			return $data;
 		}
 		$data = [
 			'product_id' => absint( $execution['product_id'] ?? 0 ),
