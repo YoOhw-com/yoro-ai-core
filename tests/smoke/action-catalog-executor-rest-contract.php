@@ -406,7 +406,8 @@ if ( '1' === getenv( 'YORO_NATIVE_EMAIL_NO_DELIVERY_TEST' ) ) {
 	$native_order->save();
 	$native_params = [ 'order_id' => $native_order->get_id(), 'expected_version' => YoRo_Order_Presenter::order_version( wc_get_order( $native_order->get_id() ) ), 'email_type' => 'customer_processing_order' ];
 	$native_plan = [ 'type' => 'single', 'action' => 'orders.send_transactional_email', 'params' => $native_params ];
-	$saved_options = [];
+	$saved_options = [ 'yoro_rate_limit_count' => get_option( 'yoro_rate_limit_count', null ) ];
+	update_option( 'yoro_rate_limit_count', 1000, false );
 	foreach ( [ YoRo_AI_Settings::OPTION_AI_API_URL, YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, YoRo_AI_Settings::OPTION_AI_API_ENABLED, YoRo_AI_Settings::OPTION_AI_API_STATUS ] as $key ) { $saved_options[ $key ] = get_option( $key, null ); }
 	update_option( YoRo_AI_Settings::OPTION_AI_API_URL, 'https://fixture.example.invalid/api/yoro-ai', false );
 	update_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, 'fixture-local-only', false );
@@ -425,17 +426,21 @@ if ( '1' === getenv( 'YORO_NATIVE_EMAIL_NO_DELIVERY_TEST' ) ) {
 	$confirmation_material = [];
 	$conversation = 'native-rest-fixture';
 	$pending_token = 'native-pending-fixture';
-	$http = static function ( $pre, $args, $url ) use ( &$mode, &$claimed, &$claim_calls, &$confirmation_material, $native_plan, $conversation, $pending_token ) {
+	$http = static function ( $pre, $args, $url ) use ( &$mode, &$claimed, &$claim_calls, &$confirmation_material, &$native_plan, $conversation, $pending_token ) {
 		$body = json_decode( $args['body'] ?? '{}', true );
 		$response = array_merge( (array) get_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, [] ), [ 'success' => true ] );
 		if ( false !== strpos( $url, '/actions/confirm' ) ) {
 			$confirmation_material = [ 'token' => str_repeat( 'p', 64 ), 'plan_hash' => $body['plan_hash'] ?? str_repeat( 'a', 64 ), 'preview_hash' => $body['preview_hash'] ?? str_repeat( 'b', 64 ), 'policy_version' => 4 ];
+			if ( 'products.adjust_stock' === $native_plan['action'] ) { $confirmation_material['plan_hash'] = hash( 'sha256', wp_json_encode( $native_plan ) ); $confirmation_material['preview_hash'] = hash( 'sha256', 'C3 fixture preview' ); }
+			if ( 'empty_binding' === $mode ) { $confirmation_material['plan_hash'] = ''; $confirmation_material['preview_hash'] = ''; $confirmation_material['policy_version'] = 0; }
+			if ( 'malformed_binding' === $mode ) { $confirmation_material['plan_hash'] = [ 'invalid' ]; $confirmation_material['preview_hash'] = [ 'invalid' ]; }
 			$response['execution_permit'] = $confirmation_material;
 		} elseif ( false !== strpos( $url, '/actions/claim' ) ) {
 			$claim_calls++;
-			$response += [ 'stage' => 'claimed', 'pending_operation_status' => 'executing', 'conversation_id' => $conversation, 'pending_operation_token' => $pending_token, 'plan_hash' => $confirmation_material['plan_hash'], 'preview_hash' => $confirmation_material['preview_hash'], 'policy_version' => 4 ];
+			$response += [ 'stage' => 'claimed', 'pending_operation_status' => 'executing', 'conversation_id' => $conversation, 'pending_operation_token' => $pending_token, 'plan_hash' => $confirmation_material['plan_hash'], 'preview_hash' => $confirmation_material['preview_hash'], 'policy_version' => $confirmation_material['policy_version'] ];
 			if ( $claimed || 'failed_claim' === $mode ) { $response = [ 'success' => false, 'message' => 'Fixture permit already consumed or refused.' ]; }
 			elseif ( 'missing_claim' === $mode ) { $response = [ 'success' => true ]; }
+			elseif ( 'mismatched_claim' === $mode ) { $response['plan_hash'] = str_repeat( '0', 64 ); }
 			else { $claimed = true; }
 		} elseif ( 'GET' === ( $args['method'] ?? 'GET' ) ) {
 			$response['conversation'] = [ 'pending_operation_graphs' => [ [ 'token' => $pending_token, 'status' => 'awaiting_confirmation', 'action' => $native_plan['action'], 'action_plan' => $native_plan ] ] ];
@@ -450,9 +455,9 @@ if ( '1' === getenv( 'YORO_NATIVE_EMAIL_NO_DELIVERY_TEST' ) ) {
 	};
 	add_filter( 'pre_http_request', $http, 10, 3 );
 	add_action( 'woocommerce_email_sent', $observe, 1, 2 );
-	$invoke = static function ( $with_token = true ) use ( $native_params, $conversation, $pending_token ) {
+	$invoke = static function ( $with_token = true ) use ( &$native_params, &$native_plan, $conversation, $pending_token ) {
 		$request = new WP_REST_Request( 'POST', '/yoro/v1/execute' );
-		$request->set_param( 'action', 'orders.send_transactional_email' );
+		$request->set_param( 'action', $native_plan['action'] );
 		$request->set_param( 'params', $native_params );
 		$request->set_param( 'confirm', true );
 		if ( $with_token ) { $request->set_param( 'conversation_id', $conversation ); $request->set_param( 'pending_operation_token', $pending_token ); }
@@ -493,6 +498,27 @@ if ( '1' === getenv( 'YORO_NATIVE_EMAIL_NO_DELIVERY_TEST' ) ) {
 		$repeat_unknown = $invoke();
 		$assert( 2 === $native_acceptances && ( is_wp_error( $repeat_unknown ) || empty( $repeat_unknown['success'] ) ), 'A consumed permit after ambiguous native acceptance cannot blindly resend.' );
 		$assert( $claim_calls >= 5, 'REST test exercises the coordinator claim path rather than a synthetic plan trust flag.' );
+		$c3_product = new WC_Product_Simple(); $c3_stock_setting = get_option( 'woocommerce_manage_stock', 'yes' );
+		try {
+			update_option( 'woocommerce_manage_stock', 'yes' );
+			$c3_product->set_name( 'C3 REST fixture' ); $c3_product->set_manage_stock( true ); $c3_product->set_stock_quantity( 10 ); $c3_product->save();
+			$native_params = [ 'product_id'=>$c3_product->get_id(), 'stock_delta'=>2, 'expected_version'=>YoRo_Commerce_Discovery_Service::product_version( wc_get_product( $c3_product->get_id() ) ) ];
+			$native_plan = [ 'type'=>'single', 'action'=>'products.adjust_stock', 'params'=>$native_params ];
+			$claimed = false;
+			$before_claim_calls = $claim_calls;
+			foreach ( [ 'missing_claim', 'mismatched_claim', 'empty_binding', 'malformed_binding' ] as $failure_mode ) {
+				$mode = $failure_mode; $claimed = false;
+				$failure = $invoke(); clean_post_cache( $c3_product->get_id() );
+				$assert( ( is_wp_error( $failure ) || empty( $failure['success'] ) ) && 10 === (int) wc_get_product( $c3_product->get_id() )->get_stock_quantity(), 'C3 REST must refuse absent/mismatched claimed response before arithmetic.' );
+			}
+			$mode = 'success'; $claimed = false;
+			$c3_success = $invoke(); if ( is_wp_error( $c3_success ) || empty( $c3_success['success'] ) ) { fwrite( STDERR, wp_json_encode( $c3_success ) . PHP_EOL ); } clean_post_cache( $c3_product->get_id() );
+			$assert( is_array( $c3_success ) && ! empty( $c3_success['success'] ) && 12 === (int) wc_get_product( $c3_product->get_id() )->get_stock_quantity(), 'Actual REST confirm+claim must mint the one-use C3 handoff.' );
+			$c3_repeat = $invoke(); clean_post_cache( $c3_product->get_id() );
+			$assert( ( is_wp_error( $c3_repeat ) || empty( $c3_repeat['success'] ) ) && 12 === (int) wc_get_product( $c3_product->get_id() )->get_stock_quantity(), 'Consumed C3 REST operation must never adjust twice.' );
+			$assert( $claim_calls >= $before_claim_calls + 3, 'C3 REST evidence must traverse real claim response validation.' );
+		} finally { $c3_product->delete( true ); update_option( 'woocommerce_manage_stock', $c3_stock_setting ); }
+
 	} finally {
 		remove_filter( 'pre_http_request', $http, 10 );
 		remove_action( 'woocommerce_email_sent', $observe, 1 );

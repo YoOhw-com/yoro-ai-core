@@ -701,6 +701,39 @@ try {
 		$c2_product->delete( true );
 	}
 
+	// Relative stock uses the validated runtime's journal; replay includes ambiguous outcomes.
+	$c3_product = new WC_Product_Simple(); $c3_operations = [];
+	$c3_manage = get_option( 'woocommerce_manage_stock', 'yes' );
+	try {
+		update_option( 'woocommerce_manage_stock', 'yes' );
+		$c3_product->set_name( 'C3 runtime fixture' ); $c3_product->set_manage_stock( true ); $c3_product->set_stock_quantity( 20 ); $c3_product->save();
+		foreach ( [ false, true ] as $c3_fail ) {
+			clean_post_cache( $c3_product->get_id() ); $c3_current = wc_get_product( $c3_product->get_id() );
+			$c3_operation = $operation; $c3_operation['envelope_id'] = 'envelope_' . hash( 'sha256', wp_generate_uuid4() );
+			$c3_operation['idempotency_key'] = 'operation_' . hash( 'sha256', wp_generate_uuid4() ); $c3_operation['action'] = 'products.adjust_stock';
+			$c3_operation['params'] = [ 'product_id' => $c3_product->get_id(), 'stock_delta' => -2, 'expected_version' => YoRo_Commerce_Discovery_Service::product_version( $c3_current ) ];
+			$c3_operation['actor']['permissions'] = [ YoRo_Action_Registry::get( 'products.adjust_stock' )['permission'] ]; $c3_operations[] = $c3_operation;
+			$c3_client = new YoRo_Connector_Smoke_Client(); $c3_client->claim = $client->claim; $c3_client->claim['delivery']['operations'] = [ $c3_operation ];
+			$c3_calls = 0; $c3_probe = static function ( $name ) use ( &$c3_calls ) { if ( 'products.adjust_stock' === $name ) { $c3_calls++; } };
+			$c3_throw = static function () { throw new RuntimeException( 'after stock arithmetic failure' ); };
+			add_action( 'yoro_before_action_execute', $c3_probe );
+			if ( $c3_fail ) { add_action( 'woocommerce_updated_product_stock', $c3_throw ); }
+			try {
+				( new YoRo_Connector_Runtime( $c3_client ) )->run_once();
+				$c3_result = $c3_client->results[0]['payload'] ?? [];
+				if ( 1 !== $c3_calls || ( $c3_fail ? 'failed' : 'executed' ) !== ( $c3_result['status'] ?? '' ) ) { fwrite( STDERR, wp_json_encode( [ 'c3_calls'=>$c3_calls, 'result'=>$c3_result ] ) . PHP_EOL ); }
+				$assert( ( $c3_fail ? 'failed' : 'executed' ) === ( $c3_result['status'] ?? '' ), 'C3 validated remote execution must preserve signed success or reconciliation failure.' );
+				( new YoRo_Connector_Runtime( $c3_client ) )->run_once();
+				$assert( 1 === $c3_calls && 2 === count( $c3_client->results ) && wp_json_encode( $c3_result ) === wp_json_encode( $c3_client->results[1]['payload'] ), 'C3 duplicate delivery must not repeat success or ambiguous arithmetic.' );
+				clean_post_cache( $c3_product->get_id() );
+				$assert( ( $c3_fail ? 16 : 18 ) === (int) wc_get_product( $c3_product->get_id() )->get_stock_quantity(), 'Each unique C3 operation applies its delta once.' );
+			} finally { remove_action( 'yoro_before_action_execute', $c3_probe ); remove_action( 'woocommerce_updated_product_stock', $c3_throw ); }
+		}
+	} finally {
+		foreach ( $c3_operations as $c3_operation ) { YoRo_Connector_Execution_Journal::clear( $c3_operation ); }
+		$c3_product->delete( true ); update_option( 'woocommerce_manage_stock', $c3_manage );
+	}
+
 	// Native B4 replay tests require a disposable database and a process-level mail sink.
 	if ( '1' === getenv( 'YORO_NATIVE_EMAIL_NO_DELIVERY_TEST' ) ) {
 		if ( '/usr/bin/true' !== ini_get( 'sendmail_path' ) ) {
