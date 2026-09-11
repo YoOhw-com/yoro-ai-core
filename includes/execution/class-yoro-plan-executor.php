@@ -49,7 +49,7 @@ class YoRo_Plan_Executor {
 
 	private static function action_context( $action, $context ) {
 		// Plan/captured context is caller-controlled and cannot assert journal or permit ownership.
-		return in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions' ], true ) ? [] : $context;
+		return in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock' ], true ) ? [] : $context;
 	}
 
 	private static function execute_single( $plan, $confirm, $preview, $claimed_execution_context ) {
@@ -306,7 +306,7 @@ class YoRo_Plan_Executor {
 				? max( 1, absint( $retry['max_attempts'] ) )
 				: 1;
 
-			if ( in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions' ], true ) ) {
+			if ( in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock' ], true ) ) {
 				$max_attempts = 1; // External communication is never blindly retried by a sequence.
 			}
 			$attempt = 0;
@@ -885,6 +885,7 @@ class YoRo_Plan_Executor {
 		switch ( $action ) {
 
 			case 'orders.update_status':
+			case 'products.adjust_stock':
 			case 'products.update_stock':
 			case 'products.update_stock_status':
 				$undo_plan = is_array( $result['undo_plan'] ?? null ) ? array_values( $result['undo_plan'] ) : [];

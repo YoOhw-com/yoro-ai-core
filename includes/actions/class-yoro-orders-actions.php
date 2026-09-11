@@ -474,6 +474,24 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		YoRo_Action_Registry::register( 'products.adjust_stock', [
+			'label' => __( 'Adjust product stock', 'yoro-ai-core' ),
+			'description' => __( 'Increase or decrease one independently managed product stock quantity by a signed delta.', 'yoro-ai-core' ),
+			'category' => 'products', 'permission' => 'manage_woocommerce',
+			'callback' => [ 'YoRo_Store_Inventory_Service', 'adjust_product_stock' ],
+			'preview_callback' => [ 'YoRo_Store_Inventory_Service', 'preview_adjust_product_stock' ],
+			'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
+			'input_schema' => [ 'product_id' => 'integer', 'stock_delta' => 'integer', 'expected_version' => 'string' ],
+			'canonical_input_schema' => [
+				'product_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'stock_delta' => [ 'type' => 'integer', 'minimum' => -1000000, 'maximum' => 1000000 ],
+				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+			],
+			'concurrency_strategy' => 'optimistic_version', 'max_items' => 1,
+			'required_params' => [ 'product_id', 'stock_delta', 'expected_version' ],
+			'capabilities' => [ 'products', 'inventory', 'stock', 'write' ],
+		] );
+
 		YoRo_Action_Registry::register(
 			'products.update_stock',
 			[

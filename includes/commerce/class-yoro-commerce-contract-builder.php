@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:84b9b07dcbb3a786a065fb3804b11ec962fcc85946abff2791ac85ddf000a0a6';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:54a04f15e52f974a4d343ddc947dbfe690bdf7a340383440990128971b0394ce';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1475,6 +1475,14 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
+		if ( 'products.adjust_stock' === $action_name ) {
+			return self::closed_object_schema( [
+				'product_id' => [ 'type' => 'integer' ], 'stock_quantity' => [ 'type' => 'integer' ],
+				'stock_status' => [ 'type' => 'string' ], 'manage_stock' => [ 'type' => 'boolean' ], 'current_version' => [ 'type' => 'string' ],
+				'stock_delta' => [ 'type' => 'integer' ], 'previous_stock_quantity' => [ 'type' => 'integer' ],
+			], [ 'product_id', 'stock_quantity', 'stock_status', 'manage_stock', 'current_version', 'stock_delta', 'previous_stock_quantity' ] );
+		}
+
 		if ( 'products.update_stock' === $action_name ) {
 			return self::closed_object_schema(
 				[
@@ -2321,7 +2329,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_write_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.update_addresses', 'orders.update_status', 'products.update_stock', 'products.update_stock_status' ],
+			[ 'orders.update_addresses', 'orders.update_status', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
 			true
 		);
 	}
@@ -2352,6 +2360,9 @@ class YoRo_Commerce_Contract_Builder {
 			];
 		}
 
+		if ( 'products.adjust_stock' === $action_name ) {
+			return array_intersect_key( $execution, array_flip( [ 'product_id', 'stock_delta', 'previous_stock_quantity', 'stock_quantity', 'stock_status', 'manage_stock', 'current_version' ] ) );
+		}
 		$data = [
 			'product_id' => absint( $execution['product_id'] ?? 0 ),
 			'stock_status' => sanitize_key( $execution['stock_status'] ?? '' ),

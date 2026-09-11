@@ -6,6 +6,85 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Store_Inventory_Service {
 
+	public static function prepare_product_stock_adjustment( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) { return new WP_Error( 'yoro_permission_denied', 'Stock adjustment requires manage_woocommerce.' ); }
+		$params = is_array( $params ) ? $params : [];
+		$unknown = array_diff( array_keys( $params ), [ 'product_id', 'stock_delta', 'expected_version', '_yoro_confirmed', '_yoro_preview' ] );
+		if ( $unknown || ! is_int( $params['product_id'] ?? null ) || $params['product_id'] <= 0
+			|| ! is_int( $params['stock_delta'] ?? null ) || 0 === $params['stock_delta'] || abs( $params['stock_delta'] ) > 1000000
+			|| ! is_string( $params['expected_version'] ?? null ) || ! preg_match( '/^[a-f0-9]{64}$/D', $params['expected_version'] ) ) {
+			return new WP_Error( 'invalid_stock_adjustment', 'Use one product ID, a non-zero bounded integer delta and its current version.' );
+		}
+		if ( ! function_exists( 'wc_update_product_stock' ) || ! self::is_stock_management_enabled() ) {
+			return new WP_Error( 'stock_management_disabled', 'WooCommerce stock management must be enabled.' );
+		}
+		// Discard object/meta caches so eligibility and version use the current owner state.
+		clean_post_cache( $params['product_id'] );
+		$product = wc_get_product( $params['product_id'] );
+		if ( ! $product instanceof WC_Product || ! in_array( $product->get_type(), [ 'simple', 'variation' ], true )
+			|| true !== $product->get_manage_stock( 'edit' ) || ! $product->managing_stock()
+			|| $product->get_stock_managed_by_id() !== $product->get_id() ) {
+			return new WP_Error( 'stock_adjustment_target_not_supported', 'Only a simple product or exact variation owning its managed stock is supported.' );
+		}
+		$version = self::validate_product_version( $product, $params );
+		if ( is_wp_error( $version ) ) { return $version; }
+		$quantity = $product->get_stock_quantity( 'edit' );
+		if ( ! is_numeric( $quantity ) || ! is_finite( (float) $quantity ) || (float) (int) $quantity !== (float) $quantity || $quantity < 0 || $quantity > 1000000000
+			|| $quantity + $params['stock_delta'] < 0 || $quantity + $params['stock_delta'] > 1000000000 ) {
+			return new WP_Error( 'stock_adjustment_quantity_not_supported', 'The current and resulting quantities must be bounded non-negative integers.' );
+		}
+		return [ 'product' => $product, 'quantity' => (int) $quantity, 'delta' => $params['stock_delta'], 'stock_status' => $product->get_stock_status() ];
+	}
+
+	public static function preview_adjust_product_stock( $params ) {
+		$prepared = self::prepare_product_stock_adjustment( $params );
+		$blocked = is_wp_error( $prepared );
+		return [ 'type' => 'write', 'will_execute' => false, 'blocked' => $blocked,
+			'block_reason' => $blocked ? $prepared->get_error_code() : '',
+			'message' => $blocked ? $prepared->get_error_message() : 'This relative stock adjustment changes only the exact product quantity after claimed confirmation; it does not change price, content, orders, customers or store settings.',
+			'product_id' => $blocked ? null : $prepared['product']->get_id(),
+			'product_name' => $blocked ? '' : wp_html_excerpt( sanitize_text_field( $prepared['product']->get_name() ), 200, '' ),
+			'stock_delta' => $blocked ? null : $prepared['delta'],
+			'expected_version' => $blocked ? '' : $params['expected_version'],
+			'current_version' => $blocked ? '' : YoRo_Commerce_Discovery_Service::product_version( $prepared['product'] ),
+			'current_stock_quantity' => $blocked ? null : $prepared['quantity'],
+			'target_stock_quantity' => $blocked ? null : $prepared['quantity'] + $prepared['delta'],
+		];
+	}
+
+	public static function adjust_product_stock( $params ) {
+		$prepared = self::prepare_product_stock_adjustment( $params );
+		if ( is_wp_error( $prepared ) ) { return $prepared; }
+		$product = $prepared['product'];
+		$expected = $prepared['quantity'] + $prepared['delta'];
+		try {
+			// Owner arithmetic, never absolute read-compute-set. This is not compare-and-swap.
+			$reported = wc_update_product_stock( $product, abs( $prepared['delta'] ), $prepared['delta'] > 0 ? 'increase' : 'decrease' );
+			clean_post_cache( $product->get_id() );
+			$current = wc_get_product( $product->get_id() );
+			if ( ! $current instanceof WC_Product || ! in_array( $current->get_type(), [ 'simple', 'variation' ], true )
+				|| ! is_numeric( $current->get_stock_quantity( 'edit' ) ) || ! is_finite( (float) $current->get_stock_quantity( 'edit' ) )
+				|| ! is_numeric( $reported ) || (float) $reported !== (float) $expected
+				|| (float) $current->get_stock_quantity( 'edit' ) !== (float) $expected || true !== $current->get_manage_stock( 'edit' )
+				|| $current->get_stock_managed_by_id() !== $product->get_id() || ! self::is_stock_management_enabled() ) {
+				return new WP_Error( 'stock_adjustment_reconciliation_required', 'The adjustment may have executed concurrently. Read and reconcile stock; do not retry this operation.' );
+			}
+			return [ 'success' => true, 'action' => 'products.adjust_stock', 'product_id' => $current->get_id(),
+				'previous_stock_quantity' => $prepared['quantity'], 'stock_delta' => $prepared['delta'], 'stock_quantity' => $expected,
+				'stock_status' => $current->get_stock_status(), 'manage_stock' => true,
+				'current_version' => YoRo_Commerce_Discovery_Service::product_version( $current ),
+				'message' => 'Product stock adjusted.', 'summary' => 'Product stock adjusted.', 'read_only' => false,
+				'undoable' => false, 'undo_plan' => [ [ 'action' => 'products.restore_stock_state', 'params' => [
+					'product_id' => $current->get_id(), 'expected_version' => YoRo_Commerce_Discovery_Service::product_version( $current ),
+					'manage_stock' => true, 'stock_quantity' => $prepared['quantity'], 'stock_status' => $prepared['stock_status'],
+				] ] ], 'result_type' => 'generic', 'display_type' => 'generic' ];
+		} catch ( Throwable $exception ) {
+			return new WP_Error( 'stock_adjustment_reconciliation_required', 'The stock outcome could not be verified. Read and reconcile stock; do not retry this operation.' );
+		}
+	}
+
+
+
 	public static function update_product_stock( $params ) {
 		$prepared = self::prepare_product_stock_write( $params );
 
