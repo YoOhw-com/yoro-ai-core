@@ -6,6 +6,180 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Orders_Read_Service {
 
+	/** Bounded primary-key traversal; unrelated rows consume the same scan budget. */
+	public static function get_email_history( $params ) {
+		if ( ! current_user_can( 'yoro_view_store_data' ) ) {
+			return new WP_Error( 'yoro_permission_denied', 'Permission to read store data is required.' );
+		}
+		if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'order_id', 'limit', 'cursor', '_yoro_confirmed', '_yoro_preview' ] )
+			|| ! isset( $params['order_id'] ) || ! is_int( $params['order_id'] ) || $params['order_id'] < 1 ) {
+			return new WP_Error( 'invalid_params', 'Choose exactly one positive integer order ID.' );
+		}
+		foreach ( [ '_yoro_confirmed', '_yoro_preview' ] as $flag ) {
+			if ( array_key_exists( $flag, $params ) && ! is_bool( $params[ $flag ] ) ) {
+				return new WP_Error( 'invalid_params', 'Invalid execution flags.' );
+			}
+		}
+		$limit = $params['limit'] ?? 20;
+		if ( ! is_int( $limit ) || $limit < 1 || $limit > 50 || ( array_key_exists( 'limit', $params ) && null === $params['limit'] ) ) {
+			return new WP_Error( 'invalid_params', 'Limit must be an integer between 1 and 50.' );
+		}
+		if ( ! function_exists( 'wc_get_order' ) ) {
+			return new WP_Error( 'woocommerce_missing', 'Store integration is not active.' );
+		}
+		$order = wc_get_order( $params['order_id'] );
+		if ( ! $order instanceof WC_Order || $order instanceof WC_Order_Refund || $order->get_id() !== $params['order_id'] ) {
+			return new WP_Error( 'order_not_found', 'The selected order was not found.' );
+		}
+		global $wpdb;
+		$table = YoRo_DB::logs_table_name();
+		if ( array_key_exists( 'cursor', $params ) ) {
+			$cursor = self::email_history_decode_cursor( $params['cursor'], $params['order_id'], $limit );
+			if ( null === $cursor ) {
+				return new WP_Error( 'invalid_cursor', 'The history cursor is invalid for this order and limit.' );
+			}
+			$snapshot = $cursor['snapshot'];
+			$before = $cursor['before'];
+		} else {
+			// MAX(primary key) is bounded. Its eligible subset equals the eligible-row maximum's subset.
+			$snapshot = (int) $wpdb->get_var( "SELECT MAX(id) FROM {$table}" );
+			if ( $wpdb->last_error ) {
+				return new WP_Error( 'email_history_unavailable', 'Local history is unavailable.' );
+			}
+			$before = $snapshot;
+		}
+		// LEFT bounds transfer and decoding even for legacy LONGTEXT; no serialized predicate or OFFSET.
+		$rows = $wpdb->get_results( $wpdb->prepare(
+			"SELECT id, action, status, preview, created_at, LEFT(params,16385) AS params, LEFT(result,16385) AS result FROM {$table} WHERE id <= %d AND id <= %d ORDER BY id DESC LIMIT 501",
+			$snapshot, $before
+		), ARRAY_A );
+		if ( $wpdb->last_error || ! is_array( $rows ) ) {
+			return new WP_Error( 'email_history_unavailable', 'Local history is unavailable.' );
+		}
+		$events = [];
+		$unsafe = 0;
+		$scanned = 0;
+		$has_more = count( $rows ) > 500 ? null : false;
+		foreach ( array_slice( $rows, 0, 500 ) as $row ) {
+			$scanned++;
+			$event = self::email_history_event( $row, $params['order_id'], $unsafe );
+			if ( null !== $event && count( $events ) === $limit ) {
+				$has_more = true;
+				// Do not consume the extra match: the next page must return this very row.
+				$before = (int) $row['id'];
+				break;
+			}
+			$before = max( 0, (int) $row['id'] - 1 );
+			if ( null !== $event ) {
+				$events[] = $event;
+			}
+		}
+		$history = [
+			'order_id' => $params['order_id'], 'events' => $events,
+			'pagination' => [ 'limit' => $limit, 'has_more' => $has_more, 'scan_complete' => null !== $has_more,
+				'next_cursor' => false === $has_more ? null : self::email_history_encode_cursor( $params['order_id'], $limit, $snapshot, $before ),
+				'scanned_rows' => $scanned ],
+			'coverage' => [ 'source' => 'local_yoro_action_log',
+				'limitations' => [ 'local_terminal_actions_only', 'legacy_details_may_be_missing', 'remote_execution_receipts_excluded', 'delivery_not_observed' ],
+				'warnings' => [ 'unsafe_rows_skipped' => $unsafe ] ],
+		];
+		return [ 'success' => true, 'action' => 'orders.get_email_history', 'email_history' => $history,
+			'read_only' => true, 'result_type' => 'generic', 'display_type' => 'generic' ];
+	}
+
+	private static function email_history_encode_cursor( $order_id, $limit, $snapshot, $before ) {
+		$payload = rtrim( strtr( base64_encode( wp_json_encode( [ 'v' => 1, 'site' => get_current_blog_id(), 'order' => $order_id, 'limit' => $limit, 'snapshot' => $snapshot, 'before' => $before ] ) ), '+/', '-_' ), '=' );
+		return $payload . '.' . hash_hmac( 'sha256', 'yoro-email-history|' . $payload, wp_salt( 'auth' ) );
+	}
+
+	private static function email_history_decode_cursor( $cursor, $order_id, $limit ) {
+		if ( ! is_string( $cursor ) || strlen( $cursor ) > 512 || ! preg_match( '/^[A-Za-z0-9_-]+\.[a-f0-9]{64}$/D', $cursor ) ) {
+			return null;
+		}
+		list( $payload, $mac ) = explode( '.', $cursor, 2 );
+		if ( ! hash_equals( hash_hmac( 'sha256', 'yoro-email-history|' . $payload, wp_salt( 'auth' ) ), $mac ) ) {
+			return null;
+		}
+		$value = json_decode( base64_decode( strtr( $payload, '-_', '+/' ), true ), true, 4 );
+		if ( ! is_array( $value ) || array_keys( $value ) !== [ 'v', 'site', 'order', 'limit', 'snapshot', 'before' ]
+			|| 1 !== $value['v'] || get_current_blog_id() !== $value['site'] || $order_id !== $value['order'] || $limit !== $value['limit']
+			|| ! is_int( $value['snapshot'] ) || ! is_int( $value['before'] ) || $value['snapshot'] < 0 || $value['before'] < 0 || $value['before'] > $value['snapshot'] ) {
+			return null;
+		}
+		return $value;
+	}
+
+	/** Never use maybe_unserialize: disallow class instantiation and bound bytes, depth and nodes. */
+	private static function email_history_decode_row( $raw ) {
+		if ( ! is_string( $raw ) || strlen( $raw ) > 16384 || ! preg_match( '/^a:\d+:\{/', $raw ) ) {
+			return null;
+		}
+		$value = @unserialize( $raw, [ 'allowed_classes' => false, 'max_depth' => 6 ] );
+		if ( ! is_array( $value ) ) {
+			return null;
+		}
+		$nodes = 0;
+		$queue = [ [ $value, 0 ] ];
+		while ( $queue ) {
+			list( $part, $depth ) = array_pop( $queue );
+			if ( ++$nodes > 256 || $depth > 6 || is_object( $part ) || is_resource( $part ) ) {
+				return null;
+			}
+			if ( is_array( $part ) ) {
+				foreach ( $part as $child ) {
+					$queue[] = [ $child, $depth + 1 ];
+				}
+			}
+		}
+		return serialize( $value ) === $raw ? $value : null;
+	}
+
+	private static function email_history_event( $row, $order_id, &$unsafe ) {
+		if ( ! in_array( $row['action'], [ 'orders.send_customer_email', 'orders.email_customer_template', 'orders.send_transactional_email' ], true )
+			|| ! in_array( $row['status'], [ 'executed', 'error', 'failed' ], true ) || ! empty( $row['preview'] ) ) {
+			return null;
+		}
+		$params = self::email_history_decode_row( $row['params'] );
+		if ( null === $params ) {
+			$unsafe++;
+			return null;
+		}
+		// Legacy email entrypoints accepted canonical decimal strings; match without absint coercion.
+		foreach ( [ 'order_id', 'order_ids' ] as $key ) {
+			if ( ! array_key_exists( $key, $params ) ) { continue; }
+			$values = 'order_id' === $key ? [ $params[ $key ] ] : $params[ $key ];
+			if ( ! is_array( $values ) || count( $values ) !== 1 ) { return null; }
+			$value = reset( $values );
+			if ( is_string( $value ) && ctype_digit( $value ) && (string) (int) $value === $value ) { $value = (int) $value; }
+			if ( ! is_int( $value ) || $value < 1 ) { return null; }
+			$params[ $key ] = 'order_id' === $key ? $value : [ $value ];
+		}
+		$ids = array_key_exists( 'order_id', $params ) ? [ $params['order_id'] ] : ( $params['order_ids'] ?? [] );
+		if ( ! is_array( $ids ) || array_values( $ids ) !== [ $order_id ]
+			|| ( array_key_exists( 'order_ids', $params ) && ( ! is_array( $params['order_ids'] ) || array_values( $params['order_ids'] ) !== [ $order_id ] ) ) ) {
+			return null;
+		}
+		$result = null === $row['result'] || '' === $row['result'] ? [] : self::email_history_decode_row( $row['result'] );
+		if ( null === $result ) {
+			$unsafe++;
+			return null;
+		}
+		$outcome = $result['email_observation']['mailer_outcome'] ?? ( $result['outcome'] ?? ( $result['data']['outcome'] ?? 'not_recorded' ) );
+		if ( 'transactional_email_outcome_unknown' === ( $result['error']['code'] ?? null ) || 'transactional_email_outcome_unknown' === ( $result['errors'][0]['code'] ?? null ) ) {
+			$outcome = 'unknown';
+		}
+		if ( ! in_array( $outcome, [ 'mailer_accepted', 'unknown' ], true ) ) {
+			$outcome = 'not_recorded';
+		}
+		if ( ! is_string( $row['created_at'] ) || ! preg_match( '/^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$/D', $row['created_at'] ) ) {
+			$unsafe++;
+			return null;
+		}
+		return [ 'log_id' => (int) $row['id'], 'occurred_at' => $row['created_at'],
+			'action' => $row['action'], 'action_status' => 'executed' === $row['status'] && false !== ( $result['success'] ?? null ) ? 'success' : 'failure',
+			'mailer_outcome' => $outcome, 'evidence_quality' => 'not_recorded' === $outcome ? 'legacy_action_result' : 'explicit_mailer_outcome', 'delivery_status' => 'not_observed' ];
+	}
+
 	public static function get_search_result_limit( $params ) {
 		$params = is_array( $params ) ? $params : [];
 		$limit = isset( $params['limit'] )

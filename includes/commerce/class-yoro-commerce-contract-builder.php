@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:24978e6b0e07cbb6bd72d059b70a80c5c5a7b9a6cd2fbd154b06f519e60d2660';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:7be221f659d782a241937f5c11497310cad933e1e3bfa11e04eaa0454b63b37d';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -360,7 +360,285 @@ class YoRo_Commerce_Contract_Builder {
 		];
 	}
 
+	/** Validate the closed B5 projection before it can enter the public envelope. */
+	private static function email_history_schema_value( $value, $schema, $depth = 0 ) {
+		if ( $depth > 12 ) { return false; }
+		$types = (array) ( $schema['type'] ?? [] );
+		if ( null === $value ) { return in_array( 'null', $types, true ); }
+		if ( isset( $schema['enum'] ) && ! in_array( $value, $schema['enum'], true ) ) { return false; }
+		if ( in_array( 'object', $types, true ) ) {
+			if ( ! is_array( $value ) || array_diff( array_keys( $value ), array_keys( $schema['properties'] ) ) || array_diff( $schema['required'], array_keys( $value ) ) ) { return false; }
+			foreach ( $value as $key => $child ) {
+				if ( ! self::email_history_schema_value( $child, $schema['properties'][ $key ], $depth + 1 ) ) { return false; }
+			}
+			return true;
+		}
+		if ( in_array( 'array', $types, true ) ) {
+			if ( ! is_array( $value ) || array_values( $value ) !== $value || count( $value ) > ( $schema['maxItems'] ?? 501 ) || count( $value ) < ( $schema['minItems'] ?? 0 ) ) { return false; }
+			foreach ( $value as $child ) { if ( ! self::email_history_schema_value( $child, $schema['items'], $depth + 1 ) ) { return false; } }
+			return empty( $schema['uniqueItems'] ) || count( array_unique( $value, SORT_REGULAR ) ) === count( $value );
+		}
+		if ( in_array( 'string', $types, true ) ) {
+			return is_string( $value ) && strlen( $value ) <= ( $schema['maxLength'] ?? 512 ) && strlen( $value ) >= ( $schema['minLength'] ?? 0 )
+				&& ( ! isset( $schema['pattern'] ) || preg_match( '~' . $schema['pattern'] . '~D', $value ) );
+		}
+		if ( in_array( 'integer', $types, true ) ) { return is_int( $value ) && $value >= ( $schema['minimum'] ?? 0 ) && $value <= ( $schema['maximum'] ?? PHP_INT_MAX ); }
+		return in_array( 'boolean', $types, true ) && is_bool( $value );
+	}
+
 	public static function execution_output_schema( $action_name = '' ) {
+		if ( 'orders.get_email_history' === $action_name ) {
+			return [
+				'type' => 'object',
+				'properties' => [
+					'success' => [
+						'type' => 'boolean',
+					],
+					'action' => [
+						'type' => 'string',
+						'enum' => [
+							'orders.get_email_history',
+						],
+					],
+					'message' => [
+						'type' => 'string',
+						'maxLength' => 256,
+					],
+					'summary' => [
+						'type' => 'string',
+						'maxLength' => 256,
+					],
+					'data' => [
+						'type' => 'object',
+						'properties' => [
+							'email_history' => [
+								'type' => [
+									'object',
+									'null',
+								],
+								'properties' => [
+									'order_id' => [
+										'type' => 'integer',
+										'minimum' => 1,
+									],
+									'events' => [
+										'type' => 'array',
+										'maxItems' => 50,
+										'items' => [
+											'type' => 'object',
+											'properties' => [
+												'log_id' => [
+													'type' => 'integer',
+													'minimum' => 1,
+												],
+												'occurred_at' => [
+													'type' => 'string',
+													'minLength' => 1,
+													'maxLength' => 32,
+													'pattern' => '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$',
+												],
+												'action' => [
+													'type' => 'string',
+													'enum' => [
+														'orders.send_customer_email',
+														'orders.email_customer_template',
+														'orders.send_transactional_email',
+													],
+												],
+												'action_status' => [
+													'type' => 'string',
+													'enum' => [
+														'success',
+														'failure',
+													],
+												],
+												'mailer_outcome' => [
+													'type' => 'string',
+													'enum' => [
+														'mailer_accepted',
+														'unknown',
+														'not_recorded',
+													],
+												],
+												'evidence_quality' => [
+													'type' => 'string',
+													'enum' => [
+														'explicit_mailer_outcome',
+														'legacy_action_result',
+													],
+												],
+												'delivery_status' => [
+													'type' => 'string',
+													'enum' => [
+														'not_observed',
+													],
+												],
+											],
+											'required' => [
+												'log_id',
+												'occurred_at',
+												'action',
+												'action_status',
+												'mailer_outcome',
+												'evidence_quality',
+												'delivery_status',
+											],
+											'additionalProperties' => false,
+										],
+									],
+									'pagination' => [
+										'type' => 'object',
+										'properties' => [
+											'limit' => [
+												'type' => 'integer',
+												'minimum' => 1,
+												'maximum' => 50,
+											],
+											'has_more' => [
+												'type' => [
+													'boolean',
+													'null',
+												],
+											],
+											'scan_complete' => [
+												'type' => 'boolean',
+											],
+											'next_cursor' => [
+												'type' => [
+													'string',
+													'null',
+												],
+												'minLength' => 66,
+												'maxLength' => 512,
+												'pattern' => '^[A-Za-z0-9_-]+\\.[a-f0-9]{64}$',
+											],
+											'scanned_rows' => [
+												'type' => 'integer',
+												'minimum' => 0,
+												'maximum' => 501,
+											],
+										],
+										'required' => [
+											'limit',
+											'has_more',
+											'scan_complete',
+											'next_cursor',
+											'scanned_rows',
+										],
+										'additionalProperties' => false,
+									],
+									'coverage' => [
+										'type' => 'object',
+										'properties' => [
+											'source' => [
+												'type' => 'string',
+												'enum' => [
+													'local_yoro_action_log',
+												],
+											],
+											'limitations' => [
+												'type' => 'array',
+												'minItems' => 4,
+												'maxItems' => 4,
+												'items' => [
+													'type' => 'string',
+													'enum' => [
+														'local_terminal_actions_only',
+														'legacy_details_may_be_missing',
+														'remote_execution_receipts_excluded',
+														'delivery_not_observed',
+													],
+												],
+											],
+											'warnings' => [
+												'type' => 'object',
+												'properties' => [
+													'unsafe_rows_skipped' => [
+														'type' => 'integer',
+														'minimum' => 0,
+														'maximum' => 501,
+													],
+												],
+												'required' => [
+													'unsafe_rows_skipped',
+												],
+												'additionalProperties' => false,
+											],
+										],
+										'required' => [
+											'source',
+											'limitations',
+											'warnings',
+										],
+										'additionalProperties' => false,
+									],
+								],
+								'required' => [
+									'order_id',
+									'events',
+									'pagination',
+									'coverage',
+								],
+								'additionalProperties' => false,
+							],
+						],
+						'required' => [
+							'email_history',
+						],
+						'additionalProperties' => false,
+					],
+					'read_only' => [
+						'type' => 'boolean',
+						'enum' => [
+							true,
+						],
+					],
+					'undoable' => [
+						'type' => 'boolean',
+						'enum' => [
+							false,
+						],
+					],
+					'result_type' => [
+						'type' => 'string',
+						'enum' => [
+							'generic',
+						],
+					],
+					'display_type' => [
+						'type' => 'string',
+						'enum' => [
+							'generic',
+						],
+					],
+					'assistant_summary' => [
+						'type' => 'string',
+						'maxLength' => 256,
+					],
+					'extensions' => [
+						'type' => 'object',
+						'properties' => [],
+						'required' => [],
+						'additionalProperties' => false,
+					],
+				],
+				'required' => [
+					'success',
+					'action',
+					'message',
+					'summary',
+					'data',
+					'read_only',
+					'undoable',
+					'result_type',
+					'display_type',
+					'assistant_summary',
+					'extensions',
+				],
+				'additionalProperties' => false,
+			];
+		}
+
 		if ( 'orders.send_transactional_email' === $action_name ) {
 			$properties = [
 				'success' => [ 'type' => 'boolean' ], 'action' => [ 'type' => 'string', 'enum' => [ 'orders.send_transactional_email' ] ],
@@ -447,6 +725,21 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function canonical_execution_payload( array $execution, $action_name = '' ) {
+		if ( 'orders.get_email_history' === ( $action_name ?: ( $execution['action'] ?? '' ) ) ) {
+			$facts = $execution['email_history'] ?? ( $execution['data']['email_history'] ?? null );
+			$schema = self::execution_output_schema( 'orders.get_email_history' )['properties']['data']['properties']['email_history'];
+			$valid = is_array( $facts ) && self::email_history_schema_value( $facts, $schema );
+			$pagination = is_array( $facts ) ? ( $facts['pagination'] ?? [] ) : [];
+			$valid = $valid && ( $pagination['scan_complete'] === ( null !== $pagination['has_more'] ) )
+				&& ( ( false === $pagination['has_more'] ) === ( null === $pagination['next_cursor'] ) )
+				&& count( $facts['events'] ) <= $pagination['limit'];
+			$success = true === ( $execution['success'] ?? false ) && $valid;
+			$summary = $success ? 'Local YoRo email observations only; delivery is not observed. An incomplete scan requires continuation and does not prove no email was sent.' : 'Local email history is unavailable.';
+			return [ 'success' => $success, 'action' => 'orders.get_email_history', 'message' => $summary, 'summary' => $summary,
+				'data' => [ 'email_history' => $success ? $facts : null ], 'read_only' => true, 'undoable' => false,
+				'result_type' => 'generic', 'display_type' => 'generic', 'assistant_summary' => $summary, 'extensions' => (object) [] ];
+		}
+
 		$action_name = $action_name ?: ( $execution['action'] ?? '' );
 		if ( 'orders.send_transactional_email' === $action_name ) {
 			$summary = true === ( $execution['success'] ?? false ) && 'mailer_accepted' === ( $execution['outcome'] ?? '' )

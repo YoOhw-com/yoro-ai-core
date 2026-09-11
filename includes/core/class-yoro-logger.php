@@ -151,6 +151,19 @@ class YoRo_Logger {
 		$telemetry = self::normalize_telemetry( $data );
 		$params    = self::compact_params( $data['params'] ?? [] );
 		$result    = self::compact_result( $data['result'] ?? [] );
+		// Future local terminal email rows retain only an explicit, non-sensitive observation.
+		if ( in_array( $data['action'] ?? '', [ 'orders.send_customer_email', 'orders.email_customer_template', 'orders.send_transactional_email' ], true )
+			&& in_array( $data['status'] ?? '', [ 'executed', 'error', 'failed' ], true ) && empty( $data['preview'] ) ) {
+			$raw = is_array( $data['result'] ?? null ) ? $data['result'] : [];
+			$outcome = $raw['outcome'] ?? ( $raw['data']['outcome'] ?? null );
+			if ( 'mailer_accepted' === $outcome && true === ( $raw['success'] ?? false ) ) {
+				$result['email_observation'] = [ 'mailer_outcome' => 'mailer_accepted' ];
+			} elseif ( 'transactional_email_outcome_unknown' === ( $raw['error']['code'] ?? null )
+				|| 'transactional_email_outcome_unknown' === ( $raw['errors'][0]['code'] ?? null ) ) {
+				$result['email_observation'] = [ 'mailer_outcome' => 'unknown' ];
+			}
+		}
+
 
 		$insert_data = [
 			'user_id'    => $data['user_id'] ?? get_current_user_id(),
