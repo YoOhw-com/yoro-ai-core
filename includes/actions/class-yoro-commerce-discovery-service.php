@@ -226,6 +226,8 @@ class YoRo_Commerce_Discovery_Service {
 
 	public static function product_version( WC_Product $product ) {
 		$date_modified = $product->get_date_modified();
+		$sale_from = $product->get_date_on_sale_from( 'edit' );
+		$sale_to = $product->get_date_on_sale_to( 'edit' );
 
 		return hash(
 			'sha256',
@@ -236,7 +238,11 @@ class YoRo_Commerce_Discovery_Service {
 					$product->get_status(),
 					$product->get_stock_quantity(),
 					$product->get_stock_status(),
-					$product->get_price(),
+					$product->get_regular_price( 'edit' ),
+					$product->get_sale_price( 'edit' ),
+					$product->get_price( 'edit' ),
+					$sale_from ? $sale_from->getTimestamp() : null,
+					$sale_to ? $sale_to->getTimestamp() : null,
 				]
 			)
 		);

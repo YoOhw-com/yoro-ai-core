@@ -501,6 +501,9 @@ try {
 	$assert( isset( $actions['products.update_stock'] ), 'Versioned WooCommerce inventory writes must be published.' );
 	$assert( 'optimistic_version' === ( $actions['products.update_stock']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Inventory writes must publish optimistic concurrency.' );
 	$assert( in_array( 'expected_version', (array) ( $actions['products.update_stock']['required_params'] ?? [] ), true ), 'Inventory writes must require the product version from the latest read.' );
+	$assert( isset( $actions['products.update_pricing'] ), 'Versioned WooCommerce regular-price writes must be published.' );
+	$assert( 'optimistic_version' === ( $actions['products.update_pricing']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Regular-price writes must publish optimistic concurrency.' );
+	$assert( [ 'product_id', 'regular_price', 'expected_version' ] === ( $actions['products.update_pricing']['required_params'] ?? [] ), 'Regular-price writes must publish only the exact bounded input.' );
 	$assert( isset( $actions['orders.add_note'] ), 'Append-only order notes may be published with journal idempotency.' );
 	$assert( 'append_only' === ( $actions['orders.add_note']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Append-only order notes must declare their concurrency strategy.' );
 	foreach ( [ 'orders.email_customer_preview', 'orders.email_customer_template', 'orders.use_email_template', 'orders.add_private_note_template' ] as $deprecated_alias ) {
@@ -732,6 +735,53 @@ try {
 	} finally {
 		foreach ( $c3_operations as $c3_operation ) { YoRo_Connector_Execution_Journal::clear( $c3_operation ); }
 		$c3_product->delete( true ); update_option( 'woocommerce_manage_stock', $c3_manage );
+	}
+
+	// Regular pricing uses only validated remote claim authority and one durable journal result.
+	$pricing_product = new WC_Product_Simple();
+	$pricing_operation = $operation;
+	try {
+		$pricing_product->set_name( 'Pricing runtime fixture' );
+		$pricing_product->set_status( 'draft' );
+		$pricing_product->set_regular_price( '10' );
+		$pricing_product->set_price( '10' );
+		$pricing_product->save();
+		$pricing_product = wc_get_product( $pricing_product->get_id() );
+		$pricing_operation['envelope_id'] = 'envelope_' . hash( 'sha256', 'pricing-' . wp_generate_uuid4() );
+		$pricing_operation['idempotency_key'] = 'operation_' . hash( 'sha256', 'pricing-' . wp_generate_uuid4() );
+		$pricing_operation['operation_id'] = 'operation_pricing_' . wp_generate_uuid4();
+		$pricing_operation['action'] = 'products.update_pricing';
+		$pricing_operation['params'] = [
+			'product_id' => $pricing_product->get_id(),
+			'regular_price' => '12.345',
+			'expected_version' => YoRo_Commerce_Discovery_Service::product_version( $pricing_product ),
+		];
+		$pricing_operation['actor']['permissions'] = [ YoRo_Action_Registry::get( 'products.update_pricing' )['permission'] ];
+		$pricing_client = new YoRo_Connector_Smoke_Client();
+		$pricing_client->claim = $client->claim;
+		$pricing_client->claim['delivery']['operations'] = [ $pricing_operation ];
+		$pricing_calls = 0;
+		$pricing_probe = static function ( $name ) use ( &$pricing_calls ) {
+			if ( 'products.update_pricing' === $name ) { ++$pricing_calls; }
+		};
+		add_action( 'yoro_before_action_execute', $pricing_probe, 10, 1 );
+		try {
+			( new YoRo_Connector_Runtime( $pricing_client ) )->run_once();
+			$pricing_result = $pricing_client->results[0]['payload'] ?? [];
+			$pricing_data = $pricing_result['result']['data'] ?? [];
+			$assert( 'executed' === ( $pricing_result['status'] ?? '' ) && 1 === $pricing_calls, 'Pricing must execute once through the validated remote runtime.' );
+			$assert( [ 'product_id', 'previous_regular_price', 'regular_price', 'active_price', 'currency', 'current_version' ] === array_keys( $pricing_data ), 'Pricing runtime output must match the exact canonical data schema.' );
+			$assert( '10' === (string) ( $pricing_data['previous_regular_price'] ?? '' ) && '12.35' === (string) ( $pricing_data['regular_price'] ?? '' ), 'Pricing runtime must report the normalized owner mutation.' );
+			$assert( '12.35' === (string) wc_get_product( $pricing_product->get_id() )->get_regular_price( 'edit' ), 'Pricing runtime must persist the exact normalized regular price.' );
+			( new YoRo_Connector_Runtime( $pricing_client ) )->run_once();
+			$assert( 1 === $pricing_calls && 2 === count( $pricing_client->results ), 'Pricing journal replay must not repeat the mutation.' );
+			$assert( wp_json_encode( $pricing_result ) === wp_json_encode( $pricing_client->results[1]['payload'] ?? [] ), 'Pricing journal replay must republish the exact recorded result.' );
+		} finally {
+			remove_action( 'yoro_before_action_execute', $pricing_probe, 10 );
+		}
+	} finally {
+		YoRo_Connector_Execution_Journal::clear( $pricing_operation );
+		if ( $pricing_product instanceof WC_Product ) { $pricing_product->delete( true ); }
 	}
 
 	// Native B4 replay tests require a disposable database and a process-level mail sink.

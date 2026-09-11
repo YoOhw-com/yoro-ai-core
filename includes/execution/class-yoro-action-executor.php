@@ -53,7 +53,7 @@ class YoRo_Action_Executor {
 			);
 		}
 
-		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock' ], true ) ) {
+		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.update_pricing' ], true ) ) {
 			// Connector context is emitted only by the validated, journal-owning runtime call site.
 			// PlanExecutor strips all caller/captured context for this action before reaching here.
 			$connector_owned = is_array( $context ) && true === ( $context['connector_remote_agent'] ?? false )
@@ -61,7 +61,16 @@ class YoRo_Action_Executor {
 				&& is_string( $context['operation_id'] ?? null ) && '' !== $context['operation_id'];
 			$claimed = $confirm && $claimed_execution_context instanceof Closure && $claimed_execution_context( $action_name, $params );
 			if ( ! $confirm || ( ! $connector_owned && ! $claimed ) ) {
-				return new WP_Error( 'products.adjust_stock' === $action_name ? 'stock_adjustment_execution_permit_required' : ( 'orders.regenerate_download_permissions' === $action_name ? 'download_regeneration_execution_permit_required' : 'transactional_email_execution_permit_required' ), 'A successfully claimed pending-operation permit is required. Reconcile unknown outcomes before creating a new operation.' );
+				$error_code = 'transactional_email_execution_permit_required';
+				if ( 'products.adjust_stock' === $action_name ) {
+					$error_code = 'stock_adjustment_execution_permit_required';
+				} elseif ( 'products.update_pricing' === $action_name ) {
+					$error_code = 'pricing_execution_permit_required';
+				} elseif ( 'orders.regenerate_download_permissions' === $action_name ) {
+					$error_code = 'download_regeneration_execution_permit_required';
+				}
+
+				return new WP_Error( $error_code, 'A successfully claimed pending-operation permit is required. Reconcile unknown outcomes before creating a new operation.' );
 			}
 		}
 
