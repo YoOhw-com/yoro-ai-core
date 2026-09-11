@@ -7,6 +7,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Orders_Actions {
 
 	public static function register() {
+		YoRo_Action_Registry::register( 'orders.get_download_permissions', [
+			'label' => __( 'Get order download permissions', 'yoro-ai-core' ),
+			'description' => __( 'Observe bounded WooCommerce download permissions for one order. No URL, license or file delivery.', 'yoro-ai-core' ),
+			'category' => 'orders', 'permission' => 'yoro_view_store_data',
+			'callback' => [ 'YoRo_Orders_Read_Service', 'get_download_permissions' ],
+			'risk_level' => 'low', 'write_action' => false, 'requires_confirmation' => false,
+			'input_schema' => [ 'order_id' => 'integer', 'limit' => 'integer', 'page' => 'integer' ],
+			'canonical_input_schema' => [
+				'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ],
+				'page' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 100 ],
+			],
+			'required_params' => [ 'order_id' ], 'max_items' => 1, 'max_targets' => 1,
+			'target_type' => 'order', 'supports_bulk' => false, 'capabilities' => [ 'orders', 'read', 'downloads' ],
+		] );
 		YoRo_Action_Registry::register( 'orders.get_email_history', [
 			'label' => __( 'Get local order email history', 'yoro-ai-core' ),
 			'description' => __( 'Read bounded local YoRo email observations for one order. Delivery and remote receipts are not observed.', 'yoro-ai-core' ),

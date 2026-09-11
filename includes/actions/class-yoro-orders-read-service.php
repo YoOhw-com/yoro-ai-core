@@ -6,6 +6,62 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Orders_Read_Service {
 
+	/** Read the owner store only; page and one-row lookahead keep offsets independent. */
+	public static function get_download_permissions( $params ) {
+		if ( ! current_user_can( 'yoro_view_store_data' ) ) {
+			return new WP_Error( 'yoro_permission_denied', 'Permission to read store data is required.' );
+		}
+		if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'order_id', 'limit', 'page', '_yoro_confirmed', '_yoro_preview' ] )
+			|| ! isset( $params['order_id'] ) || ! is_int( $params['order_id'] ) || $params['order_id'] < 1 ) {
+			return new WP_Error( 'invalid_params', 'Choose exactly one positive integer order ID.' );
+		}
+		foreach ( [ '_yoro_confirmed', '_yoro_preview' ] as $flag ) {
+			if ( array_key_exists( $flag, $params ) && ! is_bool( $params[ $flag ] ) ) {
+				return new WP_Error( 'invalid_params', 'Invalid execution flags.' );
+			}
+		}
+		$limit = array_key_exists( 'limit', $params ) ? $params['limit'] : 20;
+		$page = array_key_exists( 'page', $params ) ? $params['page'] : 1;
+		if ( ! is_int( $limit ) || $limit < 1 || $limit > 50 || ! is_int( $page ) || $page < 1 || $page > 100 ) {
+			return new WP_Error( 'invalid_params', 'Limit must be 1..50 and page 1..100, both integers.' );
+		}
+		if ( ! function_exists( 'wc_get_order' ) || ! class_exists( 'WC_Data_Store' ) ) {
+			return new WP_Error( 'woocommerce_missing', 'Store integration is not active.' );
+		}
+		try {
+			$order = wc_get_order( $params['order_id'] );
+			if ( ! $order instanceof WC_Order || $order instanceof WC_Order_Refund || $order->get_id() !== $params['order_id'] ) {
+				return new WP_Error( 'order_not_found', 'The selected order was not found.' );
+			}
+			$store = WC_Data_Store::load( 'customer-download' );
+			$args = [ 'order_id' => $params['order_id'], 'orderby' => 'permission_id', 'order' => 'ASC', 'return' => 'objects' ];
+			$rows = $store->get_downloads( $args + [ 'limit' => $limit, 'page' => $page ] );
+			// WooCommerce calculates offset as limit*(page-1); limit+1 would skip rows.
+			$probe = $store->get_downloads( $args + [ 'limit' => 1, 'page' => $limit * $page + 1 ] );
+			if ( ! is_array( $rows ) || count( $rows ) > $limit || ! is_array( $probe ) || count( $probe ) > 1 ) {
+				throw new UnexpectedValueException( 'Invalid owner response.' );
+			}
+			$permissions = [];
+			foreach ( array_merge( array_values( $rows ), array_values( $probe ) ) as $index => $row ) {
+				$permission = YoRo_Order_Presenter::format_download_permission( $row, $params['order_id'] );
+				if ( null === $permission ) {
+					throw new UnexpectedValueException( 'Unsafe owner row.' );
+				}
+				if ( $index < count( $rows ) ) { $permissions[] = $permission; }
+			}
+			$has_more = 1 === count( $probe );
+			$facts = [ 'order_id' => $params['order_id'], 'permissions' => $permissions,
+				'pagination' => [ 'limit' => $limit, 'page' => $page, 'has_more' => $has_more, 'next_page' => $has_more && $page < 100 ? $page + 1 : null ],
+				'coverage' => [ 'source' => 'woocommerce_customer_download', 'limitations' => YoRo_Order_Presenter::DOWNLOAD_PERMISSION_LIMITATIONS ],
+			];
+			return [ 'success' => true, 'action' => 'orders.get_download_permissions', 'download_permissions' => $facts,
+				'read_only' => true, 'result_type' => 'generic', 'display_type' => 'generic' ];
+		} catch ( Throwable $error ) {
+			// Owner exceptions can contain SQL or secrets; never reflect their messages.
+			return new WP_Error( 'download_permissions_unavailable', 'Download permissions are unavailable.' );
+		}
+	}
+
 	/** Bounded primary-key traversal; unrelated rows consume the same scan budget. */
 	public static function get_email_history( $params ) {
 		if ( ! current_user_can( 'yoro_view_store_data' ) ) {

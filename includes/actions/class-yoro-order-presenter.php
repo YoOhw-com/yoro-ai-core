@@ -6,6 +6,41 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Order_Presenter {
 
+	const DOWNLOAD_PERMISSION_LIMITATIONS = [ 'download_permission_not_license', 'download_url_not_exposed', 'file_delivery_not_verified', 'permission_regeneration_not_performed', 'live_view_not_snapshot', 'empty_means_no_permission_rows_observed', 'current_product_file_metadata_not_observed' ];
+
+	/** Getter allowlist excludes customer identity, order keys, URLs and metadata. */
+	public static function format_download_permission( $permission, $order_id ) {
+		if ( ! $permission instanceof WC_Customer_Download || $permission->get_order_id( 'edit' ) !== $order_id ) { return null; }
+		$product_id = $permission->get_product_id( 'edit' );
+		$download_id = $permission->get_download_id( 'edit' );
+		$remaining = $permission->get_downloads_remaining( 'edit' );
+		$count = $permission->get_download_count( 'edit' );
+		if ( ! is_int( $product_id ) || $product_id < 1 || ! is_string( $download_id ) || ! preg_match( '/^[A-Za-z0-9_-]{1,64}$/D', $download_id ) ) { return null; }
+		$unlimited = '' === $remaining;
+		if ( ! $unlimited ) {
+			$remaining = self::download_permission_integer( $remaining );
+			if ( null === $remaining ) { return null; }
+		}
+		$count = self::download_permission_integer( $count );
+		if ( null === $count ) { return null; }
+		$facts = [ 'product_id' => $product_id, 'download_id' => $download_id, 'downloads_remaining' => $unlimited ? null : $remaining,
+			'unlimited_downloads' => $unlimited, 'download_count' => $count ];
+		foreach ( [ 'access_granted', 'access_expires' ] as $field ) {
+			$method = 'get_' . $field;
+			$date = $permission->$method( 'edit' );
+			if ( null !== $date && ! $date instanceof DateTimeInterface ) { return null; }
+			$facts[ $field ] = null === $date ? null : gmdate( 'Y-m-d\TH:i:s\Z', $date->getTimestamp() );
+		}
+		return $facts;
+	}
+
+	private static function download_permission_integer( $value ) {
+		if ( is_int( $value ) ) { return $value >= 0 ? $value : null; }
+		if ( ! is_string( $value ) || ! preg_match( '/^(0|[1-9][0-9]{0,18})$/D', $value ) ) { return null; }
+		$integer = (int) $value;
+		return $integer >= 0 && (string) $integer === $value ? $integer : null;
+	}
+
 	const PAYMENT_EVIDENCE_LIMITATION = 'WooCommerce order facts do not independently verify gateway capture, settlement, or confirmation.';
 
 	public static function format_payment_context( WC_Order $order ) {
