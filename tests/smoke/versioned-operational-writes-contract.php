@@ -40,7 +40,8 @@ $registry = YoRo_Action_Registry::all();
 
 foreach ( [
 	'orders.update_addresses' => 'optimistic_version',
-		'orders.update_status' => 'per_item_optimistic_version',
+	'orders.update_status' => 'per_item_optimistic_version',
+	'products.update_content' => 'optimistic_version',
 		'products.update_pricing' => 'optimistic_version',
 	'products.update_stock' => 'optimistic_version',
 	'products.update_stock_status' => 'optimistic_version',
@@ -62,13 +63,14 @@ foreach ( $catalog as $item ) {
 	}
 }
 
-	foreach ( [ 'orders.update_addresses', 'orders.update_status', 'products.update_pricing', 'products.update_stock', 'products.update_stock_status' ] as $action_name ) {
+	foreach ( [ 'orders.update_addresses', 'orders.update_status', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.update_stock_status' ] as $action_name ) {
 	$assert( isset( $catalog_by_name[ $action_name ] ), sprintf( '%s must be published to Chat only after its safety contract is complete.', $action_name ) );
 }
 
 $assert( ! isset( $catalog_by_name['orders.restore_statuses'] ), 'Order recovery must remain hidden from AI selection.' );
 	$assert( ! isset( $catalog_by_name['products.restore_stock_state'] ), 'Product recovery must remain hidden from AI selection.' );
 	$assert( ! isset( $catalog_by_name['products.restore_pricing_state'] ), 'Pricing recovery must remain hidden from AI selection.' );
+	$assert( ! isset( $catalog_by_name['products.restore_content_state'] ), 'Content recovery must remain hidden from AI selection.' );
 
 global $wpdb;
 
@@ -90,6 +92,21 @@ try {
 	$product_id = $product->save();
 	$product = wc_get_product( $product_id );
 	$product_version = YoRo_Commerce_Discovery_Service::product_version( $product );
+	$product->set_name( $product->get_name( 'edit' ) . ' changed' );
+	$product->save();
+	$name_version = YoRo_Commerce_Discovery_Service::product_version( wc_get_product( $product_id ) );
+	$assert( $name_version !== $product_version, 'Raw product name must participate in product version.' );
+	$product = wc_get_product( $product_id );
+	$product->set_description( '<p>Versioned description</p>' );
+	$product->save();
+	$description_version = YoRo_Commerce_Discovery_Service::product_version( wc_get_product( $product_id ) );
+	$assert( $description_version !== $name_version, 'Raw product description must participate in product version.' );
+	$product = wc_get_product( $product_id );
+	$product->set_short_description( '<p>Versioned short description</p>' );
+	$product->save();
+	$product = wc_get_product( $product_id );
+	$product_version = YoRo_Commerce_Discovery_Service::product_version( $product );
+	$assert( $product_version !== $description_version, 'Raw product short description must participate in product version.' );
 
 	$stale_product = YoRo_Store_Inventory_Service::update_product_stock(
 		[
@@ -263,6 +280,9 @@ try {
 		$current = wc_get_order( $id );
 		$data = $current->get_data();
 		unset( $data['shipping'], $data['date_modified'], $data['version'] );
+		$data['meta_data'] = array_values( array_filter( $data['meta_data'], static function ( $item ) {
+			return '_shipping_address_index' !== $item->key;
+		} ) );
 		foreach ( [ 'line_items', 'tax_lines', 'shipping_lines', 'fee_lines', 'coupon_lines' ] as $key ) {
 			$data[ $key ] = array_map( static function ( $item ) { return $item->get_data(); }, $data[ $key ] );
 		}

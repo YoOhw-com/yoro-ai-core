@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:d8dbb3f5e7116b4ae7bb5f5948bda83c29f7e017dca19107a9489354da40cbda';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:11f7c69ed7d312ef8db9090bd20e1a5831e475299e282d61d0ad179e6a552684';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1366,7 +1366,9 @@ class YoRo_Commerce_Contract_Builder {
 					'skipped'   => is_array( $execution['skipped'] ?? null ) ? $execution['skipped'] : [],
 					'errors'    => is_array( $execution['errors'] ?? null ) ? $execution['errors'] : [],
 					'count'     => absint( $execution['count'] ?? 0 ),
-					'undo_plan' => is_array( $execution['undo_plan'] ?? null ) ? $execution['undo_plan'] : [],
+					'undo_plan' => 'products.update_content' === $action_name
+						? []
+						: ( is_array( $execution['undo_plan'] ?? null ) ? $execution['undo_plan'] : [] ),
 					'legacy_data' => self::is_canonical_read_action( $action_name ) ? $legacy_data : [],
 				],
 			],
@@ -1492,6 +1494,16 @@ class YoRo_Commerce_Contract_Builder {
 				'currency' => [ 'type' => 'string' ],
 				'current_version' => [ 'type' => 'string' ],
 			], [ 'product_id', 'previous_regular_price', 'regular_price', 'active_price', 'currency', 'current_version' ] );
+		}
+
+		if ( 'products.update_content' === $action_name ) {
+			return self::closed_object_schema( [
+				'product_id' => [ 'type' => 'integer' ],
+				'field' => [ 'type' => 'string', 'enum' => [ 'name', 'description', 'short_description' ] ],
+				'previous_value_fingerprint' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+				'value_fingerprint' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+				'current_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+			], [ 'product_id', 'field', 'previous_value_fingerprint', 'value_fingerprint', 'current_version' ] );
 		}
 
 		if ( 'products.update_stock' === $action_name ) {
@@ -2340,7 +2352,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_write_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.update_addresses', 'orders.update_status', 'products.update_pricing', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
+			[ 'orders.update_addresses', 'orders.update_status', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
 			true
 		);
 	}
@@ -2381,6 +2393,16 @@ class YoRo_Commerce_Contract_Builder {
 		if ( 'products.update_pricing' === $action_name ) {
 			$data = [];
 			foreach ( [ 'product_id', 'previous_regular_price', 'regular_price', 'active_price', 'currency', 'current_version' ] as $key ) {
+				if ( array_key_exists( $key, $execution ) ) {
+					$data[ $key ] = $execution[ $key ];
+				}
+			}
+
+			return $data;
+		}
+		if ( 'products.update_content' === $action_name ) {
+			$data = [];
+			foreach ( [ 'product_id', 'field', 'previous_value_fingerprint', 'value_fingerprint', 'current_version' ] as $key ) {
 				if ( array_key_exists( $key, $execution ) ) {
 					$data[ $key ] = $execution[ $key ];
 				}

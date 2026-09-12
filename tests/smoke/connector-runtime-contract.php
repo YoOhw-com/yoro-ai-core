@@ -504,6 +504,9 @@ try {
 	$assert( isset( $actions['products.update_pricing'] ), 'Versioned WooCommerce regular-price writes must be published.' );
 	$assert( 'optimistic_version' === ( $actions['products.update_pricing']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Regular-price writes must publish optimistic concurrency.' );
 	$assert( [ 'product_id', 'regular_price', 'expected_version' ] === ( $actions['products.update_pricing']['required_params'] ?? [] ), 'Regular-price writes must publish only the exact bounded input.' );
+	$assert( isset( $actions['products.update_content'] ), 'Versioned WooCommerce content writes must be published.' );
+	$assert( 'optimistic_version' === ( $actions['products.update_content']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Content writes must publish optimistic concurrency.' );
+	$assert( [ 'product_id', 'field', 'value', 'expected_version' ] === ( $actions['products.update_content']['required_params'] ?? [] ), 'Content writes must publish only the exact bounded input.' );
 	$assert( isset( $actions['orders.add_note'] ), 'Append-only order notes may be published with journal idempotency.' );
 	$assert( 'append_only' === ( $actions['orders.add_note']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Append-only order notes must declare their concurrency strategy.' );
 	foreach ( [ 'orders.email_customer_preview', 'orders.email_customer_template', 'orders.use_email_template', 'orders.add_private_note_template' ] as $deprecated_alias ) {
@@ -782,6 +785,53 @@ try {
 	} finally {
 		YoRo_Connector_Execution_Journal::clear( $pricing_operation );
 		if ( $pricing_product instanceof WC_Product ) { $pricing_product->delete( true ); }
+	}
+
+	// Product content uses only validated remote claim authority and one durable journal result.
+	$content_product = new WC_Product_Simple();
+	$content_operation = $operation;
+	try {
+		$content_product->set_name( 'Content runtime fixture' );
+		$content_product->set_description( '<p>Before</p>' );
+		$content_product->set_status( 'draft' );
+		$content_product->save();
+		$content_product = wc_get_product( $content_product->get_id() );
+		$content_operation['envelope_id'] = 'envelope_' . hash( 'sha256', 'content-' . wp_generate_uuid4() );
+		$content_operation['idempotency_key'] = 'operation_' . hash( 'sha256', 'content-' . wp_generate_uuid4() );
+		$content_operation['operation_id'] = 'operation_content_' . wp_generate_uuid4();
+		$content_operation['action'] = 'products.update_content';
+		$content_operation['params'] = [
+			'product_id' => $content_product->get_id(),
+			'field' => 'description',
+			'value' => '<p>After <strong>review</strong></p>',
+			'expected_version' => YoRo_Commerce_Discovery_Service::product_version( $content_product ),
+		];
+		$content_operation['actor']['permissions'] = [ YoRo_Action_Registry::get( 'products.update_content' )['permission'] ];
+		$content_client = new YoRo_Connector_Smoke_Client();
+		$content_client->claim = $client->claim;
+		$content_client->claim['delivery']['operations'] = [ $content_operation ];
+		$content_calls = 0;
+		$content_probe = static function ( $name ) use ( &$content_calls ) {
+			if ( 'products.update_content' === $name ) { ++$content_calls; }
+		};
+		add_action( 'yoro_before_action_execute', $content_probe, 10, 1 );
+		try {
+			( new YoRo_Connector_Runtime( $content_client ) )->run_once();
+			$content_result = $content_client->results[0]['payload'] ?? [];
+			$content_data = $content_result['result']['data'] ?? [];
+			$assert( 'executed' === ( $content_result['status'] ?? '' ) && 1 === $content_calls, 'Content must execute once through the validated remote runtime.' );
+			$assert( [ 'product_id', 'field', 'previous_value_fingerprint', 'value_fingerprint', 'current_version' ] === array_keys( $content_data ), 'Content runtime output must match the exact canonical data schema.' );
+			$assert( 'description' === ( $content_data['field'] ?? '' ) && ! isset( $content_data['value'] ), 'Content runtime output must identify the field without returning raw content.' );
+			$assert( '<p>After <strong>review</strong></p>' === wc_get_product( $content_product->get_id() )->get_description( 'edit' ), 'Content runtime must persist the exact normalized field.' );
+			( new YoRo_Connector_Runtime( $content_client ) )->run_once();
+			$assert( 1 === $content_calls && 2 === count( $content_client->results ), 'Content journal replay must not repeat the mutation.' );
+			$assert( wp_json_encode( $content_result ) === wp_json_encode( $content_client->results[1]['payload'] ?? [] ), 'Content journal replay must republish the exact recorded result.' );
+		} finally {
+			remove_action( 'yoro_before_action_execute', $content_probe, 10 );
+		}
+	} finally {
+		YoRo_Connector_Execution_Journal::clear( $content_operation );
+		if ( $content_product instanceof WC_Product ) { $content_product->delete( true ); }
 	}
 
 	// Native B4 replay tests require a disposable database and a process-level mail sink.

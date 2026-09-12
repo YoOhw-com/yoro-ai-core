@@ -6,6 +6,122 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Store_Inventory_Service {
 
+	public static function prepare_product_content_update( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return new WP_Error( 'yoro_permission_denied', 'Product content updates require manage_woocommerce.' );
+		}
+
+		$params = is_array( $params ) ? $params : [];
+		$unknown = array_diff( array_keys( $params ), [ 'product_id', 'field', 'value', 'expected_version', '_yoro_confirmed', '_yoro_preview' ] );
+		if ( $unknown || ! is_int( $params['product_id'] ?? null ) || $params['product_id'] <= 0
+			|| ! is_string( $params['field'] ?? null ) || ! in_array( $params['field'], [ 'name', 'description', 'short_description' ], true )
+			|| ! is_string( $params['value'] ?? null )
+			|| ! is_string( $params['expected_version'] ?? null ) || ! preg_match( '/^[a-f0-9]{64}$/D', $params['expected_version'] ) ) {
+			return new WP_Error( 'invalid_product_content_update', 'Use one product ID, one supported content field, one bounded string value and its current version.' );
+		}
+
+		clean_post_cache( $params['product_id'] );
+		$product = function_exists( 'wc_get_product' ) ? wc_get_product( $params['product_id'] ) : false;
+		$eligibility = self::validate_product_content_eligibility( $product );
+		if ( is_wp_error( $eligibility ) ) {
+			return $eligibility;
+		}
+
+		$version = self::validate_product_version( $product, $params );
+		if ( is_wp_error( $version ) ) {
+			return $version;
+		}
+
+		$normalized = self::normalize_product_content_value( $params['field'], $params['value'] );
+		if ( is_wp_error( $normalized ) ) {
+			return $normalized;
+		}
+		$current = self::product_content_value( $product, $params['field'] );
+		if ( $current === $normalized ) {
+			return new WP_Error( 'product_content_no_change', 'The normalized content already matches the selected product field.' );
+		}
+
+		return [
+			'product' => $product,
+			'field' => $params['field'],
+			'previous_value' => $current,
+			'value' => $normalized,
+		];
+	}
+
+	public static function preview_update_product_content( $params ) {
+		$prepared = self::prepare_product_content_update( $params );
+		$blocked = is_wp_error( $prepared );
+
+		return [
+			'type' => 'write',
+			'will_execute' => false,
+			'blocked' => $blocked,
+			'block_reason' => $blocked ? $prepared->get_error_code() : '',
+			'message' => $blocked ? $prepared->get_error_message() : 'Only the selected product content field will change after claimed confirmation. Pricing, stock, status, tax, categories, attributes, media and store settings remain untouched.',
+			'product_id' => $blocked ? null : $prepared['product']->get_id(),
+			'product_name' => $blocked ? '' : self::bounded_content_preview( (string) $prepared['product']->get_name( 'edit' ) ),
+			'product_type' => $blocked ? '' : sanitize_key( $prepared['product']->get_type() ),
+			'field' => $blocked ? '' : $prepared['field'],
+			'current_value_preview' => $blocked ? '' : self::bounded_content_preview( $prepared['previous_value'] ),
+			'current_value_fingerprint' => $blocked ? '' : hash( 'sha256', $prepared['previous_value'] ),
+			'proposed_value_preview' => $blocked ? '' : self::bounded_content_preview( $prepared['value'] ),
+			'proposed_value_fingerprint' => $blocked ? '' : hash( 'sha256', $prepared['value'] ),
+			'expected_version' => $blocked ? '' : $params['expected_version'],
+			'current_version' => $blocked ? '' : YoRo_Commerce_Discovery_Service::product_version( $prepared['product'] ),
+		];
+	}
+
+	public static function update_product_content( $params ) {
+		$prepared = self::prepare_product_content_update( $params );
+		if ( is_wp_error( $prepared ) ) {
+			return $prepared;
+		}
+
+		$product = $prepared['product'];
+		try {
+			self::set_product_content_value( $product, $prepared['field'], $prepared['value'] );
+			if ( ! $product->save() ) {
+				return new WP_Error( 'product_content_reconciliation_required', 'The content outcome could not be verified. Read and reconcile the product; do not retry this operation.' );
+			}
+			clean_post_cache( $product->get_id() );
+			$current = function_exists( 'wc_get_product' ) ? wc_get_product( $product->get_id() ) : false;
+			$eligibility = self::validate_product_content_eligibility( $current );
+			if ( is_wp_error( $eligibility ) || self::product_content_value( $current, $prepared['field'] ) !== $prepared['value'] ) {
+				return new WP_Error( 'product_content_reconciliation_required', 'The content may have changed but its persisted state is ambiguous. Read and reconcile the product; do not retry this operation.' );
+			}
+
+			$current_version = YoRo_Commerce_Discovery_Service::product_version( $current );
+
+			return [
+				'success' => true,
+				'action' => 'products.update_content',
+				'product_id' => $current->get_id(),
+				'field' => $prepared['field'],
+				'previous_value_fingerprint' => hash( 'sha256', $prepared['previous_value'] ),
+				'value_fingerprint' => hash( 'sha256', $prepared['value'] ),
+				'current_version' => $current_version,
+				'message' => 'Product content updated.',
+				'summary' => 'Product content updated.',
+				'read_only' => false,
+				'undoable' => false,
+				'undo_plan' => [ [
+					'action' => 'products.restore_content_state',
+					'params' => [
+						'product_id' => $current->get_id(),
+						'field' => $prepared['field'],
+						'previous_value' => $prepared['previous_value'],
+						'expected_version' => $current_version,
+					],
+				] ],
+				'result_type' => 'generic',
+				'display_type' => 'generic',
+			];
+		} catch ( Throwable $exception ) {
+			return new WP_Error( 'product_content_reconciliation_required', 'The content outcome could not be verified. Read and reconcile the product; do not retry this operation.' );
+		}
+	}
+
 	public static function prepare_product_pricing_update( $params ) {
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
 			return new WP_Error( 'yoro_permission_denied', 'Pricing updates require manage_woocommerce.' );
@@ -1026,6 +1142,59 @@ class YoRo_Store_Inventory_Service {
 		}
 	}
 
+	public static function restore_product_content_state( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return new WP_Error( 'yoro_permission_denied', 'Product content recovery requires manage_woocommerce.' );
+		}
+
+		$params = is_array( $params ) ? $params : [];
+		$unknown = array_diff( array_keys( $params ), [ 'product_id', 'field', 'previous_value', 'expected_version', '_yoro_confirmed', '_yoro_preview' ] );
+		if ( $unknown || ! is_int( $params['product_id'] ?? null ) || $params['product_id'] <= 0
+			|| ! is_string( $params['field'] ?? null ) || ! in_array( $params['field'], [ 'name', 'description', 'short_description' ], true )
+			|| ! is_string( $params['previous_value'] ?? null ) || ! self::is_bounded_product_content_value( $params['field'], $params['previous_value'], false )
+			|| ! is_string( $params['expected_version'] ?? null ) || ! preg_match( '/^[a-f0-9]{64}$/D', $params['expected_version'] ) ) {
+			return new WP_Error( 'invalid_product_content_restore', 'Content recovery requires one product, one supported field, its captured previous value and the current version.' );
+		}
+
+		clean_post_cache( $params['product_id'] );
+		$product = function_exists( 'wc_get_product' ) ? wc_get_product( $params['product_id'] ) : false;
+		$eligibility = self::validate_product_content_eligibility( $product );
+		if ( is_wp_error( $eligibility ) ) {
+			return $eligibility;
+		}
+		$version = self::validate_product_version( $product, $params );
+		if ( is_wp_error( $version ) ) {
+			return $version;
+		}
+
+		try {
+			self::set_product_content_value( $product, $params['field'], $params['previous_value'] );
+			if ( ! $product->save() ) {
+				return new WP_Error( 'product_content_restore_reconciliation_required', 'The recovered content could not be verified. Read and reconcile the product.' );
+			}
+			clean_post_cache( $product->get_id() );
+			$current = function_exists( 'wc_get_product' ) ? wc_get_product( $product->get_id() ) : false;
+			$eligibility = self::validate_product_content_eligibility( $current );
+			if ( is_wp_error( $eligibility ) || self::product_content_value( $current, $params['field'] ) !== $params['previous_value'] ) {
+				return new WP_Error( 'product_content_restore_reconciliation_required', 'The recovered content is ambiguous. Read and reconcile the product.' );
+			}
+
+			return [
+				'success' => true,
+				'action' => 'products.restore_content_state',
+				'summary' => sprintf( __( 'Restored %1$s for product #%2$d.', 'yoro-ai-core' ), $params['field'], $current->get_id() ),
+				'processed' => [ $current->get_id() ],
+				'count' => 1,
+				'read_only' => false,
+				'undoable' => false,
+				'undo_plan' => [],
+				'current_version' => YoRo_Commerce_Discovery_Service::product_version( $current ),
+			];
+		} catch ( Throwable $exception ) {
+			return new WP_Error( 'product_content_restore_reconciliation_required', 'The recovered content could not be verified. Read and reconcile the product.' );
+		}
+	}
+
 	private static function reload_product_after_inventory_write( WC_Product $product ) {
 		$product_id = absint( $product->get_id() );
 		$persisted_product = function_exists( 'wc_get_product' ) ? wc_get_product( $product_id ) : false;
@@ -1074,6 +1243,90 @@ class YoRo_Store_Inventory_Service {
 		}
 
 		return true;
+	}
+
+	private static function validate_product_content_eligibility( $product ) {
+		if ( ! $product instanceof WC_Product || 'simple' !== $product->get_type() ) {
+			return new WP_Error( 'product_content_target_not_supported', 'Only one exact simple product is supported.' );
+		}
+
+		foreach ( [ 'name', 'description', 'short_description' ] as $field ) {
+			if ( ! self::is_bounded_product_content_value( $field, self::product_content_value( $product, $field ), false ) ) {
+				return new WP_Error( 'product_content_state_not_supported', 'The current product content is outside the supported bounded state.' );
+			}
+		}
+
+		return true;
+	}
+
+	private static function normalize_product_content_value( $field, $value ) {
+		if ( ! self::is_bounded_product_content_value( $field, $value, false ) ) {
+			return new WP_Error( 'invalid_product_content_value', 'The product content value is malformed or exceeds the supported bound.' );
+		}
+
+		if ( 'name' === $field ) {
+			$normalized = trim( sanitize_text_field( $value ) );
+			return '' !== $normalized && self::is_bounded_product_content_value( $field, $normalized, false )
+				? $normalized
+				: new WP_Error( 'invalid_product_content_value', 'The product name cannot be empty after normalization.' );
+		}
+
+		$normalized = wp_kses_post( $value );
+		if ( '' !== $value && '' === $normalized ) {
+			return new WP_Error( 'invalid_product_content_value', 'Non-empty product content cannot normalize to an implicit clear.' );
+		}
+
+		return self::is_bounded_product_content_value( $field, $normalized, false )
+			? $normalized
+			: new WP_Error( 'invalid_product_content_value', 'The product content cannot be represented safely.' );
+	}
+
+	private static function is_bounded_product_content_value( $field, $value, $allow_empty_name ) {
+		if ( ! is_string( $value ) || false !== strpos( $value, chr( 0 ) )
+			|| ( function_exists( 'mb_check_encoding' ) && ! mb_check_encoding( $value, 'UTF-8' ) )
+			|| ( function_exists( 'wp_check_invalid_utf8' ) && wp_check_invalid_utf8( $value, false ) !== $value ) ) {
+			return false;
+		}
+
+		$length = function_exists( 'mb_strlen' ) ? mb_strlen( $value ) : strlen( $value );
+		if ( 'name' === $field ) {
+			return $length <= 200 && ( $allow_empty_name || '' !== trim( $value ) );
+		}
+
+		return in_array( $field, [ 'description', 'short_description' ], true ) && $length <= 100000;
+	}
+
+	private static function product_content_value( WC_Product $product, $field ) {
+		switch ( $field ) {
+			case 'name':
+				return (string) $product->get_name( 'edit' );
+			case 'description':
+				return (string) $product->get_description( 'edit' );
+			case 'short_description':
+				return (string) $product->get_short_description( 'edit' );
+		}
+
+		return '';
+	}
+
+	private static function set_product_content_value( WC_Product $product, $field, $value ) {
+		switch ( $field ) {
+			case 'name':
+				$product->set_name( $value );
+				break;
+			case 'description':
+				$product->set_description( $value );
+				break;
+			case 'short_description':
+				$product->set_short_description( $value );
+				break;
+		}
+	}
+
+	private static function bounded_content_preview( $value ) {
+		$value = sanitize_text_field( wp_strip_all_tags( (string) $value, true ) );
+
+		return wp_html_excerpt( $value, 160, '' );
 	}
 
 	private static function normalize_store_regular_price( $regular_price ) {
