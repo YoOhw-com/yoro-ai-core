@@ -53,7 +53,7 @@ class YoRo_Action_Executor {
 			);
 		}
 
-		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.update_pricing' ], true ) ) {
+		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.update_content', 'products.update_pricing' ], true ) ) {
 			// Connector context is emitted only by the validated, journal-owning runtime call site.
 			// PlanExecutor strips all caller/captured context for this action before reaching here.
 			$connector_owned = is_array( $context ) && true === ( $context['connector_remote_agent'] ?? false )
@@ -64,6 +64,8 @@ class YoRo_Action_Executor {
 				$error_code = 'transactional_email_execution_permit_required';
 				if ( 'products.adjust_stock' === $action_name ) {
 					$error_code = 'stock_adjustment_execution_permit_required';
+				} elseif ( 'products.update_content' === $action_name ) {
+					$error_code = 'product_content_execution_permit_required';
 				} elseif ( 'products.update_pricing' === $action_name ) {
 					$error_code = 'pricing_execution_permit_required';
 				} elseif ( 'orders.regenerate_download_permissions' === $action_name ) {

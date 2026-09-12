@@ -500,6 +500,34 @@ class YoRo_Orders_Actions {
 			],
 		] );
 
+		YoRo_Action_Registry::register( 'products.update_content', [
+			'label' => __( 'Update product content', 'yoro-ai-core' ),
+			'description' => __( 'Update one bounded content field on one exact simple product.', 'yoro-ai-core' ),
+			'category' => 'products', 'permission' => 'manage_woocommerce',
+			'callback' => [ 'YoRo_Store_Inventory_Service', 'update_product_content' ],
+			'preview_callback' => [ 'YoRo_Store_Inventory_Service', 'preview_update_product_content' ],
+			'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
+			'reversibility' => 'partial', 'idempotency_strategy' => 'operation_journal',
+			'input_schema' => [ 'product_id' => 'integer', 'field' => 'string', 'value' => 'string', 'expected_version' => 'string' ],
+			'canonical_input_schema' => [
+				'product_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'field' => [ 'type' => 'string', 'enum' => [ 'name', 'description', 'short_description' ] ],
+				'value' => [ 'type' => 'string', 'maxLength' => 100000 ],
+				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+			],
+			'concurrency_strategy' => 'optimistic_version', 'max_items' => 1, 'max_targets' => 1,
+			'target_type' => 'product', 'supports_bulk' => false,
+			'required_params' => [ 'product_id', 'field', 'value', 'expected_version' ],
+			'capabilities' => [ 'products', 'content', 'write' ],
+			'ai_description' => __( 'Update exactly one of name, description, or short_description on one exact simple product after a fresh read. Variations, aliases, bulk and unrelated product fields are unsupported.', 'yoro-ai-core' ),
+			'param_hints' => [
+				'product_id' => __( 'Use one exact positive WooCommerce simple product ID.', 'yoro-ai-core' ),
+				'field' => __( 'Use exactly name, description, or short_description.', 'yoro-ai-core' ),
+				'value' => __( 'Use only the explicit requested content value for that one field.', 'yoro-ai-core' ),
+				'expected_version' => __( 'Copy only the opaque version from the matching trusted product context.', 'yoro-ai-core' ),
+			],
+		] );
+
 		YoRo_Action_Registry::register( 'products.adjust_stock', [
 			'label' => __( 'Adjust product stock', 'yoro-ai-core' ),
 			'description' => __( 'Increase or decrease one independently managed product stock quantity by a signed delta.', 'yoro-ai-core' ),
@@ -633,6 +661,37 @@ class YoRo_Orders_Actions {
 					'stock_status',
 					'write',
 				],
+			]
+		);
+
+		YoRo_Action_Registry::register(
+			'products.restore_content_state',
+			[
+				'label' => __( 'Restore product content', 'yoro-ai-core' ),
+				'description' => __( 'Restore one captured product content field during a bounded YoRo undo.', 'yoro-ai-core' ),
+				'category' => 'products',
+				'permission' => 'manage_woocommerce',
+				'callback' => [ __CLASS__, 'restore_product_content_state' ],
+				'risk_level' => 'medium',
+				'write_action' => true,
+				'ai_exposed' => false,
+				'concurrency_strategy' => 'optimistic_version',
+				'input_schema' => [
+					'product_id' => 'integer',
+					'field' => 'string',
+					'previous_value' => 'string',
+					'expected_version' => 'string',
+				],
+				'canonical_input_schema' => [
+					'product_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+					'field' => [ 'type' => 'string', 'enum' => [ 'name', 'description', 'short_description' ] ],
+					'previous_value' => [ 'type' => 'string', 'maxLength' => 100000 ],
+					'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+				],
+				'required_params' => [ 'product_id', 'field', 'previous_value', 'expected_version' ],
+				'max_items' => 1,
+				'max_targets' => 1,
+				'capabilities' => [ 'products', 'content', 'write', 'undo' ],
 			]
 		);
 
@@ -1940,6 +1999,14 @@ class YoRo_Orders_Actions {
 
 	public static function update_product_pricing( $params ) {
 		return YoRo_Store_Inventory_Service::update_product_pricing( $params );
+	}
+
+	public static function update_product_content( $params ) {
+		return YoRo_Store_Inventory_Service::update_product_content( $params );
+	}
+
+	public static function restore_product_content_state( $params ) {
+		return YoRo_Store_Inventory_Service::restore_product_content_state( $params );
 	}
 
 	public static function restore_product_pricing_state( $params ) {
