@@ -42,6 +42,7 @@ foreach ( [
 	'orders.update_addresses' => 'optimistic_version',
 	'orders.update_status' => 'per_item_optimistic_version',
 	'products.update_content' => 'optimistic_version',
+	'products.create_draft' => 'create_only',
 		'products.update_pricing' => 'optimistic_version',
 	'products.update_stock' => 'optimistic_version',
 	'products.update_stock_status' => 'optimistic_version',
@@ -63,7 +64,7 @@ foreach ( $catalog as $item ) {
 	}
 }
 
-	foreach ( [ 'orders.update_addresses', 'orders.update_status', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.update_stock_status' ] as $action_name ) {
+	foreach ( [ 'orders.update_addresses', 'orders.update_status', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.update_stock_status' ] as $action_name ) {
 	$assert( isset( $catalog_by_name[ $action_name ] ), sprintf( '%s must be published to Chat only after its safety contract is complete.', $action_name ) );
 }
 

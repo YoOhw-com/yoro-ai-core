@@ -6,6 +6,94 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Store_Inventory_Service {
 
+	public static function prepare_product_draft_creation( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return new WP_Error( 'yoro_permission_denied', 'Product draft creation requires manage_woocommerce.' );
+		}
+
+		$params = is_array( $params ) ? $params : [];
+		$unknown = array_diff( array_keys( $params ), [ 'name', '_yoro_confirmed', '_yoro_preview' ] );
+		if ( $unknown || ! is_string( $params['name'] ?? null ) ) {
+			return new WP_Error( 'invalid_product_draft_creation', 'Use exactly one bounded product name.' );
+		}
+
+		$name = self::normalize_product_content_value( 'name', $params['name'] );
+		if ( is_wp_error( $name ) ) {
+			return new WP_Error( 'invalid_product_draft_creation', $name->get_error_message() );
+		}
+
+		return [ 'name' => $name ];
+	}
+
+	public static function preview_create_product_draft( $params ) {
+		$prepared = self::prepare_product_draft_creation( $params );
+		$blocked = is_wp_error( $prepared );
+
+		return [
+			'type' => 'write',
+			'will_execute' => false,
+			'blocked' => $blocked,
+			'block_reason' => $blocked ? $prepared->get_error_code() : '',
+			'message' => $blocked ? $prepared->get_error_message() : 'One unpublished simple product draft will be created after claimed confirmation. No pricing, stock, content, taxonomy, media, visibility or store setting will be set.',
+			'name' => $blocked ? '' : $prepared['name'],
+			'product_type' => $blocked ? '' : 'simple',
+			'status' => $blocked ? '' : 'draft',
+			'product_id' => null,
+			'current_version' => '',
+		];
+	}
+
+	public static function create_product_draft( $params ) {
+		$prepared = self::prepare_product_draft_creation( $params );
+		if ( is_wp_error( $prepared ) ) {
+			return $prepared;
+		}
+
+		try {
+			if ( ! class_exists( 'WC_Product_Simple' ) ) {
+				return new WP_Error( 'product_draft_creation_unavailable', 'WooCommerce simple product creation is unavailable.' );
+			}
+
+			$product = new WC_Product_Simple();
+			$product->set_name( $prepared['name'] );
+			$product->set_status( 'draft' );
+			$product_id = $product->save();
+			if ( ! is_int( $product_id ) || $product_id <= 0 ) {
+				return new WP_Error( 'product_draft_creation_reconciliation_required', 'The draft outcome could not be verified. Read and reconcile the operation; do not retry or search by name.' );
+			}
+
+			clean_post_cache( $product_id );
+			$current = function_exists( 'wc_get_product' ) ? wc_get_product( $product_id ) : false;
+			if ( ! $current || $current->get_id() !== $product_id
+				|| 'simple' !== $current->get_type()
+				|| 'draft' !== $current->get_status( 'edit' )
+				|| $prepared['name'] !== (string) $current->get_name( 'edit' ) ) {
+				return new WP_Error( 'product_draft_creation_reconciliation_required', 'The product may have been created but its persisted state is ambiguous. Read and reconcile the operation; do not retry or search by name.' );
+			}
+
+			$current_version = YoRo_Commerce_Discovery_Service::product_version( $current );
+			if ( ! is_string( $current_version ) || ! preg_match( '/^[a-f0-9]{64}$/D', $current_version ) ) {
+				return new WP_Error( 'product_draft_creation_reconciliation_required', 'The product was created but its canonical version could not be verified. Read and reconcile the operation; do not retry.' );
+			}
+
+			return [
+				'success' => true,
+				'action' => 'products.create_draft',
+				'product_id' => $product_id,
+				'current_version' => $current_version,
+				'message' => 'Product draft created.',
+				'summary' => 'Product draft created.',
+				'read_only' => false,
+				'undoable' => false,
+				'undo_plan' => [],
+				'result_type' => 'generic',
+				'display_type' => 'generic',
+			];
+		} catch ( Throwable $exception ) {
+			return new WP_Error( 'product_draft_creation_reconciliation_required', 'The draft outcome could not be verified. Read and reconcile the operation; do not retry or search by name.' );
+		}
+	}
+
 	public static function prepare_product_content_update( $params ) {
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
 			return new WP_Error( 'yoro_permission_denied', 'Product content updates require manage_woocommerce.' );
