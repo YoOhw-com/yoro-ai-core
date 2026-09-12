@@ -6,6 +6,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Orders_Actions {
 
+	public static function search_coupons( $params ) {
+		// ActionExecutor adds these transport flags; neither is a public search parameter.
+		if ( is_array( $params ) ) {
+			unset( $params['_yoro_confirmed'], $params['_yoro_preview'] );
+		}
+		return YoRo_Coupons_Service::search_coupons( $params );
+	}
+
 	public static function register() {
 		YoRo_Action_Registry::register( 'orders.regenerate_download_permissions', [
 			'label' => __( 'Regenerate order download permissions', 'yoro-ai-core' ),
@@ -785,7 +793,7 @@ class YoRo_Orders_Actions {
 				'description' => __( 'Read a bounded live page of coupon codes. No customer usage history.', 'yoro-ai-core' ),
 				'category' => 'coupons',
 				'permission' => 'manage_woocommerce',
-				'callback' => [ 'YoRo_Coupons_Service', 'search_coupons' ],
+				'callback' => [ __CLASS__, 'search_coupons' ],
 				'risk_level' => 'low',
 				'write_action' => false,
 				'requires_confirmation' => false,

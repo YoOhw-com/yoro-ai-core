@@ -307,6 +307,8 @@ try {
 		$assert( is_wp_error( $invalid_search ) && 'invalid_coupon_search' === $invalid_search->get_error_code(), 'Malformed or forbidden search input must fail closed.' );
 	}
 	$assert( $queries_before === count( $search_queries ), 'Invalid input must not reach the coupon query.' );
+	$assert( is_wp_error( YoRo_Coupons_Service::search_coupons( [ '_yoro_confirmed' => false ] ) ), 'The domain search must reject executor flags as public input.' );
+	$assert( is_wp_error( YoRo_Orders_Actions::search_coupons( [ '_yoro_confirmed' => false, '_yoro_preview' => false, 'customer_email' => 'private@example.test' ] ) ), 'The executor adapter must not discard unsupported public selectors.' );
 	$empty_search = YoRo_Coupons_Service::search_coupons( [ 'query' => $search_prefix . '-no-match' ] );
 	$assert( is_array( $empty_search ) && [] === $empty_search['data']['coupons'] && false === $empty_search['data']['has_more'], 'No matches must be a truthful empty live page.' );
 	$default_search = YoRo_Coupons_Service::search_coupons( [] );
@@ -327,6 +329,9 @@ try {
 	}
 	$before = array_map( static function ( $id ) { return ( new WC_Coupon( $id ) )->get_data(); }, $search_fixture_ids );
 	$search_response = $dispatch_rest( 'POST', '/yoro-ai-core/v1/execute', [ 'action' => 'coupons.search', 'params' => [ 'query' => $search_prefix ], 'preview' => false, 'confirm' => false ] );
+	if ( true !== ( $search_response['data']['success'] ?? false ) ) {
+		fwrite( STDERR, 'SEARCH_RESPONSE=' . wp_json_encode( $search_response ) . "\n" );
+	}
 	$assert( true === ( $search_response['data']['success'] ?? false ) && 'done' === ( $search_response['data']['stage'] ?? '' ), 'Read-only search must execute without confirmation.' );
 	$after = array_map( static function ( $id ) { return ( new WC_Coupon( $id ) )->get_data(); }, $search_fixture_ids );
 	$assert( wp_json_encode( $before ) === wp_json_encode( $after ), 'Search must not mutate coupon data.' );
