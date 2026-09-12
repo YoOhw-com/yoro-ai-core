@@ -274,6 +274,15 @@ try {
 		$assert( mb_strlen( $page_one['data']['coupons'][0]['description'] ) <= 500, 'Descriptions must be bounded.' );
 		$canonical_search = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $page_one, 'coupons.search' );
 		$assert( is_array( $canonical_search ) && true === $canonical_search['read_only'], 'Search must have a strict canonical read-only payload.' );
+		$unicode_search = $page_one;
+		$unicode_search['data']['coupons'][0]['description'] = str_repeat( 'ệ', 500 );
+		$unicode_search['data']['coupons'][0]['discount_amount'] = 7.5;
+		$assert( is_array( YoRo_Commerce_Contract_Builder::canonical_execution_payload( $unicode_search, 'coupons.search' ) ), 'Finite numeric amounts and bounded Unicode descriptions must survive canonical validation.' );
+		foreach ( [ '7.5', INF, NAN ] as $invalid_amount ) {
+			$invalid_search_result = $page_one;
+			$invalid_search_result['data']['coupons'][0]['discount_amount'] = $invalid_amount;
+			$assert( is_wp_error( YoRo_Commerce_Contract_Builder::canonical_execution_payload( $invalid_search_result, 'coupons.search' ) ), 'Non-numeric or non-finite amounts must fail closed.' );
+		}
 		$assert( YoRo_Commerce_Contract_Builder::strict_output_validation_ready( 'coupons.search' ), 'Search schema must be closed and ready for strict validation.' );
 		$poisoned = $page_one;
 		$poisoned['data']['coupons'][0]['used_by'] = [ 'private-customer@example.test' ];

@@ -361,7 +361,7 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	/** Validate the closed B5 projection before it can enter the public envelope. */
-	private static function email_history_schema_value( $value, $schema, $depth = 0 ) {
+	private static function email_history_schema_value( $value, $schema, $depth = 0, $coupon_search = false ) {
 		if ( $depth > 12 ) { return false; }
 		$types = (array) ( $schema['type'] ?? [] );
 		if ( null === $value ) { return in_array( 'null', $types, true ); }
@@ -369,20 +369,30 @@ class YoRo_Commerce_Contract_Builder {
 		if ( in_array( 'object', $types, true ) ) {
 			if ( ! is_array( $value ) || array_diff( array_keys( $value ), array_keys( $schema['properties'] ) ) || array_diff( $schema['required'], array_keys( $value ) ) ) { return false; }
 			foreach ( $value as $key => $child ) {
-				if ( ! self::email_history_schema_value( $child, $schema['properties'][ $key ], $depth + 1 ) ) { return false; }
+				if ( ! self::email_history_schema_value( $child, $schema['properties'][ $key ], $depth + 1, $coupon_search ) ) { return false; }
 			}
 			return true;
 		}
 		if ( in_array( 'array', $types, true ) ) {
 			if ( ! is_array( $value ) || array_values( $value ) !== $value || count( $value ) > ( $schema['maxItems'] ?? 501 ) || count( $value ) < ( $schema['minItems'] ?? 0 ) ) { return false; }
-			foreach ( $value as $child ) { if ( ! self::email_history_schema_value( $child, $schema['items'], $depth + 1 ) ) { return false; } }
+			foreach ( $value as $child ) { if ( ! self::email_history_schema_value( $child, $schema['items'], $depth + 1, $coupon_search ) ) { return false; } }
 			return empty( $schema['uniqueItems'] ) || count( array_unique( $value, SORT_REGULAR ) ) === count( $value );
 		}
 		if ( in_array( 'string', $types, true ) ) {
+			if ( $coupon_search ) {
+				return is_string( $value ) && preg_match( '//u', $value )
+					&& mb_strlen( $value, 'UTF-8' ) <= ( $schema['maxLength'] ?? 512 )
+					&& mb_strlen( $value, 'UTF-8' ) >= ( $schema['minLength'] ?? 0 )
+					&& ( ! isset( $schema['pattern'] ) || preg_match( '~' . $schema['pattern'] . '~D', $value ) );
+			}
 			return is_string( $value ) && strlen( $value ) <= ( $schema['maxLength'] ?? 512 ) && strlen( $value ) >= ( $schema['minLength'] ?? 0 )
 				&& ( ! isset( $schema['pattern'] ) || preg_match( '~' . $schema['pattern'] . '~D', $value ) );
 		}
 		if ( in_array( 'integer', $types, true ) ) { return is_int( $value ) && $value >= ( $schema['minimum'] ?? 0 ) && $value <= ( $schema['maximum'] ?? PHP_INT_MAX ); }
+		if ( $coupon_search && in_array( 'number', $types, true ) ) {
+			return ( is_int( $value ) || is_float( $value ) ) && is_finite( (float) $value )
+				&& $value >= ( $schema['minimum'] ?? -PHP_FLOAT_MAX ) && $value <= ( $schema['maximum'] ?? PHP_FLOAT_MAX );
+		}
 		return in_array( 'boolean', $types, true ) && is_bool( $value );
 	}
 
@@ -1238,7 +1248,7 @@ class YoRo_Commerce_Contract_Builder {
 		if ( 'coupons.search' === ( $action_name ?: ( $execution['action'] ?? '' ) ) ) {
 			$data = $execution['data'] ?? null;
 			$schema = self::execution_output_schema( 'coupons.search' )['properties']['data'];
-			$valid = is_array( $data ) && self::email_history_schema_value( $data, $schema );
+			$valid = is_array( $data ) && self::email_history_schema_value( $data, $schema, 0, true );
 			if ( $valid ) {
 				$valid = count( $data['coupons'] ) + $data['skipped_count'] <= $data['limit']
 					&& $data['next_page'] === ( $data['has_more'] && $data['page'] < 100 ? $data['page'] + 1 : null );
