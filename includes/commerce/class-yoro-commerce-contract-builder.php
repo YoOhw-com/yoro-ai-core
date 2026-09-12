@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:11f7c69ed7d312ef8db9090bd20e1a5831e475299e282d61d0ad179e6a552684';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:961d7e8ee62b7d8ccd34d9e63ed9442e672dcad8df2a8e78d89ab8704d52b9f4';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1506,6 +1506,13 @@ class YoRo_Commerce_Contract_Builder {
 			], [ 'product_id', 'field', 'previous_value_fingerprint', 'value_fingerprint', 'current_version' ] );
 		}
 
+		if ( 'products.create_draft' === $action_name ) {
+			return self::closed_object_schema( [
+				'product_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'current_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
+			], [ 'product_id', 'current_version' ] );
+		}
+
 		if ( 'products.update_stock' === $action_name ) {
 			return self::closed_object_schema(
 				[
@@ -2352,7 +2359,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_write_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.update_addresses', 'orders.update_status', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
+			[ 'orders.update_addresses', 'orders.update_status', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
 			true
 		);
 	}
@@ -2403,6 +2410,16 @@ class YoRo_Commerce_Contract_Builder {
 		if ( 'products.update_content' === $action_name ) {
 			$data = [];
 			foreach ( [ 'product_id', 'field', 'previous_value_fingerprint', 'value_fingerprint', 'current_version' ] as $key ) {
+				if ( array_key_exists( $key, $execution ) ) {
+					$data[ $key ] = $execution[ $key ];
+				}
+			}
+
+			return $data;
+		}
+		if ( 'products.create_draft' === $action_name ) {
+			$data = [];
+			foreach ( [ 'product_id', 'current_version' ] as $key ) {
 				if ( array_key_exists( $key, $execution ) ) {
 					$data[ $key ] = $execution[ $key ];
 				}

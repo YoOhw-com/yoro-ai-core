@@ -34,7 +34,7 @@ class YoRo_REST_Execute_Handler {
 		$pending_operation = [];
 		$execution_permit = '';
 		$claimed_execution_context = null;
-		$direct_confirmation_allowed = '' === $pending_operation_token && ! in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.update_content', 'products.update_pricing' ], true );
+		$direct_confirmation_allowed = '' === $pending_operation_token && ! in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing' ], true );
 
 		if ( $confirm && '' !== $conversation_id && '' !== $pending_operation_token ) {
 			$stored_action_state = YoRo_REST_Conversation_Action_Coordinator::get_pending_operation_state(
@@ -268,7 +268,7 @@ class YoRo_REST_Execute_Handler {
 		// Confirmation without a pending token keeps its legacy meaning for existing actions.
 		$issued_permit = is_array( $confirmation ?? null ) ? ( $confirmation['execution_permit']['token'] ?? '' ) : '';
 		$product_claim_bound = true;
-		if ( in_array( $action, [ 'products.adjust_stock', 'products.update_content', 'products.update_pricing' ], true ) ) {
+		if ( in_array( $action, [ 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing' ], true ) ) {
 			foreach ( [ 'plan_hash', 'preview_hash', 'policy_version' ] as $binding_key ) {
 				$expected_binding = $confirmation['execution_permit'][ $binding_key ] ?? null;
 				if ( 'policy_version' === $binding_key ) {
@@ -286,7 +286,7 @@ class YoRo_REST_Execute_Handler {
 			&& $conversation_id === ( $claim['conversation_id'] ?? null ) && $pending_operation_token === ( $claim['pending_operation_token'] ?? null ) ) {
 			$native_steps = 'single' === ( $plan['type'] ?? '' ) ? [ $plan ] : ( $plan['steps'] ?? [] );
 			$native_steps = array_values( array_filter( (array) $native_steps, static function ( $step ) {
-				return is_array( $step ) && in_array( $step['action'] ?? '', [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.update_content', 'products.update_pricing' ], true );
+				return is_array( $step ) && in_array( $step['action'] ?? '', [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing' ], true );
 			} ) );
 			if ( 1 === count( $native_steps ) ) {
 				$approved_params = $native_steps[0]['params'] ?? [];

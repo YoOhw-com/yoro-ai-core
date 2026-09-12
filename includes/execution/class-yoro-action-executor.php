@@ -53,17 +53,22 @@ class YoRo_Action_Executor {
 			);
 		}
 
-		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.update_content', 'products.update_pricing' ], true ) ) {
+		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing' ], true ) ) {
 			// Connector context is emitted only by the validated, journal-owning runtime call site.
 			// PlanExecutor strips all caller/captured context for this action before reaching here.
 			$connector_owned = is_array( $context ) && true === ( $context['connector_remote_agent'] ?? false )
 				&& is_string( $context['workflow_id'] ?? null ) && '' !== $context['workflow_id']
 				&& is_string( $context['operation_id'] ?? null ) && '' !== $context['operation_id'];
+			if ( 'products.create_draft' === $action_name ) {
+				$connector_owned = $connector_owned && self::connector_journal_runtime_is_immediate_caller();
+			}
 			$claimed = $confirm && $claimed_execution_context instanceof Closure && $claimed_execution_context( $action_name, $params );
 			if ( ! $confirm || ( ! $connector_owned && ! $claimed ) ) {
 				$error_code = 'transactional_email_execution_permit_required';
 				if ( 'products.adjust_stock' === $action_name ) {
 					$error_code = 'stock_adjustment_execution_permit_required';
+				} elseif ( 'products.create_draft' === $action_name ) {
+					$error_code = 'product_draft_execution_permit_required';
 				} elseif ( 'products.update_content' === $action_name ) {
 					$error_code = 'product_content_execution_permit_required';
 				} elseif ( 'products.update_pricing' === $action_name ) {
@@ -140,6 +145,13 @@ class YoRo_Action_Executor {
 			return YoRo_Orders_Read_Service::queue_age_error();
 		}
 		return $result;
+	}
+
+	private static function connector_journal_runtime_is_immediate_caller() {
+		$caller = debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 3 )[2] ?? [];
+
+		return 'YoRo_Connector_Runtime' === ( $caller['class'] ?? '' )
+			&& 'result_for_operation' === ( $caller['function'] ?? '' );
 	}
 
 	private static function preview( $action_name, $action, $params ) {

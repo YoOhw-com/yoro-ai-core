@@ -507,6 +507,9 @@ try {
 	$assert( isset( $actions['products.update_content'] ), 'Versioned WooCommerce content writes must be published.' );
 	$assert( 'optimistic_version' === ( $actions['products.update_content']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Content writes must publish optimistic concurrency.' );
 	$assert( [ 'product_id', 'field', 'value', 'expected_version' ] === ( $actions['products.update_content']['required_params'] ?? [] ), 'Content writes must publish only the exact bounded input.' );
+	$assert( isset( $actions['products.create_draft'] ), 'Minimal WooCommerce product draft creation must be published.' );
+	$assert( 'create_only' === ( $actions['products.create_draft']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Product draft creation must publish create-only concurrency.' );
+	$assert( [ 'name' ] === ( $actions['products.create_draft']['required_params'] ?? [] ), 'Product draft creation must publish only the exact bounded name input.' );
 	$assert( isset( $actions['orders.add_note'] ), 'Append-only order notes may be published with journal idempotency.' );
 	$assert( 'append_only' === ( $actions['orders.add_note']['extensions']['wordpress.action']['concurrency_strategy'] ?? '' ), 'Append-only order notes must declare their concurrency strategy.' );
 	foreach ( [ 'orders.email_customer_preview', 'orders.email_customer_template', 'orders.use_email_template', 'orders.add_private_note_template' ] as $deprecated_alias ) {
@@ -832,6 +835,44 @@ try {
 	} finally {
 		YoRo_Connector_Execution_Journal::clear( $content_operation );
 		if ( $content_product instanceof WC_Product ) { $content_product->delete( true ); }
+	}
+
+	// Product draft creation requires the validated journal runtime call site and replays without another save.
+	$draft_operation = $operation;
+	$draft_product_id = 0;
+	try {
+		$draft_operation['envelope_id'] = 'envelope_' . hash( 'sha256', 'product-draft-' . wp_generate_uuid4() );
+		$draft_operation['idempotency_key'] = 'operation_' . hash( 'sha256', 'product-draft-' . wp_generate_uuid4() );
+		$draft_operation['operation_id'] = 'operation_product_draft_' . wp_generate_uuid4();
+		$draft_operation['action'] = 'products.create_draft';
+		$draft_operation['params'] = [ 'name' => 'Runtime Product Draft' ];
+		$draft_operation['actor']['permissions'] = [ YoRo_Action_Registry::get( 'products.create_draft' )['permission'] ];
+		$draft_client = new YoRo_Connector_Smoke_Client();
+		$draft_client->claim = $client->claim;
+		$draft_client->claim['delivery']['operations'] = [ $draft_operation ];
+		$draft_calls = 0;
+		$draft_probe = static function ( $name ) use ( &$draft_calls ) {
+			if ( 'products.create_draft' === $name ) { ++$draft_calls; }
+		};
+		add_action( 'yoro_before_action_execute', $draft_probe, 10, 1 );
+		try {
+			( new YoRo_Connector_Runtime( $draft_client ) )->run_once();
+			$draft_result = $draft_client->results[0]['payload'] ?? [];
+			$draft_data = $draft_result['result']['data'] ?? [];
+			$draft_product_id = absint( $draft_data['product_id'] ?? 0 );
+			$draft_product = wc_get_product( $draft_product_id );
+			$assert( 'executed' === ( $draft_result['status'] ?? '' ) && 1 === $draft_calls, 'Product draft must execute once through the validated journal runtime.' );
+			$assert( [ 'product_id', 'current_version' ] === array_keys( $draft_data ) && $draft_product_id > 0, 'Product draft runtime output must contain only the positive ID and fresh version.' );
+			$assert( $draft_product && 'simple' === $draft_product->get_type() && 'draft' === $draft_product->get_status( 'edit' ) && 'Runtime Product Draft' === $draft_product->get_name( 'edit' ), 'Product draft runtime must persist the exact fixed owner state.' );
+			( new YoRo_Connector_Runtime( $draft_client ) )->run_once();
+			$assert( 1 === $draft_calls && 2 === count( $draft_client->results ), 'Product draft journal replay must not create again.' );
+			$assert( wp_json_encode( $draft_result ) === wp_json_encode( $draft_client->results[1]['payload'] ?? [] ), 'Product draft journal replay must republish the exact recorded result.' );
+		} finally {
+			remove_action( 'yoro_before_action_execute', $draft_probe, 10 );
+		}
+	} finally {
+		YoRo_Connector_Execution_Journal::clear( $draft_operation );
+		if ( $draft_product_id > 0 ) { wc_get_product( $draft_product_id )->delete( true ); }
 	}
 
 	// Native B4 replay tests require a disposable database and a process-level mail sink.

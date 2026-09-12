@@ -528,6 +528,28 @@ class YoRo_Orders_Actions {
 			],
 		] );
 
+		YoRo_Action_Registry::register( 'products.create_draft', [
+			'label' => __( 'Create product draft', 'yoro-ai-core' ),
+			'description' => __( 'Create one unpublished simple WooCommerce product draft with only a name.', 'yoro-ai-core' ),
+			'category' => 'products', 'permission' => 'manage_woocommerce',
+			'callback' => [ 'YoRo_Store_Inventory_Service', 'create_product_draft' ],
+			'preview_callback' => [ 'YoRo_Store_Inventory_Service', 'preview_create_product_draft' ],
+			'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
+			'reversibility' => 'none', 'idempotency_strategy' => 'operation_journal',
+			'input_schema' => [ 'name' => 'string' ],
+			'canonical_input_schema' => [
+				'name' => [ 'type' => 'string', 'maxLength' => 200 ],
+			],
+			'concurrency_strategy' => 'create_only', 'max_items' => 1, 'max_targets' => 1,
+			'target_type' => 'product', 'supports_bulk' => false,
+			'required_params' => [ 'name' ],
+			'capabilities' => [ 'products', 'create', 'draft', 'write' ],
+			'ai_description' => __( 'Create exactly one fresh unpublished simple product draft with only the explicit normalized name. Pricing, stock, descriptions, taxonomy, media, visibility, aliases, bulk and all other fields are unsupported.', 'yoro-ai-core' ),
+			'param_hints' => [
+				'name' => __( 'Use the explicit product name only; it must be valid UTF-8, plain text, non-empty after normalization, and at most 200 characters.', 'yoro-ai-core' ),
+			],
+		] );
+
 		YoRo_Action_Registry::register( 'products.adjust_stock', [
 			'label' => __( 'Adjust product stock', 'yoro-ai-core' ),
 			'description' => __( 'Increase or decrease one independently managed product stock quantity by a signed delta.', 'yoro-ai-core' ),
