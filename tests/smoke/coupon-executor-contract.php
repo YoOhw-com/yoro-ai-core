@@ -245,6 +245,8 @@ $observe_search = static function ( $query ) use ( &$search_queries ) {
 };
 $unsupported_store = static function () { return 'WC_Product_Data_Store_CPT'; };
 $disable_coupons = static function () { return false; };
+$change_search_columns = static function () { return [ 'post_content' ]; };
+$change_exclusion_prefix = static function () { return '!'; };
 $delete_race = null;
 try {
 	$search_prefix = 'yr0071-' . wp_generate_uuid4();
@@ -308,6 +310,12 @@ try {
 	$unsupported = YoRo_Coupons_Service::search_coupons( [] );
 	remove_filter( 'woocommerce_coupon_data_store', $unsupported_store );
 	$assert( is_wp_error( $unsupported ) && 'coupon_search_unsupported_store' === $unsupported->get_error_code(), 'Non-CPT coupon storage must fail closed.' );
+	foreach ( [ 'post_search_columns' => $change_search_columns, 'wp_query_search_exclusion_prefix' => $change_exclusion_prefix ] as $filter_name => $query_filter ) {
+		add_filter( $filter_name, $query_filter );
+		$filtered_search = YoRo_Coupons_Service::search_coupons( [ 'query' => '!sale' ] );
+		remove_filter( $filter_name, $query_filter );
+		$assert( is_wp_error( $filtered_search ) && 'coupon_search_unsupported_query' === $filtered_search->get_error_code(), 'Unbounded matching semantics from query filters must fail closed.' );
+	}
 	$before = array_map( static function ( $id ) { return ( new WC_Coupon( $id ) )->get_data(); }, $search_fixture_ids );
 	$search_response = $dispatch_rest( 'POST', '/yoro-ai-core/v1/execute', [ 'action' => 'coupons.search', 'params' => [ 'query' => $search_prefix ], 'preview' => false, 'confirm' => false ] );
 	$assert( true === ( $search_response['data']['success'] ?? false ) && 'done' === ( $search_response['data']['stage'] ?? '' ), 'Read-only search must execute without confirmation.' );
@@ -331,6 +339,8 @@ try {
 	remove_action( 'pre_get_posts', $observe_search, PHP_INT_MAX );
 	remove_filter( 'woocommerce_coupon_data_store', $unsupported_store );
 	remove_filter( 'woocommerce_coupons_enabled', $disable_coupons );
+	remove_filter( 'post_search_columns', $change_search_columns );
+	remove_filter( 'wp_query_search_exclusion_prefix', $change_exclusion_prefix );
 	foreach ( $search_fixture_ids as $search_fixture_id ) {
 		wp_delete_post( $search_fixture_id, true );
 	}

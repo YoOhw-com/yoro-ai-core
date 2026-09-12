@@ -24,6 +24,9 @@ class YoRo_Coupons_Service {
 			return new WP_Error( 'invalid_coupon_search', 'Coupon search parameters must be bounded plain text and integers.' );
 		}
 		$query = trim( $query );
+		if ( '' !== $query && ( false !== has_filter( 'post_search_columns' ) || false !== has_filter( 'wp_query_search_exclusion_prefix' ) ) ) {
+			return new WP_Error( 'coupon_search_unsupported_query', 'Coupon search cannot establish code-only matching with this query configuration.' );
+		}
 		if ( ! class_exists( 'WC_Coupon' ) || ! class_exists( 'WC_Data_Store' ) || ! class_exists( 'WP_Query' ) ) {
 			return new WP_Error( 'coupon_search_unavailable', 'Coupon search is unavailable for this store.' );
 		}
@@ -55,6 +58,8 @@ class YoRo_Coupons_Service {
 				|| 'ids' !== $owner_query->get( 'fields' ) || $limit + 1 !== $owner_query->get( 'posts_per_page' )
 				|| ( $page - 1 ) * $limit !== $owner_query->get( 'offset' )
 				|| [ 'date' => 'DESC', 'ID' => 'DESC' ] !== $owner_query->get( 'orderby' )
+				|| $query !== $owner_query->get( 's' ) || true !== $owner_query->get( 'sentence' )
+				|| [ 'post_title' ] !== $owner_query->get( 'search_columns' ) || true !== $owner_query->get( 'no_found_rows' )
 				|| count( array_unique( $ids ) ) !== count( $ids ) ) {
 				return new WP_Error( 'coupon_search_unavailable', 'The coupon query did not return a bounded page.' );
 			}
