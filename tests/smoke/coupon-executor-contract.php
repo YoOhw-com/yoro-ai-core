@@ -236,6 +236,106 @@ $assert( in_array( (string) ( $missing_preview['block_reason'] ?? '' ), [ 'inval
 $assert( false === (bool) ( $missing_preview['requires_confirmation'] ?? false ), 'Missing discount preview must not require confirmation.' );
 $assert( false === (bool) ( $missing_preview['execution_required'] ?? false ), 'Missing discount preview must not expose execution_required.' );
 
+$search_fixture_ids = [];
+$search_queries = [];
+$observe_search = static function ( $query ) use ( &$search_queries ) {
+	if ( 'shop_coupon' === $query->get( 'post_type' ) && 'ids' === $query->get( 'fields' ) ) {
+		$search_queries[] = $query->query_vars;
+	}
+};
+$unsupported_store = static function () { return 'WC_Product_Data_Store_CPT'; };
+$disable_coupons = static function () { return false; };
+$delete_race = null;
+try {
+	$search_prefix = 'yr0071-' . wp_generate_uuid4();
+	for ( $index = 0; $index < 3; ++$index ) {
+		$fixture = new WC_Coupon();
+		$fixture->set_code( $search_prefix . '-' . $index );
+		$fixture->set_discount_type( 'percent' );
+		$fixture->set_amount( 7 );
+		$fixture->set_description( '<b>safe</b><script>alert(1)</script>' . str_repeat( 'x', 600 ) );
+		$fixture->set_email_restrictions( [ 'private-customer@example.test' ] );
+		$fixture->set_used_by( [ 'private-customer@example.test' ] );
+		$fixture->set_date_created( '2026-01-01 10:00:00' );
+		$search_fixture_ids[] = $fixture->save();
+	}
+	add_action( 'pre_get_posts', $observe_search, PHP_INT_MAX );
+	$page_one = YoRo_Coupons_Service::search_coupons( [ 'query' => $search_prefix, 'limit' => 2 ] );
+	$page_two = YoRo_Coupons_Service::search_coupons( [ 'query' => $search_prefix, 'limit' => 2, 'page' => 2 ] );
+	$assert( ! is_wp_error( $page_one ) && ! is_wp_error( $page_two ), 'Bounded search must succeed.' );
+	if ( is_array( $page_one ) && is_array( $page_two ) ) {
+		$assert( [ $search_fixture_ids[2], $search_fixture_ids[1] ] === array_column( $page_one['data']['coupons'], 'coupon_id' ), 'Equal-date coupons must have deterministic descending ID order.' );
+		$assert( [ $search_fixture_ids[0] ] === array_column( $page_two['data']['coupons'], 'coupon_id' ), 'Pagination must not skip its lookahead row.' );
+		$assert( true === $page_one['data']['has_more'] && 2 === $page_one['data']['next_page'], 'Lookahead must establish the next page.' );
+		$assert( false === $page_two['data']['has_more'] && null === $page_two['data']['next_page'], 'Last page must not invent another page.' );
+		$assert( ! str_contains( wp_json_encode( $page_one ), 'private-customer' ) && ! str_contains( wp_json_encode( $page_one ), '<script' ), 'Search must not expose customer restrictions, usage identities or HTML.' );
+		$assert( mb_strlen( $page_one['data']['coupons'][0]['description'] ) <= 500, 'Descriptions must be bounded.' );
+		$canonical_search = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $page_one, 'coupons.search' );
+		$assert( is_array( $canonical_search ) && true === $canonical_search['read_only'], 'Search must have a strict canonical read-only payload.' );
+		$assert( YoRo_Commerce_Contract_Builder::strict_output_validation_ready( 'coupons.search' ), 'Search schema must be closed and ready for strict validation.' );
+		$poisoned = $page_one;
+		$poisoned['data']['coupons'][0]['used_by'] = [ 'private-customer@example.test' ];
+		$assert( is_wp_error( YoRo_Commerce_Contract_Builder::canonical_execution_payload( $poisoned, 'coupons.search' ) ), 'Canonical search must reject undeclared customer data.' );
+	}
+	$assert( 2 === count( $search_queries ), 'Each search must use one ID query.' );
+	foreach ( $search_queries as $observed_query ) {
+		$assert( 3 === $observed_query['posts_per_page'] && true === $observed_query['no_found_rows'], 'Search must observe limit+1 IDs and not request a total.' );
+		$assert( [ 'post_title' ] === $observed_query['search_columns'], 'Text search must stay in coupon code storage.' );
+	}
+	$invalid_params = [
+		[ 'limit' => 0 ], [ 'limit' => 51 ], [ 'limit' => '2' ], [ 'limit' => 2.5 ], [ 'limit' => null ],
+		[ 'page' => 0 ], [ 'page' => 101 ], [ 'page' => true ], [ 'page' => null ], [ 'query' => null ],
+		[ 'query' => [] ], [ 'query' => str_repeat( 'x', 101 ) ], [ 'query' => '<script>x</script>' ],
+		[ 'query' => '%' ], [ 'query' => '*' ], [ 'query' => '-exclude' ], [ 'query' => "bad\nquery" ],
+		[ 'coupon_id' => 1 ], [ 'coupon_code' => 'code' ], [ 'customer_email' => 'x@example.test' ],
+		[ 'used_by' => [] ], [ 'discount_amount' => 1 ], [ 'orderby' => 'rand' ],
+	];
+	$queries_before = count( $search_queries );
+	foreach ( $invalid_params as $invalid_param ) {
+		$invalid_search = YoRo_Coupons_Service::search_coupons( $invalid_param );
+		$assert( is_wp_error( $invalid_search ) && 'invalid_coupon_search' === $invalid_search->get_error_code(), 'Malformed or forbidden search input must fail closed.' );
+	}
+	$assert( $queries_before === count( $search_queries ), 'Invalid input must not reach the coupon query.' );
+	$empty_search = YoRo_Coupons_Service::search_coupons( [ 'query' => $search_prefix . '-no-match' ] );
+	$assert( is_array( $empty_search ) && [] === $empty_search['data']['coupons'] && false === $empty_search['data']['has_more'], 'No matches must be a truthful empty live page.' );
+	$default_search = YoRo_Coupons_Service::search_coupons( [] );
+	$assert( is_array( $default_search ) && 20 === $default_search['data']['limit'] && 1 === $default_search['data']['page'], 'Empty input must use bounded defaults.' );
+	add_filter( 'woocommerce_coupons_enabled', $disable_coupons );
+	$disabled_search = YoRo_Coupons_Service::search_coupons( [ 'query' => $search_prefix ] );
+	remove_filter( 'woocommerce_coupons_enabled', $disable_coupons );
+	$assert( is_array( $disabled_search ) && false === $disabled_search['data']['coupons_enabled'], 'Disabled coupon application must remain an explicit observation, not hide existing records.' );
+	add_filter( 'woocommerce_coupon_data_store', $unsupported_store );
+	$unsupported = YoRo_Coupons_Service::search_coupons( [] );
+	remove_filter( 'woocommerce_coupon_data_store', $unsupported_store );
+	$assert( is_wp_error( $unsupported ) && 'coupon_search_unsupported_store' === $unsupported->get_error_code(), 'Non-CPT coupon storage must fail closed.' );
+	$before = array_map( static function ( $id ) { return ( new WC_Coupon( $id ) )->get_data(); }, $search_fixture_ids );
+	$search_response = $dispatch_rest( 'POST', '/yoro-ai-core/v1/execute', [ 'action' => 'coupons.search', 'params' => [ 'query' => $search_prefix ], 'preview' => false, 'confirm' => false ] );
+	$assert( true === ( $search_response['data']['success'] ?? false ) && 'done' === ( $search_response['data']['stage'] ?? '' ), 'Read-only search must execute without confirmation.' );
+	$after = array_map( static function ( $id ) { return ( new WC_Coupon( $id ) )->get_data(); }, $search_fixture_ids );
+	$assert( wp_json_encode( $before ) === wp_json_encode( $after ), 'Search must not mutate coupon data.' );
+	$delete_race = static function ( $posts, $query ) use ( $search_prefix, $search_fixture_ids ) {
+		if ( $search_prefix === $query->get( 's' ) ) {
+			$posts = array_reverse( $search_fixture_ids );
+			wp_delete_post( $posts[0], true );
+		}
+		return $posts;
+	};
+	add_filter( 'posts_pre_query', $delete_race, 10, 2 );
+	$raced_search = YoRo_Coupons_Service::search_coupons( [ 'query' => $search_prefix, 'limit' => 2 ] );
+	remove_filter( 'posts_pre_query', $delete_race, 10 );
+	$assert( is_array( $raced_search ) && 1 === $raced_search['data']['skipped_count'] && 1 === count( $raced_search['data']['coupons'] ) && true === $raced_search['data']['has_more'], 'Deletion after ID observation must yield a truthful partial page without filling from another query.' );
+} finally {
+	if ( null !== $delete_race ) {
+		remove_filter( 'posts_pre_query', $delete_race, 10 );
+	}
+	remove_action( 'pre_get_posts', $observe_search, PHP_INT_MAX );
+	remove_filter( 'woocommerce_coupon_data_store', $unsupported_store );
+	remove_filter( 'woocommerce_coupons_enabled', $disable_coupons );
+	foreach ( $search_fixture_ids as $search_fixture_id ) {
+		wp_delete_post( $search_fixture_id, true );
+	}
+}
+
 if ( $created_coupon_id > 0 ) {
 	wp_delete_post( $created_coupon_id, true );
 }

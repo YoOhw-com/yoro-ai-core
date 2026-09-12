@@ -779,6 +779,30 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
+			'coupons.search',
+			[
+				'label' => __( 'Search coupons', 'yoro-ai-core' ),
+				'description' => __( 'Read a bounded live page of coupon codes. No customer usage history.', 'yoro-ai-core' ),
+				'category' => 'coupons',
+				'permission' => 'manage_woocommerce',
+				'callback' => [ 'YoRo_Coupons_Service', 'search_coupons' ],
+				'risk_level' => 'low',
+				'write_action' => false,
+				'requires_confirmation' => false,
+				'input_schema' => [ 'query' => 'string', 'limit' => 'integer', 'page' => 'integer' ],
+				'canonical_input_schema' => [
+					'query' => [ 'type' => 'string', 'maxLength' => 100, 'pattern' => '^(?!\s*-)[^\x00-\x1f\x7f<>%*\\\\]*$' ],
+					'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ],
+					'page' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 100 ],
+				],
+				'required_params' => [],
+				'max_items' => 50,
+				'capabilities' => [ 'coupons', 'read', 'search' ],
+				'ai_description' => __( 'List recent coupons or search coupon codes by a bounded text substring. Exact code or ID targeting uses coupons.lookup. No create, update, delete or customer usage history.', 'yoro-ai-core' ),
+			]
+		);
+
+		YoRo_Action_Registry::register(
 			'coupons.lookup',
 			[
 				'label'            => __( 'Look up coupon', 'yoro-ai-core' ),
