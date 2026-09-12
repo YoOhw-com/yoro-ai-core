@@ -791,7 +791,7 @@ class YoRo_Orders_Actions {
 				'requires_confirmation' => false,
 				'input_schema' => [ 'query' => 'string', 'limit' => 'integer', 'page' => 'integer' ],
 				'canonical_input_schema' => [
-					'query' => [ 'type' => 'string', 'maxLength' => 100, 'pattern' => '^(?!\s*-)[^\x00-\x1f\x7f<>%*\\\\]*$' ],
+					'query' => [ 'type' => 'string', 'maxLength' => 100, 'pattern' => '^(?!\s*-)[^\x00-\x1f\x7f<>%*\\\\]*(?![\s\S])' ],
 					'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ],
 					'page' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 100 ],
 				],
