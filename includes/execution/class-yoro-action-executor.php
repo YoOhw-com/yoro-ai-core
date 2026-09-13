@@ -53,13 +53,13 @@ class YoRo_Action_Executor {
 			);
 		}
 
-		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking' ], true ) ) {
+		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create' ], true ) ) {
 			// Connector context is emitted only by the validated, journal-owning runtime call site.
 			// PlanExecutor strips all caller/captured context for this action before reaching here.
 			$connector_owned = is_array( $context ) && true === ( $context['connector_remote_agent'] ?? false )
 				&& is_string( $context['workflow_id'] ?? null ) && '' !== $context['workflow_id']
 				&& is_string( $context['operation_id'] ?? null ) && '' !== $context['operation_id'];
-			if ( in_array( $action_name, [ 'products.create_draft', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking' ], true ) ) {
+			if ( in_array( $action_name, [ 'products.create_draft', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create' ], true ) ) {
 				$connector_owned = $connector_owned && self::connector_journal_runtime_is_immediate_caller();
 			}
 			$claimed = $confirm && $claimed_execution_context instanceof Closure && $claimed_execution_context( $action_name, $params );
@@ -73,8 +73,8 @@ class YoRo_Action_Executor {
 					$error_code = 'product_content_execution_permit_required';
 				} elseif ( 'coupons.update' === $action_name ) {
 					$error_code = 'coupon_update_execution_permit_required';
-				} elseif ( in_array( $action_name, [ 'fulfillment.add_tracking', 'fulfillment.update_tracking' ], true ) ) {
-					$error_code = 'fulfillment_tracking_execution_permit_required';
+				} elseif ( in_array( $action_name, [ 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create' ], true ) ) {
+					$error_code = 'fulfillment.create' === $action_name ? 'fulfillment_creation_execution_permit_required' : 'fulfillment_tracking_execution_permit_required';
 				} elseif ( 'products.update_pricing' === $action_name ) {
 					$error_code = 'pricing_execution_permit_required';
 				} elseif ( 'orders.regenerate_download_permissions' === $action_name ) {
@@ -110,6 +110,7 @@ class YoRo_Action_Executor {
 		$result = is_array( $execution ) && array_key_exists( 'result', $execution )
 			? $execution['result']
 			: new WP_Error( 'yoro_execution_provider_failed', __( 'YoRo could not safely execute that action.', 'yoro-ai-core' ) );
+		$creation_remote_error = 'fulfillment.create' === $action_name && ! empty( $connector_owned ) && is_wp_error( $result ) ? $result : null;
 		$result = self::normalize_result( $action_name, $result, $action );
 
 		if (
@@ -148,7 +149,7 @@ class YoRo_Action_Executor {
 			&& in_array( $action_name, [ 'operations.get_attention_queue', 'operations.get_fulfillment_queue', 'customers.get_service_queue', 'operations.get_summary', 'store.get_daily_briefing' ], true ) ) {
 			return YoRo_Orders_Read_Service::queue_age_error();
 		}
-		return $result;
+		return $creation_remote_error ?? $result;
 	}
 
 	private static function connector_journal_runtime_is_immediate_caller() {

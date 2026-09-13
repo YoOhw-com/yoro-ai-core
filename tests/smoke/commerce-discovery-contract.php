@@ -98,6 +98,9 @@ try {
 		$expected_roots = $schema['properties']['data']['required'] ?? [];
 		if ( 'fulfillment.get_tracking' === $action ) {
 			$expected_roots = array_merge( $expected_roots, [ 'native_status', 'native_fulfillments' ] );
+			if ( array_key_exists( 'allocation_version', $payload['data'] ) ) {
+				$expected_roots = array_merge( $expected_roots, [ 'pending_items', 'allocation_version' ] );
+			}
 		}
 		$assert( array_keys( $payload['data'] ) === $expected_roots, sprintf( '%s must match its exact canonical data roots.', $action ) );
 	}

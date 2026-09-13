@@ -73,6 +73,10 @@ $assert( class_exists( 'YoRo_Action_Registry' ), 'YoRo_Action_Registry is not lo
 $assert( class_exists( 'YoRo_Action_Catalog_Builder' ), 'YoRo_Action_Catalog_Builder is not loaded.' );
 
 $expected = [
+	'fulfillment.create' => [
+		'required_params' => [ 'order_id', 'items', 'expected_version' ],
+		'ai_exposed' => true, 'write_action' => true, 'confirm' => true,
+	],
 	'coupons.update' => [
 		'required_params' => [ 'coupon_id', 'discount_amount', 'expected_version' ],
 		'ai_exposed' => true, 'write_action' => true, 'confirm' => true,
