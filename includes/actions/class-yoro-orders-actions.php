@@ -482,6 +482,29 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		YoRo_Action_Registry::register( 'fulfillment.create', [
+			'label' => 'Create native fulfillment allocation',
+			'description' => 'Create one unfulfilled native allocation from exactly the selected pending item quantities after authenticated read and claimed confirmation.',
+			'category' => 'fulfillment', 'permission' => 'manage_woocommerce',
+			'callback' => [ 'YoRo_Fulfillment_Service', 'create' ],
+			'preview_callback' => [ 'YoRo_Fulfillment_Service', 'preview_create' ],
+			'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
+			'reversibility' => 'none', 'idempotency_strategy' => 'operation_journal',
+			'input_schema' => [ 'order_id' => 'integer', 'items' => 'array', 'expected_version' => 'string' ],
+			'canonical_input_schema' => [
+				'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'items' => [ 'type' => 'array', 'minItems' => 1, 'maxItems' => 100, 'items' => [
+					'type' => 'object', 'properties' => [ 'item_id' => [ 'type' => 'integer', 'minimum' => 1 ], 'qty' => [ 'type' => 'integer', 'minimum' => 1 ] ],
+					'required' => [ 'item_id', 'qty' ], 'additionalProperties' => false,
+				] ],
+				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}(?![\\s\\S])' ],
+			],
+			'concurrency_strategy' => 'optimistic_version', 'max_items' => 1, 'max_targets' => 1,
+			'target_type' => 'order', 'supports_bulk' => false,
+			'required_params' => [ 'order_id', 'items', 'expected_version' ],
+			'capabilities' => [ 'orders', 'fulfillment', 'write' ],
+		] );
+
 		foreach ( [ 'add_tracking', 'update_tracking' ] as $tracking_action ) {
 			YoRo_Action_Registry::register( 'fulfillment.' . $tracking_action, [
 				'label' => 'add_tracking' === $tracking_action ? 'Add native fulfillment tracking' : 'Update native fulfillment tracking',

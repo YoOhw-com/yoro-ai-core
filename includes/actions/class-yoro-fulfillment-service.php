@@ -8,6 +8,174 @@ defined( 'ABSPATH' ) || exit;
 
 class YoRo_Fulfillment_Service {
 
+	public static function creation_available() {
+		if ( ! self::available() || ! method_exists( FulfillmentUtils::class, 'get_pending_items' ) ) { return false; }
+		foreach ( [ 'set_entity_type', 'set_entity_id', 'set_status', 'set_items', 'save' ] as $method ) {
+			if ( ! method_exists( Fulfillment::class, $method ) ) { return false; }
+		}
+		return true;
+	}
+
+	private static function allocation_items( $items, $allow_empty = false ) {
+		if ( ! is_array( $items ) || ! array_is_list( $items ) || count( $items ) > 100 || ( ! $allow_empty && [] === $items ) ) {
+			throw new RuntimeException( 'Unbounded allocation.' );
+		}
+		$quantities = [];
+		foreach ( $items as $item ) {
+			if ( ! is_array( $item ) || count( $item ) !== 2 || array_diff( array_keys( $item ), [ 'item_id', 'qty' ] )
+				|| ! is_int( $item['item_id'] ?? null ) || $item['item_id'] < 1
+				|| ! is_int( $item['qty'] ?? null ) || $item['qty'] < 1 || isset( $quantities[ $item['item_id'] ] ) ) {
+				throw new RuntimeException( 'Invalid allocation item.' );
+			}
+			$quantities[ $item['item_id'] ] = $item['qty'];
+		}
+		ksort( $quantities, SORT_NUMERIC );
+		return $quantities;
+	}
+
+	private static function allocation_list( array $quantities ) {
+		$items = [];
+		foreach ( $quantities as $id => $qty ) { $items[] = [ 'item_id' => $id, 'qty' => $qty ]; }
+		return $items;
+	}
+
+	private static function allocation_snapshot( $order_id ) {
+		if ( ! self::creation_available() ) { throw new RuntimeException( 'Native creation unavailable.' ); }
+		$snapshot = self::owner_snapshot( $order_id );
+		$order_items = $snapshot['order']->get_items();
+		if ( count( $order_items ) > 100 ) { throw new RuntimeException( 'Unbounded order items.' ); }
+		$order_state = [];
+		foreach ( $order_items as $item ) {
+			$id = $item->get_id();
+			$quantity = $item->get_quantity();
+			$refunded = $snapshot['order']->get_qty_refunded_for_item( $id );
+			if ( ! is_int( $id ) || $id < 1 || isset( $order_state[ $id ] )
+				|| ! is_numeric( $quantity ) || (int) $quantity != $quantity || $quantity < 0
+				|| ! is_numeric( $refunded ) || (int) $refunded != $refunded || $refunded > 0 || $quantity + $refunded < 0 ) {
+				throw new RuntimeException( 'Ambiguous order quantity.' );
+			}
+			$order_state[ $id ] = [ 'qty' => (int) $quantity, 'refunded' => (int) $refunded ];
+		}
+		ksort( $order_state, SORT_NUMERIC );
+		$members = [];
+		$allocated = [];
+		foreach ( $snapshot['fulfillments'] as $fulfillment ) {
+			$state = self::state( $fulfillment );
+			if ( [] === $state['items'] ) { throw new RuntimeException( 'Empty existing allocation.' ); }
+			foreach ( $state['items'] as $id => $quantity ) {
+				if ( ! isset( $order_state[ $id ] ) ) { throw new RuntimeException( 'Foreign allocation item.' ); }
+				$allocated[ $id ] = ( $allocated[ $id ] ?? 0 ) + $quantity;
+			}
+			$members[ $fulfillment->get_id() ] = [ 'state' => $state, 'tracking' => self::tracking( $fulfillment ) ];
+		}
+		ksort( $members, SORT_NUMERIC );
+		$pending = [];
+		foreach ( FulfillmentUtils::get_pending_items( $snapshot['order'], $snapshot['fulfillments'] ) as $item ) {
+			if ( ! is_array( $item ) || ! is_int( $item['item_id'] ?? null ) || ! is_numeric( $item['qty'] ?? null )
+				|| (int) $item['qty'] != $item['qty'] || $item['qty'] < 1 ) { throw new RuntimeException( 'Invalid native pending item.' ); }
+			$pending[] = [ 'item_id' => $item['item_id'], 'qty' => (int) $item['qty'] ];
+		}
+		$pending = self::allocation_items( $pending, true );
+		$expected = [];
+		foreach ( $order_state as $id => $item ) {
+			$remaining = $item['qty'] + $item['refunded'] - ( $allocated[ $id ] ?? 0 );
+			if ( $remaining < 0 ) { throw new RuntimeException( 'Overallocated order.' ); }
+			if ( $remaining > 0 ) { $expected[ $id ] = $remaining; }
+		}
+		if ( $pending !== $expected ) { throw new RuntimeException( 'Incoherent native pending quantities.' ); }
+		$snapshot['allocation_members'] = $members;
+		$snapshot['order_items'] = $order_state;
+		$snapshot['pending'] = $pending;
+		$snapshot['allocation_version'] = hash( 'sha256', wp_json_encode( [ 'order_id' => $order_id,
+			'order_status' => $snapshot['order_status'], 'items' => $order_state, 'pending' => $pending,
+			'fulfillments' => $members, 'aggregate' => $snapshot['aggregate'] ], JSON_THROW_ON_ERROR ) );
+		return $snapshot;
+	}
+
+	public static function prepare_create( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) { return new WP_Error( 'yoro_permission_denied', 'Fulfillment creation requires manage_woocommerce.' ); }
+		try {
+			if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'order_id', 'items', 'expected_version', '_yoro_confirmed', '_yoro_preview' ] )
+				|| ! is_int( $params['order_id'] ?? null ) || $params['order_id'] < 1
+				|| ! is_string( $params['expected_version'] ?? null ) || ! preg_match( '/^[a-f0-9]{64}$/D', $params['expected_version'] ) ) {
+				throw new RuntimeException( 'Invalid creation parameters.' );
+			}
+			$items = self::allocation_items( $params['items'] ?? null );
+			$snapshot = self::allocation_snapshot( $params['order_id'] );
+			if ( count( $snapshot['allocation_members'] ) >= 100 ) { throw new RuntimeException( 'Creation exceeds bounded owner set.' ); }
+			if ( ! hash_equals( $snapshot['allocation_version'], $params['expected_version'] ) ) {
+				return new WP_Error( 'fulfillment_version_conflict', 'Read current pending items and confirm again.' );
+			}
+			foreach ( $items as $id => $qty ) {
+				if ( ! isset( $snapshot['pending'][ $id ] ) || $qty > $snapshot['pending'][ $id ] ) { throw new RuntimeException( 'Allocation exceeds native pending quantity.' ); }
+			}
+			return [ 'snapshot' => $snapshot, 'items' => $items ];
+		} catch ( Throwable $exception ) {
+			return new WP_Error( 'fulfillment_creation_unavailable', 'Exact native pending allocation could not be verified.' );
+		}
+	}
+
+	public static function preview_create( $params ) {
+		$prepared = self::prepare_create( $params );
+		return [ 'type' => 'write', 'will_execute' => false, 'blocked' => is_wp_error( $prepared ),
+			'changes_store' => ! is_wp_error( $prepared ),
+			'block_reason' => is_wp_error( $prepared ) ? $prepared->get_error_code() : '',
+			'message' => is_wp_error( $prepared ) ? $prepared->get_error_message() : 'Create one unfulfilled allocation with exactly the selected items after confirmation.' ];
+	}
+
+	public static function create( $params ) {
+		$prepared = self::prepare_create( $params );
+		if ( is_wp_error( $prepared ) ) { return $prepared; }
+		$entered_save = false;
+		try {
+			$target = new Fulfillment();
+			$target->set_entity_type( WC_Order::class );
+			$target->set_entity_id( (string) $params['order_id'] );
+			$target->set_status( 'unfulfilled' );
+			$target->set_items( self::allocation_list( $prepared['items'] ) );
+			$state = self::state( $target );
+			if ( $target->get_id() !== 0 || $state['entity_type'] !== WC_Order::class || $state['order_id'] !== (string) $params['order_id']
+				|| $state['items'] !== $prepared['items'] || $state['status'] !== 'unfulfilled' || $state['is_fulfilled']
+				|| $state['locked'] || $state['date_deleted'] || $state['date_fulfilled']
+				|| self::tracking( $target ) !== [ 'tracking_number' => '', 'shipment_provider' => '', 'tracking_url' => '' ] ) {
+				throw new RuntimeException( 'Native constructor cannot create an empty unfulfilled target.' );
+			}
+			$before = self::allocation_snapshot( $params['order_id'] );
+			if ( ! hash_equals( $before['allocation_version'], $params['expected_version'] ) ) {
+				return new WP_Error( 'fulfillment_version_conflict', 'Allocation changed before save; read and confirm again.' );
+			}
+			$entered_save = true;
+			$id = $target->save();
+			if ( ! is_int( $id ) || $id < 1 || isset( $before['allocation_members'][ $id ] ) ) { throw new RuntimeException( 'No unique created identity.' ); }
+			$current = new Fulfillment( $id );
+			$after = self::allocation_snapshot( $params['order_id'] );
+			$state['fulfillment_id'] = $id;
+			if ( self::state( $current ) !== $state || self::tracking( $current ) !== [ 'tracking_number' => '', 'shipment_provider' => '', 'tracking_url' => '' ]
+				|| ! isset( $after['allocation_members'][ $id ] ) || $after['allocation_members'][ $id ] !== [ 'state' => $state, 'tracking' => self::tracking( $current ) ] ) {
+				throw new RuntimeException( 'Created fulfillment differs from authorized allocation.' );
+			}
+			$members = $after['allocation_members'];
+			unset( $members[ $id ] );
+			$pending = $before['pending'];
+			foreach ( $prepared['items'] as $item_id => $qty ) {
+				$pending[ $item_id ] -= $qty;
+				if ( 0 === $pending[ $item_id ] ) { unset( $pending[ $item_id ] ); }
+			}
+			if ( $members !== $before['allocation_members'] || $pending !== $after['pending']
+				|| $before['order_items'] !== $after['order_items'] || $before['order_status'] !== $after['order_status'] ) {
+				throw new RuntimeException( 'Allocation postcondition failed.' );
+			}
+			return [ 'success' => true, 'action' => 'fulfillment.create', 'order_id' => $params['order_id'],
+				'fulfillment_id' => $id, 'items' => self::allocation_list( $prepared['items'] ), 'status' => 'unfulfilled', 'is_fulfilled' => false,
+				'allocation_version' => $after['allocation_version'], 'read_only' => false, 'undoable' => false, 'undo_plan' => [],
+				'message' => 'Native unfulfilled allocation created.', 'summary' => 'Native unfulfilled allocation created.',
+				'result_type' => 'fulfillment_creation', 'display_type' => 'fulfillment_creation' ];
+		} catch ( Throwable $exception ) {
+			return new WP_Error( $entered_save ? 'fulfillment_creation_reconciliation_required' : 'fulfillment_creation_unavailable',
+				$entered_save ? 'Creation outcome is ambiguous. Read and reconcile; do not retry or delete automatically.' : 'Native creation preconditions could not be verified.' );
+		}
+	}
+
 	public static function available() {
 		try {
 			return class_exists( Fulfillment::class ) && class_exists( FulfillmentUtils::class )
@@ -114,13 +282,22 @@ class YoRo_Fulfillment_Service {
 					'current_version' => self::version( $fulfillment ),
 				], self::tracking( $fulfillment ) );
 			}
-			return [ 'native_status' => 'available', 'native_fulfillments' => $entries ];
+			$result = [ 'native_status' => 'available', 'native_fulfillments' => $entries ];
+			try {
+				$allocation = self::allocation_snapshot( $order_id );
+				$result['pending_items'] = self::allocation_list( $allocation['pending'] );
+				$result['allocation_version'] = $allocation['allocation_version'];
+			} catch ( Throwable $exception ) {
+				// Existing tracking observations remain usable when creation cannot be grounded.
+			}
+			return $result;
 		} catch ( Throwable $exception ) {
 			return [ 'native_status' => 'unavailable', 'native_fulfillments' => [] ];
 		}
 	}
 
 	public static function prepare( $action, $params ) {
+		if ( 'fulfillment.create' === $action ) { return self::prepare_create( $params ); }
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
 			return new WP_Error( 'yoro_permission_denied', 'Tracking changes require manage_woocommerce.' );
 		}

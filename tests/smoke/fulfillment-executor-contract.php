@@ -18,10 +18,21 @@ if ( ! class_exists( Fulfillment::class ) || ! method_exists( Fulfillment::class
 class YoRo_Tracking_Smoke_Store extends FulfillmentsDataStore {
 	public static $records = [];
 	public static $updates = 0;
+	public static $creates = 0;
 	public static $fault = '';
 	public static $omit_after_reads = 0;
 	public static $set_reads = 0;
-	public function create( &$data ): void { throw new RuntimeException( 'Fixture identity must be seeded explicitly.' ); }
+	public function create( &$data ): void {
+		++self::$creates;
+		$data->set_id( 740000 + self::$creates );
+		$data->set_date_updated( gmdate( 'c' ) );
+		self::$records[ $data->get_id() ] = self::capture( $data );
+		$data->apply_changes();
+		$data->set_object_read( true );
+		do_action( 'woocommerce_fulfillment_after_create', $data );
+		if ( 'throw' === self::$fault ) { throw new RuntimeException( 'Ambiguous persisted create.' ); }
+		if ( 'readback' === self::$fault ) { unset( self::$records[ $data->get_id() ] ); }
+	}
 	public function read_meta( &$data ): array { return []; }
 	public function delete_by_entity( string $entity_type, string $entity_id ): int { self::$records = []; return 0; }
 	public function read( &$data ): void {
@@ -245,6 +256,100 @@ try {
 	YoRo_Tracking_Smoke_Store::$fault = 'readback';
 	$ambiguous = YoRo_Fulfillment_Service::update_tracking( $params );
 	$assert( is_wp_error( $ambiguous ) && 'fulfillment_tracking_reconciliation_required' === $ambiguous->get_error_code(), 'Missing readback is reconciliation-required.' );
+	// Creation uses the same real native owner and registered store, with fresh allocation authority.
+	YoRo_Tracking_Smoke_Store::$fault = '';
+	YoRo_Tracking_Smoke_Store::$records = [];
+	$item->set_quantity( 5 );
+	$item->save();
+	$order = wc_get_order( $order->get_id() );
+	$anchor = new Fulfillment();
+	$anchor->set_entity_type( WC_Order::class );
+	$anchor->set_entity_id( (string) $order->get_id() );
+	$manager->update_order_fulfillment_status_on_fulfillment_update( $anchor );
+	$read = YoRo_Fulfillment_Service::observations( $order->get_id() );
+	$assert( ( $read['pending_items'] ?? null ) === [ [ 'item_id' => $item->get_id(), 'qty' => 5 ] ], 'Native pending quantities ground creation.' );
+	$create = [ 'order_id' => $order->get_id(), 'items' => [ [ 'item_id' => $item->get_id(), 'qty' => 2 ] ], 'expected_version' => $read['allocation_version'] ?? '' ];
+	$bare = YoRo_Action_Executor::execute( 'fulfillment.create', $create, true );
+	$assert( is_wp_error( $bare ) && 'fulfillment_creation_execution_permit_required' === $bare->get_error_code(), 'Bare confirmation cannot create an allocation.' );
+	$spoof = YoRo_Action_Executor::execute( 'fulfillment.create', $create, true, false, [ 'connector_remote_agent' => true, 'workflow_id' => 'fake', 'operation_id' => 'fake' ] );
+	$assert( is_wp_error( $spoof ) && 0 === YoRo_Tracking_Smoke_Store::$creates, 'Caller-shaped remote context cannot create.' );
+	foreach ( [ [ 'items' => [] ], [ 'items' => [ [ 'item_id' => $item->get_id(), 'qty' => 6 ] ] ],
+		[ 'items' => [ [ 'item_id' => $item->get_id(), 'qty' => 1 ], [ 'item_id' => $item->get_id(), 'qty' => 2 ] ] ],
+		[ 'items' => [ [ 'item_id' => (string) $item->get_id(), 'qty' => 1 ] ] ], [ 'status' => 'fulfilled' ], [ 'notify_customer' => true ],
+		[ 'tracking_number' => 'NO' ], [ 'fulfillment_id' => 10 ], [ 'expected_version' => str_repeat( '0', 64 ) ] ] as $invalid ) {
+		$assert( is_wp_error( YoRo_Fulfillment_Service::create( array_merge( $create, $invalid ) ) ) && 0 === YoRo_Tracking_Smoke_Store::$creates, 'Invalid creation fails before owner save.' );
+	}
+	$item->set_quantity( 101 );
+	$item->save();
+	for ( $i = 1; $i <= 100; ++$i ) {
+		$existing = new Fulfillment();
+		$existing->set_id( 750000 + $i );
+		$existing->set_entity_type( WC_Order::class );
+		$existing->set_entity_id( (string) $order->get_id() );
+		$existing->set_status( 'unfulfilled' );
+		$existing->set_items( [ [ 'item_id' => $item->get_id(), 'qty' => 1 ] ] );
+		YoRo_Tracking_Smoke_Store::$records[ $existing->get_id() ] = YoRo_Tracking_Smoke_Store::capture( $existing );
+	}
+	$manager->update_order_fulfillment_status_on_fulfillment_update( $anchor );
+	$bounded_read = YoRo_Fulfillment_Service::observations( $order->get_id() );
+	$bounded_create = $create;
+	$bounded_create['expected_version'] = $bounded_read['allocation_version'] ?? '';
+	$bounded_create['items'][0]['qty'] = 1;
+	$assert( isset( $bounded_read['allocation_version'] ) && is_wp_error( YoRo_Fulfillment_Service::create( $bounded_create ) )
+		&& 0 === YoRo_Tracking_Smoke_Store::$creates, 'The 101st fulfillment is rejected before save despite pending availability.' );
+	YoRo_Tracking_Smoke_Store::$records = [];
+	$item->set_quantity( 5 );
+	$item->save();
+	$manager->update_order_fulfillment_status_on_fulfillment_update( $anchor );
+	$before_status = $order->get_status();
+	$created = YoRo_Fulfillment_Service::create( $create );
+	$assert( is_array( $created ) && ! empty( $created['success'] ) && 1 === YoRo_Tracking_Smoke_Store::$creates, 'Create performs exactly one owner save.' );
+	$assert( 0 === $notifications, 'Creation emits no customer notification or fulfilled transition.' );
+	$read = YoRo_Fulfillment_Service::observations( $order->get_id() );
+	$assert( ( $read['pending_items'] ?? null ) === [ [ 'item_id' => $item->get_id(), 'qty' => 3 ] ]
+		&& $create['expected_version'] !== ( $read['allocation_version'] ?? '' ), 'Creation consumes exact pending quantity and changes allocation version.' );
+	$fresh_order = wc_get_order( $order->get_id() );
+	$fresh_order->read_meta_data( true );
+	$assert( $fresh_order->get_status() === $before_status && 'unfulfilled' === $fresh_order->get_meta( '_fulfillment_status', true ), 'Native aggregate may change while ordinary order status remains unchanged.' );
+	$replay = YoRo_Fulfillment_Service::create( $create );
+	$assert( is_wp_error( $replay ) && 1 === YoRo_Tracking_Smoke_Store::$creates, 'Stale allocation replay cannot save again.' );
+	$create['expected_version'] = $read['allocation_version'] ?? '';
+	$create['items'][0]['qty'] = 1;
+	YoRo_Tracking_Smoke_Store::$fault = 'throw';
+	$ambiguous = YoRo_Fulfillment_Service::create( $create );
+	$assert( is_wp_error( $ambiguous ) && 'fulfillment_creation_reconciliation_required' === $ambiguous->get_error_code()
+		&& 2 === YoRo_Tracking_Smoke_Store::$creates && 2 === count( YoRo_Tracking_Smoke_Store::$records ), 'Post-save ambiguity retains created object and requires reconciliation without rollback.' );
+	YoRo_Tracking_Smoke_Store::$fault = '';
+	$stable_records = YoRo_Tracking_Smoke_Store::$records;
+	foreach ( [ 'tracking', 'existing', 'order_status', 'missing_readback' ] as $drift ) {
+		YoRo_Tracking_Smoke_Store::$records = $stable_records;
+		$restore_order = wc_get_order( $order->get_id() );
+		$restore_order->set_status( $before_status );
+		$restore_order->save();
+		$manager->update_order_fulfillment_status_on_fulfillment_update( $anchor );
+		$read = YoRo_Fulfillment_Service::observations( $order->get_id() );
+		$create['expected_version'] = $read['allocation_version'] ?? '';
+		$save_count = YoRo_Tracking_Smoke_Store::$creates;
+		$callback = static function ( $new ) use ( $drift ) {
+			if ( 'order_status' === $drift ) {
+				$changed_order = wc_get_order( (int) $new->get_entity_id() );
+				$changed_order->set_status( 'on-hold' );
+				$changed_order->save();
+			} elseif ( 'missing_readback' === $drift ) {
+				unset( YoRo_Tracking_Smoke_Store::$records[ $new->get_id() ] );
+			} else {
+				$changed = new Fulfillment( 'existing' === $drift ? 740001 : $new->get_id() );
+				$changed->set_tracking_number( 'UNAUTHORIZED-CALLBACK' );
+				YoRo_Tracking_Smoke_Store::$records[ $changed->get_id() ] = YoRo_Tracking_Smoke_Store::capture( $changed );
+			}
+		};
+		add_action( 'woocommerce_fulfillment_after_create', $callback, 99 );
+		try {
+			$result = YoRo_Fulfillment_Service::create( $create );
+			$assert( is_wp_error( $result ) && 'fulfillment_creation_reconciliation_required' === $result->get_error_code()
+				&& $save_count + 1 === YoRo_Tracking_Smoke_Store::$creates, 'Create callback drift requires reconciliation without second save: ' . $drift );
+		} finally { remove_action( 'woocommerce_fulfillment_after_create', $callback, 99 ); }
+	}
 	remove_filter( 'pre_option_woocommerce_feature_fulfillments_enabled', $feature );
 	$disabled = static function () { return 'no'; };
 	add_filter( 'pre_option_woocommerce_feature_fulfillments_enabled', $disabled );

@@ -780,7 +780,16 @@ try {
 			public static $records = [];
 			public static $updates = 0;
 			public static $fault = '';
-			public function create( &$data ): void { throw new RuntimeException( 'Fixture identity must be seeded explicitly.' ); }
+			public function create( &$data ): void {
+				++self::$updates;
+				$data->set_id( 749000 + self::$updates );
+				$data->set_date_updated( gmdate( 'c' ) );
+				self::$records[ $data->get_id() ] = self::capture( $data );
+				$data->apply_changes();
+				$data->set_object_read( true );
+				do_action( 'woocommerce_fulfillment_after_create', $data );
+				if ( 'throw' === self::$fault ) { throw new RuntimeException( 'Persisted create outcome unknown.' ); }
+			}
 			public function read_meta( &$data ): array { return []; }
 			public function delete_by_entity( string $entity_type, string $entity_id ): int { self::$records = []; return 0; }
 			public function read( &$data ): void {
@@ -883,6 +892,43 @@ try {
 					$tracking_order->delete( true );
 					$tracking_order = null;
 				}
+			}
+			foreach ( [ false, true ] as $create_fail ) {
+				$tracking_order = wc_create_order();
+				$tracking_item = new WC_Order_Item_Product();
+				$tracking_item->set_name( 'Disposable native creation runtime fixture' );
+				$tracking_item->set_quantity( 2 );
+				$tracking_order->add_item( $tracking_item );
+				$tracking_order->save();
+				YoRo_Tracking_Runtime_Smoke_Store::$records = [];
+				YoRo_Tracking_Runtime_Smoke_Store::$updates = 0;
+				YoRo_Tracking_Runtime_Smoke_Store::$fault = $create_fail ? 'throw' : '';
+				$read = YoRo_Fulfillment_Service::observations( $tracking_order->get_id() );
+				$creation_operation = $operation;
+				$creation_operation['envelope_id'] = 'envelope_' . hash( 'sha256', wp_generate_uuid4() );
+				$creation_operation['idempotency_key'] = 'operation_' . hash( 'sha256', wp_generate_uuid4() );
+				$creation_operation['operation_id'] = 'operation_create_' . wp_generate_uuid4();
+				$creation_operation['action'] = 'fulfillment.create';
+				$creation_operation['params'] = [ 'order_id' => $tracking_order->get_id(),
+					'items' => [ [ 'item_id' => $tracking_item->get_id(), 'qty' => 1 ] ], 'expected_version' => $read['allocation_version'] ?? '' ];
+				$creation_operation['actor']['permissions'] = [ YoRo_Action_Registry::get( 'fulfillment.create' )['permission'] ];
+				$tracking_operations[] = $creation_operation;
+				$creation_client = new YoRo_Connector_Smoke_Client();
+				$creation_client->claim = $client->claim;
+				$creation_client->claim['delivery']['operations'] = [ $creation_operation ];
+				( new YoRo_Connector_Runtime( $creation_client ) )->run_once();
+				$created = $creation_client->results[0]['payload'] ?? [];
+				$assert( ( $create_fail ? 'failed' : 'executed' ) === ( $created['status'] ?? '' ) && 1 === YoRo_Tracking_Runtime_Smoke_Store::$updates, 'Remote creation uses exactly one owner save.' );
+				if ( $create_fail ) {
+					$assert( 'fulfillment_creation_reconciliation_required' === ( $created['error']['code'] ?? '' ) && false === ( $created['error']['retryable'] ?? null ), 'Remote creation preserves machine-readable reconciliation and no retry.' );
+				} else {
+					$assert( 749001 === ( $created['result']['data']['fulfillment_id'] ?? null ) && false === ( $created['result']['data']['is_fulfilled'] ?? null ), 'Remote creation reports exact new unfulfilled identity.' );
+				}
+				( new YoRo_Connector_Runtime( $creation_client ) )->run_once();
+				$assert( 1 === YoRo_Tracking_Runtime_Smoke_Store::$updates && wp_json_encode( $created ) === wp_json_encode( $creation_client->results[1]['payload'] ?? [] ), 'Creation journal replay preserves success or ambiguity without a second save.' );
+				$assert( count( YoRo_Tracking_Runtime_Smoke_Store::$records ) === 1, 'Ambiguous creation is never auto-deleted.' );
+				$tracking_order->delete( true );
+				$tracking_order = null;
 			}
 		} finally {
 			foreach ( $tracking_operations as $tracking_operation ) { YoRo_Connector_Execution_Journal::clear( $tracking_operation ); }

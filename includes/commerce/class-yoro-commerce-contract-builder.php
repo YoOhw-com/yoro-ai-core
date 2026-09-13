@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:6b9344e7180cca400288c5ed109357cc7174ecbbe0f5409081d51c8d1983a946';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:be234a595b156cf6b3e256ac4866d737668dfe76565a49a36a4220cca159b8b6';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1530,6 +1530,15 @@ class YoRo_Commerce_Contract_Builder {
 
 	private static function execution_data_schema( $action_name ) {
 		$action_name = sanitize_text_field( $action_name );
+		if ( 'fulfillment.create' === $action_name ) {
+			$properties = [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ], 'fulfillment_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'items' => [ 'type' => 'array', 'minItems' => 1, 'maxItems' => 100, 'items' => self::closed_object_schema( [ 'item_id' => [ 'type' => 'integer', 'minimum' => 1 ], 'qty' => [ 'type' => 'integer', 'minimum' => 1 ] ], [ 'item_id', 'qty' ] ) ],
+				'status' => [ 'type' => 'string', 'enum' => [ 'unfulfilled' ] ], 'is_fulfilled' => [ 'type' => 'boolean', 'enum' => [ false ] ],
+				'allocation_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}(?![\\s\\S])' ],
+			];
+			return self::closed_object_schema( $properties, array_keys( $properties ) );
+		}
+
 		if ( in_array( $action_name, [ 'fulfillment.add_tracking', 'fulfillment.update_tracking' ], true ) ) {
 			$properties = [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ], 'fulfillment_id' => [ 'type' => 'integer', 'minimum' => 1 ] ];
 			foreach ( [ 'tracking_number' => 200, 'shipment_provider' => 100, 'tracking_url' => 2048 ] as $key => $limit ) {
@@ -1817,6 +1826,8 @@ class YoRo_Commerce_Contract_Builder {
 					'count'     => [ 'type' => 'integer', 'minimum' => 0 ],
 					'native_status' => [ 'type' => 'string', 'enum' => [ 'available', 'unavailable' ] ],
 					'native_fulfillments' => [ 'type' => 'array', 'maxItems' => 100, 'items' => self::closed_object_schema( $native, array_keys( $native ) ) ],
+					'pending_items' => [ 'type' => 'array', 'maxItems' => 100, 'items' => self::closed_object_schema( [ 'item_id' => [ 'type' => 'integer', 'minimum' => 1 ], 'qty' => [ 'type' => 'integer', 'minimum' => 1 ] ], [ 'item_id', 'qty' ] ) ],
+					'allocation_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}(?![\\s\\S])' ],
 				],
 				[ 'order_id', 'status', 'shipments', 'count' ]
 			);
@@ -2464,12 +2475,18 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_write_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'coupons.update', 'orders.update_addresses', 'orders.update_status', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
+			[ 'fulfillment.create', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'coupons.update', 'orders.update_addresses', 'orders.update_status', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
 			true
 		);
 	}
 
 	private static function canonical_write_data( $action_name, array $execution ) {
+		if ( 'fulfillment.create' === $action_name ) {
+			$data = [];
+			foreach ( [ 'order_id', 'fulfillment_id', 'items', 'status', 'is_fulfilled', 'allocation_version' ] as $key ) { $data[ $key ] = $execution[ $key ] ?? null; }
+			return $data;
+		}
+
 		if ( in_array( $action_name, [ 'fulfillment.add_tracking', 'fulfillment.update_tracking' ], true ) ) {
 			$data = [];
 			foreach ( [ 'order_id', 'fulfillment_id', 'previous_tracking_number', 'previous_shipment_provider', 'previous_tracking_url', 'tracking_number', 'shipment_provider', 'tracking_url', 'current_version' ] as $key ) {
@@ -2628,7 +2645,7 @@ class YoRo_Commerce_Contract_Builder {
 				'shipments' => array_values( (array) ( $execution['shipments'] ?? ( $raw_data['shipments'] ?? [] ) ) ),
 				'count'     => count( (array) ( $execution['shipments'] ?? ( $raw_data['shipments'] ?? [] ) ) ),
 			];
-			foreach ( [ 'native_status', 'native_fulfillments' ] as $key ) {
+			foreach ( [ 'native_status', 'native_fulfillments', 'pending_items', 'allocation_version' ] as $key ) {
 				if ( array_key_exists( $key, $execution ) || array_key_exists( $key, $raw_data ) ) {
 					$data[ $key ] = $execution[ $key ] ?? $raw_data[ $key ];
 				}
