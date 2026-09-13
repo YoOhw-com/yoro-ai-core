@@ -87,6 +87,7 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-read-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-write-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-coupons-service.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-fulfillment-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-email-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-actions.php';
 	}

@@ -53,13 +53,13 @@ class YoRo_Action_Executor {
 			);
 		}
 
-		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update' ], true ) ) {
+		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking' ], true ) ) {
 			// Connector context is emitted only by the validated, journal-owning runtime call site.
 			// PlanExecutor strips all caller/captured context for this action before reaching here.
 			$connector_owned = is_array( $context ) && true === ( $context['connector_remote_agent'] ?? false )
 				&& is_string( $context['workflow_id'] ?? null ) && '' !== $context['workflow_id']
 				&& is_string( $context['operation_id'] ?? null ) && '' !== $context['operation_id'];
-			if ( in_array( $action_name, [ 'products.create_draft', 'coupons.update' ], true ) ) {
+			if ( in_array( $action_name, [ 'products.create_draft', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking' ], true ) ) {
 				$connector_owned = $connector_owned && self::connector_journal_runtime_is_immediate_caller();
 			}
 			$claimed = $confirm && $claimed_execution_context instanceof Closure && $claimed_execution_context( $action_name, $params );
@@ -73,6 +73,8 @@ class YoRo_Action_Executor {
 					$error_code = 'product_content_execution_permit_required';
 				} elseif ( 'coupons.update' === $action_name ) {
 					$error_code = 'coupon_update_execution_permit_required';
+				} elseif ( in_array( $action_name, [ 'fulfillment.add_tracking', 'fulfillment.update_tracking' ], true ) ) {
+					$error_code = 'fulfillment_tracking_execution_permit_required';
 				} elseif ( 'products.update_pricing' === $action_name ) {
 					$error_code = 'pricing_execution_permit_required';
 				} elseif ( 'orders.regenerate_download_permissions' === $action_name ) {

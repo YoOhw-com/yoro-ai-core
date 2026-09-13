@@ -186,16 +186,22 @@ class YoRo_Commerce_Discovery_Service {
 		}
 
 		$status = [] === $shipments ? 'unavailable' : 'available';
+		$native = YoRo_Fulfillment_Service::observations( $order_id );
 		$summary = [] === $shipments
 			? sprintf( __( 'No tracking number is stored for order #%d.', 'yoro-ai-core' ), $order_id )
 			: sprintf( __( 'Loaded %1$d tracking record(s) for order #%2$d.', 'yoro-ai-core' ), count( $shipments ), $order_id );
+		if ( ! empty( $native['native_fulfillments'] ) ) {
+			$native_tracking_count = count( array_filter( $native['native_fulfillments'], static function ( $item ) { return '' !== $item['tracking_number']; } ) );
+			$status = $native_tracking_count > 0 ? 'available' : $status;
+			$summary = sprintf( 'Loaded %d legacy tracking record(s) and %d native fulfillment observation(s), %d with tracking, for order #%d.', count( $shipments ), count( $native['native_fulfillments'] ), $native_tracking_count, $order_id );
+		}
 
-		return self::read_result( 'fulfillment.get_tracking', $summary, [
+		return self::read_result( 'fulfillment.get_tracking', $summary, array_merge( [
 			'order_id' => $order_id,
 			'status' => $status,
 			'shipments' => $shipments,
 			'count' => count( $shipments ),
-		] );
+		], $native ) );
 	}
 
 	private static function present_product( $product ) {
