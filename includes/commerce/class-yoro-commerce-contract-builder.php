@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:e98504e82efaae3282ce482e7503ddff866708ef9017bc87369cd7165ac290bb';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:938ab5e668206e4e15ae10b1fdf521adb6be3a666dd3cbdebae3fd261c783383';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1530,6 +1530,16 @@ class YoRo_Commerce_Contract_Builder {
 
 	private static function execution_data_schema( $action_name ) {
 		$action_name = sanitize_text_field( $action_name );
+		if ( 'coupons.update' === $action_name ) {
+			$amount = [ 'type' => 'string', 'pattern' => '^(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,6})?(?![\\s\\S])' ];
+			return self::closed_object_schema( [
+				'coupon_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'coupon_code' => [ 'type' => 'string' ],
+				'discount_type' => [ 'type' => 'string', 'enum' => [ 'percent', 'fixed_cart', 'fixed_product' ] ],
+				'previous_discount_amount' => $amount, 'discount_amount' => $amount,
+				'current_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}(?![\\s\\S])' ],
+			], [ 'coupon_id', 'coupon_code', 'discount_type', 'previous_discount_amount', 'discount_amount', 'current_version' ] );
+		}
 
 		if ( 'orders.update_status' === $action_name ) {
 			return self::closed_object_schema(
@@ -2433,12 +2443,19 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_write_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.update_addresses', 'orders.update_status', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
+			[ 'coupons.update', 'orders.update_addresses', 'orders.update_status', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
 			true
 		);
 	}
 
 	private static function canonical_write_data( $action_name, array $execution ) {
+		if ( 'coupons.update' === $action_name ) {
+			$data = [];
+			foreach ( [ 'coupon_id', 'coupon_code', 'discount_type', 'previous_discount_amount', 'discount_amount', 'current_version' ] as $field ) {
+				$data[ $field ] = $execution[ $field ] ?? null;
+			}
+			return $data;
+		}
 		if ( 'orders.update_addresses' === $action_name ) {
 			return [ 'order_id' => $execution['order_id'] ?? null, 'changed_fields' => $execution['changed_fields'] ?? null, 'current_version' => $execution['current_version'] ?? null ];
 		}

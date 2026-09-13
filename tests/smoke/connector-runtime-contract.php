@@ -743,6 +743,35 @@ try {
 		$c3_product->delete( true ); update_option( 'woocommerce_manage_stock', $c3_manage );
 	}
 
+	$coupon_fixture = new WC_Coupon();
+	$coupon_operation = $operation;
+	try {
+		$coupon_fixture->set_code( 'yoro-runtime-' . wp_generate_uuid4() );
+		$coupon_fixture->set_discount_type( 'fixed_cart' );
+		$coupon_fixture->set_amount( '10' );
+		$coupon_fixture->save();
+		$coupon_operation['envelope_id'] = 'envelope_' . hash( 'sha256', wp_generate_uuid4() );
+		$coupon_operation['idempotency_key'] = 'operation_' . hash( 'sha256', wp_generate_uuid4() );
+		$coupon_operation['operation_id'] = 'operation_coupon_' . wp_generate_uuid4();
+		$coupon_operation['action'] = 'coupons.update';
+		$coupon_operation['params'] = [ 'coupon_id' => $coupon_fixture->get_id(), 'discount_amount' => '12.50', 'expected_version' => YoRo_Coupons_Service::coupon_version( new WC_Coupon( $coupon_fixture->get_id() ) ) ];
+		$coupon_operation['actor']['permissions'] = [ YoRo_Action_Registry::get( 'coupons.update' )['permission'] ];
+		$coupon_client = new YoRo_Connector_Smoke_Client();
+		$coupon_client->claim = $client->claim;
+		$coupon_client->claim['delivery']['operations'] = [ $coupon_operation ];
+		( new YoRo_Connector_Runtime( $coupon_client ) )->run_once();
+		$coupon_result = $coupon_client->results[0]['payload'] ?? [];
+		if ( 'executed' !== ( $coupon_result['status'] ?? '' ) ) { fwrite( STDERR, wp_json_encode( $coupon_result ) . PHP_EOL ); }
+		$assert( 'executed' === ( $coupon_result['status'] ?? '' ), 'Coupon update must execute with journal-owned remote authority.' );
+		$assert( [ 'coupon_id', 'coupon_code', 'discount_type', 'previous_discount_amount', 'discount_amount', 'current_version' ] === array_keys( $coupon_result['result']['data'] ?? [] ), 'Coupon update must return the exact closed result.' );
+		$assert( '12.50' === ( $coupon_result['result']['data']['discount_amount'] ?? '' ), 'Coupon amount must preserve owner decimal normalization.' );
+		( new YoRo_Connector_Runtime( $coupon_client ) )->run_once();
+		$assert( 2 === count( $coupon_client->results ) && wp_json_encode( $coupon_result ) === wp_json_encode( $coupon_client->results[1]['payload'] ), 'Coupon replay must reuse the exact durable result.' );
+	} finally {
+		YoRo_Connector_Execution_Journal::clear( $coupon_operation );
+		if ( $coupon_fixture->get_id() > 0 ) { $coupon_fixture->delete( true ); }
+	}
+
 	// Regular pricing uses only validated remote claim authority and one durable journal result.
 	$pricing_product = new WC_Product_Simple();
 	$pricing_operation = $operation;

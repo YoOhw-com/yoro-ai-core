@@ -360,6 +360,163 @@ try {
 	}
 }
 
+
+$update_fixture_id = 0;
+try {
+	$fixture = new WC_Coupon();
+	$fixture->set_code( 'yoro-update-' . wp_generate_uuid4() );
+	$fixture->set_discount_type( 'percent' );
+	$fixture->set_amount( '10' );
+	$fixture->set_email_restrictions( [ 'private-smoke@example.invalid' ] );
+	$update_fixture_id = $fixture->save();
+	$lookup = YoRo_Coupons_Service::lookup_coupon( [ 'coupon_id' => $update_fixture_id ] );
+	$version = $lookup['data']['coupon']['current_version'] ?? '';
+	$assert( 1 === preg_match( '/^[a-f0-9]{64}$/D', $version ), 'Exact coupon lookup must expose a version.' );
+	$assert( ! str_contains( wp_json_encode( $lookup ), 'private-smoke' ), 'Lookup version must not expose private restrictions.' );
+	$params = [ 'coupon_id' => $update_fixture_id, 'discount_amount' => '12.50', 'expected_version' => $version ];
+	$claim_for = static function ( $approved ) {
+		$used = false;
+		return static function ( $action, $actual ) use ( $approved, &$used ) {
+			if ( $used || 'coupons.update' !== $action || $actual !== $approved ) { return false; }
+			$used = true;
+			return true;
+		};
+	};
+	$assert( is_wp_error( YoRo_Action_Executor::execute( 'coupons.update', $params, true ) ), 'Bare confirm must not update coupons.' );
+	$assert( is_wp_error( YoRo_Action_Executor::execute( 'coupons.update', $params, true, false, [ 'connector_remote_agent' => true, 'workflow_id' => 'spoof', 'operation_id' => 'spoof' ] ) ), 'Caller-shaped remote context must not grant coupon authority.' );
+	$preview = YoRo_Coupons_Service::preview_update_coupon( $params );
+	$assert( false === $preview['blocked'] && 10.0 === (float) ( new WC_Coupon( $update_fixture_id ) )->get_amount(), 'Preview must not mutate the coupon.' );
+	$rest_preview = $dispatch_rest( 'POST', '/yoro-ai-core/v1/execute', [ 'action' => 'coupons.update', 'params' => $params, 'confirm' => false ] );
+	$assert( false === ( $rest_preview['data']['direct_confirmation_allowed'] ?? null ), 'REST must not offer bare direct confirmation for coupons.update.' );
+	$rest_bare = $dispatch_rest( 'POST', '/yoro-ai-core/v1/execute', [ 'action' => 'coupons.update', 'params' => $params, 'confirm' => true ] );
+	$assert( empty( $rest_bare['data']['success'] ) && 10.0 === (float) ( new WC_Coupon( $update_fixture_id ) )->get_amount(), 'REST bare confirmation must never mutate coupons.' );
+	$rest_plan = [ 'type' => 'single', 'action' => 'coupons.update', 'params' => array_replace( $params, [ 'discount_amount' => '10.00' ] ) ];
+	$rest_mode = 'mismatch';
+	$rest_claimed = false;
+	$rest_binding = [ 'token' => str_repeat( 'p', 64 ), 'plan_hash' => hash( 'sha256', wp_json_encode( $rest_plan ) ), 'preview_hash' => hash( 'sha256', 'coupon fixture preview' ), 'policy_version' => 4 ];
+	$rest_http = static function ( $pre, $args, $url ) use ( $rest_plan, $rest_binding, &$rest_mode, &$rest_claimed ) {
+		$response = array_merge( (array) get_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, [] ), [ 'success' => true ] );
+		if ( str_contains( $url, '/actions/confirm' ) ) {
+			$response['execution_permit'] = $rest_binding;
+		} elseif ( str_contains( $url, '/actions/claim' ) ) {
+			$response += [ 'stage' => 'claimed', 'pending_operation_status' => 'executing', 'conversation_id' => 'coupon-rest-fixture', 'pending_operation_token' => 'coupon-pending-fixture', 'plan_hash' => $rest_binding['plan_hash'], 'preview_hash' => $rest_binding['preview_hash'], 'policy_version' => 4 ];
+			if ( $rest_claimed ) { $response = [ 'success' => false ]; }
+			elseif ( 'mismatch' === $rest_mode ) { $response['plan_hash'] = str_repeat( '0', 64 ); }
+			else { $rest_claimed = true; }
+		} elseif ( 'GET' === ( $args['method'] ?? 'GET' ) ) {
+			$response['conversation'] = [ 'pending_operation_graphs' => [ [ 'token' => 'coupon-pending-fixture', 'status' => 'awaiting_confirmation', 'action' => 'coupons.update', 'action_plan' => $rest_plan ] ] ];
+		}
+		return [ 'headers' => [], 'body' => wp_json_encode( $response ), 'response' => [ 'code' => 200, 'message' => 'OK' ], 'cookies' => [] ];
+	};
+	$rest_invoke = static function () use ( $rest_plan ) {
+		$request = new WP_REST_Request( 'POST', '/yoro-ai-core/v1/execute' );
+		foreach ( [ 'action' => 'coupons.update', 'params' => $rest_plan['params'], 'confirm' => true, 'conversation_id' => 'coupon-rest-fixture', 'pending_operation_token' => 'coupon-pending-fixture' ] as $key => $value ) { $request->set_param( $key, $value ); }
+		$result = YoRo_REST_Execute_Handler::handle( $request );
+		return $result instanceof WP_REST_Response ? $result->get_data() : $result;
+	};
+	add_filter( 'pre_http_request', $rest_http, 10, 3 );
+	try {
+		$mismatched = $rest_invoke();
+		$assert( is_wp_error( $mismatched ) || empty( $mismatched['success'] ), 'REST mismatched permit must fail before mutation.' );
+		$rest_mode = 'success';
+		$rest_success = $rest_invoke();
+		$assert( is_array( $rest_success ) && ! empty( $rest_success['success'] ) && $rest_claimed, 'REST confirmed/claimed permit must reach the coupon executor.' );
+		$assert( $version === YoRo_Coupons_Service::coupon_version( new WC_Coupon( $update_fixture_id ) ), 'Equivalent owner amount formatting must not invalidate configuration version.' );
+		$replay = $rest_invoke();
+		$assert( is_wp_error( $replay ) || empty( $replay['success'] ), 'REST consumed permit must not replay.' );
+	} finally {
+		remove_filter( 'pre_http_request', $rest_http, 10 );
+	}
+	foreach ( [ -1, 1, true, null, '1e2', '+1', '-1', '1,000', '$1', '100.01', '0.001', '1000000000000', '999999999999.999999', 'NaN', '', "12.50\n", "12.50\r\n" ] as $amount ) {
+		$invalid = array_replace( $params, [ 'discount_amount' => $amount ] );
+		$assert( is_wp_error( YoRo_Coupons_Service::update_coupon( $invalid ) ), 'Invalid/precision-loss/over-percent amount must fail before save: ' . wp_json_encode( $amount ) );
+	}
+	foreach ( [ '', str_repeat( '0', 63 ), str_repeat( 'A', 64 ), $version . "\n", $version . "\r\n" ] as $invalid_version ) {
+		$assert( is_wp_error( YoRo_Coupons_Service::update_coupon( array_replace( $params, [ 'expected_version' => $invalid_version ] ) ) ), 'Malformed coupon versions must fail before save.' );
+	}
+	foreach ( [ 'coupon_code', 'discount_type', 'usage_limit', 'email_restrictions', 'status', 'coupon_ids', 'metadata' ] as $extra ) {
+		$assert( is_wp_error( YoRo_Coupons_Service::update_coupon( $params + [ $extra => 'forbidden' ] ) ), 'Unknown coupon update input must fail: ' . $extra );
+	}
+	$fixture = new WC_Coupon( $update_fixture_id );
+	$fixture->set_usage_count( 1 );
+	$fixture->save();
+	$assert( $version === YoRo_Coupons_Service::coupon_version( new WC_Coupon( $update_fixture_id ) ), 'Ordinary usage count changes must not invalidate configuration version.' );
+	$claim = $claim_for( $params );
+	$save_count = 0;
+	$count_save = static function ( $id ) use ( $update_fixture_id, &$save_count ) {
+		if ( $id === $update_fixture_id ) { ++$save_count; }
+	};
+	add_action( 'woocommerce_update_coupon', $count_save );
+	try {
+		$updated = YoRo_Action_Executor::execute( 'coupons.update', $params, true, false, [], $claim );
+	} finally {
+		remove_action( 'woocommerce_update_coupon', $count_save );
+	}
+	$assert( is_array( $updated ) && true === ( $updated['success'] ?? false ), 'An exact one-use coupon claim must execute.' );
+	$assert( 1 === $save_count, 'One claimed coupon update must perform exactly one owner save.' );
+	$current = new WC_Coupon( $update_fixture_id );
+	$assert( 12.5 === (float) $current->get_amount() && 'percent' === $current->get_discount_type() && $fixture->get_code() === $current->get_code(), 'Update must preserve identity/type and persist the exact amount.' );
+	$assert( is_wp_error( YoRo_Action_Executor::execute( 'coupons.update', $params, true, false, [], $claim ) ), 'A consumed coupon claim must not replay.' );
+	$assert( is_wp_error( YoRo_Coupons_Service::update_coupon( $params ) ), 'Stale coupon configuration version must not mutate.' );
+	$fresh_params = array_replace( $params, [ 'expected_version' => YoRo_Coupons_Service::coupon_version( $current ), 'discount_amount' => '0' ] );
+	$changed_params = array_replace( $fresh_params, [ 'discount_amount' => '1' ] );
+	$assert( is_wp_error( YoRo_Action_Executor::execute( 'coupons.update', $changed_params, true, false, [], $claim_for( $fresh_params ) ) ), 'Changed parameters must not consume another coupon claim.' );
+	$zero = YoRo_Action_Executor::execute( 'coupons.update', $fresh_params, true, false, [], $claim_for( $fresh_params ) );
+	$assert( is_array( $zero ) && true === ( $zero['success'] ?? false ) && 0.0 === (float) ( new WC_Coupon( $update_fixture_id ) )->get_amount(), 'Explicit zero amount must be supported.' );
+	foreach ( [ 'fixed_cart', 'fixed_product' ] as $type ) {
+		$fixture = new WC_Coupon( $update_fixture_id );
+		$fixture->set_discount_type( $type );
+		$fixture->save();
+		$fixed = [ 'coupon_id' => $update_fixture_id, 'discount_amount' => '150.25', 'expected_version' => YoRo_Coupons_Service::coupon_version( new WC_Coupon( $update_fixture_id ) ) ];
+		$result = YoRo_Action_Executor::execute( 'coupons.update', $fixed, true, false, [], $claim_for( $fixed ) );
+		$assert( is_array( $result ) && true === ( $result['success'] ?? false ), 'Fixed coupon amounts over 100 must be supported.' );
+	}
+	$before_restriction = YoRo_Coupons_Service::coupon_version( new WC_Coupon( $update_fixture_id ) );
+	$fixture = new WC_Coupon( $update_fixture_id );
+	$fixture->set_usage_limit( 3 );
+	$fixture->save();
+	$assert( $before_restriction !== YoRo_Coupons_Service::coupon_version( new WC_Coupon( $update_fixture_id ) ), 'Eligibility configuration drift must invalidate the version.' );
+	$fixture = new WC_Coupon( $update_fixture_id );
+	$fixture->set_amount( '1.234' );
+	$fixture->save();
+	$precise_params = [ 'coupon_id' => $update_fixture_id, 'discount_amount' => '2.50', 'expected_version' => YoRo_Coupons_Service::coupon_version( new WC_Coupon( $update_fixture_id ) ) ];
+	$precise_preview = YoRo_Coupons_Service::preview_update_coupon( $precise_params );
+	$assert( '1.234' === ( $precise_preview['previous_discount_amount'] ?? '' ), 'Preview must preserve the exact previous owner amount without rounding.' );
+	$precise_result = YoRo_Action_Executor::execute( 'coupons.update', $precise_params, true, false, [], $claim_for( $precise_params ) );
+	$assert( is_array( $precise_result ) && ! empty( $precise_result['success'] ) && '1.234' === ( $precise_result['previous_discount_amount'] ?? '' ), 'Successful update must report the exact previous owner amount without rounding.' );
+	$save_probe = static function ( $id ) use ( $update_fixture_id ) {
+		if ( $id === $update_fixture_id ) { throw new RuntimeException( 'Synthetic ambiguous owner save' ); }
+	};
+	$failure_params = [ 'coupon_id' => $update_fixture_id, 'discount_amount' => '20.00', 'expected_version' => YoRo_Coupons_Service::coupon_version( new WC_Coupon( $update_fixture_id ) ) ];
+	add_action( 'woocommerce_update_coupon', $save_probe );
+	try {
+		$failed = YoRo_Action_Executor::execute( 'coupons.update', $failure_params, true, false, [], $claim_for( $failure_params ) );
+		$assert( is_array( $failed ) && 'coupon_update_reconciliation_required' === ( $failed['error']['code'] ?? '' ), 'Ambiguous post-save exception must require reconciliation.' );
+	} finally {
+		remove_action( 'woocommerce_update_coupon', $save_probe );
+	}
+	$altered = false;
+	$readback_probe = static function ( $id ) use ( $update_fixture_id, &$altered ) {
+		if ( $id !== $update_fixture_id || $altered ) { return; }
+		$altered = true;
+		$unexpected = new WC_Coupon( $update_fixture_id );
+		$unexpected->set_amount( '21.001' );
+		$unexpected->get_data_store()->update( $unexpected );
+	};
+	$failure_params['expected_version'] = YoRo_Coupons_Service::coupon_version( new WC_Coupon( $update_fixture_id ) );
+	add_action( 'woocommerce_update_coupon', $readback_probe );
+	try {
+		$failed = YoRo_Coupons_Service::update_coupon( $failure_params );
+		$assert( is_wp_error( $failed ) && 'coupon_update_reconciliation_required' === $failed->get_error_code(), 'Persisted readback mismatch must not report success.' );
+	} finally {
+		remove_action( 'woocommerce_update_coupon', $readback_probe );
+	}
+} finally {
+	if ( $update_fixture_id > 0 ) {
+		( new WC_Coupon( $update_fixture_id ) )->delete( true );
+	}
+}
+
 if ( $created_coupon_id > 0 ) {
 	wp_delete_post( $created_coupon_id, true );
 }

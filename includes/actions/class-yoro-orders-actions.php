@@ -482,6 +482,27 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		YoRo_Action_Registry::register( 'coupons.update', [
+			'label' => __( 'Update coupon discount amount', 'yoro-ai-core' ),
+			'description' => __( 'Set only the discount amount of one exact coupon after a fresh authenticated lookup.', 'yoro-ai-core' ),
+			'category' => 'coupons', 'permission' => 'manage_woocommerce',
+			'callback' => [ 'YoRo_Coupons_Service', 'update_coupon' ],
+			'preview_callback' => [ 'YoRo_Coupons_Service', 'preview_update_coupon' ],
+			'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
+			'reversibility' => 'none', 'idempotency_strategy' => 'operation_journal',
+			'input_schema' => [ 'coupon_id' => 'integer', 'discount_amount' => 'string', 'expected_version' => 'string' ],
+			'canonical_input_schema' => [
+				'coupon_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'discount_amount' => [ 'type' => 'string', 'pattern' => '^(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,6})?(?![\\s\\S])' ],
+				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}(?![\\s\\S])' ],
+			],
+			'concurrency_strategy' => 'optimistic_version', 'max_items' => 1, 'max_targets' => 1,
+			'target_type' => 'coupon', 'supports_bulk' => false,
+			'required_params' => [ 'coupon_id', 'discount_amount', 'expected_version' ],
+			'capabilities' => [ 'coupons', 'write' ],
+			'ai_description' => __( 'Change one coupon discount amount only, preserving its code, type and restrictions. Requires an authenticated exact lookup and explicit confirmation; no bulk, delete, usage-history or wider edits.', 'yoro-ai-core' ),
+		] );
+
 		YoRo_Action_Registry::register( 'products.update_pricing', [
 			'label' => __( 'Update product regular price', 'yoro-ai-core' ),
 			'description' => __( 'Set the regular price for one exact simple product or variation with no sale pricing.', 'yoro-ai-core' ),
