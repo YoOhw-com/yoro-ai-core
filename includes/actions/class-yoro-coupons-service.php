@@ -6,6 +6,107 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Coupons_Service {
 
+	public static function coupon_version( WC_Coupon $coupon ) {
+		$configuration = [ 'coupon_id' => $coupon->get_id(), 'status' => get_post_status( $coupon->get_id() ) ];
+		foreach ( [ 'code', 'amount', 'discount_type', 'description', 'individual_use', 'product_ids', 'excluded_product_ids', 'usage_limit', 'usage_limit_per_user', 'limit_usage_to_x_items', 'free_shipping', 'product_categories', 'excluded_product_categories', 'exclude_sale_items', 'minimum_amount', 'maximum_amount', 'email_restrictions' ] as $field ) {
+			$configuration[ $field ] = $coupon->{ 'get_' . $field }( 'edit' );
+		}
+		foreach ( [ 'amount', 'minimum_amount', 'maximum_amount' ] as $field ) {
+			$configuration[ $field ] = self::comparable_amount( (string) $configuration[ $field ] );
+		}
+		$expires = $coupon->get_date_expires( 'edit' );
+		$configuration['date_expires'] = $expires ? $expires->getTimestamp() : null;
+		return hash( 'sha256', wp_json_encode( $configuration, JSON_THROW_ON_ERROR ) );
+	}
+
+	private static function bounded_amount( $amount ) {
+		return is_string( $amount ) && 1 === preg_match( '/^(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?$/D', $amount );
+	}
+
+	private static function comparable_amount( $amount ) {
+		return str_contains( $amount, '.' ) ? rtrim( rtrim( $amount, '0' ), '.' ) : $amount;
+	}
+
+	public static function prepare_coupon_update( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			return new WP_Error( 'yoro_permission_denied', 'Coupon updates require manage_woocommerce.' );
+		}
+		if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'coupon_id', 'discount_amount', 'expected_version', '_yoro_confirmed', '_yoro_preview' ] )
+			|| ! is_int( $params['coupon_id'] ?? null ) || $params['coupon_id'] < 1
+			|| ! self::bounded_amount( $params['discount_amount'] ?? null )
+			|| ! is_string( $params['expected_version'] ?? null ) || ! preg_match( '/^[a-f0-9]{64}$/D', $params['expected_version'] ) ) {
+			return new WP_Error( 'invalid_coupon_update', 'Use one exact coupon ID, bounded decimal-string amount and its grounded current version.' );
+		}
+		try {
+			clean_post_cache( $params['coupon_id'] );
+			$coupon = self::get_coupon( $params['coupon_id'] );
+			if ( ! $coupon || $coupon->get_id() !== $params['coupon_id'] || 'shop_coupon' !== get_post_type( $params['coupon_id'] )
+				|| 'publish' !== get_post_status( $params['coupon_id'] ) || ! self::coupons_enabled()
+				|| ! in_array( $coupon->get_discount_type( 'edit' ), self::discount_types(), true ) ) {
+				return new WP_Error( 'coupon_update_unavailable', 'The exact coupon is missing or not eligible for amount updates.' );
+			}
+			if ( ! hash_equals( self::coupon_version( $coupon ), $params['expected_version'] ) ) {
+				return new WP_Error( 'coupon_version_conflict', 'Read the current coupon again before confirming a new update.' );
+			}
+			$amount = (string) wc_format_decimal( $params['discount_amount'], wc_get_price_decimals() );
+			$previous = self::comparable_amount( (string) $coupon->get_amount( 'edit' ) );
+			if ( ! self::bounded_amount( $amount ) || ! self::bounded_amount( $previous )
+				|| self::comparable_amount( $amount ) !== self::comparable_amount( $params['discount_amount'] )
+				|| ( 'percent' === $coupon->get_discount_type( 'edit' ) && ( (float) $params['discount_amount'] > 100 || (float) $amount > 100 ) ) ) {
+				return new WP_Error( 'invalid_coupon_amount', 'The amount must be exactly representable at store precision; percent cannot exceed 100.' );
+			}
+			return [ 'coupon' => $coupon, 'amount' => $amount, 'previous' => $previous, 'code' => $coupon->get_code( 'edit' ), 'type' => $coupon->get_discount_type( 'edit' ) ];
+		} catch ( Throwable $exception ) {
+			return new WP_Error( 'coupon_update_unavailable', 'The current coupon configuration could not be verified.' );
+		}
+	}
+
+	public static function preview_update_coupon( $params ) {
+		$prepared = self::prepare_coupon_update( $params );
+		$blocked = is_wp_error( $prepared );
+		return [
+			'type' => 'write', 'will_execute' => false, 'blocked' => $blocked, 'changes_store' => ! $blocked,
+			'block_reason' => $blocked ? $prepared->get_error_code() : '',
+			'message' => $blocked ? $prepared->get_error_message() : 'Only this coupon discount amount will change after claimed confirmation.',
+			'coupon_id' => $blocked ? null : $prepared['coupon']->get_id(),
+			'previous_discount_amount' => $blocked ? '' : $prepared['previous'],
+			'discount_amount' => $blocked ? '' : $prepared['amount'],
+		];
+	}
+
+	public static function update_coupon( $params ) {
+		$prepared = self::prepare_coupon_update( $params );
+		if ( is_wp_error( $prepared ) ) {
+			return $prepared;
+		}
+		$coupon = $prepared['coupon'];
+		$id = $coupon->get_id();
+		try {
+			$coupon->set_amount( $prepared['amount'] );
+			$saved_id = $coupon->save();
+			clean_post_cache( $id );
+			$current = self::get_coupon( $id );
+			if ( $saved_id !== $id || ! $current || $current->get_id() !== $id
+				|| $current->get_code( 'edit' ) !== $prepared['code'] || $current->get_discount_type( 'edit' ) !== $prepared['type']
+				|| 'publish' !== get_post_status( $id )
+				|| ! self::bounded_amount( (string) $current->get_amount( 'edit' ) )
+				|| self::comparable_amount( (string) $current->get_amount( 'edit' ) ) !== self::comparable_amount( $prepared['amount'] ) ) {
+				return new WP_Error( 'coupon_update_reconciliation_required', 'The coupon outcome is ambiguous. Read and reconcile; do not retry this operation.' );
+			}
+			return [
+				'success' => true, 'action' => 'coupons.update', 'coupon_id' => $id,
+				'coupon_code' => $prepared['code'], 'discount_type' => $prepared['type'],
+				'previous_discount_amount' => $prepared['previous'], 'discount_amount' => $prepared['amount'],
+				'current_version' => self::coupon_version( $current ),
+				'message' => 'Coupon discount amount updated.', 'summary' => 'Coupon discount amount updated.',
+				'read_only' => false, 'undoable' => false, 'undo_plan' => [],
+				'result_type' => 'coupon_update', 'display_type' => 'coupon_update',
+			];
+		} catch ( Throwable $exception ) {
+			return new WP_Error( 'coupon_update_reconciliation_required', 'The coupon outcome is ambiguous. Read and reconcile; do not retry this operation.' );
+		}
+	}
+
 	public static function search_coupons( $params ) {
 		if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'query', 'limit', 'page' ] ) ) {
 			return new WP_Error( 'invalid_coupon_search', 'Coupon search accepts only query, limit and page.' );
@@ -126,6 +227,7 @@ class YoRo_Coupons_Service {
 			);
 		}
 
+		clean_post_cache( $target['coupon_id'] );
 		$coupon = self::get_coupon( $target['coupon_id'] );
 
 		if ( ! $coupon ) {
@@ -136,6 +238,7 @@ class YoRo_Coupons_Service {
 		}
 
 		$item = self::coupon_result_item( $coupon );
+		$item['current_version'] = self::coupon_version( $coupon );
 		$summary = sprintf(
 			/* translators: 1: coupon code, 2: discount summary */
 			__( 'Found coupon %1$s: %2$s.', 'yoro-ai-core' ),

@@ -39,6 +39,7 @@ if ( class_exists( 'YoRo_Action_Registry' ) && 0 === count( YoRo_Action_Registry
 $registry = YoRo_Action_Registry::all();
 
 foreach ( [
+	'coupons.update' => 'optimistic_version',
 	'orders.update_addresses' => 'optimistic_version',
 	'orders.update_status' => 'per_item_optimistic_version',
 	'products.update_content' => 'optimistic_version',
