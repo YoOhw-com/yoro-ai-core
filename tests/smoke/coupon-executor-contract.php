@@ -414,6 +414,11 @@ try {
 		$result = YoRo_REST_Execute_Handler::handle( $request );
 		return $result instanceof WP_REST_Response ? $result->get_data() : $result;
 	};
+	if ( ! defined( 'YORO_AI_API_SITE_KEY' ) ) {
+		define( 'YORO_AI_API_SITE_KEY', 'coupon-smoke-fixture-key' );
+	}
+	$fixture_api_url = static function () { return 'https://coupon-smoke.example.invalid/api/v1'; };
+	add_filter( 'pre_option_' . YoRo_AI_Settings::OPTION_AI_API_URL, $fixture_api_url );
 	add_filter( 'pre_http_request', $rest_http, 10, 3 );
 	try {
 		$mismatched = $rest_invoke();
@@ -426,6 +431,7 @@ try {
 		$assert( is_wp_error( $replay ) || empty( $replay['success'] ), 'REST consumed permit must not replay.' );
 	} finally {
 		remove_filter( 'pre_http_request', $rest_http, 10 );
+		remove_filter( 'pre_option_' . YoRo_AI_Settings::OPTION_AI_API_URL, $fixture_api_url );
 	}
 	foreach ( [ -1, 1, true, null, '1e2', '+1', '-1', '1,000', '$1', '100.01', '0.001', '1000000000000', '999999999999.999999', 'NaN', '', "12.50\n", "12.50\r\n" ] as $amount ) {
 		$invalid = array_replace( $params, [ 'discount_amount' => $amount ] );
