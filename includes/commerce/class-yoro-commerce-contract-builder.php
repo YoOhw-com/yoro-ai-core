@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:961d7e8ee62b7d8ccd34d9e63ed9442e672dcad8df2a8e78d89ab8704d52b9f4';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:e98504e82efaae3282ce482e7503ddff866708ef9017bc87369cd7165ac290bb';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -361,7 +361,7 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	/** Validate the closed B5 projection before it can enter the public envelope. */
-	private static function email_history_schema_value( $value, $schema, $depth = 0 ) {
+	private static function email_history_schema_value( $value, $schema, $depth = 0, $coupon_search = false ) {
 		if ( $depth > 12 ) { return false; }
 		$types = (array) ( $schema['type'] ?? [] );
 		if ( null === $value ) { return in_array( 'null', $types, true ); }
@@ -369,24 +369,78 @@ class YoRo_Commerce_Contract_Builder {
 		if ( in_array( 'object', $types, true ) ) {
 			if ( ! is_array( $value ) || array_diff( array_keys( $value ), array_keys( $schema['properties'] ) ) || array_diff( $schema['required'], array_keys( $value ) ) ) { return false; }
 			foreach ( $value as $key => $child ) {
-				if ( ! self::email_history_schema_value( $child, $schema['properties'][ $key ], $depth + 1 ) ) { return false; }
+				if ( ! self::email_history_schema_value( $child, $schema['properties'][ $key ], $depth + 1, $coupon_search ) ) { return false; }
 			}
 			return true;
 		}
 		if ( in_array( 'array', $types, true ) ) {
 			if ( ! is_array( $value ) || array_values( $value ) !== $value || count( $value ) > ( $schema['maxItems'] ?? 501 ) || count( $value ) < ( $schema['minItems'] ?? 0 ) ) { return false; }
-			foreach ( $value as $child ) { if ( ! self::email_history_schema_value( $child, $schema['items'], $depth + 1 ) ) { return false; } }
+			foreach ( $value as $child ) { if ( ! self::email_history_schema_value( $child, $schema['items'], $depth + 1, $coupon_search ) ) { return false; } }
 			return empty( $schema['uniqueItems'] ) || count( array_unique( $value, SORT_REGULAR ) ) === count( $value );
 		}
 		if ( in_array( 'string', $types, true ) ) {
+			if ( $coupon_search ) {
+				return is_string( $value ) && preg_match( '//u', $value )
+					&& mb_strlen( $value, 'UTF-8' ) <= ( $schema['maxLength'] ?? 512 )
+					&& mb_strlen( $value, 'UTF-8' ) >= ( $schema['minLength'] ?? 0 )
+					&& ( ! isset( $schema['pattern'] ) || preg_match( '~' . $schema['pattern'] . '~D', $value ) );
+			}
 			return is_string( $value ) && strlen( $value ) <= ( $schema['maxLength'] ?? 512 ) && strlen( $value ) >= ( $schema['minLength'] ?? 0 )
 				&& ( ! isset( $schema['pattern'] ) || preg_match( '~' . $schema['pattern'] . '~D', $value ) );
 		}
 		if ( in_array( 'integer', $types, true ) ) { return is_int( $value ) && $value >= ( $schema['minimum'] ?? 0 ) && $value <= ( $schema['maximum'] ?? PHP_INT_MAX ); }
+		if ( $coupon_search && in_array( 'number', $types, true ) ) {
+			return ( is_int( $value ) || is_float( $value ) ) && is_finite( (float) $value )
+				&& $value >= ( $schema['minimum'] ?? -PHP_FLOAT_MAX ) && $value <= ( $schema['maximum'] ?? PHP_FLOAT_MAX );
+		}
 		return in_array( 'boolean', $types, true ) && is_bool( $value );
 	}
 
 	public static function execution_output_schema( $action_name = '' ) {
+		if ( 'coupons.search' === $action_name ) {
+			$item = [
+				'coupon_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'coupon_code' => [ 'type' => 'string', 'maxLength' => 100 ],
+				'discount_type' => [ 'type' => 'string', 'maxLength' => 100 ],
+				'discount_type_label' => [ 'type' => 'string', 'maxLength' => 100 ],
+				'discount_amount' => [ 'type' => 'number' ],
+				'discount_summary' => [ 'type' => 'string', 'maxLength' => 100 ],
+				'description' => [ 'type' => 'string', 'maxLength' => 500 ],
+				'usage_count' => [ 'type' => 'integer', 'minimum' => 0 ],
+				'usage_limit' => [ 'type' => [ 'integer', 'null' ], 'minimum' => 1 ],
+				'usage_limit_per_user' => [ 'type' => [ 'integer', 'null' ], 'minimum' => 1 ],
+				'individual_use' => [ 'type' => 'boolean' ],
+				'free_shipping' => [ 'type' => 'boolean' ],
+				'minimum_amount' => [ 'type' => 'string', 'maxLength' => 100 ],
+				'maximum_amount' => [ 'type' => 'string', 'maxLength' => 100 ],
+				'date_expires' => [ 'type' => 'string', 'maxLength' => 100 ],
+				'coupons_enabled' => [ 'type' => 'boolean' ],
+			];
+			$data = [
+				'coupons' => [ 'type' => 'array', 'maxItems' => 50, 'items' => self::closed_object_schema( $item, array_keys( $item ) ) ],
+				'page' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 100 ],
+				'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ],
+				'has_more' => [ 'type' => 'boolean' ],
+				'next_page' => [ 'type' => [ 'integer', 'null' ], 'minimum' => 2, 'maximum' => 100 ],
+				'skipped_count' => [ 'type' => 'integer', 'minimum' => 0, 'maximum' => 50 ],
+				'coupons_enabled' => [ 'type' => 'boolean' ],
+				'consistency' => [ 'type' => 'string', 'enum' => [ 'live_page' ] ],
+			];
+			$properties = [
+				'success' => [ 'type' => 'boolean' ],
+				'action' => [ 'type' => 'string', 'enum' => [ 'coupons.search' ] ],
+				'message' => [ 'type' => 'string', 'maxLength' => 256 ],
+				'summary' => [ 'type' => 'string', 'maxLength' => 256 ],
+				'data' => self::closed_object_schema( $data, array_keys( $data ) ),
+				'read_only' => [ 'type' => 'boolean', 'enum' => [ true ] ],
+				'undoable' => [ 'type' => 'boolean', 'enum' => [ false ] ],
+				'result_type' => [ 'type' => 'string', 'enum' => [ 'coupon_search' ] ],
+				'display_type' => [ 'type' => 'string', 'enum' => [ 'coupon_search' ] ],
+				'assistant_summary' => [ 'type' => 'string', 'maxLength' => 256 ],
+				'extensions' => self::closed_object_schema( [], [] ),
+			];
+			return self::closed_object_schema( $properties, array_keys( $properties ) );
+		}
 		if ( 'orders.get_download_permissions' === $action_name ) {
 			return [
 				'type' => 'object',
@@ -1191,6 +1245,26 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function canonical_execution_payload( array $execution, $action_name = '' ) {
+		if ( 'coupons.search' === ( $action_name ?: ( $execution['action'] ?? '' ) ) ) {
+			$data = $execution['data'] ?? null;
+			$schema = self::execution_output_schema( 'coupons.search' )['properties']['data'];
+			$valid = is_array( $data ) && self::email_history_schema_value( $data, $schema, 0, true );
+			if ( $valid ) {
+				$valid = count( $data['coupons'] ) + $data['skipped_count'] <= $data['limit']
+					&& $data['next_page'] === ( $data['has_more'] && $data['page'] < 100 ? $data['page'] + 1 : null );
+			}
+			if ( ! $valid ) {
+				return new WP_Error( 'invalid_coupon_search_result', 'Coupon search returned an invalid bounded result.' );
+			}
+			$summary = sprintf( 'Read %d coupons from a bounded live page.', count( $data['coupons'] ) );
+			return [
+				'success' => true === ( $execution['success'] ?? false ),
+				'action' => 'coupons.search', 'message' => $summary, 'summary' => $summary,
+				'data' => $data, 'read_only' => true, 'undoable' => false,
+				'result_type' => 'coupon_search', 'display_type' => 'coupon_search',
+				'assistant_summary' => $summary, 'extensions' => (object) [],
+			];
+		}
 		if ( 'orders.regenerate_download_permissions' === ( $action_name ?: ( $execution['action'] ?? '' ) ) ) {
 			$facts = $execution['download_permissions_regeneration'] ?? ( $execution['data']['download_permissions_regeneration'] ?? null );
 			$schema = self::execution_output_schema( 'orders.regenerate_download_permissions' )['properties']['data']['properties']['download_permissions_regeneration'];

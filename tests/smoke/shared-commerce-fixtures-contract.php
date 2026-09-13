@@ -167,6 +167,16 @@ $assert( YoRo_Commerce_Contract_Builder::strict_output_validation_ready( 'orders
 
 echo "YoRo shared commerce fixtures: PASS\n";
 
+$coupon_search_fixture = $action_result_contracts['connector_actions']['coupons.search'] ?? null;
+$assert( is_array( $coupon_search_fixture ), 'The API owner must supply the canonical coupon search fixture.' );
+$coupon_search_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload(
+	[ 'success' => true, 'data' => $coupon_search_fixture['sample_data'], 'debug' => 'secret', 'extensions' => [ 'raw' => 'secret' ] ],
+	'coupons.search'
+);
+$assert( is_array( $coupon_search_payload ) && $coupon_search_fixture['sample_data'] === $coupon_search_payload['data'], 'Coupon search fixture must be accepted unchanged by the Core projection.' );
+$assert( $coupon_search_fixture['data_required'] === YoRo_Commerce_Contract_Builder::execution_output_schema( 'coupons.search' )['properties']['data']['required'], 'Coupon search data roots must match the canonical API fixture.' );
+$assert( [] === (array) $coupon_search_payload['extensions'] && false === strpos( wp_json_encode( $coupon_search_payload ), 'secret' ), 'Coupon search must strip arbitrary debug and extension material.' );
+
 $address_fixture = $action_result_contracts['connector_actions']['orders.update_addresses'] ?? null;
 $assert( is_array( $address_fixture ), 'The B3 shipping-address fixture must be supplied by the API owner.' );
 $address_execution = array_merge( [ 'success' => true, 'debug' => 'unrelated secret', 'billing' => [ 'city' => 'private' ], 'extensions' => [ 'raw' => 'secret' ] ], $address_fixture['sample_data'] );

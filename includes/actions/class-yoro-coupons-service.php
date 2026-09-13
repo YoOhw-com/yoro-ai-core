@@ -6,6 +6,111 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Coupons_Service {
 
+	public static function search_coupons( $params ) {
+		if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'query', 'limit', 'page' ] ) ) {
+			return new WP_Error( 'invalid_coupon_search', 'Coupon search accepts only query, limit and page.' );
+		}
+		$query = $params['query'] ?? '';
+		$limit = $params['limit'] ?? 20;
+		$page = $params['page'] ?? 1;
+		if ( ! is_string( $query ) || ! is_int( $limit ) || $limit < 1 || $limit > 50
+			|| ! is_int( $page ) || $page < 1 || $page > 100
+			|| ( array_key_exists( 'query', $params ) && null === $params['query'] )
+			|| ( array_key_exists( 'limit', $params ) && null === $params['limit'] )
+			|| ( array_key_exists( 'page', $params ) && null === $params['page'] )
+			|| ! preg_match( '//u', $query ) || mb_strlen( $query, 'UTF-8' ) > 100
+			|| preg_match( '/[\x00-\x1f\x7f<>%*\\\\]/u', $query )
+			|| str_starts_with( trim( $query ), '-' ) ) {
+			return new WP_Error( 'invalid_coupon_search', 'Coupon search parameters must be bounded plain text and integers.' );
+		}
+		$query = trim( $query );
+		if ( '' !== $query && ( false !== has_filter( 'post_search_columns' ) || false !== has_filter( 'wp_query_search_exclusion_prefix' ) ) ) {
+			return new WP_Error( 'coupon_search_unsupported_query', 'Coupon search cannot establish code-only matching with this query configuration.' );
+		}
+		if ( ! class_exists( 'WC_Coupon' ) || ! class_exists( 'WC_Data_Store' ) || ! class_exists( 'WP_Query' ) ) {
+			return new WP_Error( 'coupon_search_unavailable', 'Coupon search is unavailable for this store.' );
+		}
+		try {
+			$store = WC_Data_Store::load( 'coupon' );
+			if ( 'WC_Coupon_Data_Store_CPT' !== $store->get_current_class_name() ) {
+				return new WP_Error( 'coupon_search_unsupported_store', 'Coupon search requires the supported coupon store.' );
+			}
+			$owner_query = new WP_Query( [
+				'post_type' => 'shop_coupon',
+				'post_status' => 'publish',
+				'fields' => 'ids',
+				'posts_per_page' => $limit + 1,
+				'offset' => ( $page - 1 ) * $limit,
+				'orderby' => [ 'date' => 'DESC', 'ID' => 'DESC' ],
+				'no_found_rows' => true,
+				'ignore_sticky_posts' => true,
+				'update_post_meta_cache' => false,
+				'update_post_term_cache' => false,
+				'cache_results' => false,
+				'suppress_filters' => true,
+				's' => $query,
+				'sentence' => true,
+				'search_columns' => [ 'post_title' ],
+			] );
+			$ids = $owner_query->posts;
+			if ( ! is_array( $ids ) || count( $ids ) > $limit + 1
+				|| 'shop_coupon' !== $owner_query->get( 'post_type' ) || 'publish' !== $owner_query->get( 'post_status' )
+				|| 'ids' !== $owner_query->get( 'fields' ) || $limit + 1 !== $owner_query->get( 'posts_per_page' )
+				|| ( $page - 1 ) * $limit !== $owner_query->get( 'offset' )
+				|| [ 'date' => 'DESC', 'ID' => 'DESC' ] !== $owner_query->get( 'orderby' )
+				|| $query !== $owner_query->get( 's' ) || true !== $owner_query->get( 'sentence' )
+				|| [ 'post_title' ] !== $owner_query->get( 'search_columns' ) || true !== $owner_query->get( 'no_found_rows' )
+				|| count( array_unique( $ids ) ) !== count( $ids ) ) {
+				return new WP_Error( 'coupon_search_unavailable', 'The coupon query did not return a bounded page.' );
+			}
+			$has_more = count( $ids ) > $limit;
+			$items = [];
+			$skipped = 0;
+			foreach ( array_slice( $ids, 0, $limit ) as $id ) {
+				if ( 'shop_coupon' !== get_post_type( $id ) || 'publish' !== get_post_status( $id ) ) {
+					++$skipped;
+					continue;
+				}
+				$coupon = self::get_coupon( $id );
+				if ( ! $coupon || (int) $coupon->get_id() !== (int) $id ) {
+					++$skipped;
+					continue;
+				}
+				$item = self::coupon_result_item( $coupon );
+				unset( $item['edit_url'] );
+				foreach ( $item as $key => $value ) {
+					if ( is_string( $value ) ) {
+						$item[ $key ] = mb_substr( sanitize_text_field( $value ), 0, 'description' === $key ? 500 : 100, 'UTF-8' );
+					}
+				}
+				$items[] = $item;
+			}
+		} catch ( Throwable $exception ) {
+			return new WP_Error( 'coupon_search_unavailable', 'Coupon search could not read the current store.' );
+		}
+		$summary = sprintf( 'Read %d coupons from a bounded live page.', count( $items ) );
+		return [
+			'success' => true,
+			'action' => 'coupons.search',
+			'message' => $summary,
+			'summary' => $summary,
+			'data' => [
+				'coupons' => $items,
+				'page' => $page,
+				'limit' => $limit,
+				'has_more' => $has_more,
+				'next_page' => $has_more && $page < 100 ? $page + 1 : null,
+				'skipped_count' => $skipped,
+				'coupons_enabled' => self::coupons_enabled(),
+				'consistency' => 'live_page',
+			],
+			'read_only' => true,
+			'undoable' => false,
+			'result_type' => 'coupon_search',
+			'display_type' => 'coupon_search',
+		];
+	}
+
 	public static function lookup_coupon( $params ) {
 		if ( ! class_exists( 'WC_Coupon' ) ) {
 			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
