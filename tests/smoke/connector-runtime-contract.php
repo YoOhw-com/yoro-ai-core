@@ -772,6 +772,128 @@ try {
 		if ( $coupon_fixture->get_id() > 0 ) { $coupon_fixture->delete( true ); }
 	}
 
+	// Native tracking writes use actual journal-owned execution and durable replay for both outcomes.
+	if ( class_exists( \Automattic\WooCommerce\Admin\Features\Fulfillments\Fulfillment::class )
+		&& method_exists( \Automattic\WooCommerce\Admin\Features\Fulfillments\Fulfillment::class, 'set_tracking_number' ) ) {
+		/** A registered extension store exercises the real native owner without changing site schema or settings. */
+		class YoRo_Tracking_Runtime_Smoke_Store extends \Automattic\WooCommerce\Admin\Features\Fulfillments\DataStore\FulfillmentsDataStore {
+			public static $records = [];
+			public static $updates = 0;
+			public static $fault = '';
+			public function create( &$data ): void { throw new RuntimeException( 'Fixture identity must be seeded explicitly.' ); }
+			public function delete_by_entity( string $entity_type, string $entity_id ): int { self::$records = []; return 0; }
+			public function read( &$data ): void {
+				$record = self::$records[ $data->get_id() ] ?? null;
+				if ( ! $record ) { throw new RuntimeException( 'Native fulfillment not found.' ); }
+				$data->set_props_from_storage( $record['props'] );
+				$data->set_meta_data( $record['meta'] );
+				$data->set_object_read( true );
+				$data->apply_changes();
+			}
+			public static function capture( $data ) {
+				$raw = array_merge( $data->get_data(), $data->get_changes() );
+				$meta = [];
+				foreach ( $data->get_meta_data() as $entry ) { $meta[] = [ 'id' => count( $meta ) + 1, 'key' => $entry->key, 'value' => $entry->value ]; }
+				unset( $raw['meta_data'] );
+				return [ 'props' => $raw, 'meta' => $meta ];
+			}
+			public function update( &$data ): void {
+				++self::$updates;
+				$changes = $data->get_changes();
+				$previous = self::$records[ $data->get_id() ]['props']['status'];
+				$data->set_date_updated( gmdate( 'c' ) );
+				self::$records[ $data->get_id() ] = self::capture( $data );
+				$data->apply_changes();
+				do_action( 'woocommerce_fulfillment_after_update', $data, $changes, $previous );
+				if ( 'throw' === self::$fault ) { throw new RuntimeException( 'Private post-save runtime fixture fault.' ); }
+			}
+			public function read_fulfillments( string $entity_type, string $entity_id, bool $with_deleted = false ): array {
+				$items = [];
+				foreach ( self::$records as $id => $record ) {
+					if ( $record['props']['entity_type'] === $entity_type && $record['props']['entity_id'] === $entity_id
+						&& ( $with_deleted || ! $record['props']['date_deleted'] ) ) { $items[] = new \Automattic\WooCommerce\Admin\Features\Fulfillments\Fulfillment( $id ); }
+				}
+				return $items;
+			}
+		}
+
+		$tracking_feature = static function () { return 'yes'; };
+		$tracking_store = static function ( $stores ) { $stores['order-fulfillment'] = YoRo_Tracking_Runtime_Smoke_Store::class; return $stores; };
+		$tracking_hooks = [];
+		foreach ( $GLOBALS['wp_filter'] as $hook => $callbacks ) { $tracking_hooks[ $hook ] = clone $callbacks; }
+		$tracking_operations = [];
+		$tracking_order = null;
+		try {
+			add_filter( 'pre_option_woocommerce_feature_fulfillments_enabled', $tracking_feature );
+			add_filter( 'woocommerce_data_stores', $tracking_store, 100 );
+			$tracking_manager = wc_get_container()->get( \Automattic\WooCommerce\Admin\Features\Fulfillments\FulfillmentsManager::class );
+			$tracking_manager->register();
+			foreach ( [ 'fulfillment.add_tracking', 'fulfillment.update_tracking' ] as $tracking_action ) {
+				foreach ( [ false, true ] as $tracking_fail ) {
+					$tracking_order = wc_create_order();
+					$tracking_item = new WC_Order_Item_Product();
+					$tracking_item->set_name( 'Disposable native tracking runtime fixture' );
+					$tracking_item->set_quantity( 1 );
+					$tracking_order->add_item( $tracking_item );
+					$tracking_order->save();
+					$tracking_target = new \Automattic\WooCommerce\Admin\Features\Fulfillments\Fulfillment();
+					$tracking_target->set_id( 739001 );
+					$tracking_target->set_entity_type( WC_Order::class );
+					$tracking_target->set_entity_id( (string) $tracking_order->get_id() );
+					$tracking_target->set_status( 'unfulfilled' );
+					$tracking_target->set_items( [ [ 'item_id' => $tracking_item->get_id(), 'qty' => 1 ] ] );
+					if ( 'fulfillment.update_tracking' === $tracking_action ) {
+						$tracking_target->set_tracking_number( 'PREVIOUS' );
+						$tracking_target->set_shipment_provider( 'dhl' );
+					}
+					YoRo_Tracking_Runtime_Smoke_Store::$records = [ 739001 => YoRo_Tracking_Runtime_Smoke_Store::capture( $tracking_target ) ];
+					YoRo_Tracking_Runtime_Smoke_Store::$updates = 0;
+					YoRo_Tracking_Runtime_Smoke_Store::$fault = $tracking_fail ? 'throw' : '';
+					$tracking_manager->update_order_fulfillment_status_on_fulfillment_update( new \Automattic\WooCommerce\Admin\Features\Fulfillments\Fulfillment( 739001 ) );
+					$tracking_read = YoRo_Fulfillment_Service::observations( $tracking_order->get_id() );
+					$tracking_operation = $operation;
+					$tracking_operation['envelope_id'] = 'envelope_' . hash( 'sha256', wp_generate_uuid4() );
+					$tracking_operation['idempotency_key'] = 'operation_' . hash( 'sha256', wp_generate_uuid4() );
+					$tracking_operation['operation_id'] = 'operation_tracking_' . wp_generate_uuid4();
+					$tracking_operation['action'] = $tracking_action;
+					$tracking_operation['params'] = [ 'order_id' => $tracking_order->get_id(), 'fulfillment_id' => 739001,
+						'tracking_number' => 'RUNTIME123', 'shipment_provider' => 'dhl', 'expected_version' => $tracking_read['native_fulfillments'][0]['current_version'] ?? '' ];
+					$tracking_operation['actor']['permissions'] = [ YoRo_Action_Registry::get( $tracking_action )['permission'] ];
+					$tracking_operations[] = $tracking_operation;
+					$tracking_client = new YoRo_Connector_Smoke_Client();
+					$tracking_client->claim = $client->claim;
+					$tracking_client->claim['delivery']['operations'] = [ $tracking_operation ];
+					( new YoRo_Connector_Runtime( $tracking_client ) )->run_once();
+					$tracking_result = $tracking_client->results[0]['payload'] ?? [];
+					$assert( ( $tracking_fail ? 'failed' : 'executed' ) === ( $tracking_result['status'] ?? '' ) && 1 === YoRo_Tracking_Runtime_Smoke_Store::$updates,
+						'Native ' . $tracking_action . ' must run once with actual journal-owned authority for success or post-save ambiguity.' );
+					if ( $tracking_fail ) {
+						$assert( 'local_execution_failed' === ( $tracking_result['error']['code'] ?? '' )
+							&& 'The outcome is ambiguous. Read and reconcile; do not retry or roll back this operation.' === ( $tracking_result['error']['message'] ?? '' )
+							&& false === ( $tracking_result['error']['retryable'] ?? null ), 'Ambiguous native save must remain non-retryable with its reconciliation instruction.' );
+					} else {
+						$assert( 'RUNTIME123' === ( $tracking_result['result']['data']['tracking_number'] ?? '' ), 'Native remote success must report the exact owner readback.' );
+					}
+					( new YoRo_Connector_Runtime( $tracking_client ) )->run_once();
+					$assert( 1 === YoRo_Tracking_Runtime_Smoke_Store::$updates && 2 === count( $tracking_client->results )
+						&& wp_json_encode( $tracking_result ) === wp_json_encode( $tracking_client->results[1]['payload'] ?? [] ),
+						'Native tracking journal replay must preserve exact durable outcome without another owner save.' );
+					$assert( 'RUNTIME123' === ( new \Automattic\WooCommerce\Admin\Features\Fulfillments\Fulfillment( 739001 ) )->get_tracking_number(), 'Each unique tracking operation changes the native owner once, including ambiguous outcome.' );
+					$tracking_order->delete( true );
+					$tracking_order = null;
+				}
+			}
+		} finally {
+			foreach ( $tracking_operations as $tracking_operation ) { YoRo_Connector_Execution_Journal::clear( $tracking_operation ); }
+			YoRo_Tracking_Runtime_Smoke_Store::$records = [];
+			if ( $tracking_order instanceof WC_Order ) { $tracking_order->delete( true ); }
+			// Restore process-only fixture registrations after all owner hooks have run normally.
+			$GLOBALS['wp_filter'] = $tracking_hooks;
+		}
+	} else {
+		$assert( ! YoRo_Fulfillment_Service::available(), 'Missing native tracking owner never grants remote write capability.' );
+	}
+
 	// Regular pricing uses only validated remote claim authority and one durable journal result.
 	$pricing_product = new WC_Product_Simple();
 	$pricing_operation = $operation;

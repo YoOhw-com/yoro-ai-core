@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:938ab5e668206e4e15ae10b1fdf521adb6be3a666dd3cbdebae3fd261c783383';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:6b9344e7180cca400288c5ed109357cc7174ecbbe0f5409081d51c8d1983a946';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1530,6 +1530,17 @@ class YoRo_Commerce_Contract_Builder {
 
 	private static function execution_data_schema( $action_name ) {
 		$action_name = sanitize_text_field( $action_name );
+		if ( in_array( $action_name, [ 'fulfillment.add_tracking', 'fulfillment.update_tracking' ], true ) ) {
+			$properties = [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ], 'fulfillment_id' => [ 'type' => 'integer', 'minimum' => 1 ] ];
+			foreach ( [ 'tracking_number' => 200, 'shipment_provider' => 100, 'tracking_url' => 2048 ] as $key => $limit ) {
+				$properties[ 'previous_' . $key ] = [ 'type' => 'string', 'maxLength' => $limit ];
+			}
+			$properties['tracking_number'] = [ 'type' => 'string', 'minLength' => 1, 'maxLength' => 200, 'pattern' => '^[^\\x00-\\x1f\\x7f<>]+(?![\\s\\S])' ];
+			$properties['shipment_provider'] = [ 'type' => 'string', 'minLength' => 1, 'maxLength' => 100, 'pattern' => '^[a-zA-Z0-9_-]+(?![\\s\\S])' ];
+			$properties['tracking_url'] = [ 'type' => 'string', 'maxLength' => 2048 ];
+			$properties['current_version'] = [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}(?![\\s\\S])' ];
+			return self::closed_object_schema( $properties, array_keys( $properties ) );
+		}
 		if ( 'coupons.update' === $action_name ) {
 			$amount = [ 'type' => 'string', 'pattern' => '^(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,6})?(?![\\s\\S])' ];
 			return self::closed_object_schema( [
@@ -1790,12 +1801,22 @@ class YoRo_Commerce_Contract_Builder {
 		}
 
 		if ( 'fulfillment.get_tracking' === $action_name ) {
+			$native = [
+				'source' => [ 'type' => 'string', 'enum' => [ 'woo_native_fulfillment' ] ],
+				'order_id' => [ 'type' => 'integer', 'minimum' => 1 ], 'fulfillment_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+				'status' => [ 'type' => 'string', 'maxLength' => 50 ], 'is_fulfilled' => [ 'type' => 'boolean' ], 'locked' => [ 'type' => 'boolean' ],
+				'tracking_number' => [ 'type' => 'string', 'maxLength' => 200 ], 'shipment_provider' => [ 'type' => 'string', 'maxLength' => 100 ],
+				'tracking_url' => [ 'type' => 'string', 'maxLength' => 2048 ],
+				'current_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}(?![\\s\\S])' ],
+			];
 			return self::closed_object_schema(
 				[
 					'order_id'  => [ 'type' => [ 'string', 'integer' ] ],
 					'status'    => [ 'type' => 'string' ],
 					'shipments' => self::array_schema( self::canonical_tracking_shipment_schema() ),
 					'count'     => [ 'type' => 'integer', 'minimum' => 0 ],
+					'native_status' => [ 'type' => 'string', 'enum' => [ 'available', 'unavailable' ] ],
+					'native_fulfillments' => [ 'type' => 'array', 'maxItems' => 100, 'items' => self::closed_object_schema( $native, array_keys( $native ) ) ],
 				],
 				[ 'order_id', 'status', 'shipments', 'count' ]
 			);
@@ -2443,12 +2464,19 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_write_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'coupons.update', 'orders.update_addresses', 'orders.update_status', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
+			[ 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'coupons.update', 'orders.update_addresses', 'orders.update_status', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.adjust_stock', 'products.update_stock_status' ],
 			true
 		);
 	}
 
 	private static function canonical_write_data( $action_name, array $execution ) {
+		if ( in_array( $action_name, [ 'fulfillment.add_tracking', 'fulfillment.update_tracking' ], true ) ) {
+			$data = [];
+			foreach ( [ 'order_id', 'fulfillment_id', 'previous_tracking_number', 'previous_shipment_provider', 'previous_tracking_url', 'tracking_number', 'shipment_provider', 'tracking_url', 'current_version' ] as $key ) {
+				$data[ $key ] = $execution[ $key ] ?? null;
+			}
+			return $data;
+		}
 		if ( 'coupons.update' === $action_name ) {
 			$data = [];
 			foreach ( [ 'coupon_id', 'coupon_code', 'discount_type', 'previous_discount_amount', 'discount_amount', 'current_version' ] as $field ) {
@@ -2594,12 +2622,18 @@ class YoRo_Commerce_Contract_Builder {
 		}
 
 		if ( 'fulfillment.get_tracking' === $action_name ) {
-			return [
+			$data = [
 				'order_id'  => $execution['order_id'] ?? ( $raw_data['order_id'] ?? 0 ),
 				'status'    => sanitize_key( $execution['status'] ?? ( $raw_data['status'] ?? 'unavailable' ) ),
 				'shipments' => array_values( (array) ( $execution['shipments'] ?? ( $raw_data['shipments'] ?? [] ) ) ),
 				'count'     => count( (array) ( $execution['shipments'] ?? ( $raw_data['shipments'] ?? [] ) ) ),
 			];
+			foreach ( [ 'native_status', 'native_fulfillments' ] as $key ) {
+				if ( array_key_exists( $key, $execution ) || array_key_exists( $key, $raw_data ) ) {
+					$data[ $key ] = $execution[ $key ] ?? $raw_data[ $key ];
+				}
+			}
+			return $data;
 		}
 
 		if ( in_array( $action_name, [ 'orders.search', 'orders.get_details', 'orders.find_by_customer' ], true ) ) {

@@ -482,6 +482,30 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		foreach ( [ 'add_tracking', 'update_tracking' ] as $tracking_action ) {
+			YoRo_Action_Registry::register( 'fulfillment.' . $tracking_action, [
+				'label' => 'add_tracking' === $tracking_action ? 'Add native fulfillment tracking' : 'Update native fulfillment tracking',
+				'description' => 'Change tracking on one exact existing native fulfillment after authenticated read and claimed confirmation.',
+				'category' => 'fulfillment', 'permission' => 'manage_woocommerce',
+				'callback' => [ 'YoRo_Fulfillment_Service', $tracking_action ],
+				'preview_callback' => [ 'YoRo_Fulfillment_Service', 'preview_' . $tracking_action ],
+				'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
+				'reversibility' => 'none', 'idempotency_strategy' => 'operation_journal',
+				'input_schema' => [ 'order_id' => 'integer', 'fulfillment_id' => 'integer', 'tracking_number' => 'string', 'shipment_provider' => 'string', 'expected_version' => 'string' ],
+				'canonical_input_schema' => [
+					'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+					'fulfillment_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+					'tracking_number' => [ 'type' => 'string', 'minLength' => 1, 'maxLength' => 200, 'pattern' => '^[^\\x00-\\x1f\\x7f<>]+(?![\\s\\S])' ],
+					'shipment_provider' => [ 'type' => 'string', 'minLength' => 1, 'maxLength' => 100, 'pattern' => '^[a-zA-Z0-9_-]+(?![\\s\\S])' ],
+					'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}(?![\\s\\S])' ],
+				],
+				'concurrency_strategy' => 'optimistic_version', 'max_items' => 1, 'max_targets' => 1,
+				'target_type' => 'order', 'supports_bulk' => false,
+				'required_params' => [ 'order_id', 'fulfillment_id', 'tracking_number', 'shipment_provider', 'expected_version' ],
+				'capabilities' => [ 'orders', 'fulfillment', 'tracking', 'write' ],
+			] );
+		}
+
 		YoRo_Action_Registry::register( 'coupons.update', [
 			'label' => __( 'Update coupon discount amount', 'yoro-ai-core' ),
 			'description' => __( 'Set only the discount amount of one exact coupon after a fresh authenticated lookup.', 'yoro-ai-core' ),
