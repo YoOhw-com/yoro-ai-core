@@ -22,6 +22,7 @@ class YoRo_Tracking_Smoke_Store extends FulfillmentsDataStore {
 	public static $omit_after_reads = 0;
 	public static $set_reads = 0;
 	public function create( &$data ): void { throw new RuntimeException( 'Fixture identity must be seeded explicitly.' ); }
+	public function read_meta( &$data ): array { return []; }
 	public function delete_by_entity( string $entity_type, string $entity_id ): int { self::$records = []; return 0; }
 	public function read( &$data ): void {
 		$record = self::$records[ $data->get_id() ] ?? null;
@@ -168,6 +169,11 @@ try {
 	add_filter( 'pre_option_' . YoRo_AI_Settings::OPTION_AI_API_STATUS, $status_filter );
 	add_filter( 'pre_option_' . YoRo_AI_Settings::OPTION_AI_API_URL, $url_filter );
 	add_filter( 'pre_http_request', $http, 10, 3 );
+	// Isolate this REST fixture from earlier smoke suites sharing the administrator.
+	$rate_key = 'yoro_rate_execute_' . get_current_user_id();
+	$original_rate_hits = get_transient( $rate_key );
+	$original_rate_expiry = (int) get_option( '_transient_timeout_' . $rate_key, 0 );
+	delete_transient( $rate_key );
 	try {
 		$before_claim = YoRo_Tracking_Smoke_Store::$updates;
 		$mismatch = $invoke();
@@ -178,6 +184,10 @@ try {
 		$replayed = $invoke();
 		$assert( ( is_wp_error( $replayed ) || empty( $replayed['success'] ) ) && $before_claim + 1 === YoRo_Tracking_Smoke_Store::$updates, 'REST consumed claim cannot replay native save.' );
 	} finally {
+		delete_transient( $rate_key );
+		if ( false !== $original_rate_hits && $original_rate_expiry > time() ) {
+			set_transient( $rate_key, $original_rate_hits, $original_rate_expiry - time() );
+		}
 		remove_filter( 'pre_http_request', $http, 10 );
 		remove_filter( 'pre_option_' . YoRo_AI_Settings::OPTION_AI_API_STATUS, $status_filter );
 		remove_filter( 'pre_option_' . YoRo_AI_Settings::OPTION_AI_API_URL, $url_filter );

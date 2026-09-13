@@ -781,6 +781,7 @@ try {
 			public static $updates = 0;
 			public static $fault = '';
 			public function create( &$data ): void { throw new RuntimeException( 'Fixture identity must be seeded explicitly.' ); }
+			public function read_meta( &$data ): array { return []; }
 			public function delete_by_entity( string $entity_type, string $entity_id ): int { self::$records = []; return 0; }
 			public function read( &$data ): void {
 				$record = self::$records[ $data->get_id() ] ?? null;
