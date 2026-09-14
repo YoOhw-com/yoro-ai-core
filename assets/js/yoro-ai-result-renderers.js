@@ -44,6 +44,33 @@
 			};
 	}
 
+	function renderCustomer360(result, h) {
+		const payload = result.data && !Array.isArray(result.data) ? result.data : result;
+		const timeline = result.display_type === 'customer_timeline';
+		const rows = timeline ? payload.events : payload.cases;
+		if (!Array.isArray(rows) || rows.length > (timeline ? 50 : 20) || !payload.coverage) {
+			return '<p>Customer observations are unavailable.</p>';
+		}
+		const escape = value => h.escapeHtml(String(value == null ? '' : value));
+		const topics = {pending_payment_followup: 'Pending payment', on_hold_followup: 'On hold', failed_checkout_followup: 'Failed checkout', saved_email_drafts: 'Saved email draft'};
+		let html = '<div class="yoro-result-card"><h4>' + (timeline ? 'Customer timeline' : 'Customer follow-up queue') + '</h4>';
+		if (!rows.length) html += '<p>No observations in this bounded view.</p>';
+		else {
+			html += '<table class="widefat striped"><thead><tr><th>Order</th><th>' + (timeline ? 'Time' : 'Rank') + '</th><th>' + (timeline ? 'Observation' : 'Follow-up topics') + '</th><th>' + (timeline ? 'Visibility / source' : 'Identity basis') + '</th></tr></thead><tbody>';
+			rows.forEach(row => {
+				if (!row || !Number.isInteger(row.order_id) || row.order_id < 1) return;
+				const detail = timeline ? row.summary : (Array.isArray(row.topics) ? row.topics.map(topic => topics[topic] || '').filter(Boolean).join(', ') : '');
+				const identity = row.identity || {};
+				const basis = identity.basis === 'customer_id' ? 'Customer #' + identity.customer_id : identity.basis === 'email' ? identity.email_masked : 'Order only';
+				html += '<tr><td>#' + escape(row.order_id) + '</td><td>' + escape(timeline ? row.occurred_at : row.rank) + '</td><td>' + escape(detail) + '</td><td>' + escape(timeline ? row.visibility + ' / ' + row.source : basis) + '</td></tr>';
+			});
+			html += '</tbody></table>';
+		}
+		if (payload.coverage.truncated) html += '<p>This view is limited; additional observations may exist.</p>';
+		html += '<p>WooCommerce observations only. External CRM and mailbox activity are not observed.</p></div>';
+		return html;
+	}
+
 	function formatAgeHours(value) {
 		const hours = parseInt(value || 0, 10) || 0;
 
@@ -391,6 +418,10 @@
 			return finish(typeof h.renderOrdersResult === 'function'
 				? h.renderOrdersResult(data)
 				: renderJson(data, h));
+		}
+
+		if (displayType === 'customer_timeline' || displayType === 'customer_follow_up_queue') {
+			return finish(renderCustomer360(Object.assign({}, result, {display_type: displayType}), h));
 		}
 
 		if (displayType === 'customer_summary') {

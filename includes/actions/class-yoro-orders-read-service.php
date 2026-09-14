@@ -1616,6 +1616,105 @@ class YoRo_Orders_Read_Service {
 		];
 	}
 
+	public static function customer_360_email( $email ) {
+		if ( ! is_string( $email ) || strlen( $email ) > 254 || preg_match( '/[\x00-\x1f\x7f]/', $email ) ) { return null; }
+		$normalized = strtolower( trim( $email ) );
+		return is_email( $normalized ) && sanitize_email( $normalized ) === $normalized ? $normalized : null;
+	}
+
+	public static function customer_360_mask_email( $email ) {
+		$parts = explode( '@', $email, 2 );
+		return ( strlen( $parts[0] ) > 1 ? substr( $parts[0], 0, 1 ) . str_repeat( '*', min( 3, strlen( $parts[0] ) - 1 ) ) : '*' ) . '@' . $parts[1];
+	}
+
+	public static function customer_360_order_identity( WC_Order $order ) {
+		$id = $order->get_customer_id();
+		if ( ! is_int( $id ) || $id < 0 ) { throw new RuntimeException( 'Invalid customer identity.' ); }
+		if ( $id > 0 ) { return [ 'basis' => 'customer_id', 'customer_id' => $id, 'email_masked' => '' ]; }
+		$email = self::customer_360_email( $order->get_billing_email() );
+		return [ 'basis' => null === $email ? 'order' : 'email', 'customer_id' => 0,
+			'email_masked' => null === $email ? '' : self::customer_360_mask_email( $email ) ];
+	}
+
+	public static function customer_360_result( $action, array $data ) {
+		return array_merge( [ 'success' => true, 'action' => $action, 'read_only' => true, 'undoable' => false, 'undo_plan' => [],
+			'message' => 'Loaded bounded Customer 360 observations.', 'summary' => 'Loaded bounded Customer 360 observations.',
+			'result_type' => 'customers.get_timeline' === $action ? 'customer_timeline' : 'customer_follow_up_queue',
+			'display_type' => 'customers.get_timeline' === $action ? 'customer_timeline' : 'customer_follow_up_queue' ], $data );
+	}
+
+	public static function get_customer_timeline( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) { return new WP_Error( 'yoro_permission_denied', 'Customer timeline requires store management permission.' ); }
+		try {
+			if ( ! function_exists( 'wc_get_orders' ) || ! is_array( $params ) ) { throw new RuntimeException( 'Customer source unavailable.' ); }
+			unset( $params['_yoro_confirmed'], $params['_yoro_preview'] );
+			if ( array_diff( array_keys( $params ), [ 'customer_id', 'email', 'limit' ] )
+				|| array_key_exists( 'customer_id', $params ) === array_key_exists( 'email', $params ) ) { throw new RuntimeException( 'One exact identity is required.' ); }
+			$limit = $params['limit'] ?? 20;
+			if ( ! is_int( $limit ) || $limit < 1 || $limit > 50 ) { throw new RuntimeException( 'Invalid event bound.' ); }
+			$identity = [ 'basis' => 'customer_id', 'customer_id' => 0, 'email_masked' => '' ];
+			$query = [ 'type' => 'shop_order', 'status' => array_keys( wc_get_order_statuses() ), 'limit' => 21, 'orderby' => 'ID', 'order' => 'DESC', 'return' => 'objects' ];
+			$email = null;
+			if ( array_key_exists( 'customer_id', $params ) ) {
+				$id = $params['customer_id'];
+				if ( ! is_int( $id ) || $id < 1 || ! get_userdata( $id ) ) { throw new RuntimeException( 'Invalid registered customer.' ); }
+				$identity['customer_id'] = $id;
+				$query['customer_id'] = $id;
+			} else {
+				$email = self::customer_360_email( $params['email'] );
+				if ( null === $email ) { throw new RuntimeException( 'Invalid exact email.' ); }
+				$identity = [ 'basis' => 'email', 'customer_id' => 0, 'email_masked' => self::customer_360_mask_email( $email ) ];
+				$query['billing_email'] = $email;
+			}
+			$blog_id = get_current_blog_id();
+			$orders = wc_get_orders( $query );
+			if ( ! is_array( $orders ) || ! array_is_list( $orders ) || count( $orders ) > 21 ) { throw new RuntimeException( 'Unbounded owner query.' ); }
+			$truncated = count( $orders ) > 20;
+			$events = [];
+			$seen = [];
+			foreach ( array_slice( $orders, 0, 20 ) as $candidate ) {
+				if ( ! $candidate instanceof WC_Order || get_current_blog_id() !== $blog_id ) { throw new RuntimeException( 'Invalid owner source.' ); }
+				$order = wc_get_order( $candidate->get_id() );
+				if ( ! $order instanceof WC_Order || $order->get_id() !== $candidate->get_id() || isset( $seen[ $order->get_id() ] )
+					|| ( 'customer_id' === $identity['basis'] ? $order->get_customer_id() !== $identity['customer_id'] : self::customer_360_email( $order->get_billing_email() ) !== $email ) ) {
+					throw new RuntimeException( 'Cross-identity order.' );
+				}
+				$seen[ $order->get_id() ] = true;
+				$timeline = YoRo_Commerce_Discovery_Service::get_order_timeline( [ 'order_id' => $order->get_id(), 'limit' => 50 ] );
+				if ( is_wp_error( $timeline ) || empty( $timeline['success'] ) || ! is_array( $timeline['events'] ?? null ) || count( $timeline['events'] ) > 53 ) { throw new RuntimeException( 'Invalid timeline source.' ); }
+				$notes = 0;
+				foreach ( $timeline['events'] as $event ) {
+					$type = $event['type'] ?? null;
+					$visibility = $event['visibility'] ?? null;
+					$date = $event['occurred_at'] ?? null;
+					$id = $event['id'] ?? null;
+					if ( ! in_array( $type, [ 'order_created', 'payment_recorded', 'order_completed', 'order_note' ], true )
+						|| ! in_array( $visibility, [ 'system', 'internal', 'customer' ], true ) || ! is_string( $date ) || strlen( $date ) > 40
+						|| ! preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/D', $date ) || false === strtotime( $date )
+						|| ! is_string( $id ) || ! preg_match( '/^(?:order_created|payment_recorded|order_completed|note_[1-9][0-9]*)$/D', $id ) ) { throw new RuntimeException( 'Invalid event source.' ); }
+					if ( 'order_note' === $type ) { ++$notes; }
+					$summary = 'order_note' === $type ? ( 'customer' === $visibility ? 'Customer-visible order note recorded.' : 'Internal order note recorded.' )
+						: [ 'order_created' => 'Order created.', 'payment_recorded' => 'Payment recorded.', 'order_completed' => 'Order completed.' ][ $type ];
+					$event_id = $order->get_id() . ':' . $id;
+					if ( isset( $events[ $event_id ] ) ) { throw new RuntimeException( 'Duplicate timeline event.' ); }
+					$events[ $event_id ] = [ 'id' => $event_id, 'order_id' => $order->get_id(), 'type' => $type,
+						'occurred_at' => gmdate( 'c', strtotime( $date ) ), 'summary' => $summary, 'visibility' => $visibility,
+						'source' => 'order_note' === $type ? 'woocommerce.order_note' : 'woocommerce.order' ];
+				}
+				$truncated = $truncated || $notes >= 50;
+			}
+			if ( get_current_blog_id() !== $blog_id ) { throw new RuntimeException( 'Site context changed.' ); }
+			$events = array_values( $events );
+			usort( $events, static function ( $a, $b ) { return strcmp( $b['occurred_at'], $a['occurred_at'] ) ?: ( $a['order_id'] <=> $b['order_id'] ) ?: strcmp( $a['id'], $b['id'] ); } );
+			$truncated = $truncated || count( $events ) > $limit;
+			$events = array_slice( $events, 0, $limit );
+			return self::customer_360_result( 'customers.get_timeline', [ 'identity' => $identity, 'events' => $events, 'count' => count( $events ),
+				'coverage' => [ 'orders_scanned' => count( $seen ), 'order_limit' => 20, 'event_limit' => $limit, 'truncated' => $truncated, 'external_activity' => 'unobserved' ] ] );
+		} catch ( Throwable $exception ) {
+			return new WP_Error( 'customer_360_unavailable', 'A bounded exact customer identity and verifiable local order timeline are required.' );
+		}
+	}
+
 	public static function get_customer_summary( $params ) {
 		$email         = ! empty( $params['email'] ) ? sanitize_email( $params['email'] ) : '';
 		$phone         = ! empty( $params['phone'] ) ? sanitize_text_field( $params['phone'] ) : '';

@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:be234a595b156cf6b3e256ac4866d737668dfe76565a49a36a4220cca159b8b6';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:ca8d02bb6810c80c9e38c9ef529f9fbf0cd6756afb04a9378be211f260b8029b';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1798,6 +1798,14 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
+		if ( 'customers.get_timeline' === $action_name ) {
+			return [ 'type' => 'object', 'properties' => [ 'identity' => [ 'type' => 'object', 'properties' => [ 'basis' => [ 'type' => 'string', 'enum' => [ 'customer_id', 'email' ] ], 'customer_id' => [ 'type' => 'integer', 'minimum' => 0 ], 'email_masked' => [ 'type' => 'string', 'maxLength' => 254 ] ], 'required' => [ 'basis', 'customer_id', 'email_masked' ], 'additionalProperties' => false ], 'events' => [ 'type' => 'array', 'maxItems' => 50, 'items' => [ 'type' => 'object', 'properties' => [ 'id' => [ 'type' => 'string', 'maxLength' => 100 ], 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ], 'type' => [ 'type' => 'string', 'enum' => [ 'order_created', 'payment_recorded', 'order_completed', 'order_note' ] ], 'occurred_at' => [ 'type' => 'string', 'maxLength' => 40 ], 'summary' => [ 'type' => 'string', 'maxLength' => 200 ], 'visibility' => [ 'type' => 'string', 'enum' => [ 'system', 'internal', 'customer' ] ], 'source' => [ 'type' => 'string', 'enum' => [ 'woocommerce.order', 'woocommerce.order_note' ] ] ], 'required' => [ 'id', 'order_id', 'type', 'occurred_at', 'summary', 'visibility', 'source' ], 'additionalProperties' => false ] ], 'count' => [ 'type' => 'integer', 'minimum' => 0, 'maximum' => 50 ], 'coverage' => [ 'type' => 'object', 'properties' => [ 'orders_scanned' => [ 'type' => 'integer', 'minimum' => 0, 'maximum' => 20 ], 'order_limit' => [ 'type' => 'integer', 'enum' => [ 20 ] ], 'event_limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ], 'truncated' => [ 'type' => 'boolean' ], 'external_activity' => [ 'type' => 'string', 'enum' => [ 'unobserved' ] ] ], 'required' => [ 'orders_scanned', 'order_limit', 'event_limit', 'truncated', 'external_activity' ], 'additionalProperties' => false ] ], 'required' => [ 'identity', 'events', 'count', 'coverage' ], 'additionalProperties' => false ];
+		}
+
+		if ( 'customers.get_follow_up_queue' === $action_name ) {
+			return [ 'type' => 'object', 'properties' => [ 'cases' => [ 'type' => 'array', 'maxItems' => 20, 'items' => [ 'type' => 'object', 'properties' => [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ], 'identity' => [ 'type' => 'object', 'properties' => [ 'basis' => [ 'type' => 'string', 'enum' => [ 'customer_id', 'email', 'order' ] ], 'customer_id' => [ 'type' => 'integer', 'minimum' => 0 ], 'email_masked' => [ 'type' => 'string', 'maxLength' => 254 ] ], 'required' => [ 'basis', 'customer_id', 'email_masked' ], 'additionalProperties' => false ], 'rank' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 20 ], 'topics' => [ 'type' => 'array', 'maxItems' => 4, 'items' => [ 'type' => 'string', 'enum' => [ 'pending_payment_followup', 'on_hold_followup', 'failed_checkout_followup', 'saved_email_drafts' ] ] ], 'status' => [ 'type' => 'string', 'maxLength' => 50 ], 'age_hours' => [ 'type' => 'number', 'minimum' => 0 ], 'source' => [ 'type' => 'string', 'enum' => [ 'woocommerce.order' ] ] ], 'required' => [ 'order_id', 'identity', 'rank', 'topics', 'status', 'age_hours', 'source' ], 'additionalProperties' => false ] ], 'count' => [ 'type' => 'integer', 'minimum' => 0, 'maximum' => 20 ], 'coverage' => [ 'type' => 'object', 'properties' => [ 'limit_per_queue' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 20 ], 'case_limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 20 ], 'candidates' => [ 'type' => 'integer', 'minimum' => 0, 'maximum' => 80 ], 'truncated' => [ 'type' => 'boolean' ], 'external_activity' => [ 'type' => 'string', 'enum' => [ 'unobserved' ] ] ], 'required' => [ 'limit_per_queue', 'case_limit', 'candidates', 'truncated', 'external_activity' ], 'additionalProperties' => false ] ], 'required' => [ 'cases', 'count', 'coverage' ], 'additionalProperties' => false ];
+		}
+
 		if ( 'orders.get_timeline' === $action_name ) {
 			return self::closed_object_schema(
 				[
@@ -2467,7 +2475,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_read_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ],
+			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue' ],
 			true
 		);
 	}
@@ -2628,6 +2636,13 @@ class YoRo_Commerce_Contract_Builder {
 				'page_info' => self::canonical_page_info( $execution['page_info'] ?? ( $raw_data['page_info'] ?? [] ) ),
 				'count'     => count( $products ),
 			];
+		}
+
+		if ( in_array( $action_name, [ 'customers.get_timeline', 'customers.get_follow_up_queue' ], true ) ) {
+			$keys = 'customers.get_timeline' === $action_name ? [ 'identity', 'events', 'count', 'coverage' ] : [ 'cases', 'count', 'coverage' ];
+			$data = [];
+			foreach ( $keys as $key ) { $data[ $key ] = $execution[ $key ] ?? ( $raw_data[ $key ] ?? null ); }
+			return $data;
 		}
 
 		if ( 'orders.get_timeline' === $action_name ) {
