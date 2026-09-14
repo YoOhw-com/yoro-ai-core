@@ -1145,6 +1145,25 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		foreach ( [ 'get_timeline', 'get_follow_up_queue' ] as $customer_action ) {
+			$timeline = 'get_timeline' === $customer_action;
+			YoRo_Action_Registry::register( 'customers.' . $customer_action, [
+				'label' => $timeline ? 'Customer timeline' : 'Customer follow-up queue',
+				'description' => $timeline ? 'Read bounded cross-order history for exactly one explicit customer ID or billing email, with source and visibility.' : 'Read bounded follow-up cases from the existing service queue; no send, draft or scheduling.',
+				'category' => 'customers', 'permission' => 'manage_woocommerce', 'risk_level' => 'low',
+				'write_action' => false, 'requires_confirmation' => false,
+				'callback' => $timeline ? [ 'YoRo_Orders_Read_Service', 'get_customer_timeline' ] : [ 'YoRo_Store_Customer_Service', 'get_customer_follow_up_queue' ],
+				'input_schema' => $timeline ? [ 'customer_id' => 'integer', 'email' => 'string', 'limit' => 'integer' ] : [ 'limit' => 'integer' ],
+				'canonical_input_schema' => $timeline ? [
+					'customer_id' => [ 'type' => 'integer', 'minimum' => 1 ],
+					'email' => [ 'type' => 'string', 'maxLength' => 254 ],
+					'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ],
+				] : [ 'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 20 ] ],
+				'required_params' => [], 'max_items' => $timeline ? 50 : 20, 'max_targets' => $timeline ? 1 : 20,
+				'capabilities' => [ 'customers', 'orders', 'read' ],
+			] );
+		}
+
 		YoRo_Action_Registry::register(
 			'customers.get_service_queue',
 			[

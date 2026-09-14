@@ -6,6 +6,54 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Store_Customer_Service {
 
+	public static function get_customer_follow_up_queue( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) { return new WP_Error( 'yoro_permission_denied', 'Customer follow-up requires store management permission.' ); }
+		try {
+			if ( ! is_array( $params ) ) { throw new RuntimeException( 'Invalid queue input.' ); }
+			unset( $params['_yoro_confirmed'], $params['_yoro_preview'] );
+			$limit = $params['limit'] ?? 5;
+			if ( array_diff( array_keys( $params ), [ 'limit' ] ) || ! is_int( $limit ) || $limit < 1 || $limit > 20 ) { throw new RuntimeException( 'Invalid queue bound.' ); }
+			$blog_id = get_current_blog_id();
+			$legacy = self::get_customer_service_queue( [ 'limit' => $limit ] );
+			if ( is_wp_error( $legacy ) ) { return $legacy; }
+			if ( empty( $legacy['success'] ) || ! is_array( $legacy['orders'] ?? null ) || count( $legacy['orders'] ) > 80
+				|| ! is_array( $legacy['queues'] ?? null ) || count( $legacy['queues'] ) !== 4
+				|| null !== YoRo_Commerce_Contract_Builder::queue_age_guard( $legacy, 'customers.get_service_queue' ) ) { throw new RuntimeException( 'Invalid queue evidence.' ); }
+			$topics = [];
+			$truncated = false;
+			foreach ( $legacy['queues'] as $queue ) {
+				$key = $queue['key'] ?? null;
+				if ( ! in_array( $key, [ 'pending_payment_followup', 'on_hold_followup', 'failed_checkout_followup', 'saved_email_drafts' ], true )
+					|| ! is_array( $queue['orders'] ?? null ) || count( $queue['orders'] ) > $limit ) { throw new RuntimeException( 'Invalid queue source.' ); }
+				$truncated = $truncated || ( $queue['count'] ?? 0 ) > count( $queue['orders'] );
+				foreach ( $queue['orders'] as $row ) { $topics[ $row['id'] ][ $key ] = true; }
+			}
+			$cases = [];
+			$seen = [];
+			foreach ( $legacy['orders'] as $row ) {
+				$id = $row['id'] ?? null;
+				if ( ! is_int( $id ) || $id < 1 || isset( $seen[ $id ] ) || ! isset( $topics[ $id ] ) || get_current_blog_id() !== $blog_id ) { throw new RuntimeException( 'Invalid ranked order identity.' ); }
+				$seen[ $id ] = true;
+				$order = wc_get_order( $id );
+				if ( ! $order instanceof WC_Order || $order->get_status() !== ( $row['status'] ?? null )
+					|| ! is_numeric( $row['age_hours'] ?? null ) || ! is_finite( (float) $row['age_hours'] ) || $row['age_hours'] < 0 ) { throw new RuntimeException( 'Queue owner changed.' ); }
+				$identity = YoRo_Orders_Read_Service::customer_360_order_identity( $order );
+				$case_topics = array_keys( $topics[ $id ] );
+				sort( $case_topics, SORT_STRING );
+				if ( count( $cases ) < $limit ) {
+					$cases[] = [ 'order_id' => $id, 'identity' => $identity, 'rank' => count( $cases ) + 1, 'topics' => $case_topics,
+						'status' => $order->get_status(), 'age_hours' => (float) $row['age_hours'], 'source' => 'woocommerce.order' ];
+				}
+			}
+			if ( get_current_blog_id() !== $blog_id ) { throw new RuntimeException( 'Site context changed.' ); }
+			return YoRo_Orders_Read_Service::customer_360_result( 'customers.get_follow_up_queue', [ 'cases' => $cases, 'count' => count( $cases ),
+				'coverage' => [ 'limit_per_queue' => $limit, 'case_limit' => $limit, 'candidates' => count( $seen ),
+					'truncated' => $truncated || count( $seen ) > $limit, 'external_activity' => 'unobserved' ] ] );
+		} catch ( Throwable $exception ) {
+			return new WP_Error( 'customer_360_unavailable', 'Bounded verifiable customer follow-up observations are required.' );
+		}
+	}
+
 	public static function get_customer_service_queue( $params ) {
 		if ( ! function_exists( 'wc_get_orders' ) ) {
 			return new WP_Error( 'woocommerce_missing', __( 'Store integration is not active.', 'yoro-ai-core' ) );
