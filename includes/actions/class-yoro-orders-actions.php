@@ -1145,6 +1145,21 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		foreach ( [ 'get_status', 'get_order_context' ] as $method ) {
+			$order_context = 'get_order_context' === $method;
+			YoRo_Action_Registry::register( 'subscriptions.' . $method, [
+				'label' => $order_context ? 'Subscriptions order context' : 'Subscriptions status',
+				'description' => $order_context ? 'Read bounded owner-related subscriptions for one exact order. No customer/payment data or lifecycle mutation.' : 'Read characterized Subscriptions availability and public read coverage without construction or settings access.',
+				'category' => 'orders', 'permission' => 'manage_woocommerce', 'risk_level' => 'low',
+				'write_action' => false, 'requires_confirmation' => false, 'max_items' => 1, 'max_targets' => 1,
+				'callback' => [ 'YoRo_Subscriptions_Service', $method ],
+				'input_schema' => $order_context ? [ 'order_id' => 'integer' ] : [],
+				'canonical_input_schema' => $order_context ? [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ] ] : [],
+				'required_params' => $order_context ? [ 'order_id' ] : [],
+				'capabilities' => [ 'orders', 'read', 'subscriptions' ],
+			] );
+		}
+
 		foreach ( [ 'get_status', 'get_order_activity' ] as $method ) {
 			$order_activity = 'get_order_activity' === $method;
 			YoRo_Action_Registry::register( 'order_splitter.' . $method, [

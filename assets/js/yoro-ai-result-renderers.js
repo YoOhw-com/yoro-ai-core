@@ -44,6 +44,35 @@
 			};
 	}
 
+	function renderSubscriptions(result, h) {
+		const data = result.data && typeof result.data.status === 'string' ? result.data : result;
+		const context = result.display_type === 'subscriptions_order_context';
+		const unavailable = '<p>Subscription observations are unavailable.</p>';
+		if (!data || !(context ? ['observed', 'unavailable'] : ['available', 'absent', 'incompatible']).includes(data.status)
+			|| !['subscriptions', 'absent', 'incompatible'].includes(data.owner_kind) || !['', '9.2.0'].includes(data.version)) return unavailable;
+		const escape = value => h.escapeHtml(String(value));
+		let html = '<div class="yoro-result-card"><h4>Subscriptions</h4><p>' + escape(data.status) + ' / ' + escape(data.version) + '</p>';
+		if (context && data.status === 'observed') {
+			if (!Number.isInteger(data.order_id) || data.order_id < 1 || typeof data.order_status !== 'string' || data.order_status.length > 40
+				|| !Array.isArray(data.subscriptions) || data.subscriptions.length > 20) return unavailable;
+			html += '<p>Order #' + escape(data.order_id) + ' / ' + escape(data.order_status) + '</p><ul>';
+			const seen = new Set();
+			for (const entry of data.subscriptions) {
+				if (!entry || !Number.isInteger(entry.subscription_id) || entry.subscription_id < 1 || seen.has(entry.subscription_id)
+					|| !['pending', 'active', 'on-hold', 'pending-cancel', 'cancelled', 'switched', 'expired'].includes(entry.status)
+					|| !['day', 'week', 'month', 'year'].includes(entry.billing_period) || !Number.isInteger(entry.billing_interval) || entry.billing_interval < 1 || entry.billing_interval > 365
+					|| !['manual', 'automatic'].includes(entry.renewal_mode) || !entry.schedule
+					|| !['start', 'trial_end', 'next_payment', 'end'].every(k => typeof entry.schedule[k] === 'string' && entry.schedule[k].length <= 25)) return unavailable;
+				seen.add(entry.subscription_id);
+				html += '<li>Subscription #' + escape(entry.subscription_id) + ' / ' + escape(entry.status) + '<br>Every ' + escape(entry.billing_interval) + ' ' + escape(entry.billing_period) + '; renewal: ' + escape(entry.renewal_mode);
+				for (const key of ['start', 'trial_end', 'next_payment', 'end']) html += '<br>' + escape(key) + ': ' + escape(entry.schedule[key]);
+				html += '</li>';
+			}
+			html += '</ul>';
+		}
+		return html + '</div>';
+	}
+
 	function renderOrderSplitter(result, h) {
 		const data = result.data && typeof result.data.status === 'string' ? result.data : result;
 		const activity = result.display_type === 'order_splitter_order_activity';
@@ -506,6 +535,9 @@
 				: renderJson(data, h));
 		}
 
+		if (displayType === 'subscriptions_status' || displayType === 'subscriptions_order_context') {
+			return finish(renderSubscriptions(Object.assign({}, result, {display_type: displayType}), h));
+		}
 		if (displayType === 'order_splitter_status' || displayType === 'order_splitter_order_activity') {
 			return finish(renderOrderSplitter(Object.assign({}, result, {display_type: displayType}), h));
 		}
