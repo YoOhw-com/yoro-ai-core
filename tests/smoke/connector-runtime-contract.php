@@ -1291,6 +1291,27 @@ $assert( false === strpos( wp_json_encode( $link_payload ), 'B2-SECRET-SENTINEL'
 $link_raw['payment_link']['needs_payment'] = false;
 $assert( null === YoRo_Commerce_Contract_Builder::normalize_payment_link( $link_raw['payment_link'] ), 'Nonpayable output cannot carry an available payment capability.' );
 
+// Exercise refund rendering against hostile data, with the production renderer.
+$refund_renderer_test = <<<'JS'
+const fs=require('fs'), vm=require('vm'), assert=require('assert');
+const context={window:{}}; vm.createContext(context); vm.runInContext(fs.readFileSync(process.argv[1],'utf8'),context);
+const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const renderer=context.window.YoRoResultRenderers.init({escapeHtml,shouldShowDebugJson:()=>false});
+const base={success:true,action:'orders.get_refunds',display_type:'order_refund_history',order_id:123,currency:'USD',total_refunded:'10.00',remaining_refundable:'90.00',refunds:[{refund_id:456,amount:'10.00',reason:'<script>SECRET</script>',created_at:'2026-09-14T00:00:00+00:00',refunded_payment:false}],pagination:{limit:20,page:1,has_more:false,snapshot_consistent:false}};
+const render=value=>renderer.renderResult({success:true,stage:"done",parsed:{language:"en"},result:value});
+let html=render(base); assert(html.includes('&lt;script&gt;SECRET&lt;/script&gt;')&&!html.includes('<script>'));
+assert(html.includes('Payment transfer is not verified')&&!/<button|<input|data-action=/.test(html));
+assert(render({...base,data:{order_id:123,currency:'USD',total_refunded:'0.00',remaining_refundable:'100.00',refunds:[],pagination:base.pagination}}).includes('Refund history'));
+for(const mutate of [v=>v.refunds[0].amount='NaN',v=>v.refunds[0].created_at='invalid',v=>v.refunds[0].refunded_payment=1,v=>v.refunds.push({...v.refunds[0]}),v=>v.pagination.page=101,v=>v.pagination.snapshot_consistent=true,v=>v.order_id='123',v=>v.refunds[0].reason='x'.repeat(501)]){const v=JSON.parse(JSON.stringify(base));mutate(v);assert(render(v).includes('Refund observations are unavailable'));}
+console.log('PASS: refund renderer escaping, raw/canonical shape, malformed data and no mutation controls.');
+JS;
+$process = proc_open( [ 'node', '-e', $refund_renderer_test, $plugin_root . '/assets/js/yoro-ai-result-renderers.js' ], [ 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ], $pipes );
+$assert( is_resource( $process ), 'Refund renderer test process starts.' );
+if ( is_resource( $process ) ) {
+	$output = stream_get_contents( $pipes[1] ); $errors = stream_get_contents( $pipes[2] ); fclose( $pipes[1] ); fclose( $pipes[2] );
+	$assert( 0 === proc_close( $process ), 'Refund renderer checks: ' . $errors ); echo $output;
+}
+
 if ( $failures ) {
 	foreach ( $failures as $failure ) {
 		fwrite( STDERR, "FAIL: {$failure}\n" );

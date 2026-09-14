@@ -1492,55 +1492,125 @@ class YoRo_Orders_Read_Service {
 		return YoRo_Store_Briefing_Service::get_daily_briefing( $params );
 	}
 
+	private static function refund_read_input( $params, $history ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) { return new WP_Error( 'yoro_permission_denied', 'Store management permission is required.' ); }
+		if ( ! is_array( $params ) ) { return new WP_Error( 'refund_invalid_input', 'Invalid refund read parameters.' ); }
+		unset( $params['_yoro_confirmed'], $params['_yoro_preview'] );
+		if ( array_diff( array_keys( $params ), $history ? [ 'order_id', 'limit', 'page' ] : [ 'order_id' ] ) || ! is_int( $params['order_id'] ?? null ) || $params['order_id'] < 1 || $params['order_id'] > 9007199254740991 ) { return new WP_Error( 'refund_invalid_input', 'An exact order ID and only read parameters are required.' ); }
+		foreach ( [ 'limit' => 50, 'page' => 100 ] as $key => $max ) {
+			if ( array_key_exists( $key, $params ) && ( ! is_int( $params[ $key ] ) || $params[ $key ] < 1 || $params[ $key ] > $max ) ) { return new WP_Error( 'refund_invalid_input', 'Invalid pagination.' ); }
+		}
+		return $params;
+	}
+
+	private static function refund_number( $value, $signed = false ) {
+		if ( ! is_int( $value ) && ! is_float( $value ) && ! ( is_string( $value ) && strlen( $value ) <= 32 && preg_match( $signed ? '/^-?[0-9]+(?:\.[0-9]+)?$/D' : '/^[0-9]+(?:\.[0-9]+)?$/D', $value ) ) ) { throw new RuntimeException( 'Invalid numeric owner value.' ); }
+		$value = (float) $value;
+		if ( ! is_finite( $value ) || abs( $value ) > 9007199254740991 || ( ! $signed && $value < 0 ) ) { throw new RuntimeException( 'Unsafe numeric owner value.' ); }
+		return $value;
+	}
+
+	private static function refund_text( $value, $limit ) {
+		if ( ! is_string( $value ) || ! mb_check_encoding( $value, 'UTF-8' ) || strlen( $value ) > $limit * 8 || preg_match( '/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', $value ) ) { throw new RuntimeException( 'Invalid owner text.' ); }
+		$value = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( html_entity_decode( $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) ) ) );
+		if ( ! mb_check_encoding( $value, 'UTF-8' ) || mb_strlen( $value ) > $limit ) { throw new RuntimeException( 'Owner text exceeds bound.' ); }
+		return $value;
+	}
+
+	private static function refund_order( $id, $blog ) {
+		$order = wc_get_order( $id );
+		if ( get_current_blog_id() !== $blog || ! $order instanceof WC_Order || $order instanceof WC_Order_Refund || $order->get_id() !== $id || 'shop_order' !== $order->get_type() ) { throw new RuntimeException( 'Exact current-site order required.' ); }
+		return $order;
+	}
+
+	private static function refund_page( $order_id, $limit, $page, $complete, $blog ) {
+		$ids = wc_get_orders( [ 'type' => 'shop_order_refund', 'parent' => $order_id, 'limit' => $limit + 1, 'offset' => ( $page - 1 ) * $limit, 'orderby' => [ 'date' => 'DESC', 'ID' => 'DESC' ], 'order' => 'DESC', 'return' => 'ids', 'paginate' => false ] );
+		if ( ! is_array( $ids ) || count( $ids ) > $limit + 1 || ( $complete && count( $ids ) > $limit ) || get_current_blog_id() !== $blog ) { throw new RuntimeException( 'Refund history exceeds the admitted bound.' ); }
+		$seen = []; $rows = []; $objects = []; $previous = null;
+		foreach ( $ids as $id ) {
+			if ( ! is_int( $id ) || $id < 1 || $id > 9007199254740991 || isset( $seen[ $id ] ) ) { throw new RuntimeException( 'Invalid refund identity.' ); }
+			$seen[ $id ] = true; $refund = wc_get_order( $id );
+			if ( ! $refund instanceof WC_Order_Refund || $refund->get_id() !== $id || 'shop_order_refund' !== $refund->get_type() || $refund->get_parent_id() !== $order_id || get_current_blog_id() !== $blog ) { throw new RuntimeException( 'Invalid refund owner.' ); }
+			$date = $refund->get_date_created();
+			if ( ! $date instanceof WC_DateTime || $date->getTimestamp() < 1 || $date->getTimestamp() > 253402300799 ) { throw new RuntimeException( 'Invalid refund date.' ); }
+			$key = [ $date->getTimestamp(), $id ];
+			if ( null !== $previous && $key >= $previous ) { throw new RuntimeException( 'Refund ordering changed.' ); }
+			$previous = $key;
+			$paid = $refund->get_refunded_payment();
+			if ( ! is_bool( $paid ) ) { throw new RuntimeException( 'Invalid payment observation.' ); }
+			$rows[] = [ 'refund_id' => $id, 'amount' => wc_format_decimal( self::refund_number( $refund->get_amount() ), 2 ), 'reason' => self::refund_text( $refund->get_reason(), 500 ), 'created_at' => gmdate( 'c', $date->getTimestamp() ), 'refunded_payment' => $paid ];
+			$objects[] = $refund;
+		}
+		if ( get_current_blog_id() !== $blog ) { throw new RuntimeException( 'Site changed.' ); }
+		return [ 'refunds' => array_slice( $rows, 0, $limit ), 'objects' => array_slice( $objects, 0, $limit ), 'has_more' => count( $ids ) > $limit ];
+	}
+
+	public static function get_refunds( $params ) {
+		$input = self::refund_read_input( $params, true ); if ( is_wp_error( $input ) ) { return $input; }
+		try {
+			$blog = get_current_blog_id(); $id = $input['order_id']; $order = self::refund_order( $id, $blog );
+			$limit = $input['limit'] ?? 20; $page = $input['page'] ?? 1; $observed = self::refund_page( $id, $limit, $page, false, $blog );
+			$total = self::refund_number( $order->get_total() ); $refunded = self::refund_number( $order->get_total_refunded() );
+			$currency = $order->get_currency();
+			if ( ! is_string( $currency ) || ! preg_match( '/^[A-Z]{3}$/D', $currency ) || get_current_blog_id() !== $blog ) { throw new RuntimeException( 'Invalid order context.' ); }
+			return [ 'success' => true, 'action' => 'orders.get_refunds', 'message' => 'Loaded bounded refund observations.', 'summary' => 'Loaded bounded refund observations; payment transfer is not verified.', 'read_only' => true, 'undoable' => false, 'undo_plan' => [], 'result_type' => 'order_refund_history', 'display_type' => 'order_refund_history', 'order_id' => $id, 'currency' => $currency, 'total_refunded' => wc_format_decimal( $refunded, 2 ), 'remaining_refundable' => wc_format_decimal( max( 0, $total - $refunded ), 2 ), 'refunds' => $observed['refunds'], 'pagination' => [ 'limit' => $limit, 'page' => $page, 'has_more' => $observed['has_more'], 'snapshot_consistent' => false ] ];
+		} catch ( Throwable $error ) { return new WP_Error( 'refund_observation_unavailable', 'Refund observations are unavailable or exceed the safe bound.' ); }
+	}
+
 	public static function refund_preview( $params ) {
-		$order_id = ! empty( $params['order_id'] ) ? absint( $params['order_id'] ) : 0;
-
-		if ( ! $order_id ) {
-				return new WP_Error(
-					'invalid_params',
-					__( 'Please choose an order first.', 'yoro-ai-core' )
-				);
+		$input = self::refund_read_input( $params, false ); if ( is_wp_error( $input ) ) { return $input; }
+		try {
+		$blog = get_current_blog_id(); $order_id = $input['order_id']; $order = self::refund_order( $order_id, $blog );
+		$observed = self::refund_page( $order_id, 50, 1, true, $blog );
+		$line_items = $order->get_items( 'line_item' );
+		if ( ! is_array( $line_items ) || count( $line_items ) > 200 ) { throw new RuntimeException( 'Line items exceed the safe bound.' ); }
+		$scanned = count( $line_items ); $line_refunds = [];
+		foreach ( $observed['objects'] as $refund ) {
+			$refund_items = $refund->get_items( 'line_item' );
+			if ( ! is_array( $refund_items ) || $scanned + count( $refund_items ) > 200 ) { throw new RuntimeException( 'Refund items exceed the safe bound.' ); }
+			$scanned += count( $refund_items );
+			foreach ( $refund_items as $item ) {
+				if ( ! $item instanceof WC_Order_Item_Product || $item->get_order_id() !== $refund->get_id() ) { throw new RuntimeException( 'Invalid refund item.' ); }
+				// WooCommerce's own per-item refund methods use this exact owner-owned relation.
+				$original = $item->get_meta( '_refunded_item_id' );
+				if ( is_string( $original ) && preg_match( '/^[1-9][0-9]{0,15}$/D', $original ) ) { $original = (int) $original; }
+				if ( ! is_int( $original ) || ! isset( $line_items[ $original ] ) ) { throw new RuntimeException( 'Invalid refund item parent.' ); }
+				$line_refunds[ $original ]['quantity'] = ( $line_refunds[ $original ]['quantity'] ?? 0 ) + self::refund_number( $item->get_quantity(), true );
+				self::refund_number( $line_refunds[ $original ]['quantity'], true );
+				$line_refunds[ $original ]['total'] = ( $line_refunds[ $original ]['total'] ?? 0 ) + self::refund_number( $item->get_total(), true );
+				self::refund_number( $line_refunds[ $original ]['total'], true );
 			}
-
-		$order = wc_get_order( $order_id );
-
-		if ( ! $order ) {
-				return new WP_Error(
-					'order_not_found',
-					__( 'I could not find that order.', 'yoro-ai-core' )
-				);
-			}
-
-		$total          = (float) $order->get_total();
-		$total_refunded = (float) $order->get_total_refunded();
+		}
+		$total          = (float) self::refund_number( $order->get_total() );
+		$total_refunded = (float) self::refund_number( $order->get_total_refunded() );
 		$remaining      = max( 0, $total - $total_refunded );
 
 		$items = [];
 
-		foreach ( $order->get_items( 'line_item' ) as $item_id => $item ) {
-			if ( ! $item instanceof WC_Order_Item_Product ) {
-				continue;
+		foreach ( $line_items as $item_id => $item ) {
+			if ( ! is_int( $item_id ) || $item_id < 1 || $item_id > 9007199254740991 || ! $item instanceof WC_Order_Item_Product || $item->get_id() !== $item_id || $item->get_order_id() !== $order_id ) {
+				throw new RuntimeException( 'Invalid line item.' );
 			}
 
 			$product = $item->get_product();
 
-			$qty           = (float) $item->get_quantity();
-			$refunded_qty  = abs( (float) $order->get_qty_refunded_for_item( $item_id ) );
+			$qty           = (float) self::refund_number( $item->get_quantity() );
+			$refunded_qty  = abs( (float) ( $line_refunds[ $item_id ]['quantity'] ?? 0 ) );
 			$remaining_qty = max( 0, $qty - $refunded_qty );
 
-			$item_total          = (float) $item->get_total();
-			$item_total_refunded = abs( (float) $order->get_total_refunded_for_item( $item_id ) );
+			$item_total          = (float) self::refund_number( $item->get_total() );
+			$item_total_refunded = abs( (float) ( $line_refunds[ $item_id ]['total'] ?? 0 ) );
 			$item_remaining      = max( 0, $item_total - $item_total_refunded );
 
 			$items[] = [
 				'item_id'            => absint( $item_id ),
 				'product_id'         => $product ? absint( $product->get_id() ) : 0,
-				'product_name'       => $item->get_name(),
-				'sku'                => $product ? $product->get_sku() : '',
+				'product_name'       => self::refund_text( $item->get_name(), 500 ),
+				'sku'                => $product ? self::refund_text( $product->get_sku(), 200 ) : '',
 				'quantity'           => $qty,
 				'refunded_quantity'  => $refunded_qty,
 				'remaining_quantity' => $remaining_qty,
-				'line_subtotal'      => wc_format_decimal( $item->get_subtotal(), 2 ),
+				'line_subtotal'      => wc_format_decimal( self::refund_number( $item->get_subtotal() ), 2 ),
 				'line_total'         => wc_format_decimal( $item_total, 2 ),
 				'refunded_total'     => wc_format_decimal( $item_total_refunded, 2 ),
 				'remaining_total'    => wc_format_decimal( $item_remaining, 2 ),
@@ -1549,31 +1619,43 @@ class YoRo_Orders_Read_Service {
 
 		$refunds = [];
 
-		foreach ( $order->get_refunds() as $refund ) {
+		foreach ( $observed['objects'] as $index => $refund ) {
 			if ( ! $refund instanceof WC_Order_Refund ) {
 				continue;
 			}
 
-			$refund_date = $refund->get_date_created();
+			$refund_date = new WC_DateTime( $observed['refunds'][ $index ]['created_at'] );
 
 			$refunds[] = [
 				'id'         => $refund->get_id(),
-				'amount'     => wc_format_decimal( abs( (float) $refund->get_amount() ), 2 ),
-				'reason'     => $refund->get_reason(),
+				'amount'     => $observed['refunds'][ $index ]['amount'],
+				'reason'     => $observed['refunds'][ $index ]['reason'],
 				'date'       => $refund_date ? YoRo_Date_Helper::format_wc_datetime( $refund_date ) : '',
 				'date_ts'    => $refund_date ? YoRo_Date_Helper::get_wc_timestamp( $refund_date ) : 0,
-				'created_by' => $refund->get_created_by(),
+				'created_by' => 0,
 			];
 		}
 
+		if ( get_current_blog_id() !== $blog ) { throw new RuntimeException( 'Site changed.' ); }
 		$order_date_created = $order->get_date_created();
+		if ( null !== $order_date_created && ( ! $order_date_created instanceof WC_DateTime || $order_date_created->getTimestamp() < 1 || $order_date_created->getTimestamp() > 253402300799 ) ) { throw new RuntimeException( 'Invalid order date.' ); }
+		$currency = $order->get_currency();
+		if ( ! is_string( $currency ) || ! preg_match( '/^[A-Z]{3}$/D', $currency ) ) { throw new RuntimeException( 'Invalid currency.' ); }
+		$fees = $order->get_items( 'fee' );
+		if ( ! is_array( $fees ) || $scanned + count( $fees ) > 200 ) { throw new RuntimeException( 'Fee items exceed the safe bound.' ); }
+		$fee_total = 0;
+		foreach ( $fees as $fee ) {
+			if ( ! $fee instanceof WC_Order_Item_Fee || $fee->get_order_id() !== $order_id ) { throw new RuntimeException( 'Invalid fee.' ); }
+			$fee_total = self::refund_number( $fee_total + self::refund_number( $fee->get_total(), true ), true );
+		}
 
-		return [
+
+		$result = [
 			'success' => true,
 			'action'  => 'orders.refund_preview',
 			'summary' => sprintf(
 				'Order #%s has %s %s remaining refundable.',
-				$order->get_order_number(),
+				self::refund_text( (string) $order->get_order_number(), 100 ),
 				wc_format_decimal( $remaining, 2 ),
 				$order->get_currency()
 			),
@@ -1583,27 +1665,27 @@ class YoRo_Orders_Read_Service {
 
 			'order' => [
 				'id'             => $order->get_id(),
-				'number'         => $order->get_order_number(),
-				'status'         => $order->get_status(),
-				'status_label'   => YoRo_Order_Helper::get_order_status_label( $order->get_status() ),
+				'number'         => self::refund_text( (string) $order->get_order_number(), 100 ),
+				'status'         => self::refund_text( $order->get_status(), 40 ),
+				'status_label'   => self::refund_text( YoRo_Order_Helper::get_order_status_label( $order->get_status() ), 100 ),
 				'currency'       => $order->get_currency(),
 				'total'          => wc_format_decimal( $total, 2 ),
 				'total_refunded' => wc_format_decimal( $total_refunded, 2 ),
 				'remaining'      => wc_format_decimal( $remaining, 2 ),
-				'payment_method' => $order->get_payment_method(),
-				'payment_title'  => $order->get_payment_method_title(),
-				'transaction_id' => $order->get_transaction_id(),
+				'payment_method' => self::refund_text( $order->get_payment_method(), 100 ),
+				'payment_title'  => self::refund_text( $order->get_payment_method_title(), 200 ),
+				'transaction_id' => '',
 				'date_created'   => $order_date_created ? YoRo_Date_Helper::format_wc_datetime( $order_date_created ) : '',
 				'date_created_ts'=> $order_date_created ? YoRo_Date_Helper::get_wc_timestamp( $order_date_created ) : 0,
 				'edit_url'       => method_exists( $order, 'get_edit_order_url' ) ? $order->get_edit_order_url() : admin_url( 'post.php?post=' . $order->get_id() . '&action=edit' ),
 			],
 
 			'totals' => [
-				'items_total'      => wc_format_decimal( $order->get_subtotal(), 2 ),
-				'discount_total'   => wc_format_decimal( $order->get_discount_total(), 2 ),
-				'shipping_total'   => wc_format_decimal( $order->get_shipping_total(), 2 ),
-				'fee_total'        => wc_format_decimal( self::get_order_fee_total( $order ), 2 ),
-				'tax_total'        => wc_format_decimal( $order->get_total_tax(), 2 ),
+				'items_total'      => wc_format_decimal( self::refund_number( $order->get_subtotal() ), 2 ),
+				'discount_total'   => wc_format_decimal( self::refund_number( $order->get_discount_total() ), 2 ),
+				'shipping_total'   => wc_format_decimal( self::refund_number( $order->get_shipping_total() ), 2 ),
+				'fee_total'        => wc_format_decimal( $fee_total, 2 ),
+				'tax_total'        => wc_format_decimal( self::refund_number( $order->get_total_tax() ), 2 ),
 				'order_total'      => wc_format_decimal( $total, 2 ),
 				'total_refunded'   => wc_format_decimal( $total_refunded, 2 ),
 				'remaining_refund' => wc_format_decimal( $remaining, 2 ),
@@ -1614,6 +1696,9 @@ class YoRo_Orders_Read_Service {
 			'can_refund' => $remaining > 0,
 			'read_only'  => true,
 		];
+		if ( get_current_blog_id() !== $blog ) { throw new RuntimeException( 'Site changed.' ); }
+		return $result;
+		} catch ( Throwable $error ) { return new WP_Error( 'refund_observation_unavailable', 'Refund preview is unavailable or exceeds the safe bound.' ); }
 	}
 
 	public static function customer_360_email( $email ) {
