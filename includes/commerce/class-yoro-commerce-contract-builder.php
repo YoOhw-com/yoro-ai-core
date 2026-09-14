@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:d4e5bf45686ce3f397fbd99fe730dfe771186c57af5ab384e6f4fdad32ae7bd2';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:b773ebfbe3175c0824140d9cc86b0c286a3caddd960a9dedbe87ba1c66716fbe';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1798,6 +1798,236 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
+		if ( 'cancellation_return.get_status' === $action_name ) {
+			return [
+				'type' => 'object',
+				'additionalProperties' => false,
+				'required' => [ 'status', 'owner_kind', 'version', 'available_reads', 'coverage' ],
+				'properties' => [
+					'status' => [
+						'type' => 'string',
+						'enum' => [ 'available', 'absent', 'incompatible' ],
+					],
+					'owner_kind' => [
+						'type' => 'string',
+						'enum' => [ 'free', 'premium', 'absent', 'incompatible' ],
+					],
+					'version' => [
+						'type' => 'string',
+						'maxLength' => 32,
+					],
+					'available_reads' => [
+						'type' => 'array',
+						'maxItems' => 2,
+						'items' => [
+							'type' => 'string',
+							'enum' => [ 'cancellation_return.get_status', 'cancellation_return.get_order_case' ],
+						],
+					],
+					'coverage' => [
+						'type' => 'object',
+						'additionalProperties' => false,
+						'required' => [ 'free_eligibility', 'retained_case_state', 'premium_eligibility', 'omitted_fields' ],
+						'properties' => [
+							'free_eligibility' => [
+								'type' => 'string',
+								'enum' => [ 'available', 'not_observed', 'unavailable' ],
+							],
+							'retained_case_state' => [
+								'type' => 'string',
+								'enum' => [ 'available', 'not_observed' ],
+							],
+							'premium_eligibility' => [
+								'type' => 'string',
+								'enum' => [ 'not_observed' ],
+							],
+							'omitted_fields' => [
+								'type' => 'boolean',
+							],
+						],
+					],
+				],
+			];
+		}
+
+		if ( 'cancellation_return.get_order_case' === $action_name ) {
+			return [
+				'type' => 'object',
+				'additionalProperties' => false,
+				'required' => [ 'order_id', 'status', 'owner_kind', 'version', 'order_status', 'cancellation', 'return', 'coverage' ],
+				'properties' => [
+					'order_id' => [
+						'type' => 'integer',
+						'minimum' => 1,
+					],
+					'status' => [
+						'type' => 'string',
+						'enum' => [ 'observed', 'not_observed', 'unavailable' ],
+					],
+					'owner_kind' => [
+						'type' => 'string',
+						'enum' => [ 'free', 'premium', 'absent', 'incompatible' ],
+					],
+					'version' => [
+						'type' => 'string',
+						'maxLength' => 32,
+					],
+					'order_status' => [
+						'type' => 'string',
+						'maxLength' => 40,
+					],
+					'cancellation' => [
+						'type' => 'object',
+						'additionalProperties' => false,
+						'required' => [ 'state', 'requested_at', 'approved_at', 'rejected_at', 'completed_at', 'request_reason_present', 'rejection_reason_present', 'approval_message_present', 'completion_reason_present', 'resolution_present', 'item_scope_present', 'eligibility' ],
+						'properties' => [
+							'state' => [
+								'type' => 'string',
+								'enum' => [ 'none', 'pending', 'approved', 'rejected', 'completed', 'not_observed' ],
+							],
+							'requested_at' => [
+								'type' => 'string',
+								'maxLength' => 40,
+							],
+							'approved_at' => [
+								'type' => 'string',
+								'maxLength' => 40,
+							],
+							'rejected_at' => [
+								'type' => 'string',
+								'maxLength' => 40,
+							],
+							'completed_at' => [
+								'type' => 'string',
+								'maxLength' => 40,
+							],
+							'request_reason_present' => [
+								'type' => 'boolean',
+							],
+							'rejection_reason_present' => [
+								'type' => 'boolean',
+							],
+							'approval_message_present' => [
+								'type' => 'boolean',
+							],
+							'completion_reason_present' => [
+								'type' => 'boolean',
+							],
+							'resolution_present' => [
+								'type' => 'boolean',
+							],
+							'item_scope_present' => [
+								'type' => 'boolean',
+							],
+							'eligibility' => [
+								'type' => 'object',
+								'additionalProperties' => false,
+								'required' => [ 'status', 'eligible', 'code' ],
+								'properties' => [
+									'status' => [
+										'type' => 'string',
+										'enum' => [ 'eligible', 'ineligible', 'not_observed', 'unavailable' ],
+									],
+									'eligible' => [
+										'type' => 'boolean',
+									],
+									'code' => [
+										'type' => 'string',
+										'enum' => [ 'not_observed', 'unavailable', 'wcocr_invalid_order', 'wcocr_cancellation_disabled', 'wcocr_cancellation_already_requested', 'wcocr_cancellation_rejected', 'wcocr_cancellation_status_not_allowed', 'wcocr_cancellation_time_expired', 'wcocr_return_disabled', 'wcocr_return_already_requested', 'wcocr_return_rejected', 'wcocr_return_status_not_allowed', 'wcocr_return_time_expired', 'eligible' ],
+									],
+								],
+							],
+						],
+					],
+					'return' => [
+						'type' => 'object',
+						'additionalProperties' => false,
+						'required' => [ 'state', 'requested_at', 'approved_at', 'rejected_at', 'completed_at', 'request_reason_present', 'rejection_reason_present', 'approval_message_present', 'completion_reason_present', 'resolution_present', 'item_scope_present', 'eligibility' ],
+						'properties' => [
+							'state' => [
+								'type' => 'string',
+								'enum' => [ 'none', 'pending', 'approved', 'rejected', 'completed', 'not_observed' ],
+							],
+							'requested_at' => [
+								'type' => 'string',
+								'maxLength' => 40,
+							],
+							'approved_at' => [
+								'type' => 'string',
+								'maxLength' => 40,
+							],
+							'rejected_at' => [
+								'type' => 'string',
+								'maxLength' => 40,
+							],
+							'completed_at' => [
+								'type' => 'string',
+								'maxLength' => 40,
+							],
+							'request_reason_present' => [
+								'type' => 'boolean',
+							],
+							'rejection_reason_present' => [
+								'type' => 'boolean',
+							],
+							'approval_message_present' => [
+								'type' => 'boolean',
+							],
+							'completion_reason_present' => [
+								'type' => 'boolean',
+							],
+							'resolution_present' => [
+								'type' => 'boolean',
+							],
+							'item_scope_present' => [
+								'type' => 'boolean',
+							],
+							'eligibility' => [
+								'type' => 'object',
+								'additionalProperties' => false,
+								'required' => [ 'status', 'eligible', 'code' ],
+								'properties' => [
+									'status' => [
+										'type' => 'string',
+										'enum' => [ 'eligible', 'ineligible', 'not_observed', 'unavailable' ],
+									],
+									'eligible' => [
+										'type' => 'boolean',
+									],
+									'code' => [
+										'type' => 'string',
+										'enum' => [ 'not_observed', 'unavailable', 'wcocr_invalid_order', 'wcocr_cancellation_disabled', 'wcocr_cancellation_already_requested', 'wcocr_cancellation_rejected', 'wcocr_cancellation_status_not_allowed', 'wcocr_cancellation_time_expired', 'wcocr_return_disabled', 'wcocr_return_already_requested', 'wcocr_return_rejected', 'wcocr_return_status_not_allowed', 'wcocr_return_time_expired', 'eligible' ],
+									],
+								],
+							],
+						],
+					],
+					'coverage' => [
+						'type' => 'object',
+						'additionalProperties' => false,
+						'required' => [ 'free_eligibility', 'retained_case_state', 'premium_eligibility', 'omitted_fields' ],
+						'properties' => [
+							'free_eligibility' => [
+								'type' => 'string',
+								'enum' => [ 'available', 'not_observed', 'unavailable' ],
+							],
+							'retained_case_state' => [
+								'type' => 'string',
+								'enum' => [ 'available', 'not_observed' ],
+							],
+							'premium_eligibility' => [
+								'type' => 'string',
+								'enum' => [ 'not_observed' ],
+							],
+							'omitted_fields' => [
+								'type' => 'boolean',
+							],
+						],
+					],
+				],
+			];
+		}
+
 		if ( 'blacklist.get_status' === $action_name ) {
 			return [
 				'type' => 'object',
@@ -2626,7 +2856,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_read_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue', 'blacklist.get_status', 'blacklist.get_order_assessment' ],
+			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue', 'blacklist.get_status', 'blacklist.get_order_assessment', 'cancellation_return.get_status', 'cancellation_return.get_order_case' ],
 			true
 		);
 	}
@@ -2787,6 +3017,13 @@ class YoRo_Commerce_Contract_Builder {
 				'page_info' => self::canonical_page_info( $execution['page_info'] ?? ( $raw_data['page_info'] ?? [] ) ),
 				'count'     => count( $products ),
 			];
+		}
+
+		if ( in_array( $action_name, [ 'cancellation_return.get_status', 'cancellation_return.get_order_case' ], true ) ) {
+			$fields = 'cancellation_return.get_status' === $action_name ? [ 'status', 'owner_kind', 'version', 'available_reads', 'coverage' ] : [ 'order_id', 'status', 'owner_kind', 'version', 'order_status', 'cancellation', 'return', 'coverage' ];
+			$data = [];
+			foreach ( $fields as $field ) { $data[ $field ] = $execution[ $field ] ?? ( $raw_data[ $field ] ?? null ); }
+			return $data;
 		}
 
 		if ( in_array( $action_name, [ 'blacklist.get_status', 'blacklist.get_order_assessment' ], true ) ) {

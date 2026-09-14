@@ -1145,6 +1145,21 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		foreach ( [ 'get_status', 'get_order_case' ] as $method ) {
+			$order_case = 'get_order_case' === $method;
+			YoRo_Action_Registry::register( 'cancellation_return.' . $method, [
+				'label' => $order_case ? 'Cancellation and return order case' : 'Cancellation and return owner status',
+				'description' => $order_case ? 'Read bounded retained request facts and characterized owner eligibility for one exact order. No request, approval, refund or mutation.' : 'Read alternative owner availability and coverage without activation, license checks or settings access.',
+				'category' => 'orders', 'permission' => 'manage_woocommerce', 'risk_level' => 'low',
+				'write_action' => false, 'requires_confirmation' => false, 'max_items' => 1, 'max_targets' => 1,
+				'callback' => [ 'YoRo_Cancellation_Return_Service', $method ],
+				'input_schema' => $order_case ? [ 'order_id' => 'integer' ] : [],
+				'canonical_input_schema' => $order_case ? [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ] ] : [],
+				'required_params' => $order_case ? [ 'order_id' ] : [],
+				'capabilities' => [ 'orders', 'read', 'cancellation_return' ],
+			] );
+		}
+
 		foreach ( [ 'get_status', 'get_order_assessment' ] as $blacklist_action ) {
 			$assessment = 'get_order_assessment' === $blacklist_action;
 			YoRo_Action_Registry::register( 'blacklist.' . $blacklist_action, [
