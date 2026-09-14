@@ -89,6 +89,7 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-cancellation-return-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-order-splitter-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-subscriptions-service.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-loyalty-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-orders-write-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-coupons-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-fulfillment-service.php';

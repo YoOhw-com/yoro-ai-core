@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:3600cf808a630751453ac142213ddf9b19213c3ec482187c0f38b4d77cbd1c82';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:c26ae5d4a1cf812d2db009c538614eee88904ca8cff8573530d24597e44c9493';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1798,6 +1798,65 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
+		if ( 'loyalty.get_status' === $action_name ) {
+			return [
+				'type' => 'object',
+				'additionalProperties' => false,
+				'required' => [ 'status', 'owner_kind', 'version' ],
+				'properties' => [
+					'status' => [
+						'type' => 'string',
+						'enum' => [ 'available', 'absent', 'incompatible', 'ambiguous' ],
+					],
+					'owner_kind' => [
+						'type' => 'string',
+						'enum' => [ 'free', 'premium', 'absent', 'incompatible', 'ambiguous' ],
+					],
+					'version' => [
+						'type' => 'string',
+						'enum' => [ '', '1.2.2' ],
+					],
+				],
+			];
+		}
+
+		if ( 'loyalty.get_customer_balance' === $action_name ) {
+			return [
+				'type' => 'object',
+				'additionalProperties' => false,
+				'required' => [ 'customer_id', 'status', 'owner_kind', 'version', 'current_points', 'earning_points' ],
+				'properties' => [
+					'customer_id' => [
+						'type' => 'integer',
+						'minimum' => 1,
+						'maximum' => 9007199254740991,
+					],
+					'status' => [
+						'type' => 'string',
+						'enum' => [ 'observed', 'unavailable' ],
+					],
+					'owner_kind' => [
+						'type' => 'string',
+						'enum' => [ 'free', 'premium', 'absent', 'incompatible', 'ambiguous' ],
+					],
+					'version' => [
+						'type' => 'string',
+						'enum' => [ '', '1.2.2' ],
+					],
+					'current_points' => [
+						'type' => 'integer',
+						'minimum' => 0,
+						'maximum' => 9007199254740991,
+					],
+					'earning_points' => [
+						'type' => 'integer',
+						'minimum' => 0,
+						'maximum' => 9007199254740991,
+					],
+				],
+			];
+		}
+
 		if ( 'subscriptions.get_status' === $action_name ) {
 			return [
 				'type' => 'object',
@@ -3154,7 +3213,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_read_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue', 'blacklist.get_status', 'blacklist.get_order_assessment', 'cancellation_return.get_status', 'cancellation_return.get_order_case', 'order_splitter.get_status', 'order_splitter.get_order_activity', 'subscriptions.get_status', 'subscriptions.get_order_context' ],
+			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue', 'blacklist.get_status', 'blacklist.get_order_assessment', 'cancellation_return.get_status', 'cancellation_return.get_order_case', 'order_splitter.get_status', 'order_splitter.get_order_activity', 'subscriptions.get_status', 'subscriptions.get_order_context', 'loyalty.get_status', 'loyalty.get_customer_balance' ],
 			true
 		);
 	}
@@ -3315,6 +3374,13 @@ class YoRo_Commerce_Contract_Builder {
 				'page_info' => self::canonical_page_info( $execution['page_info'] ?? ( $raw_data['page_info'] ?? [] ) ),
 				'count'     => count( $products ),
 			];
+		}
+
+		if ( in_array( $action_name, [ 'loyalty.get_status', 'loyalty.get_customer_balance' ], true ) ) {
+			$fields = 'loyalty.get_status' === $action_name ? [ 'status', 'owner_kind', 'version' ] : [ 'customer_id', 'status', 'owner_kind', 'version', 'current_points', 'earning_points' ];
+			$data = [];
+			foreach ( $fields as $field ) { $data[ $field ] = $execution[ $field ] ?? ( $raw_data[ $field ] ?? null ); }
+			return $data;
 		}
 
 		if ( in_array( $action_name, [ 'subscriptions.get_status', 'subscriptions.get_order_context' ], true ) ) {
