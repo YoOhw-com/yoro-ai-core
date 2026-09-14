@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:03ea8f3021e93ed3181b0aefb1bb62290b64f03fb9833da6bdb21fc8a267a3a5';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:3600cf808a630751453ac142213ddf9b19213c3ec482187c0f38b4d77cbd1c82';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1798,6 +1798,149 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
+		if ( 'subscriptions.get_status' === $action_name ) {
+			return [
+				'type' => 'object',
+				'additionalProperties' => false,
+				'required' => [ 'status', 'owner_kind', 'version', 'coverage' ],
+				'properties' => [
+					'status' => [
+						'type' => 'string',
+						'enum' => [ 'available', 'absent', 'incompatible' ],
+					],
+					'owner_kind' => [
+						'type' => 'string',
+						'enum' => [ 'subscriptions', 'absent', 'incompatible' ],
+					],
+					'version' => [
+						'type' => 'string',
+						'enum' => [ '', '9.2.0' ],
+					],
+					'coverage' => [
+						'type' => 'object',
+						'additionalProperties' => false,
+						'required' => [ 'order_relations', 'schedule_cadence', 'omitted_fields' ],
+						'properties' => [
+							'order_relations' => [
+								'type' => 'string',
+								'enum' => [ 'available', 'not_observed' ],
+							],
+							'schedule_cadence' => [
+								'type' => 'string',
+								'enum' => [ 'available', 'not_observed' ],
+							],
+							'omitted_fields' => [
+								'type' => 'boolean',
+							],
+						],
+					],
+				],
+			];
+		}
+
+		if ( 'subscriptions.get_order_context' === $action_name ) {
+			return [
+				'type' => 'object',
+				'additionalProperties' => false,
+				'required' => [ 'order_id', 'status', 'owner_kind', 'version', 'order_status', 'subscriptions', 'coverage' ],
+				'properties' => [
+					'order_id' => [
+						'type' => 'integer',
+						'minimum' => 1,
+					],
+					'status' => [
+						'type' => 'string',
+						'enum' => [ 'observed', 'unavailable' ],
+					],
+					'owner_kind' => [
+						'type' => 'string',
+						'enum' => [ 'subscriptions', 'absent', 'incompatible' ],
+					],
+					'version' => [
+						'type' => 'string',
+						'enum' => [ '', '9.2.0' ],
+					],
+					'order_status' => [
+						'type' => 'string',
+						'maxLength' => 40,
+					],
+					'subscriptions' => [
+						'type' => 'array',
+						'maxItems' => 20,
+						'items' => [
+							'type' => 'object',
+							'additionalProperties' => false,
+							'required' => [ 'subscription_id', 'status', 'billing_period', 'billing_interval', 'renewal_mode', 'schedule' ],
+							'properties' => [
+								'subscription_id' => [
+									'type' => 'integer',
+									'minimum' => 1,
+								],
+								'status' => [
+									'type' => 'string',
+									'enum' => [ 'pending', 'active', 'on-hold', 'pending-cancel', 'cancelled', 'switched', 'expired' ],
+								],
+								'billing_period' => [
+									'type' => 'string',
+									'enum' => [ 'day', 'week', 'month', 'year' ],
+								],
+								'billing_interval' => [
+									'type' => 'integer',
+									'minimum' => 1,
+									'maximum' => 365,
+								],
+								'renewal_mode' => [
+									'type' => 'string',
+									'enum' => [ 'manual', 'automatic' ],
+								],
+								'schedule' => [
+									'type' => 'object',
+									'additionalProperties' => false,
+									'required' => [ 'start', 'trial_end', 'next_payment', 'end' ],
+									'properties' => [
+										'start' => [
+											'type' => 'string',
+											'maxLength' => 25,
+										],
+										'trial_end' => [
+											'type' => 'string',
+											'maxLength' => 25,
+										],
+										'next_payment' => [
+											'type' => 'string',
+											'maxLength' => 25,
+										],
+										'end' => [
+											'type' => 'string',
+											'maxLength' => 25,
+										],
+									],
+								],
+							],
+						],
+					],
+					'coverage' => [
+						'type' => 'object',
+						'additionalProperties' => false,
+						'required' => [ 'order_relations', 'schedule_cadence', 'omitted_fields' ],
+						'properties' => [
+							'order_relations' => [
+								'type' => 'string',
+								'enum' => [ 'available', 'not_observed' ],
+							],
+							'schedule_cadence' => [
+								'type' => 'string',
+								'enum' => [ 'available', 'not_observed' ],
+							],
+							'omitted_fields' => [
+								'type' => 'boolean',
+							],
+						],
+					],
+				],
+			];
+		}
+
 		if ( 'order_splitter.get_status' === $action_name ) {
 			return [
 				'type' => 'object',
@@ -3011,7 +3154,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_read_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue', 'blacklist.get_status', 'blacklist.get_order_assessment', 'cancellation_return.get_status', 'cancellation_return.get_order_case', 'order_splitter.get_status', 'order_splitter.get_order_activity' ],
+			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue', 'blacklist.get_status', 'blacklist.get_order_assessment', 'cancellation_return.get_status', 'cancellation_return.get_order_case', 'order_splitter.get_status', 'order_splitter.get_order_activity', 'subscriptions.get_status', 'subscriptions.get_order_context' ],
 			true
 		);
 	}
@@ -3172,6 +3315,13 @@ class YoRo_Commerce_Contract_Builder {
 				'page_info' => self::canonical_page_info( $execution['page_info'] ?? ( $raw_data['page_info'] ?? [] ) ),
 				'count'     => count( $products ),
 			];
+		}
+
+		if ( in_array( $action_name, [ 'subscriptions.get_status', 'subscriptions.get_order_context' ], true ) ) {
+			$fields = 'subscriptions.get_status' === $action_name ? [ 'status', 'owner_kind', 'version', 'coverage' ] : [ 'order_id', 'status', 'owner_kind', 'version', 'order_status', 'subscriptions', 'coverage' ];
+			$data = [];
+			foreach ( $fields as $field ) { $data[ $field ] = $execution[ $field ] ?? ( $raw_data[ $field ] ?? null ); }
+			return $data;
 		}
 
 		if ( in_array( $action_name, [ 'order_splitter.get_status', 'order_splitter.get_order_activity' ], true ) ) {
