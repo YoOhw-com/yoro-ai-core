@@ -53,18 +53,19 @@ class YoRo_Action_Executor {
 			);
 		}
 
-		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund' ], true ) ) {
+		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund' ], true ) ) {
 			// Connector context is emitted only by the validated, journal-owning runtime call site.
 			// PlanExecutor strips all caller/captured context for this action before reaching here.
 			$connector_owned = is_array( $context ) && true === ( $context['connector_remote_agent'] ?? false )
 				&& is_string( $context['workflow_id'] ?? null ) && '' !== $context['workflow_id']
 				&& is_string( $context['operation_id'] ?? null ) && '' !== $context['operation_id'];
-			if ( in_array( $action_name, [ 'products.create_draft', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund' ], true ) ) {
+			if ( in_array( $action_name, [ 'products.create_draft', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund' ], true ) ) {
 				$connector_owned = $connector_owned && self::connector_journal_runtime_is_immediate_caller();
 			}
 			$claimed = $confirm && $claimed_execution_context instanceof Closure && $claimed_execution_context( $action_name, $params );
 			if ( ! $confirm || ( ! $connector_owned && ! $claimed ) ) {
 				$error_code = 'orders.refund' === $action_name ? 'refund_execution_permit_required' : 'transactional_email_execution_permit_required';
+				if ( 'orders.record_external_refund' === $action_name ) { $error_code = 'external_refund_execution_permit_required'; }
 				if ( 'products.adjust_stock' === $action_name ) {
 					$error_code = 'stock_adjustment_execution_permit_required';
 				} elseif ( 'products.create_draft' === $action_name ) {
@@ -113,6 +114,8 @@ class YoRo_Action_Executor {
 		$creation_remote_error = 'fulfillment.create' === $action_name && ! empty( $connector_owned ) && is_wp_error( $result ) ? $result : null;
 		$refund_remote_error = 'orders.refund' === $action_name && ! empty( $connector_owned ) && is_array( $result ) && true === ( $result['refund']['outcome_unknown'] ?? false )
 			? new WP_Error( 'refund_outcome_unknown', 'Refund outcome is unknown; reconciliation is required. Do not retry this operation.' ) : null;
+		$external_refund_remote_error = 'orders.record_external_refund' === $action_name && ! empty( $connector_owned ) && is_array( $result ) && true === ( $result['external_refund']['outcome_unknown'] ?? false )
+			? new WP_Error( 'external_refund_outcome_unknown', 'Local refund recording outcome is unknown; reconcile refund history. No money was sent by this action. Do not retry.' ) : null;
 		$result = self::normalize_result( $action_name, $result, $action );
 
 		if (
@@ -151,7 +154,7 @@ class YoRo_Action_Executor {
 			&& in_array( $action_name, [ 'operations.get_attention_queue', 'operations.get_fulfillment_queue', 'customers.get_service_queue', 'operations.get_summary', 'store.get_daily_briefing' ], true ) ) {
 			return YoRo_Orders_Read_Service::queue_age_error();
 		}
-		return $refund_remote_error ?? $creation_remote_error ?? $result;
+		return $external_refund_remote_error ?? $refund_remote_error ?? $creation_remote_error ?? $result;
 	}
 
 	private static function connector_journal_runtime_is_immediate_caller() {

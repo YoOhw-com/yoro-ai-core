@@ -1599,6 +1599,47 @@ class YoRo_Orders_Read_Service {
 		} catch ( Throwable $error ) { return [ 'guard' => $guard ]; }
 	}
 
+	/** Exact local refund observations; an external transfer is never queried or verified here. */
+	public static function external_refund_recording_state( $order_id ) {
+		$guard = [ 'order_id' => $order_id, 'eligible' => false, 'blocked_reason' => 'refund_state_unavailable', 'current_version' => null, 'state_token' => null, 'remaining_refundable' => null ];
+		try {
+			$blog = get_current_blog_id();
+			$order = self::refund_order( $order_id, $blog );
+			$observed = self::refund_page( $order_id, 50, 1, true, $blog );
+			$decimals = wc_get_price_decimals();
+			$total = self::refund_money_units( $order->get_total(), $decimals );
+			$owner_refunded = $order->get_total_refunded();
+			if ( ! is_numeric( $owner_refunded ) || ! is_finite( (float) $owner_refunded ) || $owner_refunded < 0 ) { throw new RuntimeException( 'Invalid owner aggregate.' ); }
+			$refunded = self::refund_money_units( wc_format_decimal( $owner_refunded, $decimals ), $decimals );
+			$currency = $order->get_currency();
+			$version = YoRo_Order_Presenter::order_version( $order );
+			$status = $order->get_status();
+			if ( ! is_string( $currency ) || ! preg_match( '/^[A-Z]{3}$/D', $currency ) || ! is_string( $version ) || ! preg_match( '/^[a-f0-9]{64}$/D', $version )
+				|| ! is_string( $status ) || ! preg_match( '/^[a-z0-9_-]{1,32}$/D', $status ) || $refunded > $total ) { throw new RuntimeException( 'Invalid owner state.' ); }
+			$refunds = []; $sum = 0;
+			foreach ( $observed['objects'] as $refund ) {
+				$units = self::refund_money_units( $refund->get_amount(), $decimals );
+				if ( $refund->get_currency() !== $currency ) { throw new RuntimeException( 'Refund currency changed.' ); }
+				$refunds[] = [ $refund->get_id(), $units, $refund->get_refunded_payment() ];
+				$sum += $units;
+			}
+			if ( $sum !== $refunded || abs( (float) $owner_refunded - (float) self::refund_money_decimal( $sum, $decimals ) ) > 0.00000001 ) { throw new RuntimeException( 'Refund totals disagree.' ); }
+			$paid = $order->is_paid();
+			if ( ! is_bool( $paid ) ) { throw new RuntimeException( 'Invalid owner paid state.' ); }
+			$key = wp_salt( 'auth' );
+			if ( ! is_string( $key ) || strlen( $key ) < 32 || get_current_blog_id() !== $blog ) { throw new RuntimeException( 'Unsafe state key or site.' ); }
+			$guard['current_version'] = $version;
+			$guard['remaining_refundable'] = self::refund_money_decimal( $total - $refunded, $decimals );
+			$guard['eligible'] = $total > $refunded && $paid;
+			$guard['blocked_reason'] = $total === $refunded ? 'nothing_refundable' : ( $paid ? '' : 'order_not_paid' );
+			if ( $guard['eligible'] ) {
+				$material = [ 'yoro-external-refund-recording-v1', $blog, $order_id, $status, $version, $currency, $decimals, $total, $refunded, $refunds ];
+				$guard['state_token'] = hash_hmac( 'sha256', wp_json_encode( $material, JSON_THROW_ON_ERROR ), $key );
+			}
+			return [ 'guard' => $guard, 'blog' => $blog, 'currency' => $currency, 'decimals' => $decimals, 'total' => $total, 'refunded' => $refunded, 'refunds' => $refunds ];
+		} catch ( Throwable $error ) { return [ 'guard' => $guard ]; }
+	}
+
 	/** Convert bounded owner decimal money to exact minor units, without rounding an input. */
 	public static function refund_money_units( $value, $decimals ) {
 		if ( ! is_int( $decimals ) || $decimals < 0 || $decimals > 6 ) { throw new RuntimeException( 'Unsupported money precision.' ); }
@@ -1752,6 +1793,7 @@ class YoRo_Orders_Read_Service {
 			'refunds'    => $refunds,
 			'can_refund' => $remaining > 0,
 			'execution_guard' => self::refund_execution_state( $order_id )['guard'],
+			'external_record_guard' => self::external_refund_recording_state( $order_id )['guard'],
 			'read_only'  => true,
 		];
 		if ( get_current_blog_id() !== $blog ) { throw new RuntimeException( 'Site changed.' ); }

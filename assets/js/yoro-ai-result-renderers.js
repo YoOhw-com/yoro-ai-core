@@ -44,6 +44,21 @@
 			};
 	}
 
+	function renderExternalRefundRecord(result, h) {
+		const facts = (result.data && result.data.external_refund) || result.external_refund;
+		const safe = facts && Number.isSafeInteger(facts.order_id) && facts.order_id > 0
+			&& typeof facts.amount === 'string' && /^(0|[1-9][0-9]{0,8})(\.[0-9]{1,6})?$/.test(facts.amount) && /^[A-Z]{3}$/.test(facts.currency || '')
+			&& facts.payment_transfer_initiated === false && facts.external_transfer_verification === 'not_observed' && facts.restocked === false && facts.retry_allowed === false;
+		if (!safe) return '<div class="yoro-result-card"><p>Local refund result unavailable. No money was sent by this action and no external transfer was verified. Reconcile refund history before any new confirmation; do not retry.</p></div>';
+		const recorded = result.success === true && facts.status === 'recorded' && facts.outcome_unknown === false && facts.refunded_payment === false
+			&& Number.isSafeInteger(facts.refund_id) && facts.refund_id > 0 && /^[a-f0-9]{64}$/.test(facts.current_version || '') && facts.next_action === null;
+		return '<div class="yoro-result-card"><h4>' + (recorded ? 'Local refund record verified' : 'Local refund recording requires reconciliation')
+			+ '</h4><p>Order #' + h.escapeHtml(facts.order_id) + ': ' + h.escapeHtml(facts.amount) + ' ' + h.escapeHtml(facts.currency)
+			+ '</p><p>No money was sent by this action. External completion is a Human assertion; YoRo did not observe or independently verify the external transfer.</p><p>'
+			+ (recorded ? 'WooCommerce created the local refund record. Standard refund hooks and notifications may run; a full local refund may change order status.' : 'The local recording outcome is unknown. Reconcile refund history before a fresh confirmation. Do not retry this operation.')
+			+ ' No stock was restocked and no item quantities or taxes were allocated.</p></div>';
+	}
+
 	function renderRefundHistory(result, h) {
 		const data = result.data && Array.isArray(result.data.refunds) ? result.data : result;
 		const unavailable = '<p>Refund observations are unavailable.</p>';
@@ -264,6 +279,7 @@
 			'orders.get_refunds': 'Refund history',
 			'orders.refund_preview': 'Preview refund',
 			'orders.refund': 'Refund through payment gateway',
+			'orders.record_external_refund': 'Record externally completed refund',
 			'orders.email_customer_preview': 'Preview customer email',
 			'orders.email_customer_template': 'Send customer email',
 			'orders.update_status': 'Update order status',
@@ -549,6 +565,10 @@
 
 		if (data.stage === 'clarify') {
 			return finish(renderClarification(data, h));
+		}
+
+		if (data.result && data.result.action === 'orders.record_external_refund' && data.stage !== 'preview' && !data.result.preview) {
+			return finish(renderExternalRefundRecord(data.result, h));
 		}
 
 		if (!data.success || isQueueDataFailure(data)) {
@@ -1526,7 +1546,7 @@
 	}
 
 	function canApproveDirectConfirmation(data, action) {
-		if (action === 'orders.refund') return false;
+		if (action === 'orders.refund' || action === 'orders.record_external_refund') return false;
 		return !!(
 			action &&
 			data &&
@@ -1540,6 +1560,21 @@
 		options = options || {};
 		const completed = options.completed === true;
 		const lines = [];
+
+		if (action === 'orders.record_external_refund') {
+			const id = result.order_id || params.order_id;
+			const amount = result.amount || params.amount;
+			if (!Number.isSafeInteger(id) || id < 1 || typeof amount !== 'string' || !/^(0|[1-9][0-9]{0,8})(\.[0-9]{1,6})?$/.test(amount) || !/^[A-Z]{3}$/.test(result.currency || '')) return ['External recording preview unavailable. Read a fresh preview before confirming.'];
+			return [
+				'No money will be sent by this action. You are asserting that the money was already refunded outside WooCommerce.',
+				'YoRo does not observe or independently verify that external transfer or a provider receipt.',
+				'Create one local WooCommerce refund record for ' + amount + ' ' + result.currency + ' on order #' + id + '.',
+				'Reason: ' + (result.reason || params.reason || '(none)'),
+				'Remaining after local recording: ' + result.remaining_after_refund + ' ' + result.currency + '.',
+				'No stock restoration or item allocation. Standard WooCommerce hooks and notifications may run; a full local refund may change order status.',
+				'Unknown local outcomes require reconciliation with refund history before a fresh confirmation. Do not retry this operation.'
+			];
+		}
 
 		if (action === 'orders.refund') {
 			const id = result.order_id || params.order_id;

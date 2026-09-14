@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:0650f678b787e90da553b247dba025005e6193397cb02f84e729781756f7eed0';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:f74a647300a14b8fc89d815c3b69ea3b5347b3b20158f401f2c7b5498f60f82d';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -689,6 +689,197 @@ class YoRo_Commerce_Contract_Builder {
 						'type' => 'boolean',
 						'enum' => [
 							true,
+						],
+					],
+					'undoable' => [
+						'type' => 'boolean',
+						'enum' => [
+							false,
+						],
+					],
+					'result_type' => [
+						'type' => 'string',
+						'enum' => [
+							'generic',
+						],
+					],
+					'display_type' => [
+						'type' => 'string',
+						'enum' => [
+							'generic',
+						],
+					],
+					'assistant_summary' => [
+						'type' => 'string',
+						'maxLength' => 256,
+					],
+					'extensions' => [
+						'type' => 'object',
+						'properties' => [],
+						'required' => [],
+						'additionalProperties' => false,
+					],
+				],
+				'required' => [
+					'success',
+					'action',
+					'message',
+					'summary',
+					'data',
+					'read_only',
+					'undoable',
+					'result_type',
+					'display_type',
+					'assistant_summary',
+					'extensions',
+				],
+				'additionalProperties' => false,
+			];
+		}
+		if ( 'orders.record_external_refund' === $action_name ) {
+			return [
+				'type' => 'object',
+				'properties' => [
+					'success' => [
+						'type' => 'boolean',
+					],
+					'action' => [
+						'type' => 'string',
+						'enum' => [
+							'orders.record_external_refund',
+						],
+					],
+					'message' => [
+						'type' => 'string',
+						'maxLength' => 256,
+					],
+					'summary' => [
+						'type' => 'string',
+						'maxLength' => 256,
+					],
+					'data' => [
+						'type' => 'object',
+						'properties' => [
+							'external_refund' => [
+								'type' => [
+									'object',
+									'null',
+								],
+								'properties' => [
+									'order_id' => [
+										'type' => 'integer',
+										'minimum' => 1,
+										'maximum' => 9007199254740991,
+									],
+									'refund_id' => [
+										'type' => [
+											'integer',
+											'null',
+										],
+										'minimum' => 1,
+										'maximum' => 9007199254740991,
+									],
+									'amount' => [
+										'type' => 'string',
+										'pattern' => '^(0|[1-9][0-9]{0,8})(\\.[0-9]{1,6})?$',
+										'maxLength' => 16,
+									],
+									'currency' => [
+										'type' => 'string',
+										'pattern' => '^[A-Z]{3}$',
+										'maxLength' => 3,
+									],
+									'status' => [
+										'type' => 'string',
+										'enum' => [
+											'recorded',
+											'reconciliation_required',
+										],
+									],
+									'outcome_unknown' => [
+										'type' => 'boolean',
+									],
+									'refunded_payment' => [
+										'type' => [
+											'boolean',
+											'null',
+										],
+										'enum' => [
+											false,
+											null,
+										],
+									],
+									'restocked' => [
+										'type' => 'boolean',
+										'enum' => [
+											false,
+										],
+									],
+									'retry_allowed' => [
+										'type' => 'boolean',
+										'enum' => [
+											false,
+										],
+									],
+									'current_version' => [
+										'type' => [
+											'string',
+											'null',
+										],
+										'pattern' => '^[a-f0-9]{64}$',
+										'minLength' => 64,
+										'maxLength' => 64,
+									],
+									'next_action' => [
+										'type' => [
+											'string',
+											'null',
+										],
+										'enum' => [
+											'orders.get_refunds',
+											null,
+										],
+									],
+									'payment_transfer_initiated' => [
+										'type' => 'boolean',
+										'enum' => [
+											false,
+										],
+									],
+									'external_transfer_verification' => [
+										'type' => 'string',
+										'enum' => [
+											'not_observed',
+										],
+									],
+								],
+								'required' => [
+									'order_id',
+									'refund_id',
+									'amount',
+									'currency',
+									'status',
+									'outcome_unknown',
+									'refunded_payment',
+									'restocked',
+									'retry_allowed',
+									'current_version',
+									'next_action',
+									'payment_transfer_initiated',
+									'external_transfer_verification',
+								],
+								'additionalProperties' => false,
+							],
+						],
+						'required' => [
+							'external_refund',
+						],
+						'additionalProperties' => false,
+					],
+					'read_only' => [
+						'type' => 'boolean',
+						'enum' => [
+							false,
 						],
 					],
 					'undoable' => [
@@ -1418,6 +1609,26 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function canonical_execution_payload( array $execution, $action_name = '' ) {
+		if ( 'orders.record_external_refund' === ( $action_name ?: ( $execution['action'] ?? '' ) ) ) {
+			$facts = $execution['external_refund'] ?? ( $execution['data']['external_refund'] ?? null );
+			$schema = self::execution_output_schema( 'orders.record_external_refund' )['properties']['data']['properties']['external_refund'];
+			$valid = is_array( $facts ) && self::email_history_schema_value( $facts, $schema )
+				&& 1 === preg_match( '/^(0|[1-9][0-9]{0,8})(\.[0-9]{1,6})?$/D', $facts['amount'] ?? '' )
+				&& 1 === preg_match( '/[1-9]/', $facts['amount'] ?? '' )
+				&& false === ( $facts['payment_transfer_initiated'] ?? null ) && 'not_observed' === ( $facts['external_transfer_verification'] ?? null );
+			if ( $valid ) {
+				$done = 'recorded' === $facts['status'];
+				$valid = $done
+					? ( true === ( $execution['success'] ?? false ) && false === $facts['outcome_unknown'] && false === $facts['refunded_payment'] && null !== $facts['refund_id'] && null !== $facts['current_version'] && null === $facts['next_action'] )
+					: ( false === ( $execution['success'] ?? true ) && true === $facts['outcome_unknown'] && null === $facts['refunded_payment'] && null === $facts['refund_id'] && null === $facts['current_version'] && 'orders.get_refunds' === $facts['next_action'] );
+			}
+			$success = $valid && 'recorded' === $facts['status'];
+			$summary = $success ? 'Local WooCommerce refund record verified. No money was sent; the Human-asserted external transfer was not observed or independently verified.' : 'Local refund recording requires reconciliation. No money was sent and the external transfer was not verified. Read refund history before a fresh confirmation; do not retry.';
+			return [ 'success' => $success, 'action' => 'orders.record_external_refund', 'message' => $summary, 'summary' => $summary,
+				'data' => [ 'external_refund' => $valid ? $facts : null ], 'read_only' => false, 'undoable' => false,
+				'result_type' => 'generic', 'display_type' => 'generic', 'assistant_summary' => $summary, 'extensions' => (object) [] ];
+		}
+
 		if ( 'orders.refund' === ( $action_name ?: ( $execution['action'] ?? '' ) ) ) {
 			$facts = $execution['refund'] ?? ( $execution['data']['refund'] ?? null );
 			$schema = self::execution_output_schema( 'orders.refund' )['properties']['data']['properties']['refund'];
@@ -2323,6 +2534,58 @@ class YoRo_Commerce_Contract_Builder {
 							'state_token',
 							'remaining_refundable',
 							'gateway_refunds_supported',
+						],
+						'additionalProperties' => false,
+					],
+					'external_record_guard' => [
+						'type' => 'object',
+						'properties' => [
+							'order_id' => [
+								'type' => 'integer',
+								'minimum' => 1,
+								'maximum' => 9007199254740991,
+							],
+							'eligible' => [
+								'type' => 'boolean',
+							],
+							'blocked_reason' => [
+								'type' => 'string',
+								'maxLength' => 100,
+							],
+							'current_version' => [
+								'type' => [
+									'string',
+									'null',
+								],
+								'pattern' => '^[a-f0-9]{64}$',
+								'minLength' => 64,
+								'maxLength' => 64,
+							],
+							'state_token' => [
+								'type' => [
+									'string',
+									'null',
+								],
+								'pattern' => '^[a-f0-9]{64}$',
+								'minLength' => 64,
+								'maxLength' => 64,
+							],
+							'remaining_refundable' => [
+								'type' => [
+									'string',
+									'null',
+								],
+								'pattern' => '^(0|[1-9][0-9]{0,8})(\\.[0-9]{1,6})?$',
+								'maxLength' => 16,
+							],
+						],
+						'required' => [
+							'order_id',
+							'eligible',
+							'blocked_reason',
+							'current_version',
+							'state_token',
+							'remaining_refundable',
 						],
 						'additionalProperties' => false,
 					],
@@ -3995,10 +4258,10 @@ class YoRo_Commerce_Contract_Builder {
 		}
 
 		if ( in_array( $action_name, [ 'orders.refund_preview', 'orders.get_refunds' ], true ) ) {
-			$fields = 'orders.refund_preview' === $action_name ? [ 'order', 'totals', 'items', 'refunds', 'can_refund', 'execution_guard' ] : [ 'order_id', 'currency', 'total_refunded', 'remaining_refundable', 'refunds', 'pagination' ];
+			$fields = 'orders.refund_preview' === $action_name ? [ 'order', 'totals', 'items', 'refunds', 'can_refund', 'execution_guard', 'external_record_guard' ] : [ 'order_id', 'currency', 'total_refunded', 'remaining_refundable', 'refunds', 'pagination' ];
 			$data = [];
 			foreach ( $fields as $field ) {
-				if ( 'execution_guard' === $field && ! array_key_exists( $field, $execution ) && ! array_key_exists( $field, $raw_data ) ) { continue; }
+				if ( in_array( $field, [ 'execution_guard', 'external_record_guard' ], true ) && ! array_key_exists( $field, $execution ) && ! array_key_exists( $field, $raw_data ) ) { continue; }
 				$data[ $field ] = $execution[ $field ] ?? ( $raw_data[ $field ] ?? null );
 			}
 			return $data;

@@ -18,6 +18,7 @@ class YoRo_Plan_Executor {
 		$type = sanitize_key( $plan['type'] );
 		if ( 'single' !== $type ) {
 			foreach ( (array) ( $plan['steps'] ?? [] ) as $step ) {
+				if ( 'orders.record_external_refund' === ( $step['action'] ?? '' ) ) { return new WP_Error( 'external_refund_separate_confirmation_required', 'External refund recording requires its own separate confirmation.' ); }
 				if ( 'orders.refund' === ( $step['action'] ?? '' ) ) { return new WP_Error( 'refund_separate_confirmation_required', 'A gateway refund requires its own separate confirmation.' ); }
 				if ( 'orders.regenerate_download_permissions' === ( $step['action'] ?? '' ) ) { return new WP_Error( 'regeneration_separate_confirmation_required', 'Download regeneration requires its own separate confirmation.' ); }
 			}
@@ -50,7 +51,7 @@ class YoRo_Plan_Executor {
 
 	private static function action_context( $action, $context ) {
 		// Plan/captured context is caller-controlled and cannot assert journal or permit ownership.
-		return in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund' ], true ) ? [] : $context;
+		return in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund' ], true ) ? [] : $context;
 	}
 
 	private static function execute_single( $plan, $confirm, $preview, $claimed_execution_context ) {
@@ -307,7 +308,7 @@ class YoRo_Plan_Executor {
 				? max( 1, absint( $retry['max_attempts'] ) )
 				: 1;
 
-			if ( in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund' ], true ) ) {
+			if ( in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund' ], true ) ) {
 				$max_attempts = 1; // External communication is never blindly retried by a sequence.
 			}
 			$attempt = 0;

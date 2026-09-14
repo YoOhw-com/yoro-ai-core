@@ -15,6 +15,52 @@ class YoRo_Orders_Actions {
 	}
 
 	public static function register() {
+		YoRo_Action_Registry::register( 'orders.record_external_refund', [
+			'label' => 'Record an externally completed refund',
+			'description' => 'Record one exact amount already refunded externally, after a fresh preview and separate Human confirmation. Sends no money and does not verify the external transfer. No stock or item allocation.',
+			'category' => 'orders', 'permission' => 'manage_woocommerce',
+			'callback' => [ 'YoRo_Orders_Write_Service', 'record_external_refund' ], 'preview_callback' => [ 'YoRo_Orders_Write_Service', 'preview_record_external_refund' ],
+			'effect' => 'mutate', 'external_side_effect' => false, 'risk_level' => 'high',
+			'write_action' => true, 'requires_confirmation' => true, 'reversibility' => 'none',
+			'idempotency_strategy' => 'operation_journal', 'concurrency_strategy' => 'optimistic_version',
+			'input_schema' => [ 'order_id' => 'integer', 'amount' => 'string', 'expected_version' => 'string', 'expected_external_refund_state' => 'string', 'reason' => 'string' ],
+			'canonical_input_schema' => [
+				'order_id' => [
+					'type' => 'integer',
+					'minimum' => 1,
+					'maximum' => 9007199254740991,
+				],
+				'amount' => [
+					'type' => 'string',
+					'pattern' => '^(0|[1-9][0-9]{0,8})(\\.[0-9]{1,6})?$',
+					'maxLength' => 16,
+				],
+				'expected_version' => [
+					'type' => 'string',
+					'pattern' => '^[a-f0-9]{64}$',
+					'minLength' => 64,
+					'maxLength' => 64,
+				],
+				'expected_external_refund_state' => [
+					'type' => 'string',
+					'pattern' => '^[a-f0-9]{64}$',
+					'minLength' => 64,
+					'maxLength' => 64,
+				],
+				'reason' => [
+					'type' => 'string',
+					'maxLength' => 500,
+				],
+			],
+			'required_params' => [
+				'order_id',
+				'amount',
+				'expected_version',
+				'expected_external_refund_state',
+			],
+			'max_items' => 1, 'max_targets' => 1, 'target_type' => 'order', 'supports_bulk' => false,
+			'capabilities' => [ 'orders', 'write', 'refunds', 'financial' ],
+		] );
 		YoRo_Action_Registry::register( 'orders.refund', [
 			'label' => 'Refund through payment gateway',
 			'description' => 'Refund one exact amount through the order gateway after a fresh preview and separate claimed confirmation. No restock or item allocation. Unknown outcomes require reconciliation, never retry.',
