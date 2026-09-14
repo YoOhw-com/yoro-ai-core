@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:b773ebfbe3175c0824140d9cc86b0c286a3caddd960a9dedbe87ba1c66716fbe';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:03ea8f3021e93ed3181b0aefb1bb62290b64f03fb9833da6bdb21fc8a267a3a5';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1798,6 +1798,161 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
+		if ( 'order_splitter.get_status' === $action_name ) {
+			return [
+				'type' => 'object',
+				'additionalProperties' => false,
+				'required' => [ 'status', 'owner_kind', 'version', 'coverage' ],
+				'properties' => [
+					'status' => [
+						'type' => 'string',
+						'enum' => [ 'available', 'absent', 'incompatible' ],
+					],
+					'owner_kind' => [
+						'type' => 'string',
+						'enum' => [ 'order_splitter', 'absent', 'incompatible' ],
+					],
+					'version' => [
+						'type' => 'string',
+						'enum' => [ '', '1.5.0' ],
+					],
+					'coverage' => [
+						'type' => 'object',
+						'additionalProperties' => false,
+						'required' => [ 'split_lineage', 'retained_activity', 'omitted_fields' ],
+						'properties' => [
+							'split_lineage' => [
+								'type' => 'string',
+								'enum' => [ 'available', 'not_observed' ],
+							],
+							'retained_activity' => [
+								'type' => 'string',
+								'enum' => [ 'available', 'not_observed' ],
+							],
+							'omitted_fields' => [
+								'type' => 'boolean',
+							],
+						],
+					],
+				],
+			];
+		}
+
+		if ( 'order_splitter.get_order_activity' === $action_name ) {
+			return [
+				'type' => 'object',
+				'additionalProperties' => false,
+				'required' => [ 'order_id', 'status', 'owner_kind', 'version', 'order_status', 'lineage', 'activity', 'manual_reconciliation', 'coverage' ],
+				'properties' => [
+					'order_id' => [
+						'type' => 'integer',
+						'minimum' => 1,
+					],
+					'status' => [
+						'type' => 'string',
+						'enum' => [ 'observed', 'unavailable' ],
+					],
+					'owner_kind' => [
+						'type' => 'string',
+						'enum' => [ 'order_splitter', 'absent', 'incompatible' ],
+					],
+					'version' => [
+						'type' => 'string',
+						'enum' => [ '', '1.5.0' ],
+					],
+					'order_status' => [
+						'type' => 'string',
+						'maxLength' => 40,
+					],
+					'lineage' => [
+						'type' => 'object',
+						'additionalProperties' => false,
+						'required' => [ 'role', 'parent_order_id', 'child_order_ids' ],
+						'properties' => [
+							'role' => [
+								'type' => 'string',
+								'enum' => [ 'source', 'child', 'none', 'ambiguous' ],
+							],
+							'parent_order_id' => [
+								'type' => 'integer',
+								'minimum' => 0,
+							],
+							'child_order_ids' => [
+								'type' => 'array',
+								'maxItems' => 50,
+								'uniqueItems' => true,
+								'items' => [
+									'type' => 'integer',
+									'minimum' => 1,
+								],
+							],
+						],
+					],
+					'activity' => [
+						'type' => 'array',
+						'maxItems' => 20,
+						'items' => [
+							'type' => 'object',
+							'additionalProperties' => false,
+							'required' => [ 'type', 'status', 'stage', 'revision', 'started_at', 'updated_at', 'completed_at' ],
+							'properties' => [
+								'type' => [
+									'type' => 'string',
+									'enum' => [ 'split', 'duplicate', 'merge', 'return' ],
+								],
+								'status' => [
+									'type' => 'string',
+									'enum' => [ 'started', 'committed', 'completed', 'failed', 'recovery_required', 'compensating', 'compensated', 'manual_reconciliation', 'manual_reconciled' ],
+								],
+								'stage' => [
+									'type' => 'string',
+									'enum' => [ 'bulk_return_row_completed', 'child_persisted', 'compensated', 'compensating', 'compensation_child_removed', 'compensation_source_restored', 'completed', 'copy_context_captured', 'failed', 'manual_reconciled', 'manual_reconciliation', 'manual_reconciliation_evidence', 'merge_commercial_verified', 'merge_compensation_source_restored', 'merge_compensation_target_restored', 'merge_recovery_component_checkpoint', 'merge_relations_completed', 'merge_service_checkpoint', 'recovery_required', 'resumed', 'return_active_split_relation_cleaned', 'return_child_relation_partial', 'return_child_relation_persisted', 'return_compensation_child_restored', 'return_compensation_original_restored', 'return_pair_verified', 'return_recovery_component_checkpoint', 'return_relations_completed', 'return_service_checkpoint', 'source_commit_planned', 'source_committed', 'source_persisted', 'started', 'stock_flags_synchronized', 'target_persisted' ],
+								],
+								'revision' => [
+									'type' => 'integer',
+									'minimum' => 1,
+								],
+								'started_at' => [
+									'type' => 'string',
+									'maxLength' => 40,
+								],
+								'updated_at' => [
+									'type' => 'string',
+									'maxLength' => 40,
+								],
+								'completed_at' => [
+									'type' => 'string',
+									'maxLength' => 40,
+								],
+							],
+						],
+					],
+					'manual_reconciliation' => [
+						'type' => 'string',
+						'enum' => [ 'present', 'not_observed' ],
+					],
+					'coverage' => [
+						'type' => 'object',
+						'additionalProperties' => false,
+						'required' => [ 'split_lineage', 'retained_activity', 'omitted_fields' ],
+						'properties' => [
+							'split_lineage' => [
+								'type' => 'string',
+								'enum' => [ 'available', 'not_observed' ],
+							],
+							'retained_activity' => [
+								'type' => 'string',
+								'enum' => [ 'available', 'not_observed' ],
+							],
+							'omitted_fields' => [
+								'type' => 'boolean',
+							],
+						],
+					],
+				],
+			];
+		}
+
 		if ( 'cancellation_return.get_status' === $action_name ) {
 			return [
 				'type' => 'object',
@@ -2856,7 +3011,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_read_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue', 'blacklist.get_status', 'blacklist.get_order_assessment', 'cancellation_return.get_status', 'cancellation_return.get_order_case' ],
+			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue', 'blacklist.get_status', 'blacklist.get_order_assessment', 'cancellation_return.get_status', 'cancellation_return.get_order_case', 'order_splitter.get_status', 'order_splitter.get_order_activity' ],
 			true
 		);
 	}
@@ -3017,6 +3172,13 @@ class YoRo_Commerce_Contract_Builder {
 				'page_info' => self::canonical_page_info( $execution['page_info'] ?? ( $raw_data['page_info'] ?? [] ) ),
 				'count'     => count( $products ),
 			];
+		}
+
+		if ( in_array( $action_name, [ 'order_splitter.get_status', 'order_splitter.get_order_activity' ], true ) ) {
+			$fields = 'order_splitter.get_status' === $action_name ? [ 'status', 'owner_kind', 'version', 'coverage' ] : [ 'order_id', 'status', 'owner_kind', 'version', 'order_status', 'lineage', 'activity', 'manual_reconciliation', 'coverage' ];
+			$data = [];
+			foreach ( $fields as $field ) { $data[ $field ] = $execution[ $field ] ?? ( $raw_data[ $field ] ?? null ); }
+			return $data;
 		}
 
 		if ( in_array( $action_name, [ 'cancellation_return.get_status', 'cancellation_return.get_order_case' ], true ) ) {
