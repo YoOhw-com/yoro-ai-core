@@ -1145,6 +1145,21 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		foreach ( [ 'get_status', 'get_order_activity' ] as $method ) {
+			$order_activity = 'get_order_activity' === $method;
+			YoRo_Action_Registry::register( 'order_splitter.' . $method, [
+				'label' => $order_activity ? 'Order Splitter order activity' : 'Order Splitter status',
+				'description' => $order_activity ? 'Read bounded split lineage and retained mutation summary for one exact order. No operation identifiers, commercial data, preview, execution or recovery.' : 'Read characterized Order Splitter availability and coverage without construction, settings or journal options.',
+				'category' => 'orders', 'permission' => 'manage_woocommerce', 'risk_level' => 'low',
+				'write_action' => false, 'requires_confirmation' => false, 'max_items' => 1, 'max_targets' => 1,
+				'callback' => [ 'YoRo_Order_Splitter_Service', $method ],
+				'input_schema' => $order_activity ? [ 'order_id' => 'integer' ] : [],
+				'canonical_input_schema' => $order_activity ? [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ] ] : [],
+				'required_params' => $order_activity ? [ 'order_id' ] : [],
+				'capabilities' => [ 'orders', 'read', 'order_splitter' ],
+			] );
+		}
+
 		foreach ( [ 'get_status', 'get_order_case' ] as $method ) {
 			$order_case = 'get_order_case' === $method;
 			YoRo_Action_Registry::register( 'cancellation_return.' . $method, [

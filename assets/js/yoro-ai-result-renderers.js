@@ -44,6 +44,37 @@
 			};
 	}
 
+	function renderOrderSplitter(result, h) {
+		const data = result.data && typeof result.data.status === 'string' ? result.data : result;
+		const activity = result.display_type === 'order_splitter_order_activity';
+		const unavailable = '<p>Order Splitter observations are unavailable.</p>';
+		if (!data || !(activity ? ['observed', 'unavailable'] : ['available', 'absent', 'incompatible']).includes(data.status)
+			|| !['order_splitter', 'absent', 'incompatible'].includes(data.owner_kind) || !['', '1.5.0'].includes(data.version)) return unavailable;
+		const escape = value => h.escapeHtml(String(value));
+		let html = '<div class="yoro-result-card"><h4>Order Splitter</h4><p>' + escape(data.status) + ' / ' + escape(data.version) + '</p>';
+		if (activity && data.status === 'observed') {
+			const lineage = data.lineage;
+			if (!Number.isInteger(data.order_id) || data.order_id < 1 || typeof data.order_status !== 'string' || data.order_status.length > 40
+				|| !lineage || !['source', 'child', 'none', 'ambiguous'].includes(lineage.role) || !Number.isInteger(lineage.parent_order_id) || lineage.parent_order_id < 0
+				|| !Array.isArray(lineage.child_order_ids) || lineage.child_order_ids.length > 50 || !lineage.child_order_ids.every(id => Number.isInteger(id) && id > 0)
+				|| !Array.isArray(data.activity) || data.activity.length > 20 || !['present', 'not_observed'].includes(data.manual_reconciliation)) return unavailable;
+			html += '<p>Order #' + escape(data.order_id) + ' / ' + escape(data.order_status) + '</p><p>Split lineage: ' + escape(lineage.role) + '</p>';
+			if (lineage.parent_order_id) html += '<p>Parent order: #' + escape(lineage.parent_order_id) + '</p>';
+			if (lineage.child_order_ids.length) html += '<p>Child orders: ' + lineage.child_order_ids.map(id => '#' + escape(id)).join(', ') + '</p>';
+			html += '<ul>';
+			for (const entry of data.activity) {
+				if (!entry || !['split', 'duplicate', 'merge', 'return'].includes(entry.type) || !Number.isInteger(entry.revision) || entry.revision < 1
+					|| !['started', 'committed', 'completed', 'failed', 'recovery_required', 'compensating', 'compensated', 'manual_reconciliation', 'manual_reconciled'].includes(entry.status)
+					|| typeof entry.stage !== 'string' || !/^[a-z_]{1,80}$/.test(entry.stage)
+					|| !['started_at', 'updated_at', 'completed_at'].every(k => typeof entry[k] === 'string' && entry[k].length <= 40)) return unavailable;
+				html += '<li>' + escape(entry.type) + ' / ' + escape(entry.status) + ' / ' + escape(entry.stage) + ' (revision ' + escape(entry.revision) + ')'
+					+ '<br>Started: ' + escape(entry.started_at) + '; updated: ' + escape(entry.updated_at) + '; completed: ' + escape(entry.completed_at) + '</li>';
+			}
+			html += '</ul><p>Retained manual reconciliation: ' + escape(data.manual_reconciliation) + '</p>';
+		}
+		return html + '<p>Retained observations only. This does not verify recovery state or authorize an order change.</p></div>';
+	}
+
 	function renderCancellationReturn(result, h) {
 		const payload = result.data && typeof result.data.status === 'string' ? result.data : result;
 		const isCase = result.display_type === 'cancellation_return_order_case';
@@ -473,6 +504,10 @@
 			return finish(typeof h.renderOrdersResult === 'function'
 				? h.renderOrdersResult(data)
 				: renderJson(data, h));
+		}
+
+		if (displayType === 'order_splitter_status' || displayType === 'order_splitter_order_activity') {
+			return finish(renderOrderSplitter(Object.assign({}, result, {display_type: displayType}), h));
 		}
 
 		if (displayType === 'cancellation_return_status' || displayType === 'cancellation_return_order_case') {
