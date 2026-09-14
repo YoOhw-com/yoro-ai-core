@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:ca8d02bb6810c80c9e38c9ef529f9fbf0cd6756afb04a9378be211f260b8029b';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:d4e5bf45686ce3f397fbd99fe730dfe771186c57af5ab384e6f4fdad32ae7bd2';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1798,6 +1798,157 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
+		if ( 'blacklist.get_status' === $action_name ) {
+			return [
+				'type' => 'object',
+				'properties' => [
+					'status' => [
+						'type' => 'string',
+						'enum' => [ 'available', 'absent', 'incompatible', 'schema_not_ready' ],
+					],
+					'free_version' => [
+						'type' => 'string',
+						'maxLength' => 32,
+					],
+					'premium_state' => [
+						'type' => 'string',
+						'enum' => [ 'present', 'not_observed', 'incompatible' ],
+					],
+					'premium_version' => [
+						'type' => 'string',
+						'maxLength' => 32,
+					],
+					'schema_status' => [
+						'type' => 'string',
+						'enum' => [ 'ready', 'pending', 'running', 'failed', 'manual_required', 'newer_than_code', 'not_observed', 'unavailable' ],
+					],
+					'schema_ready' => [
+						'type' => 'boolean',
+					],
+					'available_reads' => [
+						'type' => 'array',
+						'maxItems' => 2,
+						'items' => [
+							'type' => 'string',
+							'enum' => [ 'blacklist.get_status', 'blacklist.get_order_assessment' ],
+						],
+					],
+					'coverage' => [
+						'type' => 'object',
+						'properties' => [
+							'source' => [
+								'type' => 'string',
+								'enum' => [ 'owner_schema_readiness' ],
+							],
+							'premium_facts' => [
+								'type' => 'string',
+								'enum' => [ 'not_observed' ],
+							],
+							'remote_checks' => [
+								'type' => 'string',
+								'enum' => [ 'not_observed' ],
+							],
+						],
+						'required' => [ 'source', 'premium_facts', 'remote_checks' ],
+						'additionalProperties' => false,
+					],
+				],
+				'required' => [ 'status', 'free_version', 'premium_state', 'premium_version', 'schema_status', 'schema_ready', 'available_reads', 'coverage' ],
+				'additionalProperties' => false,
+			];
+		}
+
+		if ( 'blacklist.get_order_assessment' === $action_name ) {
+			return [
+				'type' => 'object',
+				'properties' => [
+					'order_id' => [
+						'type' => 'integer',
+						'minimum' => 1,
+					],
+					'status' => [
+						'type' => 'string',
+						'enum' => [ 'observed', 'not_observed', 'unavailable', 'schema_not_ready' ],
+					],
+					'facts' => [
+						'type' => 'object',
+						'properties' => [
+							'decision' => [
+								'type' => 'string',
+								'enum' => [ 'allow', 'challenge', 'block', 'unknown', 'skipped_rate_limit', 'check_failed', 'not_observed' ],
+							],
+							'check_status' => [
+								'type' => 'string',
+								'enum' => [ 'pending', 'success', 'failed', 'skipped_rate_limit', 'not_observed' ],
+							],
+							'tier' => [
+								'type' => 'string',
+								'enum' => [ 'free', 'basic', 'pro', 'enterprise', 'not_observed' ],
+							],
+							'decided_at' => [
+								'type' => 'string',
+								'maxLength' => 40,
+							],
+							'reference_present' => [
+								'type' => 'boolean',
+							],
+							'matches' => [
+								'type' => 'array',
+								'maxItems' => 8,
+								'items' => [
+									'type' => 'object',
+									'properties' => [
+										'type' => [
+											'type' => 'string',
+											'enum' => [ 'email', 'phone', 'ip', 'address', 'device', 'name' ],
+										],
+										'match_mode' => [
+											'type' => 'string',
+											'enum' => [ 'exact', 'probable', 'none' ],
+										],
+										'requires_corroboration' => [
+											'type' => 'boolean',
+										],
+										'direct' => [
+											'type' => 'boolean',
+										],
+									],
+									'required' => [ 'type', 'match_mode', 'requires_corroboration', 'direct' ],
+									'additionalProperties' => false,
+								],
+							],
+						],
+						'required' => [ 'decision', 'check_status', 'tier', 'decided_at', 'reference_present', 'matches' ],
+						'additionalProperties' => false,
+					],
+					'coverage' => [
+						'type' => 'object',
+						'properties' => [
+							'source' => [
+								'type' => 'string',
+								'enum' => [ 'retained_owner_order_meta' ],
+							],
+							'premium_facts' => [
+								'type' => 'string',
+								'enum' => [ 'not_observed' ],
+							],
+							'remote_checks' => [
+								'type' => 'string',
+								'enum' => [ 'not_observed' ],
+							],
+							'omitted_fields' => [
+								'type' => 'boolean',
+							],
+						],
+						'required' => [ 'source', 'premium_facts', 'remote_checks', 'omitted_fields' ],
+						'additionalProperties' => false,
+					],
+				],
+				'required' => [ 'order_id', 'status', 'facts', 'coverage' ],
+				'additionalProperties' => false,
+			];
+		}
+
 		if ( 'customers.get_timeline' === $action_name ) {
 			return [ 'type' => 'object', 'properties' => [ 'identity' => [ 'type' => 'object', 'properties' => [ 'basis' => [ 'type' => 'string', 'enum' => [ 'customer_id', 'email' ] ], 'customer_id' => [ 'type' => 'integer', 'minimum' => 0 ], 'email_masked' => [ 'type' => 'string', 'maxLength' => 254 ] ], 'required' => [ 'basis', 'customer_id', 'email_masked' ], 'additionalProperties' => false ], 'events' => [ 'type' => 'array', 'maxItems' => 50, 'items' => [ 'type' => 'object', 'properties' => [ 'id' => [ 'type' => 'string', 'maxLength' => 100 ], 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ], 'type' => [ 'type' => 'string', 'enum' => [ 'order_created', 'payment_recorded', 'order_completed', 'order_note' ] ], 'occurred_at' => [ 'type' => 'string', 'maxLength' => 40 ], 'summary' => [ 'type' => 'string', 'maxLength' => 200 ], 'visibility' => [ 'type' => 'string', 'enum' => [ 'system', 'internal', 'customer' ] ], 'source' => [ 'type' => 'string', 'enum' => [ 'woocommerce.order', 'woocommerce.order_note' ] ] ], 'required' => [ 'id', 'order_id', 'type', 'occurred_at', 'summary', 'visibility', 'source' ], 'additionalProperties' => false ] ], 'count' => [ 'type' => 'integer', 'minimum' => 0, 'maximum' => 50 ], 'coverage' => [ 'type' => 'object', 'properties' => [ 'orders_scanned' => [ 'type' => 'integer', 'minimum' => 0, 'maximum' => 20 ], 'order_limit' => [ 'type' => 'integer', 'enum' => [ 20 ] ], 'event_limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ], 'truncated' => [ 'type' => 'boolean' ], 'external_activity' => [ 'type' => 'string', 'enum' => [ 'unobserved' ] ] ], 'required' => [ 'orders_scanned', 'order_limit', 'event_limit', 'truncated', 'external_activity' ], 'additionalProperties' => false ] ], 'required' => [ 'identity', 'events', 'count', 'coverage' ], 'additionalProperties' => false ];
 		}
@@ -2475,7 +2626,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_read_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue' ],
+			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue', 'blacklist.get_status', 'blacklist.get_order_assessment' ],
 			true
 		);
 	}
@@ -2636,6 +2787,13 @@ class YoRo_Commerce_Contract_Builder {
 				'page_info' => self::canonical_page_info( $execution['page_info'] ?? ( $raw_data['page_info'] ?? [] ) ),
 				'count'     => count( $products ),
 			];
+		}
+
+		if ( in_array( $action_name, [ 'blacklist.get_status', 'blacklist.get_order_assessment' ], true ) ) {
+			$keys = 'blacklist.get_status' === $action_name ? [ 'status', 'free_version', 'premium_state', 'premium_version', 'schema_status', 'schema_ready', 'available_reads', 'coverage' ] : [ 'order_id', 'status', 'facts', 'coverage' ];
+			$data = [];
+			foreach ( $keys as $key ) { $data[ $key ] = $execution[ $key ] ?? ( $raw_data[ $key ] ?? null ); }
+			return $data;
 		}
 
 		if ( in_array( $action_name, [ 'customers.get_timeline', 'customers.get_follow_up_queue' ], true ) ) {
