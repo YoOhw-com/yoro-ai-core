@@ -1145,6 +1145,20 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		foreach ( [ 'get_status', 'get_order_assessment' ] as $blacklist_action ) {
+			$assessment = 'get_order_assessment' === $blacklist_action;
+			YoRo_Action_Registry::register( 'blacklist.' . $blacklist_action, [
+				'label' => $assessment ? 'Retained Blacklist Manager order assessment' : 'Blacklist Manager status',
+				'description' => $assessment ? 'Read bounded retained owner assessment facts for one exact local order; no PII, remote recheck or mutation.' : 'Read safe owner availability and schema readiness; no repair, settings or license lookup.',
+				'category' => 'orders', 'permission' => 'manage_woocommerce', 'risk_level' => 'low',
+				'write_action' => false, 'requires_confirmation' => false, 'max_items' => 1, 'max_targets' => 1,
+				'callback' => [ 'YoRo_Blacklist_Manager_Service', $blacklist_action ],
+				'input_schema' => $assessment ? [ 'order_id' => 'integer' ] : [],
+				'canonical_input_schema' => $assessment ? [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ] ] : [],
+				'required_params' => $assessment ? [ 'order_id' ] : [], 'capabilities' => [ 'orders', 'read', 'blacklist' ],
+			] );
+		}
+
 		foreach ( [ 'get_timeline', 'get_follow_up_queue' ] as $customer_action ) {
 			$timeline = 'get_timeline' === $customer_action;
 			YoRo_Action_Registry::register( 'customers.' . $customer_action, [

@@ -44,6 +44,32 @@
 			};
 	}
 
+	function renderBlacklistObservation(result, h) {
+		const payload = result.data && typeof result.data.status === 'string' ? result.data : result;
+		const assessment = result.display_type === 'blacklist_order_assessment';
+		const allowed = assessment ? ['observed', 'not_observed', 'unavailable', 'schema_not_ready'] : ['available', 'absent', 'incompatible', 'schema_not_ready'];
+		if (!payload || !allowed.includes(payload.status) || !payload.coverage) return '<p>Blacklist Manager observations are unavailable.</p>';
+		const escape = value => h.escapeHtml(String(value == null ? '' : value));
+		let html = '<div class="yoro-result-card"><h4>' + (assessment ? 'Retained order assessment' : 'Blacklist Manager status') + '</h4><p>' + escape(payload.status) + '</p>';
+		if (assessment && payload.status === 'observed') {
+			const facts = payload.facts;
+			if (!Number.isInteger(payload.order_id) || payload.order_id < 1 || !facts || !Array.isArray(facts.matches) || facts.matches.length > 8) return '<p>Blacklist Manager observations are unavailable.</p>';
+			html += '<dl><dt>Order</dt><dd>#' + escape(payload.order_id) + '</dd><dt>Retained decision</dt><dd>' + escape(facts.decision) + '</dd><dt>Check status / tier</dt><dd>' + escape(facts.check_status) + ' / ' + escape(facts.tier) + '</dd><dt>Recorded at</dt><dd>' + escape(facts.decided_at || 'not_observed') + '</dd><dt>Reference retained</dt><dd>' + (facts.reference_present === true ? 'Yes' : 'No') + '</dd></dl>';
+			if (facts.matches.length) {
+				html += '<ul>';
+				facts.matches.forEach(match => {
+					if (!match || typeof match !== 'object') return;
+					html += '<li>' + escape(match.type) + ' / ' + escape(match.match_mode) + (match.requires_corroboration === true ? ' — requires corroboration' : '') + '</li>';
+				});
+				html += '</ul>';
+			}
+		} else if (!assessment) {
+			html += '<dl><dt>Free version</dt><dd>' + escape(payload.free_version || 'not_observed') + '</dd><dt>Premium presence</dt><dd>' + escape(payload.premium_state) + ' ' + escape(payload.premium_version) + '</dd><dt>Schema readiness</dt><dd>' + escape(payload.schema_status) + '</dd></dl>';
+		}
+		html += '<p>Owner observations only. Remote checks and Premium-only facts are not observed. Raw identity values and detailed risk data are omitted.</p></div>';
+		return html;
+	}
+
 	function renderCustomer360(result, h) {
 		const payload = result.data && !Array.isArray(result.data) ? result.data : result;
 		const timeline = result.display_type === 'customer_timeline';
@@ -418,6 +444,10 @@
 			return finish(typeof h.renderOrdersResult === 'function'
 				? h.renderOrdersResult(data)
 				: renderJson(data, h));
+		}
+
+		if (displayType === 'blacklist_status' || displayType === 'blacklist_order_assessment') {
+			return finish(renderBlacklistObservation(Object.assign({}, result, {display_type: displayType}), h));
 		}
 
 		if (displayType === 'customer_timeline' || displayType === 'customer_follow_up_queue') {
