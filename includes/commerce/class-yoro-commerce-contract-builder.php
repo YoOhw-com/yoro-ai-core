@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:c26ae5d4a1cf812d2db009c538614eee88904ca8cff8573530d24597e44c9493';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:77c875da89784a251a8547e1277dc5471169c31446c7d0186c21b1892ed2cf7e';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -1798,6 +1798,323 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
+		if ( 'orders.refund_preview' === $action_name ) {
+			return [
+				'type' => 'object',
+				'additionalProperties' => false,
+				'required' => [ 'order', 'totals', 'items', 'refunds', 'can_refund' ],
+				'properties' => [
+					'order' => [
+						'type' => 'object',
+						'additionalProperties' => false,
+						'required' => [ 'id', 'number', 'status', 'status_label', 'currency', 'total', 'total_refunded', 'remaining', 'payment_method', 'payment_title', 'transaction_id', 'date_created', 'date_created_ts', 'edit_url' ],
+						'properties' => [
+							'id' => [
+								'type' => 'integer',
+								'minimum' => 1,
+								'maximum' => 9007199254740991,
+							],
+							'number' => [
+								'type' => 'string',
+								'maxLength' => 100,
+							],
+							'status' => [
+								'type' => 'string',
+								'maxLength' => 40,
+							],
+							'status_label' => [
+								'type' => 'string',
+								'maxLength' => 100,
+							],
+							'currency' => [
+								'type' => 'string',
+								'maxLength' => 3,
+								'pattern' => '^[A-Z]{3}$',
+							],
+							'total' => [
+								'type' => 'string',
+								'maxLength' => 32,
+								'pattern' => '^[0-9]+\\.[0-9]{2}$',
+							],
+							'total_refunded' => [
+								'type' => 'string',
+								'maxLength' => 32,
+								'pattern' => '^[0-9]+\\.[0-9]{2}$',
+							],
+							'remaining' => [
+								'type' => 'string',
+								'maxLength' => 32,
+								'pattern' => '^[0-9]+\\.[0-9]{2}$',
+							],
+							'payment_method' => [
+								'type' => 'string',
+								'maxLength' => 100,
+							],
+							'payment_title' => [
+								'type' => 'string',
+								'maxLength' => 200,
+							],
+							'transaction_id' => [
+								'type' => 'string',
+								'enum' => [ '' ],
+							],
+							'date_created' => [
+								'type' => 'string',
+								'maxLength' => 100,
+							],
+							'date_created_ts' => [
+								'type' => 'integer',
+								'minimum' => 0,
+								'maximum' => 9007199254740991,
+							],
+							'edit_url' => [
+								'type' => 'string',
+								'maxLength' => 2000,
+							],
+						],
+					],
+					'totals' => [
+						'type' => 'object',
+						'additionalProperties' => false,
+						'required' => [ 'items_total', 'discount_total', 'shipping_total', 'fee_total', 'tax_total', 'order_total', 'total_refunded', 'remaining_refund' ],
+						'properties' => [
+							'items_total' => [
+								'type' => 'string',
+								'maxLength' => 32,
+								'pattern' => '^[0-9]+\\.[0-9]{2}$',
+							],
+							'discount_total' => [
+								'type' => 'string',
+								'maxLength' => 32,
+								'pattern' => '^[0-9]+\\.[0-9]{2}$',
+							],
+							'shipping_total' => [
+								'type' => 'string',
+								'maxLength' => 32,
+								'pattern' => '^[0-9]+\\.[0-9]{2}$',
+							],
+							'fee_total' => [
+								'type' => 'string',
+								'maxLength' => 32,
+								'pattern' => '^-?[0-9]+\\.[0-9]{2}$',
+							],
+							'tax_total' => [
+								'type' => 'string',
+								'maxLength' => 32,
+								'pattern' => '^[0-9]+\\.[0-9]{2}$',
+							],
+							'order_total' => [
+								'type' => 'string',
+								'maxLength' => 32,
+								'pattern' => '^[0-9]+\\.[0-9]{2}$',
+							],
+							'total_refunded' => [
+								'type' => 'string',
+								'maxLength' => 32,
+								'pattern' => '^[0-9]+\\.[0-9]{2}$',
+							],
+							'remaining_refund' => [
+								'type' => 'string',
+								'maxLength' => 32,
+								'pattern' => '^[0-9]+\\.[0-9]{2}$',
+							],
+						],
+					],
+					'items' => [
+						'type' => 'array',
+						'maxItems' => 200,
+						'items' => [
+							'type' => 'object',
+							'additionalProperties' => false,
+							'required' => [ 'item_id', 'product_id', 'product_name', 'sku', 'quantity', 'refunded_quantity', 'remaining_quantity', 'line_subtotal', 'line_total', 'refunded_total', 'remaining_total' ],
+							'properties' => [
+								'item_id' => [
+									'type' => 'integer',
+									'minimum' => 1,
+									'maximum' => 9007199254740991,
+								],
+								'product_id' => [
+									'type' => 'integer',
+									'minimum' => 0,
+									'maximum' => 9007199254740991,
+								],
+								'product_name' => [
+									'type' => 'string',
+									'maxLength' => 500,
+								],
+								'sku' => [
+									'type' => 'string',
+									'maxLength' => 200,
+								],
+								'quantity' => [
+									'type' => 'number',
+									'minimum' => 0,
+									'maximum' => 9007199254740991,
+								],
+								'refunded_quantity' => [
+									'type' => 'number',
+									'minimum' => 0,
+									'maximum' => 9007199254740991,
+								],
+								'remaining_quantity' => [
+									'type' => 'number',
+									'minimum' => 0,
+									'maximum' => 9007199254740991,
+								],
+								'line_subtotal' => [
+									'type' => 'string',
+									'maxLength' => 32,
+									'pattern' => '^[0-9]+\\.[0-9]{2}$',
+								],
+								'line_total' => [
+									'type' => 'string',
+									'maxLength' => 32,
+									'pattern' => '^[0-9]+\\.[0-9]{2}$',
+								],
+								'refunded_total' => [
+									'type' => 'string',
+									'maxLength' => 32,
+									'pattern' => '^[0-9]+\\.[0-9]{2}$',
+								],
+								'remaining_total' => [
+									'type' => 'string',
+									'maxLength' => 32,
+									'pattern' => '^[0-9]+\\.[0-9]{2}$',
+								],
+							],
+						],
+					],
+					'refunds' => [
+						'type' => 'array',
+						'maxItems' => 50,
+						'items' => [
+							'type' => 'object',
+							'additionalProperties' => false,
+							'required' => [ 'id', 'amount', 'reason', 'date', 'date_ts', 'created_by' ],
+							'properties' => [
+								'id' => [
+									'type' => 'integer',
+									'minimum' => 1,
+									'maximum' => 9007199254740991,
+								],
+								'amount' => [
+									'type' => 'string',
+									'maxLength' => 32,
+									'pattern' => '^[0-9]+\\.[0-9]{2}$',
+								],
+								'reason' => [
+									'type' => 'string',
+									'maxLength' => 500,
+								],
+								'date' => [
+									'type' => 'string',
+									'maxLength' => 100,
+								],
+								'date_ts' => [
+									'type' => 'integer',
+									'minimum' => 0,
+									'maximum' => 9007199254740991,
+								],
+								'created_by' => [
+									'type' => 'integer',
+									'enum' => [ 0 ],
+								],
+							],
+						],
+					],
+					'can_refund' => [
+						'type' => 'boolean',
+					],
+				],
+			];
+		}
+
+		if ( 'orders.get_refunds' === $action_name ) {
+			return [
+				'type' => 'object',
+				'additionalProperties' => false,
+				'required' => [ 'order_id', 'currency', 'total_refunded', 'remaining_refundable', 'refunds', 'pagination' ],
+				'properties' => [
+					'order_id' => [
+						'type' => 'integer',
+						'minimum' => 1,
+						'maximum' => 9007199254740991,
+					],
+					'currency' => [
+						'type' => 'string',
+						'maxLength' => 3,
+						'pattern' => '^[A-Z]{3}$',
+					],
+					'total_refunded' => [
+						'type' => 'string',
+						'maxLength' => 32,
+						'pattern' => '^[0-9]+\\.[0-9]{2}$',
+					],
+					'remaining_refundable' => [
+						'type' => 'string',
+						'maxLength' => 32,
+						'pattern' => '^[0-9]+\\.[0-9]{2}$',
+					],
+					'refunds' => [
+						'type' => 'array',
+						'maxItems' => 50,
+						'items' => [
+							'type' => 'object',
+							'additionalProperties' => false,
+							'required' => [ 'refund_id', 'amount', 'reason', 'created_at', 'refunded_payment' ],
+							'properties' => [
+								'refund_id' => [
+									'type' => 'integer',
+									'minimum' => 1,
+									'maximum' => 9007199254740991,
+								],
+								'amount' => [
+									'type' => 'string',
+									'maxLength' => 32,
+									'pattern' => '^[0-9]+\\.[0-9]{2}$',
+								],
+								'reason' => [
+									'type' => 'string',
+									'maxLength' => 500,
+								],
+								'created_at' => [
+									'type' => 'string',
+									'maxLength' => 25,
+								],
+								'refunded_payment' => [
+									'type' => 'boolean',
+								],
+							],
+						],
+					],
+					'pagination' => [
+						'type' => 'object',
+						'additionalProperties' => false,
+						'required' => [ 'limit', 'page', 'has_more', 'snapshot_consistent' ],
+						'properties' => [
+							'limit' => [
+								'type' => 'integer',
+								'minimum' => 1,
+								'maximum' => 50,
+							],
+							'page' => [
+								'type' => 'integer',
+								'minimum' => 1,
+								'maximum' => 100,
+							],
+							'has_more' => [
+								'type' => 'boolean',
+							],
+							'snapshot_consistent' => [
+								'type' => 'boolean',
+								'enum' => [ false ],
+							],
+						],
+					],
+				],
+			];
+		}
+
 		if ( 'loyalty.get_status' === $action_name ) {
 			return [
 				'type' => 'object',
@@ -3213,7 +3530,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_read_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue', 'blacklist.get_status', 'blacklist.get_order_assessment', 'cancellation_return.get_status', 'cancellation_return.get_order_case', 'order_splitter.get_status', 'order_splitter.get_order_activity', 'subscriptions.get_status', 'subscriptions.get_order_context', 'loyalty.get_status', 'loyalty.get_customer_balance' ],
+			[ 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking', 'customers.get_timeline', 'customers.get_follow_up_queue', 'blacklist.get_status', 'blacklist.get_order_assessment', 'cancellation_return.get_status', 'cancellation_return.get_order_case', 'order_splitter.get_status', 'order_splitter.get_order_activity', 'subscriptions.get_status', 'subscriptions.get_order_context', 'loyalty.get_status', 'loyalty.get_customer_balance', 'orders.refund_preview', 'orders.get_refunds' ],
 			true
 		);
 	}
@@ -3374,6 +3691,13 @@ class YoRo_Commerce_Contract_Builder {
 				'page_info' => self::canonical_page_info( $execution['page_info'] ?? ( $raw_data['page_info'] ?? [] ) ),
 				'count'     => count( $products ),
 			];
+		}
+
+		if ( in_array( $action_name, [ 'orders.refund_preview', 'orders.get_refunds' ], true ) ) {
+			$fields = 'orders.refund_preview' === $action_name ? [ 'order', 'totals', 'items', 'refunds', 'can_refund' ] : [ 'order_id', 'currency', 'total_refunded', 'remaining_refundable', 'refunds', 'pagination' ];
+			$data = [];
+			foreach ( $fields as $field ) { $data[ $field ] = $execution[ $field ] ?? ( $raw_data[ $field ] ?? null ); }
+			return $data;
 		}
 
 		if ( in_array( $action_name, [ 'loyalty.get_status', 'loyalty.get_customer_balance' ], true ) ) {

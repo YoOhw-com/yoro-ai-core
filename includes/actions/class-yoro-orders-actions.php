@@ -1360,6 +1360,15 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		YoRo_Action_Registry::register( 'orders.get_refunds', [
+			'label' => 'Refund history', 'description' => 'Read bounded refund observations for one exact order. No payment transfer, external refund recording or mutation.',
+			'category' => 'orders', 'permission' => 'manage_woocommerce', 'risk_level' => 'low', 'write_action' => false, 'requires_confirmation' => false,
+			'callback' => [ 'YoRo_Orders_Read_Service', 'get_refunds' ], 'max_items' => 1, 'max_targets' => 1,
+			'input_schema' => [ 'order_id' => 'integer', 'limit' => 'integer', 'page' => 'integer' ],
+			'canonical_input_schema' => [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 9007199254740991 ], 'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ], 'page' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 100 ] ],
+			'required_params' => [ 'order_id' ], 'capabilities' => [ 'orders', 'read', 'refunds' ],
+		] );
+
 		YoRo_Action_Registry::register(
 			'orders.refund_preview',
 			[
@@ -1370,6 +1379,8 @@ class YoRo_Orders_Actions {
 				'callback'         => [ __CLASS__, 'refund_preview' ],
 				'risk_level'       => 'low',
 				'write_action'     => false,
+				'requires_confirmation' => false,
+				'canonical_input_schema' => [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 9007199254740991 ] ],
 				'input_schema'     => [
 					'order_id' => 'integer',
 				],

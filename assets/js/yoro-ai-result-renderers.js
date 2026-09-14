@@ -44,6 +44,24 @@
 			};
 	}
 
+	function renderRefundHistory(result, h) {
+		const data = result.data && Array.isArray(result.data.refunds) ? result.data : result;
+		const unavailable = '<p>Refund observations are unavailable.</p>';
+		if (!data || !Number.isSafeInteger(data.order_id) || data.order_id < 1 || !/^[A-Z]{3}$/.test(data.currency || '') || !Array.isArray(data.refunds) || data.refunds.length > 50) return unavailable;
+		const escape = value => h.escapeHtml(String(value));
+		const money = value => typeof value === 'string' && value.length <= 32 && /^[0-9]+\.[0-9]{2}$/.test(value);
+		const page = data.pagination;
+		if (!page || !Number.isInteger(page.limit) || page.limit < 1 || page.limit > 50 || !Number.isInteger(page.page) || page.page < 1 || page.page > 100 || typeof page.has_more !== 'boolean' || page.snapshot_consistent !== false || data.refunds.length > page.limit || !money(data.total_refunded) || !money(data.remaining_refundable)) return unavailable;
+		let html = '<div class="yoro-result-card"><h4>Refund history — Order #' + escape(data.order_id) + '</h4><p>Total refunded: ' + escape(data.total_refunded) + ' ' + escape(data.currency) + '; remaining: ' + escape(data.remaining_refundable) + '</p><ul>';
+		const seen = new Set();
+		for (const row of data.refunds) {
+			if (!row || !Number.isSafeInteger(row.refund_id) || row.refund_id < 1 || seen.has(row.refund_id) || !money(row.amount) || typeof row.reason !== 'string' || [...row.reason].length > 500 || typeof row.created_at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/.test(row.created_at) || !Number.isFinite(Date.parse(row.created_at)) || typeof row.refunded_payment !== 'boolean') return unavailable;
+			seen.add(row.refund_id);
+			html += '<li>#' + escape(row.refund_id) + ': ' + escape(row.amount) + ' ' + escape(data.currency) + ' — ' + escape(row.reason) + ' — ' + escape(row.created_at) + '</li>';
+		}
+		return html + '</ul><p>Page ' + escape(page.page) + (page.has_more ? '; more records available.' : '.') + ' Live observations may change between pages. Payment transfer is not verified.</p></div>';
+	}
+
 	function renderLoyalty(result, h) {
 		const data = result.data && typeof result.data.status === 'string' ? result.data : result;
 		const balance = result.display_type === 'loyalty_customer_balance';
@@ -243,6 +261,7 @@
 		const labels = {
 			'orders.search': 'Find orders',
 			'orders.get_details': 'Open order details',
+			'orders.get_refunds': 'Refund history',
 			'orders.refund_preview': 'Preview refund',
 			'orders.email_customer_preview': 'Preview customer email',
 			'orders.email_customer_template': 'Send customer email',
@@ -623,6 +642,7 @@
 				: renderJson(data, h));
 		}
 
+		if (displayType === 'order_refund_history') { return finish(renderRefundHistory(result, h)); }
 		if (displayType === 'refund_preview') {
 			return finish(typeof h.renderRefundPreviewResult === 'function'
 				? h.renderRefundPreviewResult(data)
