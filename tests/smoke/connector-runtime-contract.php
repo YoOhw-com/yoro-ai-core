@@ -992,7 +992,7 @@ try {
 					$assert( 'refund_outcome_unknown' === ( $refund_result['error']['code'] ?? '' ) && false === ( $refund_result['error']['retryable'] ?? true ), 'Unknown external outcome is durable, explicit and not retryable.' );
 				}
 				// A subsequent delivery lease retains the same operation and journal identity.
-				$refund_client->claim['lease_generation'] = ( $refund_client->claim['lease_generation'] ?? 1 ) + 1;
+				$refund_client->claim['delivery']['lease_generation']++;
 				( new YoRo_Connector_Runtime( $refund_client ) )->run_once();
 				$assert( $before_refund_calls + $expected_calls === YoRo_Runtime_Refund_Fake_Gateway::$calls, 'Refund completed/unknown/reclaimed replay cannot transfer again.' );
 				$assert( wp_json_encode( $refund_result ) === wp_json_encode( $refund_client->results[1]['payload'] ?? [] ), 'Refund replay preserves the exact durable result.' );
@@ -1004,6 +1004,64 @@ try {
 		}
 	} finally {
 		$refund_registry->setValue( WC()->payment_gateways(), $refund_gateways );
+		remove_filter( 'pre_http_request', $refund_no_http, 999 ); remove_filter( 'pre_wp_mail', $refund_no_mail, 999 );
+	}
+
+	// External recording shares the unchanged journal, with no gateway invocation for any outcome.
+	$external_gateway = new YoRo_Runtime_Refund_Fake_Gateway(); $external_gateway->supports = [];
+	$external_gateways = WC()->payment_gateways()->payment_gateways();
+	$refund_registry->setValue( WC()->payment_gateways(), $external_gateways + [ $external_gateway->id => $external_gateway ] );
+	add_filter( 'pre_http_request', $refund_no_http, 999 ); add_filter( 'pre_wp_mail', $refund_no_mail, 999 );
+	try {
+		foreach ( [ 'success', 'throw', 'postcondition', 'executing' ] as $external_mode ) {
+			$external_order = wc_create_order(); $external_operation = $operation;
+			$external_creates = 0;
+			$external_observer = static function ( $refund, $args ) use ( &$external_creates, $external_order, $assert ) {
+				if ( $args['order_id'] === $external_order->get_id() ) {
+					++$external_creates;
+					$assert( false === $args['refund_payment'] && false === $args['restock_items'] && [] === $args['line_items'], 'External journal execution calls only the local owner record API.' );
+				}
+			};
+			$external_failure = static function ( $refund_id ) use ( $external_mode, $external_order ) {
+				$refund = wc_get_order( $refund_id );
+				if ( $refund->get_parent_id() !== $external_order->get_id() ) { return; }
+				if ( 'throw' === $external_mode ) { throw new RuntimeException( 'Injected unknown local recording after save.' ); }
+				if ( 'postcondition' === $external_mode ) { $refund->set_currency( 'EUR' ); $refund->save(); }
+			};
+			add_action( 'woocommerce_create_refund', $external_observer, 10, 2 ); add_action( 'woocommerce_refund_created', $external_failure );
+			try {
+				$external_order->set_status( 'processing' ); $external_order->set_currency( 'USD' ); $external_order->set_total( '10.00' );
+				$external_order->set_payment_method( $external_gateway ); $external_order->set_transaction_id( '' ); $external_order->save();
+				$guard = YoRo_Orders_Read_Service::external_refund_recording_state( $external_order->get_id() )['guard'];
+				$external_operation['envelope_id'] = 'envelope_' . hash( 'sha256', wp_generate_uuid4() );
+				$external_operation['idempotency_key'] = 'operation_' . hash( 'sha256', wp_generate_uuid4() );
+				$external_operation['operation_id'] = 'operation_external_refund_' . wp_generate_uuid4();
+				$external_operation['action'] = 'orders.record_external_refund';
+				$external_operation['params'] = [ 'order_id' => $external_order->get_id(), 'amount' => '1.00', 'expected_version' => $guard['current_version'], 'expected_external_refund_state' => $guard['state_token'] ];
+				$external_operation['actor']['permissions'] = [ YoRo_Action_Registry::get( 'orders.record_external_refund' )['permission'] ];
+				$external_client = new YoRo_Connector_Smoke_Client(); $external_client->claim = $client->claim;
+				$external_client->claim['delivery']['operations'] = [ $external_operation ];
+				$before_gateway_calls = YoRo_Runtime_Refund_Fake_Gateway::$calls;
+				if ( 'executing' === $external_mode ) { $assert( 'new' === YoRo_Connector_Execution_Journal::begin( $external_operation )['state'], 'External fixture acquires exactly one journal winner.' ); }
+				( new YoRo_Connector_Runtime( $external_client ) )->run_once();
+				$external_result = $external_client->results[0]['payload'] ?? [];
+				$assert( ( 'executing' === $external_mode ? 0 : 1 ) === $external_creates && $before_gateway_calls === YoRo_Runtime_Refund_Fake_Gateway::$calls, 'External execution creates at most one local record and sends no money.' );
+				$assert( ( 'success' === $external_mode ? 'executed' : 'failed' ) === ( $external_result['status'] ?? '' ), 'External runtime truthfully reports local result: ' . wp_json_encode( $external_result ) );
+				if ( in_array( $external_mode, [ 'throw', 'postcondition' ], true ) ) { $assert( 'external_refund_outcome_unknown' === ( $external_result['error']['code'] ?? '' ) && false === ( $external_result['error']['retryable'] ?? true ), 'Unknown local outcome is durable and non-retryable.' ); }
+				if ( 'success' === $external_mode ) { $assert( 'not_observed' === ( $external_result['result']['data']['external_refund']['external_transfer_verification'] ?? '' ) && false === ( $external_result['result']['data']['external_refund']['payment_transfer_initiated'] ?? true ), 'Remote local record success cannot assert observed external payment.' ); }
+				$external_client->claim['delivery']['lease_generation']++;
+				( new YoRo_Connector_Runtime( $external_client ) )->run_once();
+				$assert( wp_json_encode( $external_result ) === wp_json_encode( $external_client->results[1]['payload'] ?? [] ), 'External record replay returns the exact completed/unknown result.' );
+				$assert( ( 'executing' === $external_mode ? 0 : 1 ) === $external_creates && $before_gateway_calls === YoRo_Runtime_Refund_Fake_Gateway::$calls, 'Reclaimed external operation cannot create a second local record or call a gateway.' );
+			} finally {
+				remove_action( 'woocommerce_create_refund', $external_observer, 10 ); remove_action( 'woocommerce_refund_created', $external_failure );
+				YoRo_Connector_Execution_Journal::clear( $external_operation );
+				foreach ( wc_get_order( $external_order->get_id() )->get_refunds() as $fixture_refund ) { $fixture_refund->delete( true ); }
+				$external_order->delete( true );
+			}
+		}
+	} finally {
+		$refund_registry->setValue( WC()->payment_gateways(), $external_gateways );
 		remove_filter( 'pre_http_request', $refund_no_http, 999 ); remove_filter( 'pre_wp_mail', $refund_no_mail, 999 );
 	}
 
@@ -1378,7 +1436,19 @@ for(const canonical of [false,true]) {
  execution.success=false;if(canonical)execution.data.refund=unknown;else execution.refund=unknown;
  card=render(execution);assert(card.includes('Refund requires reconciliation')&&card.includes('Do not retry')&&!card.includes('Gateway refund verified'));
 }
-console.log('PASS: refund renderer escaping, raw/canonical shape, malformed data and no mutation controls.');
+const externalFacts={order_id:123,refund_id:789,amount:'1.25',currency:'USD',status:'recorded',outcome_unknown:false,refunded_payment:false,restocked:false,retry_allowed:false,current_version:'b'.repeat(64),next_action:null,payment_transfer_initiated:false,external_transfer_verification:'not_observed'};
+for(const canonical of [false,true]) {
+ const execution={success:true,action:'orders.record_external_refund',display_type:'generic',provider_secret:'DO_NOT_RENDER_EXTERNAL_SECRET',...(canonical?{data:{external_refund:externalFacts}}:{data:[],external_refund:externalFacts})};
+ let card=render(execution);assert(card.includes('Local refund record verified')&&card.includes('No money was sent')&&card.includes('Human assertion')&&card.includes('did not observe')&&!card.includes('DO_NOT_RENDER_EXTERNAL_SECRET')&&!/<button|<input/.test(card));
+ const unknown={...externalFacts,refund_id:null,current_version:null,status:'reconciliation_required',outcome_unknown:true,refunded_payment:null,next_action:'orders.get_refunds'};
+ execution.success=false;if(canonical)execution.data.external_refund=unknown;else execution.external_refund=unknown;
+ for(const outerSuccess of [false,true]) {card=renderer.renderResult({success:outerSuccess,stage:'done',result:execution});assert(card.includes('Local refund recording requires reconciliation')&&card.includes('Do not retry')&&card.includes('No money was sent')&&!card.includes('Local refund record verified'));}
+}
+const externalConfirmation={success:true,stage:'confirm',confirm_required:true,pending_operation_active:true,pending_operation_token:'pending-external-fixture',parsed:{action:'orders.record_external_refund',params:{order_id:123,amount:'1.25'}},result:{action:'orders.record_external_refund',order_id:123,amount:'1.25',currency:'USD',remaining_after_refund:'8.75',reason:'<script>do not render</script>',payment_transfer_initiated:false,external_transfer_verification:'not_observed'}};
+let approval=renderer.renderResult(externalConfirmation);assert(approval.includes('No money will be sent')&&approval.includes('already refunded outside WooCommerce')&&approval.includes('does not observe or independently verify')&&approval.includes('1.25 USD')&&approval.includes('&lt;script&gt;')&&!approval.includes('<script>')&&approval.includes('Approve change'));
+approval=renderer.renderResult({...externalConfirmation,result:{...externalConfirmation.result,blocked:true,block_reason:'stale_guard'}});assert(!approval.includes('Approve change'));
+approval=renderer.renderResult({...externalConfirmation,pending_operation_token:'',direct_confirmation_allowed:true});assert(!approval.includes('Approve change'));
+console.log('PASS: refund and external-record renderers: raw/canonical, unknown, no false payment proof, escaped confirmation and no direct bypass.');
 JS;
 $process = proc_open( [ 'node', '-e', $refund_renderer_test, $plugin_root . '/assets/js/yoro-ai-result-renderers.js' ], [ 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ], $pipes );
 $assert( is_resource( $process ), 'Refund renderer test process starts.' );
