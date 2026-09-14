@@ -941,6 +941,72 @@ try {
 		$assert( ! YoRo_Fulfillment_Service::available(), 'Missing native tracking owner never grants remote write capability.' );
 	}
 
+	// Real journal/runtime with isolated gateway: success, ambiguity and a reclaimed executing receipt.
+	class YoRo_Runtime_Refund_Fake_Gateway extends WC_Payment_Gateway {
+		public static $calls = 0;
+		public static $mode = 'success';
+		public function __construct() { $this->id = 'yoro_runtime_refund_fixture'; $this->supports = [ 'refunds' ]; }
+		public function process_refund( $id, $amount = null, $reason = '' ) {
+			++self::$calls;
+			if ( 'error' === self::$mode ) { return new WP_Error( 'fake_unknown', 'Injected ambiguous gateway outcome.' ); }
+			if ( 'throw' === self::$mode ) { throw new RuntimeException( 'Injected post-effect timeout.' ); }
+			return true;
+		}
+	}
+	$refund_gateway = new YoRo_Runtime_Refund_Fake_Gateway();
+	$refund_gateways = WC()->payment_gateways()->payment_gateways();
+	$refund_registry = new ReflectionProperty( WC_Payment_Gateways::class, 'payment_gateways' );
+	$refund_registry->setAccessible( true );
+	$refund_registry->setValue( WC()->payment_gateways(), $refund_gateways + [ $refund_gateway->id => $refund_gateway ] );
+	$refund_no_http = static function () { throw new RuntimeException( 'Refund runtime fixture must never call a network provider.' ); };
+	$refund_no_mail = static function () { return true; };
+	add_filter( 'pre_http_request', $refund_no_http, 999 ); add_filter( 'pre_wp_mail', $refund_no_mail, 999 );
+	try {
+		foreach ( [ 'success', 'error', 'throw', 'executing' ] as $refund_mode ) {
+			$refund_order = wc_create_order();
+			$refund_operation = $operation;
+			try {
+				$refund_order->set_status( 'processing' ); $refund_order->set_currency( 'USD' ); $refund_order->set_total( '10.00' );
+				$refund_order->set_payment_method( $refund_gateway ); $refund_order->set_transaction_id( 'fake-runtime-transaction' ); $refund_order->save();
+				$guard = YoRo_Orders_Read_Service::refund_execution_state( $refund_order->get_id() )['guard'];
+				$refund_operation['envelope_id'] = 'envelope_' . hash( 'sha256', wp_generate_uuid4() );
+				$refund_operation['idempotency_key'] = 'operation_' . hash( 'sha256', wp_generate_uuid4() );
+				$refund_operation['operation_id'] = 'operation_refund_' . wp_generate_uuid4();
+				$refund_operation['action'] = 'orders.refund';
+				$refund_operation['params'] = [ 'order_id' => $refund_order->get_id(), 'amount' => '1.00', 'expected_version' => $guard['current_version'], 'expected_refund_state' => $guard['state_token'] ];
+				$refund_operation['actor']['permissions'] = [ YoRo_Action_Registry::get( 'orders.refund' )['permission'] ];
+				$refund_client = new YoRo_Connector_Smoke_Client(); $refund_client->claim = $client->claim;
+				$refund_client->claim['delivery']['operations'] = [ $refund_operation ];
+				YoRo_Runtime_Refund_Fake_Gateway::$mode = $refund_mode;
+				$before_refund_calls = YoRo_Runtime_Refund_Fake_Gateway::$calls;
+				if ( 'executing' === $refund_mode ) {
+					$acquired = YoRo_Connector_Execution_Journal::begin( $refund_operation );
+					$assert( 'new' === $acquired['state'], 'Fixture must acquire exactly one journal winner.' );
+				}
+				( new YoRo_Connector_Runtime( $refund_client ) )->run_once();
+				$refund_result = $refund_client->results[0]['payload'] ?? [];
+				$expected_calls = 'executing' === $refund_mode ? 0 : 1;
+				$assert( $before_refund_calls + $expected_calls === YoRo_Runtime_Refund_Fake_Gateway::$calls, 'Refund journal admits at most one gateway call; executing receipt admits none.' );
+				$assert( ( 'success' === $refund_mode ? 'executed' : 'failed' ) === ( $refund_result['status'] ?? '' ), 'Refund runtime reports verified success or failed reconciliation: ' . wp_json_encode( $refund_result ) );
+				if ( in_array( $refund_mode, [ 'error', 'throw' ], true ) ) {
+					$assert( 'refund_outcome_unknown' === ( $refund_result['error']['code'] ?? '' ) && false === ( $refund_result['error']['retryable'] ?? true ), 'Unknown external outcome is durable, explicit and not retryable.' );
+				}
+				// A subsequent delivery lease retains the same operation and journal identity.
+				$refund_client->claim['lease_generation'] = ( $refund_client->claim['lease_generation'] ?? 1 ) + 1;
+				( new YoRo_Connector_Runtime( $refund_client ) )->run_once();
+				$assert( $before_refund_calls + $expected_calls === YoRo_Runtime_Refund_Fake_Gateway::$calls, 'Refund completed/unknown/reclaimed replay cannot transfer again.' );
+				$assert( wp_json_encode( $refund_result ) === wp_json_encode( $refund_client->results[1]['payload'] ?? [] ), 'Refund replay preserves the exact durable result.' );
+			} finally {
+				YoRo_Connector_Execution_Journal::clear( $refund_operation );
+				foreach ( wc_get_order( $refund_order->get_id() )->get_refunds() as $fixture_refund ) { $fixture_refund->delete( true ); }
+				$refund_order->delete( true );
+			}
+		}
+	} finally {
+		$refund_registry->setValue( WC()->payment_gateways(), $refund_gateways );
+		remove_filter( 'pre_http_request', $refund_no_http, 999 ); remove_filter( 'pre_wp_mail', $refund_no_mail, 999 );
+	}
+
 	// Regular pricing uses only validated remote claim authority and one durable journal result.
 	$pricing_product = new WC_Product_Simple();
 	$pricing_operation = $operation;
@@ -1303,6 +1369,15 @@ let html=render(base); assert(html.includes('&lt;script&gt;SECRET&lt;/script&gt;
 assert(html.includes('Payment transfer is not verified')&&!/<button|<input|data-action=/.test(html));
 assert(render({...base,data:{order_id:123,currency:'USD',total_refunded:'0.00',remaining_refundable:'100.00',refunds:[],pagination:base.pagination}}).includes('Refund history'));
 for(const mutate of [v=>v.refunds[0].amount='NaN',v=>v.refunds[0].created_at='invalid',v=>v.refunds[0].refunded_payment=1,v=>v.refunds.push({...v.refunds[0]}),v=>v.pagination.page=101,v=>v.pagination.snapshot_consistent=true,v=>v.order_id='123',v=>v.refunds[0].reason='x'.repeat(501)]){const v=JSON.parse(JSON.stringify(base));mutate(v);assert(render(v).includes('Refund observations are unavailable'));}
+
+const facts={order_id:123,refund_id:456,amount:'1.25',currency:'USD',status:'refunded',outcome_unknown:false,refunded_payment:true,restocked:false,retry_allowed:false,current_version:'a'.repeat(64),next_action:null};
+for(const canonical of [false,true]) {
+ const execution={success:true,action:'orders.refund',display_type:'generic',provider_secret:'DO_NOT_RENDER_SECRET',...(canonical?{data:{refund:facts}}:{data:[],refund:facts})};
+ let card=render(execution); assert(card.includes('Gateway refund verified')&&card.includes('1.25 USD')&&!card.includes('DO_NOT_RENDER_SECRET')&&!/<button|<input/.test(card));
+ const unknown={...facts,refund_id:null,current_version:null,status:'reconciliation_required',outcome_unknown:true,refunded_payment:null,next_action:'orders.get_refunds'};
+ execution.success=false;if(canonical)execution.data.refund=unknown;else execution.refund=unknown;
+ card=render(execution);assert(card.includes('Refund requires reconciliation')&&card.includes('Do not retry')&&!card.includes('Gateway refund verified'));
+}
 console.log('PASS: refund renderer escaping, raw/canonical shape, malformed data and no mutation controls.');
 JS;
 $process = proc_open( [ 'node', '-e', $refund_renderer_test, $plugin_root . '/assets/js/yoro-ai-result-renderers.js' ], [ 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ], $pipes );
