@@ -1145,6 +1145,21 @@ class YoRo_Orders_Actions {
 			]
 		);
 
+		foreach ( [ 'get_status', 'get_customer_balance' ] as $method ) {
+			$customer_balance = 'get_customer_balance' === $method;
+			YoRo_Action_Registry::register( 'loyalty.' . $method, [
+				'label' => $customer_balance ? 'Loyalty customer balance' : 'Loyalty status',
+				'description' => $customer_balance ? 'Read only retained current_points and earning_points for one exact current-site customer ID. No history, PII, inference or mutation.' : 'Read characterized Loyalty owner availability and version without construction or settings access.',
+				'category' => 'customers', 'permission' => 'manage_woocommerce', 'risk_level' => 'low',
+				'write_action' => false, 'requires_confirmation' => false, 'max_items' => 1, 'max_targets' => 1,
+				'callback' => [ 'YoRo_Loyalty_Service', $method ],
+				'input_schema' => $customer_balance ? [ 'customer_id' => 'integer' ] : [],
+				'canonical_input_schema' => $customer_balance ? [ 'customer_id' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 9007199254740991 ] ] : [],
+				'required_params' => $customer_balance ? [ 'customer_id' ] : [],
+				'capabilities' => [ 'customers', 'read', 'loyalty' ],
+			] );
+		}
+
 		foreach ( [ 'get_status', 'get_order_context' ] as $method ) {
 			$order_context = 'get_order_context' === $method;
 			YoRo_Action_Registry::register( 'subscriptions.' . $method, [

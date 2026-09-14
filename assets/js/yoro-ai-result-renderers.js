@@ -44,6 +44,24 @@
 			};
 	}
 
+	function renderLoyalty(result, h) {
+		const data = result.data && typeof result.data.status === 'string' ? result.data : result;
+		const balance = result.display_type === 'loyalty_customer_balance';
+		const unavailable = '<p>Loyalty observations are unavailable.</p>';
+		if (!data || !(balance ? ['observed', 'unavailable'] : ['available', 'absent', 'incompatible', 'ambiguous']).includes(data.status)
+			|| !['free', 'premium', 'absent', 'incompatible', 'ambiguous'].includes(data.owner_kind) || !['', '1.2.2'].includes(data.version)) return unavailable;
+		const available = balance ? data.status === 'observed' : data.status === 'available';
+		if (available && (!['free', 'premium'].includes(data.owner_kind) || data.version !== '1.2.2')) return unavailable;
+		const escape = value => h.escapeHtml(String(value));
+		let html = '<div class="yoro-result-card"><h4>Loyalty</h4><p>' + escape(data.status) + ' / ' + escape(data.owner_kind) + ' / ' + escape(data.version) + '</p>';
+		if (balance && available) {
+			if (!Number.isSafeInteger(data.customer_id) || data.customer_id < 1 || !Number.isSafeInteger(data.current_points) || data.current_points < 0
+				|| !Number.isSafeInteger(data.earning_points) || data.earning_points < 0) return unavailable;
+			html += '<p>Customer #' + escape(data.customer_id) + '</p><p>Current points: ' + escape(data.current_points) + '</p><p>Earning points: ' + escape(data.earning_points) + '</p>';
+		}
+		return html + '</div>';
+	}
+
 	function renderSubscriptions(result, h) {
 		const data = result.data && typeof result.data.status === 'string' ? result.data : result;
 		const context = result.display_type === 'subscriptions_order_context';
@@ -535,6 +553,9 @@
 				: renderJson(data, h));
 		}
 
+		if (displayType === 'loyalty_status' || displayType === 'loyalty_customer_balance') {
+			return finish(renderLoyalty(Object.assign({}, result, {display_type: displayType}), h));
+		}
 		if (displayType === 'subscriptions_status' || displayType === 'subscriptions_order_context') {
 			return finish(renderSubscriptions(Object.assign({}, result, {display_type: displayType}), h));
 		}
