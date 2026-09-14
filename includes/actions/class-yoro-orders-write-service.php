@@ -6,6 +6,65 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Orders_Write_Service {
 
+	private static function prepare_refund( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) { return new WP_Error( 'yoro_permission_denied', 'Store management permission is required.' ); }
+		if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'order_id', 'amount', 'reason', 'expected_version', 'expected_refund_state', '_yoro_confirmed', '_yoro_preview' ] ) || ! is_int( $params['order_id'] ?? null ) || $params['order_id'] < 1 || $params['order_id'] > 9007199254740991 ) { return new WP_Error( 'refund_invalid_input', 'One exact order and closed refund parameters are required.' ); }
+		foreach ( [ 'expected_version', 'expected_refund_state' ] as $field ) {
+			if ( ! is_string( $params[ $field ] ?? null ) || ! preg_match( '/^[a-f0-9]{64}$/D', $params[ $field ] ) ) { return new WP_Error( 'refund_invalid_input', 'An authenticated fresh refund preview is required.' ); }
+		}
+		foreach ( [ '_yoro_confirmed', '_yoro_preview' ] as $flag ) {
+			if ( array_key_exists( $flag, $params ) && ! is_bool( $params[ $flag ] ) ) { return new WP_Error( 'refund_invalid_input', 'Invalid execution flags.' ); }
+		}
+		if ( ! is_string( $params['amount'] ?? null ) ) { return new WP_Error( 'refund_invalid_input', 'Amount must be an exact decimal string.' ); }
+		try {
+			$reason = $params['reason'] ?? '';
+			if ( ( array_key_exists( 'reason', $params ) && ! is_string( $params['reason'] ) ) || ! mb_check_encoding( $reason, 'UTF-8' ) || mb_strlen( $reason ) > 500 || preg_match( '/[\x00-\x1f\x7f]/', $reason ) || wp_strip_all_tags( $reason ) !== $reason ) { throw new RuntimeException(); }
+			$state = YoRo_Orders_Read_Service::refund_execution_state( $params['order_id'] );
+			$guard = $state['guard'];
+			if ( ! $guard['eligible'] || ! hash_equals( $guard['current_version'], $params['expected_version'] ) || ! hash_equals( $guard['state_token'], $params['expected_refund_state'] ) ) { return new WP_Error( 'refund_guard_conflict', 'Read a fresh eligible refund preview and confirm again.' ); }
+			$units = YoRo_Orders_Read_Service::refund_money_units( $params['amount'] ?? null, $state['decimals'] );
+			if ( $units < 1 || $units > $state['total'] - $state['refunded'] ) { throw new RuntimeException(); }
+			return [ 'state' => $state, 'amount_units' => $units, 'amount' => YoRo_Orders_Read_Service::refund_money_decimal( $units, $state['decimals'] ), 'reason' => trim( $reason ) ];
+		} catch ( Throwable $error ) { return new WP_Error( 'refund_invalid_input', 'Supply a bounded positive exact amount within the fresh refundable balance and a plain-text reason.' ); }
+	}
+
+	public static function preview_refund( $params ) {
+		$prepared = self::prepare_refund( $params );
+		if ( is_wp_error( $prepared ) ) { return $prepared; }
+		$s = $prepared['state'];
+		$message = 'Send this amount back through the order payment gateway. WooCommerce creates a refund record and may trigger standard refund hooks and customer notifications; a full refund may change the order status to refunded. No stock will be restocked. Reconcile any unknown outcome with refund history and the payment gateway before a new refund; never retry this operation.';
+		return [ 'type' => 'write', 'will_execute' => false, 'blocked' => false, 'changes_store' => true,
+			'order_id' => $s['guard']['order_id'], 'amount' => $prepared['amount'], 'currency' => $s['currency'], 'reason' => $prepared['reason'],
+			'total_refunded' => YoRo_Orders_Read_Service::refund_money_decimal( $s['refunded'], $s['decimals'] ),
+			'remaining_after_refund' => YoRo_Orders_Read_Service::refund_money_decimal( $s['total'] - $s['refunded'] - $prepared['amount_units'], $s['decimals'] ),
+			'payment_method' => $s['payment_method'], 'restock_items' => false, 'message' => $message, 'summary' => $message ];
+	}
+
+	public static function refund( $params ) {
+		if ( true !== ( $params['_yoro_confirmed'] ?? false ) ) { return new WP_Error( 'confirmation_required', 'Explicit claimed confirmation is required.' ); }
+		$prepared = self::prepare_refund( $params );
+		if ( is_wp_error( $prepared ) ) { return $prepared; }
+		$s = $prepared['state']; $id = $s['guard']['order_id'];
+		$facts = [ 'order_id' => $id, 'refund_id' => null, 'amount' => $prepared['amount'], 'currency' => $s['currency'], 'status' => 'reconciliation_required', 'outcome_unknown' => true, 'refunded_payment' => null, 'restocked' => false, 'retry_allowed' => false, 'current_version' => null, 'next_action' => 'orders.get_refunds' ];
+		try {
+			$refund = wc_create_refund( [ 'order_id' => $id, 'amount' => $prepared['amount'], 'reason' => $prepared['reason'], 'line_items' => [], 'refund_payment' => true, 'restock_items' => false ] );
+			if ( ! $refund instanceof WC_Order_Refund || $refund->get_id() < 1 || get_current_blog_id() !== $s['blog'] ) { throw new RuntimeException(); }
+			$refund = wc_get_order( $refund->get_id() );
+			$after = YoRo_Orders_Read_Service::refund_execution_state( $id );
+			if ( ! $refund instanceof WC_Order_Refund || $refund->get_parent_id() !== $id || true !== $refund->get_refunded_payment() || $refund->get_currency() !== $s['currency']
+				|| YoRo_Orders_Read_Service::refund_money_units( $refund->get_amount(), $s['decimals'] ) !== $prepared['amount_units']
+				|| ! isset( $after['total'] ) || $after['blog'] !== $s['blog'] || $after['currency'] !== $s['currency'] || $after['decimals'] !== $s['decimals'] || $after['total'] !== $s['total'] || $after['refunded'] !== $s['refunded'] + $prepared['amount_units'] ) { throw new RuntimeException(); }
+			$expected = $s['refunds']; $expected[] = [ $refund->get_id(), $prepared['amount_units'], true ];
+			$actual = $after['refunds']; sort( $expected ); sort( $actual );
+			if ( $expected !== $actual ) { throw new RuntimeException(); }
+			$facts['refund_id'] = $refund->get_id(); $facts['status'] = 'refunded'; $facts['outcome_unknown'] = false; $facts['refunded_payment'] = true;
+			$facts['current_version'] = $after['guard']['current_version']; $facts['next_action'] = null;
+			return [ 'success' => true, 'action' => 'orders.refund', 'refund' => $facts, 'read_only' => false, 'undoable' => false, 'message' => 'WooCommerce gateway refund completed and the local refund record was verified.' ];
+		} catch ( Throwable $error ) {
+			return [ 'success' => false, 'action' => 'orders.refund', 'refund' => $facts, 'read_only' => false, 'undoable' => false, 'message' => 'Refund outcome is unknown. Do not retry. Reconcile fresh refund history and preview with the payment gateway transaction view before a new confirmation.' ];
+		}
+	}
+
 	const DOWNLOAD_REGENERATION_LIMITATIONS = [ 'download_permission_not_license', 'download_url_not_exposed', 'file_delivery_not_verified', 'regeneration_uses_current_product_download_configuration', 'regeneration_resets_permission_consumption_state', 'partial_failure_requires_fresh_reconciliation' ];
 
 	private static function prepare_download_regeneration( $params ) {

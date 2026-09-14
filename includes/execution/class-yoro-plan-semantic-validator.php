@@ -9,6 +9,11 @@ class YoRo_Plan_Semantic_Validator {
 	public static function validate( $plan, $parsed = [] ) {
 		$plan   = is_array( $plan ) ? $plan : [];
 		$parsed = is_array( $parsed ) ? $parsed : [];
+		if ( 'single' !== ( $plan['type'] ?? '' ) ) {
+			foreach ( (array) ( $plan['steps'] ?? [] ) as $step ) {
+				if ( 'orders.refund' === ( $step['action'] ?? '' ) ) { return new WP_Error( 'refund_separate_confirmation_required', 'A gateway refund requires its own separate confirmation.' ); }
+			}
+		}
 		$order_facts = self::index_order_facts( $parsed, $plan );
 
 		if ( 'single' === sanitize_key( $plan['type'] ?? '' ) ) {

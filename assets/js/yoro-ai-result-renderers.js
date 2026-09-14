@@ -263,6 +263,7 @@
 			'orders.get_details': 'Open order details',
 			'orders.get_refunds': 'Refund history',
 			'orders.refund_preview': 'Preview refund',
+			'orders.refund': 'Refund through payment gateway',
 			'orders.email_customer_preview': 'Preview customer email',
 			'orders.email_customer_template': 'Send customer email',
 			'orders.update_status': 'Update order status',
@@ -640,6 +641,14 @@
 			return finish(typeof h.renderCustomerEmailPreviewResult === 'function'
 				? h.renderCustomerEmailPreviewResult(data)
 				: renderJson(data, h));
+		}
+
+		if (result.action === 'orders.refund') {
+			const refund = (result.data && result.data.refund) || result.refund;
+			const safe = refund && Number.isSafeInteger(refund.order_id) && refund.order_id > 0 && typeof refund.amount === 'string' && /^(0|[1-9][0-9]{0,8})(\.[0-9]{1,6})?$/.test(refund.amount) && /^[A-Z]{3}$/.test(refund.currency || '') && refund.restocked === false && refund.retry_allowed === false;
+			if (!safe) return finish('<div class="yoro-result-card"><p>Refund result unavailable. Reconcile before any new confirmation; do not retry.</p></div>');
+			const verified = result.success === true && refund.status === 'refunded' && refund.outcome_unknown === false && refund.refunded_payment === true && Number.isSafeInteger(refund.refund_id) && refund.refund_id > 0;
+			return finish('<div class="yoro-result-card"><h4>' + (verified ? 'Gateway refund verified' : 'Refund requires reconciliation') + '</h4><p>Order #' + h.escapeHtml(refund.order_id) + ': ' + h.escapeHtml(refund.amount) + ' ' + h.escapeHtml(refund.currency) + '</p><p>' + (verified ? 'WooCommerce returned a successful gateway refund and its local refund record was verified. Standard refund hooks and notifications may run; a full refund may change order status.' : 'The payment outcome is unknown. Check refund history and the gateway transaction before a new confirmation. Do not retry this operation.') + ' No stock was restocked.</p></div>');
 		}
 
 		if (displayType === 'order_refund_history') { return finish(renderRefundHistory(result, h)); }
@@ -1517,6 +1526,7 @@
 	}
 
 	function canApproveDirectConfirmation(data, action) {
+		if (action === 'orders.refund') return false;
 		return !!(
 			action &&
 			data &&
@@ -1530,6 +1540,19 @@
 		options = options || {};
 		const completed = options.completed === true;
 		const lines = [];
+
+		if (action === 'orders.refund') {
+			const id = result.order_id || params.order_id;
+			const amount = result.amount || params.amount;
+			if (!Number.isSafeInteger(id) || id < 1 || typeof amount !== 'string' || !/^(0|[1-9][0-9]{0,8})(\.[0-9]{1,6})?$/.test(amount) || !/^[A-Z]{3}$/.test(result.currency || '')) return ['Refund preview unavailable. Read a fresh preview before confirming.'];
+			return [
+				'Refund ' + amount + ' ' + result.currency + ' for order #' + id + ' through payment gateway ' + (result.payment_method || '(order gateway)') + '.',
+				'Reason: ' + (result.reason || params.reason || '(none)'),
+				'Remaining after refund: ' + result.remaining_after_refund + ' ' + result.currency + '.',
+				'No stock restoration or item allocation. WooCommerce may run standard refund hooks and customer notifications; a full refund may change order status.',
+				'Unknown outcomes require reconciliation with refund history and the gateway transaction. Do not retry this operation.'
+			];
+		}
 
 		if (isCouponAction(action) && (result.blocked === true || result.block_reason)) {
 			return couponConfirmationLines(action, params, result).filter(Boolean);
