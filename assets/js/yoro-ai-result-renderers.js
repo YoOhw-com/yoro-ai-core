@@ -44,6 +44,35 @@
 			};
 	}
 
+	function renderCancellationReturn(result, h) {
+		const payload = result.data && typeof result.data.status === 'string' ? result.data : result;
+		const isCase = result.display_type === 'cancellation_return_order_case';
+		const unavailable = '<p>Cancellation & Return observations are unavailable.</p>';
+		const states = isCase ? ['observed', 'not_observed', 'unavailable'] : ['available', 'absent', 'incompatible'];
+		if (!payload || !states.includes(payload.status) || !['free', 'premium', 'absent', 'incompatible'].includes(payload.owner_kind) || typeof payload.version !== 'string' || payload.version.length > 32) return unavailable;
+		const escape = value => h.escapeHtml(String(value));
+		let html = '<div class="yoro-result-card"><h4>Cancellation & Return</h4><p>' + escape(payload.owner_kind) + ' ' + escape(payload.version) + ' / ' + escape(payload.status) + '</p>';
+		if (isCase && payload.status !== 'unavailable') {
+			if (!Number.isInteger(payload.order_id) || payload.order_id < 1 || typeof payload.order_status !== 'string' || payload.order_status.length > 40) return unavailable;
+			html += '<p>Order #' + escape(payload.order_id) + ' / ' + escape(payload.order_status) + '</p>';
+			for (const kind of ['cancellation', 'return']) {
+				const observation = payload[kind];
+				if (!observation || !['none', 'pending', 'approved', 'rejected', 'completed', 'not_observed'].includes(observation.state) || !observation.eligibility || !['eligible', 'ineligible', 'not_observed', 'unavailable'].includes(observation.eligibility.status)) return unavailable;
+				html += '<h5>' + escape(kind) + '</h5><p>Retained state: ' + escape(observation.state) + '; eligibility: ' + escape(observation.eligibility.status) + '</p><dl>';
+				for (const field of ['requested_at', 'approved_at', 'rejected_at', 'completed_at']) {
+					if (typeof observation[field] !== 'string' || observation[field].length > 40) return unavailable;
+					if (observation[field]) html += '<dt>' + escape(field.replace(/_/g, ' ')) + '</dt><dd>' + escape(observation[field]) + '</dd>';
+				}
+				for (const field of ['request_reason_present', 'rejection_reason_present', 'approval_message_present', 'completion_reason_present', 'resolution_present', 'item_scope_present']) {
+					if (typeof observation[field] !== 'boolean') return unavailable;
+					html += '<dt>' + escape(field.replace(/_/g, ' ')) + '</dt><dd>' + (observation[field] ? 'Yes' : 'No') + '</dd>';
+				}
+				html += '</dl>';
+			}
+		}
+		return html + '<p>Retained owner evidence only. Reasons, messages and item payloads are omitted. Premium eligibility is not observed.</p></div>';
+	}
+
 	function renderBlacklistObservation(result, h) {
 		const payload = result.data && typeof result.data.status === 'string' ? result.data : result;
 		const assessment = result.display_type === 'blacklist_order_assessment';
@@ -444,6 +473,10 @@
 			return finish(typeof h.renderOrdersResult === 'function'
 				? h.renderOrdersResult(data)
 				: renderJson(data, h));
+		}
+
+		if (displayType === 'cancellation_return_status' || displayType === 'cancellation_return_order_case') {
+			return finish(renderCancellationReturn(Object.assign({}, result, {display_type: displayType}), h));
 		}
 
 		if (displayType === 'blacklist_status' || displayType === 'blacklist_order_assessment') {
