@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:f74a647300a14b8fc89d815c3b69ea3b5347b3b20158f401f2c7b5498f60f82d';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:75c1afd641b752edd807255f0ce9cdc74f654102a3190cc65db2034f6b6f90fa';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -397,6 +397,10 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function execution_output_schema( $action_name = '' ) {
+		if ( 'orders.create' === $action_name ) {
+			return [ 'type' => 'object', 'properties' => [ 'success' => [ 'type' => 'boolean' ], 'action' => [ 'type' => 'string' ], 'message' => [ 'type' => 'string' ], 'summary' => [ 'type' => 'string' ], 'data' => [ 'type' => 'object', 'properties' => [ 'order_creation' => [ 'type' => [ 'object', 'null' ], 'properties' => [ 'order_id' => [ 'type' => [ 'integer', 'null' ], 'minimum' => 1 ], 'status' => [ 'type' => 'string', 'enum' => [ 'pending', 'reconciliation_required' ] ], 'outcome_unknown' => [ 'type' => 'boolean' ], 'retry_allowed' => [ 'type' => 'boolean', 'enum' => [ false ] ], 'payment_initiated' => [ 'type' => 'boolean', 'enum' => [ false ] ], 'customer_id' => [ 'type' => 'integer', 'enum' => [ 0 ] ], 'currency' => [ 'type' => 'string', 'pattern' => '^[A-Z]{3}$' ], 'subtotal' => [ 'type' => [ 'string', 'null' ], 'pattern' => '^[0-9]+(\\.[0-9]{1,6})?$' ], 'tax' => [ 'type' => [ 'string', 'null' ], 'pattern' => '^[0-9]+(\\.[0-9]{1,6})?$' ], 'total' => [ 'type' => [ 'string', 'null' ], 'pattern' => '^[0-9]+(\\.[0-9]{1,6})?$' ] ], 'required' => [ 'order_id', 'status', 'outcome_unknown', 'retry_allowed', 'payment_initiated', 'customer_id', 'currency', 'subtotal', 'tax', 'total' ], 'additionalProperties' => false ] ], 'required' => [ 'order_creation' ], 'additionalProperties' => false ], 'read_only' => [ 'type' => 'boolean' ], 'undoable' => [ 'type' => 'boolean' ], 'result_type' => [ 'type' => 'string' ], 'display_type' => [ 'type' => 'string' ], 'assistant_summary' => [ 'type' => 'string' ], 'extensions' => [ 'type' => 'object' ] ], 'required' => [ 'success', 'action', 'message', 'summary', 'data', 'read_only', 'undoable', 'result_type', 'display_type', 'assistant_summary', 'extensions' ], 'additionalProperties' => false ];
+		}
+
 		if ( 'coupons.search' === $action_name ) {
 			$item = [
 				'coupon_id' => [ 'type' => 'integer', 'minimum' => 1 ],
@@ -1609,6 +1613,23 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function canonical_execution_payload( array $execution, $action_name = '' ) {
+        if ( 'orders.create' === ( $action_name ?: ( $execution['action'] ?? '' ) ) ) {
+            $facts = $execution['order_creation'] ?? ( $execution['data']['order_creation'] ?? null );
+            $schema = self::execution_output_schema( 'orders.create' )['properties']['data']['properties']['order_creation'];
+            $valid = is_array( $facts ) && self::email_history_schema_value( $facts, $schema );
+            if ( $valid ) {
+                $done = 'pending' === $facts['status'];
+                $valid = $done
+                    ? ( true === ( $execution['success'] ?? false ) && false === $facts['outcome_unknown'] && null !== $facts['order_id'] && null !== $facts['subtotal'] && null !== $facts['tax'] && null !== $facts['total'] )
+                    : ( false === ( $execution['success'] ?? true ) && true === $facts['outcome_unknown'] && null === $facts['subtotal'] && null === $facts['tax'] && null === $facts['total'] );
+            }
+            $success = $valid && 'pending' === $facts['status'];
+            $summary = $success ? 'One unpaid pending guest order was verified. Amounts are final persisted facts, not the earlier estimate. No payment was initiated. Native Woo/plugin hooks may have run.' : 'Order creation requires reconciliation. Do not retry or automatically delete. No payment was initiated.';
+            return [ 'success' => $success, 'action' => 'orders.create', 'message' => $summary, 'summary' => $summary,
+                'data' => [ 'order_creation' => $valid ? $facts : null ], 'read_only' => false, 'undoable' => false,
+                'result_type' => 'order_creation', 'display_type' => 'order_creation', 'assistant_summary' => $summary, 'extensions' => (object) [] ];
+        }
+
 		if ( 'orders.record_external_refund' === ( $action_name ?: ( $execution['action'] ?? '' ) ) ) {
 			$facts = $execution['external_refund'] ?? ( $execution['data']['external_refund'] ?? null );
 			$schema = self::execution_output_schema( 'orders.record_external_refund' )['properties']['data']['properties']['external_refund'];

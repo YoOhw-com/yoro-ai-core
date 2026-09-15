@@ -15,6 +15,15 @@ class YoRo_Orders_Actions {
 	}
 
 	public static function register() {
+		YoRo_Action_Registry::register( 'orders.create', [
+			'label' => 'Create a pending guest order', 'description' => 'Create one unpaid guest order after a local catalog estimate and separate confirmation. WordPress local only; no payment or stock action. Final totals are determined by WooCommerce.',
+			'category' => 'orders', 'permission' => 'manage_woocommerce', 'callback' => [ 'YoRo_Orders_Write_Service', 'create' ], 'preview_callback' => [ 'YoRo_Orders_Write_Service', 'preview_create' ],
+			'effect' => 'mutate', 'external_side_effect' => false, 'risk_level' => 'high', 'write_action' => true, 'requires_confirmation' => true, 'reversibility' => 'none',
+			'idempotency_strategy' => 'operation_journal', 'concurrency_strategy' => 'optimistic_version',
+			'input_schema' => [ 'line_items' => 'array' ],
+			'canonical_input_schema' => [ 'line_items' => [ 'type' => 'array', 'minItems' => 1, 'maxItems' => 20, 'items' => [ 'type' => 'object', 'properties' => [ 'product_id' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 9007199254740991 ], 'quantity' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 1000 ] ], 'required' => [ 'product_id', 'quantity' ], 'additionalProperties' => false ] ] ],
+			'required_params' => [ 'line_items' ], 'max_items' => 1, 'max_targets' => 1, 'target_type' => 'order', 'supports_bulk' => false, 'capabilities' => [ 'orders', 'write' ],
+		] );
 		YoRo_Action_Registry::register( 'orders.record_external_refund', [
 			'label' => 'Record an externally completed refund',
 			'description' => 'Record one exact amount already refunded externally, after a fresh preview and separate Human confirmation. Sends no money and does not verify the external transfer. No stock or item allocation.',
