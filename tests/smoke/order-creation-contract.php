@@ -131,6 +131,19 @@ try {
     finally { remove_action( 'woocommerce_new_order_item', $failure ); }
     $assert( false === $partial['success'] && true === $partial['order_creation']['outcome_unknown'] && $partial['order_creation']['order_id'] > 0 && null === $partial['order_creation']['total'], 'Partial creation preserves safely known ID but no final-money claim.' );
     $assert( 0 === $unexpected_mail, 'No real mail attempted by the admitted pending lifecycle.' );
+    foreach ( [ 'woocommerce_order_get_total' => '999999.00', 'woocommerce_order_get_total_tax' => '888888.00', 'woocommerce_order_get_subtotal' => 777777.0, 'woocommerce_order_get_status' => 'completed' ] as $hook => $view_value ) {
+        $view_filter = static function () use ( $view_value ) { return $view_value; };
+        add_filter( $hook, $view_filter );
+        try { $view_result = YoRo_Orders_Write_Service::create( $params, [ 'plan' => $plan, 'preview_hash' => YoRo_Safety_Contract::preflight( $plan )['preview_hash'] ] ); }
+        finally { remove_filter( $hook, $view_filter ); }
+        $assert( is_array( $view_result ) && ! $view_result['success'] && $view_result['order_creation']['outcome_unknown'] && null === $view_result['order_creation']['total'], 'View-only owner filter cannot be called final persisted proof: ' . $hook );
+    }
+    $hide_line = static function ( $items, $order, $types ) { if ( in_array( 'line_item', $types, true ) && count( $items ) > 1 ) { array_pop( $items ); } return $items; };
+    add_filter( 'woocommerce_order_get_items', $hide_line, 10, 3 );
+    try { $hidden_result = YoRo_Orders_Write_Service::create( $params, [ 'plan' => $plan, 'preview_hash' => YoRo_Safety_Contract::preflight( $plan )['preview_hash'] ] ); }
+    finally { remove_filter( 'woocommerce_order_get_items', $hide_line, 10 ); }
+    $assert( is_array( $hidden_result ) && ! $hidden_result['success'] && null === $hidden_result['order_creation']['total'], 'Filtered item list cannot hide persisted lines from postconditions.' );
+
     $id_hook = static function ( $and_taxes, $order ) {
         if ( $order->get_id() > 0 ) {
             foreach ( $order->get_items() as $item ) { $item->set_total( 1 ); $item->set_subtotal( 1 ); }
@@ -234,16 +247,25 @@ vm.createContext(sandbox);
 vm.runInContext(extract('updateConversationState') + '\n' + extract('executeActionDirect'), sandbox);
 sandbox.updateConversationState(display, 'fixture');
 assert.strictEqual(sandbox.conversationState.order_creation_receipt.value, display.displayed_preview_receipt);
-sandbox.executeActionDirect('orders.create', {}, true, false, '', display.pending_operation_token);
+sandbox.executeActionDirect('orders.create', {}, true, false, '', display.pending_operation_token, display.displayed_preview_receipt);
 assert.strictEqual(sent[0].displayed_preview_receipt, display.displayed_preview_receipt);
 assert(!('preview_hash' in sent[0]));
 assert(!('expected_order_create_state' in sent[0]));
 assert.strictEqual(sandbox.conversationState.order_creation_receipt, null);
-sandbox.executeActionDirect('orders.create', {}, true, false, '', display.pending_operation_token);
+sandbox.executeActionDirect('orders.create', {}, true, false, '', display.pending_operation_token, display.displayed_preview_receipt);
 assert(!('displayed_preview_receipt' in sent[1]));
 sandbox.updateConversationState(display, 'fixture');
 sandbox.updateConversationState({conversation_id: 'other', pending_operation_token: 'other'}, 'fixture');
 assert.strictEqual(sandbox.conversationState.order_creation_receipt, null);
+sandbox.updateConversationState(display, 'fixture');
+const newer = JSON.parse(JSON.stringify(display)); newer.displayed_preview_receipt = 'newer-opaque-receipt';
+sandbox.updateConversationState(newer, 'fixture');
+sandbox.executeActionDirect('orders.create', {}, true, false, '', display.pending_operation_token, display.displayed_preview_receipt);
+assert(!('displayed_preview_receipt' in sent[2]));
+assert.strictEqual(sandbox.conversationState.order_creation_receipt.value, newer.displayed_preview_receipt);
+sandbox.executeActionDirect('orders.create', {}, true, false, '', newer.pending_operation_token, newer.displayed_preview_receipt);
+assert.strictEqual(sent[3].displayed_preview_receipt, newer.displayed_preview_receipt);
+assert(admin.includes("approveButton.getAttribute('data-displayed-preview-receipt')"));
 const renderer = {window: {}};
 vm.createContext(renderer);
 vm.runInContext(fs.readFileSync(root + '/assets/js/yoro-ai-result-renderers.js', 'utf8'), renderer);
@@ -255,7 +277,8 @@ assert(html.includes('Estimate only'));
 assert(html.includes('not final order'));
 assert(html.includes('Approve change'));
 assert(!html.includes('<script>fixture'));
-assert(!html.includes(display.displayed_preview_receipt));
+assert(html.includes('data-displayed-preview-receipt="' + display.displayed_preview_receipt + '"'));
+assert(!html.replace(/<[^>]*>/g, '').includes(display.displayed_preview_receipt));
 const missing = JSON.parse(JSON.stringify(display)); delete missing.displayed_preview_receipt;
 assert(!instance.renderResult(missing).includes('Approve change'));
 console.log('UI receipt store/echo/replay/cross-conversation and escaped estimate rendering PASS');

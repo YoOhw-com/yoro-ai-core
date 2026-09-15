@@ -2726,7 +2726,7 @@
 		} else {
 			actionsHtml += '<div class="yoro-confirm-actions">';
 			if (useDirectConfirm) {
-				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-direct-action="' + h.escapeHtml(action) + '" data-direct-params="' + encodedParams + '" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '">Approve change</button>';
+				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-direct-action="' + h.escapeHtml(action) + '" data-direct-params="' + encodedParams + '" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '"' + (action === 'orders.create' ? ' data-displayed-preview-receipt="' + h.escapeHtml(data.displayed_preview_receipt) + '"' : '') + '>Approve change</button>';
 			} else {
 				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '">Approve change</button>';
 			}

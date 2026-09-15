@@ -5858,7 +5858,7 @@
 			return 0;
 		}
 
-		function executeActionDirect(action, params, confirm, preview, surface, pendingOperationToken) {
+		function executeActionDirect(action, params, confirm, preview, surface, pendingOperationToken, displayedPreviewReceipt) {
 			const hasExplicitPendingOperationToken = arguments.length >= 6;
 			const payload = {
 				action: action,
@@ -5873,6 +5873,7 @@
 			};
 
 			if (action === 'orders.create' && confirm && conversationState.order_creation_receipt
+				&& typeof displayedPreviewReceipt === 'string' && displayedPreviewReceipt === conversationState.order_creation_receipt.value
 				&& conversationState.order_creation_receipt.pending === payload.pending_operation_token
 				&& conversationState.order_creation_receipt.conversation === payload.conversation_id) {
 				payload.displayed_preview_receipt = conversationState.order_creation_receipt.value;
@@ -6141,7 +6142,7 @@
 							}
 						}
 
-						executeActionDirect(directAction, directParams, true, false, '', directPendingOperationToken)
+						executeActionDirect(directAction, directParams, true, false, '', directPendingOperationToken, approveButton.getAttribute('data-displayed-preview-receipt') || '')
 							.then(function(data) {
 								hideConfirmationActions(approveButton);
 								addAssistantMessage(data);

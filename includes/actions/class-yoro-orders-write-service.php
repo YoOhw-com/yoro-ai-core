@@ -74,15 +74,38 @@ class YoRo_Orders_Write_Service {
 			$order->calculate_totals();
 			if ( ! $order->save() ) { throw new RuntimeException(); }
 			$reloaded = wc_get_order( $facts['order_id'] );
-			if ( ! $reloaded instanceof WC_Order || $reloaded->get_status() !== 'pending' || (int) $reloaded->get_customer_id() !== 0 || $reloaded->get_currency() !== $quote['currency'] || $reloaded->get_payment_method() !== '' || $reloaded->get_transaction_id() !== '' || $reloaded->get_date_paid() || $reloaded->get_items( [ 'shipping', 'fee', 'coupon' ] ) ) { throw new RuntimeException(); }
-			$actual = [];
-			foreach ( $reloaded->get_items( 'line_item' ) as $line ) {
-				if ( ! is_numeric( $line->get_quantity() ) || (float) $line->get_quantity() !== (float) (int) $line->get_quantity() ) { throw new RuntimeException(); }
-				$actual[] = [ 'product_id' => $line->get_variation_id() ?: $line->get_product_id(), 'quantity' => (int) $line->get_quantity() ];
+			if ( ! $reloaded instanceof WC_Order || $reloaded->get_id() !== $facts['order_id'] || wc_get_price_decimals() !== $quote['decimals'] ) { throw new RuntimeException(); }
+			// Observe view hooks, then prove they agree with reloaded owner storage facts.
+			foreach ( [ 'get_status' => 'pending', 'get_customer_id' => 0, 'get_currency' => $quote['currency'], 'get_payment_method' => '', 'get_transaction_id' => '', 'get_date_paid' => null ] as $getter => $expected ) {
+				if ( $reloaded->$getter( 'edit' ) !== $expected || $reloaded->$getter() !== $expected ) { throw new RuntimeException(); }
+			}
+			$stored_lines = []; $observed_lines = [];
+			foreach ( [ 'line_item', 'shipping', 'fee', 'coupon' ] as $type ) {
+				$stored = $reloaded->get_data_store()->read_items( $reloaded, $type );
+				$observed = $reloaded->get_items( $type );
+				if ( ! is_array( $stored ) || array_keys( $stored ) !== array_keys( $observed ) || ( 'line_item' !== $type && $stored ) ) { throw new RuntimeException(); }
+				if ( 'line_item' === $type ) { $stored_lines = $stored; $observed_lines = $observed; }
+			}
+			$actual = []; $subtotal_values = [];
+			foreach ( $stored_lines as $id => $line ) {
+				$observed = $observed_lines[ $id ];
+				foreach ( [ 'get_product_id', 'get_variation_id', 'get_quantity', 'get_subtotal' ] as $getter ) {
+					if ( $line->$getter( 'edit' ) !== $observed->$getter() ) { throw new RuntimeException(); }
+				}
+				$quantity = $line->get_quantity( 'edit' );
+				if ( (float) $quantity !== (float) (int) $quantity ) { throw new RuntimeException(); }
+				$actual[] = [ 'product_id' => $line->get_variation_id( 'edit' ) ?: $line->get_product_id( 'edit' ), 'quantity' => (int) $quantity ];
+				$subtotal_values[] = wc_add_number_precision( (float) $line->get_subtotal( 'edit' ), false );
 			}
 			if ( $actual !== $params['line_items'] ) { throw new RuntimeException(); }
-			foreach ( [ 'subtotal' => $reloaded->get_subtotal(), 'tax' => $reloaded->get_total_tax(), 'total' => $reloaded->get_total() ] as $key => $amount ) {
-				if ( ! is_numeric( $amount ) || ! is_finite( (float) $amount ) || (float) $amount < 0 ) { throw new RuntimeException(); }
+			// The same public Woo aggregation/rounding used by get_subtotal, over stored line values.
+			$stored_subtotal = \Automattic\WooCommerce\Utilities\NumberUtil::round( wc_remove_number_precision( WC_Order::get_rounded_items_total( $subtotal_values ) ), $quote['decimals'] );
+			$stored_money = [ 'subtotal' => $stored_subtotal, 'tax' => $reloaded->get_total_tax( 'edit' ), 'total' => $reloaded->get_total( 'edit' ) ];
+			$view_money = [ 'subtotal' => $reloaded->get_subtotal(), 'tax' => $reloaded->get_total_tax(), 'total' => $reloaded->get_total() ];
+			$verified_money = [];
+			foreach ( $stored_money as $key => $amount ) {
+				$view = $view_money[ $key ];
+				if ( ! is_numeric( $amount ) || ! is_finite( (float) $amount ) || (float) $amount < 0 || ! is_numeric( $view ) || ! is_finite( (float) $view ) || (float) $view < 0 || wc_format_decimal( $amount, $quote['decimals'] ) !== wc_format_decimal( $view, $quote['decimals'] ) ) { throw new RuntimeException(); }
 				$verified_money[ $key ] = wc_format_decimal( $amount, $quote['decimals'] );
 			}
 			$facts = array_merge( $facts, $verified_money );
