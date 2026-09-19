@@ -28,7 +28,7 @@ class YoRo_Action_Executor {
 		}
 
 		$creation_approval = null;
-		if ( 'orders.create' === $action_name ) {
+		if ( in_array( $action_name, [ 'orders.create', 'orders.update_items' ], true ) ) {
 			if ( ! $confirm || ! empty( $context['connector_remote_agent'] ) || ! $claimed_execution_context instanceof Closure ) {
 				return new WP_Error( 'order_creation_local_permit_required', 'Order creation requires a freshly claimed local displayed-preview approval. Remote execution is unsupported.' );
 			}
@@ -118,7 +118,7 @@ class YoRo_Action_Executor {
 			]
 		);
 
-		$execution = 'orders.create' === $action_name ? [ 'result' => YoRo_Orders_Write_Service::create( $params, $creation_approval ) ] : ( new YoRo_Action_Execution_Router() )->execute( $action_name, $action, $params, $context );
+		$execution = 'orders.create' === $action_name ? [ 'result' => YoRo_Orders_Write_Service::create( $params, $creation_approval ) ] : ( 'orders.update_items' === $action_name ? [ 'result' => YoRo_Orders_Write_Service::update_items( $params, $creation_approval ) ] : ( new YoRo_Action_Execution_Router() )->execute( $action_name, $action, $params, $context ) );
 		$result = is_array( $execution ) && array_key_exists( 'result', $execution )
 			? $execution['result']
 			: new WP_Error( 'yoro_execution_provider_failed', __( 'YoRo could not safely execute that action.', 'yoro-ai-core' ) );

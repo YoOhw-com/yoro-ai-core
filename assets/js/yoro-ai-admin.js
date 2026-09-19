@@ -5429,7 +5429,7 @@
 			if (conversationState.order_creation_receipt && (conversationState.order_creation_receipt.pending !== String(pendingOperationToken || '') || conversationState.order_creation_receipt.conversation !== String(conversationId || conversationState.conversation_id || ''))) {
 				conversationState.order_creation_receipt = null;
 			}
-			if (data.stage === 'confirm' && (result.action || parsed.action) === 'orders.create' && typeof data.displayed_preview_receipt === 'string' && data.displayed_preview_receipt.length > 0 && data.displayed_preview_receipt.length <= 4096 && pendingOperationToken && conversationId) {
+			if (data.stage === 'confirm' && ['orders.create', 'orders.update_items'].indexOf(result.action || parsed.action) !== -1 && typeof data.displayed_preview_receipt === 'string' && data.displayed_preview_receipt.length > 0 && data.displayed_preview_receipt.length <= 4096 && pendingOperationToken && conversationId) {
 				conversationState.order_creation_receipt = { pending: String(pendingOperationToken), conversation: String(conversationId), value: data.displayed_preview_receipt };
 			}
 				if (pendingOperationToken) {
@@ -5678,10 +5678,10 @@
 			})
 			.then(function (data) {
 				const action = data && (data.action || (data.parsed && data.parsed.action) || (data.result && data.result.action));
-				if (!confirm && action === 'orders.create' && data.stage === 'confirm') {
+				if (!confirm && ['orders.create', 'orders.update_items'].indexOf(action) !== -1 && data.stage === 'confirm') {
 					updateConversationState(data, command);
 					conversationState.order_creation_receipt = null;
-					return requestJson(YoRoAIAdmin.executeUrl, { method: 'POST', body: JSON.stringify({ action: 'orders.create', params: {}, confirm: false, pending_operation_token: conversationState.pending_operation_token || '', conversation_id: conversationState.conversation_id || '' }) });
+					return requestJson(YoRoAIAdmin.executeUrl, { method: 'POST', body: JSON.stringify({ action: action, params: {}, confirm: false, pending_operation_token: conversationState.pending_operation_token || '', conversation_id: conversationState.conversation_id || '' }) });
 				}
 				return data;
 			})
@@ -5872,7 +5872,7 @@
 					: (conversationState.pending_operation_token || '')
 			};
 
-			if (action === 'orders.create' && confirm && conversationState.order_creation_receipt
+			if (['orders.create', 'orders.update_items'].indexOf(action) !== -1 && confirm && conversationState.order_creation_receipt
 				&& typeof displayedPreviewReceipt === 'string' && displayedPreviewReceipt === conversationState.order_creation_receipt.value
 				&& conversationState.order_creation_receipt.pending === payload.pending_operation_token
 				&& conversationState.order_creation_receipt.conversation === payload.conversation_id) {

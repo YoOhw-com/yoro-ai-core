@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:75c1afd641b752edd807255f0ce9cdc74f654102a3190cc65db2034f6b6f90fa';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:284ad3c3596dd0e603fa31fc18ba1ba734a6645e08a0e4caecb94bf1a238fd93';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -397,6 +397,9 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	public static function execution_output_schema( $action_name = '' ) {
+		if ( 'orders.update_items' === $action_name ) {
+			return [ 'type' => 'object', 'properties' => [ 'success' => [ 'type' => 'boolean' ], 'action' => [ 'type' => 'string' ], 'message' => [ 'type' => 'string' ], 'summary' => [ 'type' => 'string' ], 'data' => [ 'type' => 'object', 'properties' => [ 'order_item_update' => [ 'type' => 'object' ] ], 'required' => [ 'order_item_update' ], 'additionalProperties' => false ], 'read_only' => [ 'type' => 'boolean' ], 'undoable' => [ 'type' => 'boolean' ], 'result_type' => [ 'type' => 'string' ], 'display_type' => [ 'type' => 'string' ], 'assistant_summary' => [ 'type' => 'string' ], 'extensions' => [ 'type' => 'object' ] ], 'required' => [ 'success', 'action', 'message', 'summary', 'data', 'read_only', 'undoable', 'result_type', 'display_type', 'assistant_summary', 'extensions' ], 'additionalProperties' => false ];
+		}
 		if ( 'orders.create' === $action_name ) {
 			return [ 'type' => 'object', 'properties' => [ 'success' => [ 'type' => 'boolean' ], 'action' => [ 'type' => 'string' ], 'message' => [ 'type' => 'string' ], 'summary' => [ 'type' => 'string' ], 'data' => [ 'type' => 'object', 'properties' => [ 'order_creation' => [ 'type' => [ 'object', 'null' ], 'properties' => [ 'order_id' => [ 'type' => [ 'integer', 'null' ], 'minimum' => 1 ], 'status' => [ 'type' => 'string', 'enum' => [ 'pending', 'reconciliation_required' ] ], 'outcome_unknown' => [ 'type' => 'boolean' ], 'retry_allowed' => [ 'type' => 'boolean', 'enum' => [ false ] ], 'payment_initiated' => [ 'type' => 'boolean', 'enum' => [ false ] ], 'customer_id' => [ 'type' => 'integer', 'enum' => [ 0 ] ], 'currency' => [ 'type' => 'string', 'pattern' => '^[A-Z]{3}$' ], 'subtotal' => [ 'type' => [ 'string', 'null' ], 'pattern' => '^[0-9]+(\\.[0-9]{1,6})?$' ], 'tax' => [ 'type' => [ 'string', 'null' ], 'pattern' => '^[0-9]+(\\.[0-9]{1,6})?$' ], 'total' => [ 'type' => [ 'string', 'null' ], 'pattern' => '^[0-9]+(\\.[0-9]{1,6})?$' ] ], 'required' => [ 'order_id', 'status', 'outcome_unknown', 'retry_allowed', 'payment_initiated', 'customer_id', 'currency', 'subtotal', 'tax', 'total' ], 'additionalProperties' => false ] ], 'required' => [ 'order_creation' ], 'additionalProperties' => false ], 'read_only' => [ 'type' => 'boolean' ], 'undoable' => [ 'type' => 'boolean' ], 'result_type' => [ 'type' => 'string' ], 'display_type' => [ 'type' => 'string' ], 'assistant_summary' => [ 'type' => 'string' ], 'extensions' => [ 'type' => 'object' ] ], 'required' => [ 'success', 'action', 'message', 'summary', 'data', 'read_only', 'undoable', 'result_type', 'display_type', 'assistant_summary', 'extensions' ], 'additionalProperties' => false ];
 		}
