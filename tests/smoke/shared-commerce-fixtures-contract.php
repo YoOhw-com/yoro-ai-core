@@ -186,3 +186,11 @@ $assert( $address_fixture['data_required'] === $address_schema['properties']['da
 $assert( $address_fixture['sample_data'] === $address_payload['data'], 'B3 fixture projects without coercion or unrelated order data.' );
 $assert( [] === (array) $address_payload['extensions'] && false === $address_payload['read_only'] && false === $address_payload['undoable'], 'B3 output is bounded and has no invented undo.' );
 $assert( false === strpos( wp_json_encode( $address_payload ), 'secret' ), 'B3 canonical payload strips provider debug and arbitrary extensions.' );
+
+$creation_fixture = $action_result_contracts['connector_actions']['orders.create'] ?? null;
+if ( is_array( $creation_fixture ) ) {
+    $creation_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( [ 'success' => true, 'data' => $creation_fixture['sample_data'], 'debug' => 'do-not-expose' ], 'orders.create' );
+    $assert( $creation_payload['success'] && $creation_fixture['sample_data'] === $creation_payload['data'], 'Creation final facts match the exact API fixture.' );
+    $assert( false === strpos( wp_json_encode( $creation_payload ), 'do-not-expose' ), 'Creation does not expose unrelated provider fields.' );
+    $assert( YoRo_Commerce_Contract_Builder::strict_output_validation_ready( 'orders.create' ), 'Creation result schema is recursively closed.' );
+}

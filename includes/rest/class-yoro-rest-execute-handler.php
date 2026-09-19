@@ -34,9 +34,9 @@ class YoRo_REST_Execute_Handler {
 		$pending_operation = [];
 		$execution_permit = '';
 		$claimed_execution_context = null;
-		$direct_confirmation_allowed = '' === $pending_operation_token && ! in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund' ], true );
+		$direct_confirmation_allowed = '' === $pending_operation_token && ! in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund', 'orders.create' ], true );
 
-		if ( $confirm && '' !== $conversation_id && '' !== $pending_operation_token ) {
+		if ( ( $confirm || 'orders.create' === $action ) && '' !== $conversation_id && '' !== $pending_operation_token ) {
 			$stored_action_state = YoRo_REST_Conversation_Action_Coordinator::get_pending_operation_state(
 				$conversation_id,
 				$pending_operation_token
@@ -115,6 +115,22 @@ class YoRo_REST_Execute_Handler {
 		);
 		$trusted_origin = YoRo_Safety_Contract::trusted_origin( $pending_operation_token, 'execute' );
 		$preflight = YoRo_Safety_Contract::preflight( $plan, $pending_operation );
+		if ( 'orders.create' === $action ) {
+			if ( empty( $stored_action_state ) || 'single' !== ( $plan['type'] ?? '' ) || 'confirmation_required' !== ( $pending_operation['status'] ?? '' ) || ( $request_params && $request_params !== $params ) ) {
+				return new WP_Error( 'order_creation_pending_required', 'A current exact local pending order-creation operation is required.' );
+			}
+			if ( ! $confirm ) {
+				$response = YoRo_Runtime_Guard::build_confirmation_response( $plan, $parsed, [] );
+				$response['pending_operation_token'] = $pending_operation_token;
+				$response['conversation_id'] = $conversation_id;
+				return rest_ensure_response( $response );
+			}
+			if ( ! YoRo_Runtime_Guard::verify_creation_receipt( $request->get_param( 'displayed_preview_receipt' ), $plan, $parsed, $preflight ) ) {
+				return new WP_Error( 'order_creation_preview_stale', 'The displayed estimate is missing, expired or changed. Refresh the preview and confirm again; nothing was created.' );
+			}
+			$request_params = [];
+		}
+
 
 		if ( $confirm && self::is_yoro_ai_internal_action( $action ) && '' !== $pending_operation_token ) {
 			if ( 'email.reply.send' === $action ) {
@@ -268,7 +284,7 @@ class YoRo_REST_Execute_Handler {
 		// Confirmation without a pending token keeps its legacy meaning for existing actions.
 		$issued_permit = is_array( $confirmation ?? null ) ? ( $confirmation['execution_permit']['token'] ?? '' ) : '';
 		$product_claim_bound = true;
-		if ( in_array( $action, [ 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund' ], true ) ) {
+		if ( in_array( $action, [ 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund', 'orders.create' ], true ) ) {
 			foreach ( [ 'plan_hash', 'preview_hash', 'policy_version' ] as $binding_key ) {
 				$expected_binding = $confirmation['execution_permit'][ $binding_key ] ?? null;
 				if ( 'policy_version' === $binding_key ) {
@@ -279,6 +295,9 @@ class YoRo_REST_Execute_Handler {
 				if ( ! $valid_binding || $expected_binding !== ( $claim[ $binding_key ] ?? null ) ) { $product_claim_bound = false; }
 			}
 		}
+		if ( 'orders.create' === $action && ( $confirmation['execution_permit']['preview_hash'] ?? null ) !== ( $preflight['preview_hash'] ?? null ) ) {
+			$product_claim_bound = false;
+		}
 		if ( $product_claim_bound && $confirm && '' !== $conversation_id && '' !== $pending_operation_token && '' !== $execution_permit
 			&& is_string( $issued_permit ) && hash_equals( $issued_permit, $execution_permit )
 			&& true === ( $claim['success'] ?? false ) && 'claimed' === ( $claim['stage'] ?? '' )
@@ -286,18 +305,18 @@ class YoRo_REST_Execute_Handler {
 			&& $conversation_id === ( $claim['conversation_id'] ?? null ) && $pending_operation_token === ( $claim['pending_operation_token'] ?? null ) ) {
 			$native_steps = 'single' === ( $plan['type'] ?? '' ) ? [ $plan ] : ( $plan['steps'] ?? [] );
 			$native_steps = array_values( array_filter( (array) $native_steps, static function ( $step ) {
-				return is_array( $step ) && in_array( $step['action'] ?? '', [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund' ], true );
+				return is_array( $step ) && in_array( $step['action'] ?? '', [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund', 'orders.create' ], true );
 			} ) );
 			if ( 1 === count( $native_steps ) ) {
 				$approved_params = $native_steps[0]['params'] ?? [];
 				$approved_action = $native_steps[0]['action'];
 				$used = false;
-				$claimed_execution_context = static function ( $action_name, $execution_params ) use ( $approved_params, $approved_action, &$used ) {
+				$claimed_execution_context = static function ( $action_name, $execution_params ) use ( $approved_params, $approved_action, &$used, $plan, $preflight ) {
 					if ( $used || $approved_action !== $action_name || $execution_params !== $approved_params ) {
 						return false;
 					}
 					$used = true;
-					return true;
+					return 'orders.create' === $approved_action ? [ 'plan' => $plan, 'preview_hash' => $preflight['preview_hash'] ] : true;
 				};
 			}
 		}

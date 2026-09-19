@@ -563,6 +563,16 @@
 			return finish(renderConfirmation(data, h));
 		}
 
+		if ((data.action || (data.result || {}).action || (data.parsed || {}).action) === 'orders.create') {
+			const result = data.result || data;
+			const facts = result.order_creation || (result.data || {}).order_creation;
+			const knownId = facts && Number.isSafeInteger(facts.order_id) && facts.order_id > 0 ? ' Order #' + h.escapeHtml(facts.order_id) + '.' : '';
+			const verified = result.success === true && facts && facts.status === 'pending' && facts.outcome_unknown === false && facts.payment_initiated === false
+				&& /^[A-Z]{3}$/.test(facts.currency || '') && ['subtotal', 'tax', 'total'].every(function (key) { return typeof facts[key] === 'string' && /^[0-9]+(\.[0-9]{1,6})?$/.test(facts[key]); });
+			if (!verified) return finish('<div class="yoro-result-card"><h4>Order creation requires reconciliation</h4><p>' + knownId + ' The outcome is not proven. Do not retry or automatically delete.</p></div>');
+			return finish('<div class="yoro-result-card"><h4>Unpaid pending guest order created</h4><p>' + knownId + '</p><p>Final persisted subtotal: ' + h.escapeHtml(facts.subtotal) + '; tax: ' + h.escapeHtml(facts.tax) + '; total: ' + h.escapeHtml(facts.total + ' ' + facts.currency) + '.</p><p>No payment was initiated. YoRo supplied no billing/shipping identity and performed no independent stock or customer-message action. Native WooCommerce/plugin hooks may have run.</p></div>');
+		}
+
 		if (data.stage === 'clarify') {
 			return finish(renderClarification(data, h));
 		}
@@ -1546,7 +1556,7 @@
 	}
 
 	function canApproveDirectConfirmation(data, action) {
-		if (action === 'orders.refund' || action === 'orders.record_external_refund') return false;
+		if (action === 'orders.refund' || action === 'orders.record_external_refund' || action === 'orders.create') return false;
 		return !!(
 			action &&
 			data &&
@@ -1560,6 +1570,19 @@
 		options = options || {};
 		const completed = options.completed === true;
 		const lines = [];
+
+		if (action === 'orders.create') {
+			const quote = result.preview || result;
+			if (quote.estimate !== true || quote.final !== false || !Array.isArray(quote.line_items)) return ['The current catalog estimate is unavailable. Refresh before confirming.'];
+			return ['Estimate only — these are not final order subtotal, tax or total.',
+				'Create one unpaid pending guest order. No money will be sent or captured.']
+				.concat(quote.line_items.map(function (line) {
+					return '#' + line.product_id + ' ' + line.name + ' × ' + line.quantity + ': estimated catalog amount ' + line.estimated_catalog_amount + ' ' + quote.currency;
+				})).concat(['WooCommerce determines final taxes and totals when the order is saved.',
+				'YoRo supplies no customer or billing/shipping identity, shipping, fees, coupons, custom prices or stock action, and sends no independent customer message.',
+				'Native WooCommerce/plugin hooks may run. Native request metadata may be stored by WooCommerce.',
+				'An unknown or partial outcome requires reconciliation. Never retry or automatically delete the order.']);
+		}
 
 		if (action === 'orders.record_external_refund') {
 			const id = result.order_id || params.order_id;
@@ -2688,7 +2711,7 @@
 		const encodedParams = h.escapeHtml(JSON.stringify(params || {}));
 		const pendingOperationToken = getPendingOperationToken(data);
 		const useDirectConfirm = (plan.type || '') !== 'sequence' && action !== 'multi.query_and_apply';
-		const blocked = result.blocked === true || !!result.block_reason;
+		const blocked = result.blocked === true || !!result.block_reason || (action === 'orders.create' && (!(result.preview && result.preview.estimate === true) || !data.displayed_preview_receipt));
 		const changeLines = buildActionChangeLines(action, params, result).concat(safetyApprovalLines(data));
 		const intro = blocked ? '' : approvalIntro(action, params, result);
 		const title = blocked ? blockedConfirmationTitle(action, result) : (isCouponAction(action) ? 'Review coupon details' : 'Please approve this change');
@@ -2703,7 +2726,7 @@
 		} else {
 			actionsHtml += '<div class="yoro-confirm-actions">';
 			if (useDirectConfirm) {
-				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-direct-action="' + h.escapeHtml(action) + '" data-direct-params="' + encodedParams + '" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '">Approve change</button>';
+				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-direct-action="' + h.escapeHtml(action) + '" data-direct-params="' + encodedParams + '" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '"' + (action === 'orders.create' ? ' data-displayed-preview-receipt="' + h.escapeHtml(data.displayed_preview_receipt) + '"' : '') + '>Approve change</button>';
 			} else {
 				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '">Approve change</button>';
 			}

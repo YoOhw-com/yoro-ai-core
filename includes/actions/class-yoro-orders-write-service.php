@@ -6,6 +6,116 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Orders_Write_Service {
 
+	public static function creation_params( $params ) {
+		if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'line_items' ] ) || ! is_array( $params['line_items'] ?? null ) || ! array_is_list( $params['line_items'] ) || count( $params['line_items'] ) < 1 || count( $params['line_items'] ) > 20 ) {
+			return new WP_Error( 'order_creation_invalid_input', 'Supply 1–20 exact product IDs and quantities for one pending guest order.' );
+		}
+		$ids = [];
+		foreach ( $params['line_items'] as $item ) {
+			if ( ! is_array( $item ) || count( $item ) !== 2 || array_diff( array_keys( $item ), [ 'product_id', 'quantity' ] ) || ! is_int( $item['product_id'] ?? null ) || $item['product_id'] < 1 || $item['product_id'] > 9007199254740991 || ! is_int( $item['quantity'] ?? null ) || $item['quantity'] < 1 || $item['quantity'] > 1000 || isset( $ids[ $item['product_id'] ] ) ) {
+				return new WP_Error( 'order_creation_invalid_input', 'Exact unique product IDs and integer quantities 1–1000 are required; extra fields are not allowed.' );
+			}
+			$ids[ $item['product_id'] ] = true;
+		}
+		return $params;
+	}
+
+	public static function preview_create( $params ) {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) { return new WP_Error( 'yoro_permission_denied', 'Store management permission is required.' ); }
+		$valid = self::creation_params( $params );
+		if ( is_wp_error( $valid ) ) { return $valid; }
+		try {
+			$decimals = wc_get_price_decimals();
+			$currency = get_woocommerce_currency();
+			if ( ! is_int( $decimals ) || $decimals < 0 || $decimals > 6 || ! preg_match( '/^[A-Z]{3}$/D', $currency ) ) { throw new RuntimeException(); }
+			$config = [];
+			foreach ( [ 'woocommerce_calc_taxes', 'woocommerce_prices_include_tax', 'woocommerce_tax_based_on', 'woocommerce_default_country', 'woocommerce_store_postcode', 'woocommerce_store_city', 'woocommerce_tax_round_at_subtotal', 'woocommerce_tax_display_shop', 'woocommerce_default_customer_address' ] as $key ) { $config[ $key ] = get_option( $key, '' ); }
+			$lines = [];
+			foreach ( $params['line_items'] as $item ) {
+				$product = wc_get_product( $item['product_id'] );
+				if ( ! $product instanceof WC_Product || ! $product->is_type( [ 'simple', 'variation' ] ) || ! $product->is_purchasable() || ! $product->is_in_stock() || ! $product->has_enough_stock( $item['quantity'] ) || ( $product->is_sold_individually() && 1 !== $item['quantity'] ) ) { throw new RuntimeException(); }
+				$price = $product->get_price();
+				$estimate = wc_get_price_to_display( $product, [ 'qty' => $item['quantity'] ] );
+				if ( ! is_numeric( $price ) || ! is_finite( (float) $price ) || (float) $price < 0 || ! is_numeric( $estimate ) || ! is_finite( (float) $estimate ) || $estimate < 0 ) { throw new RuntimeException(); }
+				$modified = $product->get_date_modified();
+				$lines[] = [ 'product_id' => $item['product_id'], 'quantity' => $item['quantity'], 'parent_id' => $product->get_parent_id(), 'type' => $product->get_type(),
+					'name' => wp_strip_all_tags( $product->get_name() ), 'price' => (string) $price, 'regular_price' => (string) $product->get_regular_price(), 'sale_price' => (string) $product->get_sale_price(),
+					'estimated_catalog_amount' => wc_format_decimal( $estimate, $decimals ), 'tax_status' => $product->get_tax_status(), 'tax_class' => $product->get_tax_class(),
+					'base_tax_rates' => WC_Tax::get_base_tax_rates( $product->get_tax_class() ), 'modified' => $modified ? $modified->getTimestamp() : null,
+					'stock_status' => $product->get_stock_status(), 'stock_quantity' => $product->get_stock_quantity(), 'backorders' => $product->get_backorders(), 'sold_individually' => $product->is_sold_individually() ];
+			}
+			$message = 'Estimate only, not final order totals. Create one unpaid pending guest order; no money is sent. No billing/shipping identity, shipping, fees, coupons, custom prices or stock action are supplied by YoRo. Native Woo/plugin hooks may run, including native request metadata. An unknown outcome requires reconciliation, never retry or automatic deletion.';
+			return [ 'type' => 'write', 'will_execute' => false, 'changes_store' => true, 'blocked' => false, 'estimate' => true, 'final' => false,
+				'blog_id' => get_current_blog_id(), 'currency' => $currency, 'decimals' => $decimals, 'tax_enabled' => wc_tax_enabled(), 'prices_include_tax' => wc_prices_include_tax(),
+				'rounding_precision' => wc_get_rounding_precision(), 'tax_rounding_mode' => WC_TAX_ROUNDING_MODE, 'config' => $config, 'line_items' => $lines,
+				'customer_id' => 0, 'status' => 'pending', 'message' => $message, 'summary' => $message ];
+		} catch ( Throwable $error ) { return new WP_Error( 'order_creation_preview_unavailable', 'The exact current catalog estimate is unavailable. Refresh the products and preview; nothing was created.' ); }
+	}
+
+	public static function create( $params, $approved = null ) {
+		if ( ! is_array( $approved ) || ! is_array( $approved['plan'] ?? null ) || ! is_string( $approved['preview_hash'] ?? null ) ) { return new WP_Error( 'order_creation_permit_required', 'A freshly claimed local displayed-preview approval is required.' ); }
+		unset( $params['_yoro_confirmed'], $params['_yoro_preview'] );
+		$valid = self::creation_params( $params );
+		if ( is_wp_error( $valid ) ) { return $valid; }
+		$plan = $approved['plan'];
+		if ( 'single' !== ( $plan['type'] ?? '' ) || 'orders.create' !== ( $plan['action'] ?? '' ) || ( $plan['params'] ?? null ) !== $params ) { return new WP_Error( 'order_creation_approval_mismatch', 'The approved order parameters no longer match.' ); }
+		$preflight = YoRo_Safety_Contract::preflight( $plan );
+		$quote = $preflight['preview']['operations'][0]['preview'] ?? [];
+		if ( true !== ( $quote['estimate'] ?? false ) || ! hash_equals( $approved['preview_hash'], $preflight['preview_hash'] ) ) { return new WP_Error( 'order_creation_preview_stale', 'The catalog estimate changed. Review a fresh preview before creating a new operation.' ); }
+		$facts = [ 'order_id' => null, 'status' => 'reconciliation_required', 'outcome_unknown' => true, 'retry_allowed' => false, 'payment_initiated' => false, 'customer_id' => 0, 'currency' => $quote['currency'], 'subtotal' => null, 'tax' => null, 'total' => null ];
+		try {
+			$order = wc_create_order( [ 'status' => 'pending', 'customer_id' => 0 ] );
+			if ( is_wp_error( $order ) || ! $order instanceof WC_Order || $order->get_id() < 1 ) { throw new RuntimeException(); }
+			$facts['order_id'] = $order->get_id();
+			foreach ( $params['line_items'] as $item ) {
+				$product = wc_get_product( $item['product_id'] );
+				if ( ! $product instanceof WC_Product || ! $order->add_product( $product, $item['quantity'] ) ) { throw new RuntimeException(); }
+			}
+			$order->calculate_totals();
+			if ( ! $order->save() ) { throw new RuntimeException(); }
+			$reloaded = wc_get_order( $facts['order_id'] );
+			if ( ! $reloaded instanceof WC_Order || $reloaded->get_id() !== $facts['order_id'] || wc_get_price_decimals() !== $quote['decimals'] ) { throw new RuntimeException(); }
+			// Observe view hooks, then prove they agree with reloaded owner storage facts.
+			foreach ( [ 'get_status' => 'pending', 'get_customer_id' => 0, 'get_currency' => $quote['currency'], 'get_payment_method' => '', 'get_transaction_id' => '', 'get_date_paid' => null ] as $getter => $expected ) {
+				if ( $reloaded->$getter( 'edit' ) !== $expected || $reloaded->$getter() !== $expected ) { throw new RuntimeException(); }
+			}
+			$stored_lines = []; $observed_lines = [];
+			foreach ( [ 'line_item', 'shipping', 'fee', 'coupon' ] as $type ) {
+				$stored = $reloaded->get_data_store()->read_items( $reloaded, $type );
+				$observed = $reloaded->get_items( $type );
+				if ( ! is_array( $stored ) || array_keys( $stored ) !== array_keys( $observed ) || ( 'line_item' !== $type && $stored ) ) { throw new RuntimeException(); }
+				if ( 'line_item' === $type ) { $stored_lines = $stored; $observed_lines = $observed; }
+			}
+			$actual = []; $subtotal_values = [];
+			foreach ( $stored_lines as $id => $line ) {
+				$observed = $observed_lines[ $id ];
+				foreach ( [ 'get_product_id', 'get_variation_id', 'get_quantity', 'get_subtotal' ] as $getter ) {
+					if ( $line->$getter( 'edit' ) !== $observed->$getter() ) { throw new RuntimeException(); }
+				}
+				$quantity = $line->get_quantity( 'edit' );
+				if ( (float) $quantity !== (float) (int) $quantity ) { throw new RuntimeException(); }
+				$actual[] = [ 'product_id' => $line->get_variation_id( 'edit' ) ?: $line->get_product_id( 'edit' ), 'quantity' => (int) $quantity ];
+				$subtotal_values[] = wc_add_number_precision( (float) $line->get_subtotal( 'edit' ), false );
+			}
+			if ( $actual !== $params['line_items'] ) { throw new RuntimeException(); }
+			// The same public Woo aggregation/rounding used by get_subtotal, over stored line values.
+			$stored_subtotal = \Automattic\WooCommerce\Utilities\NumberUtil::round( wc_remove_number_precision( WC_Order::get_rounded_items_total( $subtotal_values ) ), $quote['decimals'] );
+			$stored_money = [ 'subtotal' => $stored_subtotal, 'tax' => $reloaded->get_total_tax( 'edit' ), 'total' => $reloaded->get_total( 'edit' ) ];
+			$view_money = [ 'subtotal' => $reloaded->get_subtotal(), 'tax' => $reloaded->get_total_tax(), 'total' => $reloaded->get_total() ];
+			$verified_money = [];
+			foreach ( $stored_money as $key => $amount ) {
+				$view = $view_money[ $key ];
+				if ( ! is_numeric( $amount ) || ! is_finite( (float) $amount ) || (float) $amount < 0 || ! is_numeric( $view ) || ! is_finite( (float) $view ) || (float) $view < 0 || wc_format_decimal( $amount, $quote['decimals'] ) !== wc_format_decimal( $view, $quote['decimals'] ) ) { throw new RuntimeException(); }
+				$verified_money[ $key ] = wc_format_decimal( $amount, $quote['decimals'] );
+			}
+			$facts = array_merge( $facts, $verified_money );
+			$facts['status'] = 'pending'; $facts['outcome_unknown'] = false;
+		} catch ( Throwable $error ) { /* A durable identity may already exist; never retry or undo creation. */ }
+		$message = $facts['outcome_unknown'] ? 'Order creation outcome is unknown. Reconcile the store before any new confirmation; do not retry or delete automatically. No payment was initiated.' : 'One unpaid pending guest order was created. These are final persisted order amounts, not the earlier estimate. No payment was initiated. Native Woo/plugin hooks may have run.';
+		return [ 'success' => ! $facts['outcome_unknown'], 'action' => 'orders.create', 'order_creation' => $facts, 'data' => [ 'order_creation' => $facts ], 'summary' => $message, 'message' => $message, 'read_only' => false, 'undoable' => false, 'result_type' => 'order_creation', 'display_type' => 'order_creation' ];
+	}
+
+
 	private static function prepare_refund( $params ) {
 		if ( ! current_user_can( 'manage_woocommerce' ) ) { return new WP_Error( 'yoro_permission_denied', 'Store management permission is required.' ); }
 		if ( ! is_array( $params ) || array_diff( array_keys( $params ), [ 'order_id', 'amount', 'reason', 'expected_version', 'expected_refund_state', '_yoro_confirmed', '_yoro_preview' ] ) || ! is_int( $params['order_id'] ?? null ) || $params['order_id'] < 1 || $params['order_id'] > 9007199254740991 ) { return new WP_Error( 'refund_invalid_input', 'One exact order and closed refund parameters are required.' ); }

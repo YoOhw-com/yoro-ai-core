@@ -5426,6 +5426,12 @@
 				refreshAiApiStatusConversationLink();
 			}
 
+			if (conversationState.order_creation_receipt && (conversationState.order_creation_receipt.pending !== String(pendingOperationToken || '') || conversationState.order_creation_receipt.conversation !== String(conversationId || conversationState.conversation_id || ''))) {
+				conversationState.order_creation_receipt = null;
+			}
+			if (data.stage === 'confirm' && (result.action || parsed.action) === 'orders.create' && typeof data.displayed_preview_receipt === 'string' && data.displayed_preview_receipt.length > 0 && data.displayed_preview_receipt.length <= 4096 && pendingOperationToken && conversationId) {
+				conversationState.order_creation_receipt = { pending: String(pendingOperationToken), conversation: String(conversationId), value: data.displayed_preview_receipt };
+			}
 				if (pendingOperationToken) {
 					conversationState.pending_operation_token = String(pendingOperationToken);
 				}
@@ -5647,6 +5653,11 @@
 				client_context: clientContext
 			};
 
+			if (confirm && conversationState.order_creation_receipt && conversationState.order_creation_receipt.pending === confirmRequestBody.pending_operation_token && conversationState.order_creation_receipt.conversation === confirmRequestBody.conversation_id) {
+				confirmRequestBody.displayed_preview_receipt = conversationState.order_creation_receipt.value;
+				conversationState.order_creation_receipt = null;
+			}
+
 				const requestBody = confirm
 					? confirmRequestBody
 					: {
@@ -5664,6 +5675,15 @@
 				requestJson(endpointUrl, {
 				method: 'POST',
 				body: JSON.stringify(requestBody)
+			})
+			.then(function (data) {
+				const action = data && (data.action || (data.parsed && data.parsed.action) || (data.result && data.result.action));
+				if (!confirm && action === 'orders.create' && data.stage === 'confirm') {
+					updateConversationState(data, command);
+					conversationState.order_creation_receipt = null;
+					return requestJson(YoRoAIAdmin.executeUrl, { method: 'POST', body: JSON.stringify({ action: 'orders.create', params: {}, confirm: false, pending_operation_token: conversationState.pending_operation_token || '', conversation_id: conversationState.conversation_id || '' }) });
+				}
+				return data;
 			})
 			.then(function (data) {
 				loading.remove();
@@ -5838,7 +5858,7 @@
 			return 0;
 		}
 
-		function executeActionDirect(action, params, confirm, preview, surface, pendingOperationToken) {
+		function executeActionDirect(action, params, confirm, preview, surface, pendingOperationToken, displayedPreviewReceipt) {
 			const hasExplicitPendingOperationToken = arguments.length >= 6;
 			const payload = {
 				action: action,
@@ -5851,6 +5871,14 @@
 					? (pendingOperationToken || '')
 					: (conversationState.pending_operation_token || '')
 			};
+
+			if (action === 'orders.create' && confirm && conversationState.order_creation_receipt
+				&& typeof displayedPreviewReceipt === 'string' && displayedPreviewReceipt === conversationState.order_creation_receipt.value
+				&& conversationState.order_creation_receipt.pending === payload.pending_operation_token
+				&& conversationState.order_creation_receipt.conversation === payload.conversation_id) {
+				payload.displayed_preview_receipt = conversationState.order_creation_receipt.value;
+				conversationState.order_creation_receipt = null;
+			}
 
 			const finishProtectedWork = beginProtectedWork();
 
@@ -6114,7 +6142,7 @@
 							}
 						}
 
-						executeActionDirect(directAction, directParams, true, false, '', directPendingOperationToken)
+						executeActionDirect(directAction, directParams, true, false, '', directPendingOperationToken, approveButton.getAttribute('data-displayed-preview-receipt') || '')
 							.then(function(data) {
 								hideConfirmationActions(approveButton);
 								addAssistantMessage(data);

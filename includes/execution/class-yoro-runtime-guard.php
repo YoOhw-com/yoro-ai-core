@@ -6,6 +6,31 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Runtime_Guard {
 
+	public static function creation_receipt( $plan, $parsed, $preflight ) {
+		$meta = $parsed['meta'] ?? [];
+		if ( 'single' !== ( $plan['type'] ?? '' ) || 'orders.create' !== ( $plan['action'] ?? '' ) || empty( $meta['pending_operation_token'] ) || empty( $meta['conversation_id'] ) || true !== ( $preflight['preview']['operations'][0]['preview']['estimate'] ?? false ) ) { return ''; }
+		$now = time();
+		$body = [ 'v' => 1, 'blog' => get_current_blog_id(), 'user' => get_current_user_id(), 'pending' => $meta['pending_operation_token'], 'conversation' => $meta['conversation_id'], 'action' => 'orders.create', 'params_hash' => YoRo_Safety_Contract::hash( $plan['params'] ), 'preview_hash' => $preflight['preview_hash'], 'issued' => $now, 'expires' => $now + 300 ];
+		$encoded = base64_encode( wp_json_encode( $body, JSON_UNESCAPED_SLASHES ) );
+		return $encoded . '.' . hash_hmac( 'sha256', $encoded, wp_salt( 'auth' ) );
+	}
+
+	public static function verify_creation_receipt( $receipt, $plan, $parsed, $preflight ) {
+		if ( ! is_string( $receipt ) || strlen( $receipt ) > 4096 || substr_count( $receipt, '.' ) !== 1 ) { return false; }
+		[ $encoded, $signature ] = explode( '.', $receipt );
+		if ( ! preg_match( '/^[a-f0-9]{64}$/D', $signature ) || ! hash_equals( hash_hmac( 'sha256', $encoded, wp_salt( 'auth' ) ), $signature ) ) { return false; }
+		$decoded = base64_decode( $encoded, true );
+		$body = is_string( $decoded ) ? json_decode( $decoded, true ) : null;
+		$meta = $parsed['meta'] ?? [];
+		return is_array( $body ) && 1 === ( $body['v'] ?? null ) && get_current_blog_id() === ( $body['blog'] ?? null ) && get_current_user_id() === ( $body['user'] ?? null )
+			&& is_int( $body['issued'] ?? null ) && is_int( $body['expires'] ?? null ) && $body['issued'] <= time() && $body['expires'] > time() && $body['expires'] - $body['issued'] === 300
+			&& ! empty( $meta['pending_operation_token'] ) && ! empty( $meta['conversation_id'] ) && $meta['pending_operation_token'] === ( $body['pending'] ?? null ) && $meta['conversation_id'] === ( $body['conversation'] ?? null )
+			&& 'single' === ( $plan['type'] ?? '' ) && 'orders.create' === ( $plan['action'] ?? '' ) && 'orders.create' === ( $body['action'] ?? null )
+			&& YoRo_Safety_Contract::hash( $plan['params'] ?? [] ) === ( $body['params_hash'] ?? null ) && true === ( $preflight['preview']['operations'][0]['preview']['estimate'] ?? false )
+			&& is_string( $body['preview_hash'] ?? null ) && hash_equals( $preflight['preview_hash'], $body['preview_hash'] );
+	}
+
+
 	public static function prepare( $plan, $context = [] ) {
 		if ( ! is_array( $plan ) || empty( $plan['type'] ) ) {
 			return new WP_Error(
@@ -83,7 +108,10 @@ class YoRo_Runtime_Guard {
 
 	public static function build_confirmation_response( $plan, $parsed, $runtime ) {
 		$action = self::get_plan_action_label( $plan );
-		$confirmation_preview = self::build_confirmation_preview( $plan );
+		$creation_preflight = 'orders.create' === ( $plan['action'] ?? '' ) ? YoRo_Safety_Contract::preflight( $plan ) : null;
+		$confirmation_preview = is_array( $creation_preflight )
+			? ( $creation_preflight['preview']['operations'][0]['preview'] ?? [] )
+			: self::build_confirmation_preview( $plan );
 
 		$risk   = isset( $runtime['risk'] ) && is_array( $runtime['risk'] ) ? $runtime['risk'] : [];
 		$policy = isset( $runtime['policy'] ) && is_array( $runtime['policy'] ) ? $runtime['policy'] : [];
@@ -91,6 +119,7 @@ class YoRo_Runtime_Guard {
 		return [
 			'success'          => false,
 			'stage'            => 'confirm',
+			'displayed_preview_receipt' => is_array( $creation_preflight ) ? self::creation_receipt( $plan, $parsed, $creation_preflight ) : '',
 			'parsed'           => is_array( $parsed ) ? $parsed : [],
 			'plan'             => is_array( $plan ) ? $plan : [],
 			'confirm_required' => true,

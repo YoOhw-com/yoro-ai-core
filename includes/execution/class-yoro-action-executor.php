@@ -27,6 +27,17 @@ class YoRo_Action_Executor {
 			return self::preview( $action_name, $action, $params );
 		}
 
+		$creation_approval = null;
+		if ( 'orders.create' === $action_name ) {
+			if ( ! $confirm || ! empty( $context['connector_remote_agent'] ) || ! $claimed_execution_context instanceof Closure ) {
+				return new WP_Error( 'order_creation_local_permit_required', 'Order creation requires a freshly claimed local displayed-preview approval. Remote execution is unsupported.' );
+			}
+			$creation_approval = $claimed_execution_context( $action_name, $params );
+			if ( ! is_array( $creation_approval ) || ! is_string( $creation_approval['preview_hash'] ?? null ) || ! is_array( $creation_approval['plan'] ?? null ) ) {
+				return new WP_Error( 'order_creation_local_permit_required', 'The local order-creation approval is unavailable or consumed.' );
+			}
+		}
+
 		$is_undo = (
 			is_array( $context ) &&
 			! empty( $context['is_undo'] )
@@ -107,7 +118,7 @@ class YoRo_Action_Executor {
 			]
 		);
 
-		$execution = ( new YoRo_Action_Execution_Router() )->execute( $action_name, $action, $params, $context );
+		$execution = 'orders.create' === $action_name ? [ 'result' => YoRo_Orders_Write_Service::create( $params, $creation_approval ) ] : ( new YoRo_Action_Execution_Router() )->execute( $action_name, $action, $params, $context );
 		$result = is_array( $execution ) && array_key_exists( 'result', $execution )
 			? $execution['result']
 			: new WP_Error( 'yoro_execution_provider_failed', __( 'YoRo could not safely execute that action.', 'yoro-ai-core' ) );
