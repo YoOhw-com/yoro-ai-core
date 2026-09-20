@@ -145,12 +145,22 @@ class YoRo_Orders_Write_Service {
 	}
 
 	private static function update_supported_line_metadata( $item, $product ) {
-		$expected = $product instanceof WC_Product_Variation ? $product->get_variation_attributes() : [];
-		foreach ( $item->get_meta_data() as $meta ) {
-			$key = $meta->key ?? null; $value = $meta->value ?? null; $normalized = is_string( $key ) && str_starts_with( $key, 'attribute_' ) ? substr( $key, 10 ) : $key;
-			if ( ! is_string( $key ) || ! is_string( $value ) || ( ! array_key_exists( $key, $expected ) && ! array_key_exists( 'attribute_' . $normalized, $expected ) ) || $value !== ( $expected[ $key ] ?? $expected[ 'attribute_' . $normalized ] ) ) { return false; }
+		$expected = [];
+		if ( $product instanceof WC_Product_Variation ) {
+			foreach ( $product->get_variation_attributes() as $key => $value ) {
+				$key = is_string( $key ) && str_starts_with( $key, 'attribute_' ) ? $key : 'attribute_' . $key;
+				if ( ! is_string( $key ) || ! is_string( $value ) || isset( $expected[ $key ] ) ) { return false; }
+				$expected[ $key ] = $value;
+			}
 		}
-		return true;
+		$actual = [];
+		foreach ( $item->get_meta_data() as $meta ) {
+			$key = $meta->key ?? null; $value = $meta->value ?? null;
+			if ( ! is_string( $key ) || ! str_starts_with( $key, 'attribute_' ) || ! is_string( $value ) || isset( $actual[ $key ] ) ) { return false; }
+			$actual[ $key ] = $value;
+		}
+		ksort( $expected, SORT_STRING ); ksort( $actual, SORT_STRING );
+		return $actual === $expected;
 	}
 
 	private static function update_snapshot( $params ) {
