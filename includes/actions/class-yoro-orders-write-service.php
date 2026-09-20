@@ -148,7 +148,7 @@ class YoRo_Orders_Write_Service {
 		$expected = [];
 		if ( $product instanceof WC_Product_Variation ) {
 			foreach ( $product->get_variation_attributes() as $key => $value ) {
-				$key = is_string( $key ) && str_starts_with( $key, 'attribute_' ) ? $key : 'attribute_' . $key;
+				$key = is_string( $key ) && str_starts_with( $key, 'attribute_' ) ? substr( $key, 10 ) : $key;
 				if ( ! is_string( $key ) || ! is_string( $value ) || isset( $expected[ $key ] ) ) { return false; }
 				$expected[ $key ] = $value;
 			}
@@ -156,7 +156,7 @@ class YoRo_Orders_Write_Service {
 		$actual = [];
 		foreach ( $item->get_meta_data() as $meta ) {
 			$key = $meta->key ?? null; $value = $meta->value ?? null;
-			if ( ! is_string( $key ) || ! str_starts_with( $key, 'attribute_' ) || ! is_string( $value ) || isset( $actual[ $key ] ) ) { return false; }
+			if ( ! is_string( $key ) || ! is_string( $value ) || isset( $actual[ $key ] ) ) { return false; }
 			$actual[ $key ] = $value;
 		}
 		ksort( $expected, SORT_STRING ); ksort( $actual, SORT_STRING );
