@@ -6,9 +6,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Runtime_Guard {
 
+	private static function expected_displayed_write_preview( $plan, $preflight ) {
+		$preview = $preflight['preview']['operations'][0]['preview'] ?? null;
+		if ( ! is_array( $preview ) || true !== ( $preview['estimate'] ?? false ) ) { return false; }
+		if ( 'orders.create' === ( $plan['action'] ?? '' ) ) { return true; }
+		return 'orders.update_items' === ( $plan['action'] ?? '' ) && 'write' === ( $preview['type'] ?? null ) && false === ( $preview['blocked'] ?? null ) && true === ( $preview['changes_store'] ?? null ) && false === ( $preview['final'] ?? null );
+	}
+
 	public static function creation_receipt( $plan, $parsed, $preflight ) {
 		$meta = $parsed['meta'] ?? [];
-		if ( 'single' !== ( $plan['type'] ?? '' ) || ! in_array( $plan['action'] ?? '', [ 'orders.create', 'orders.update_items' ], true ) || empty( $meta['pending_operation_token'] ) || empty( $meta['conversation_id'] ) || ( 'orders.create' === $plan['action'] && true !== ( $preflight['preview']['operations'][0]['preview']['estimate'] ?? false ) ) ) { return ''; }
+		if ( 'single' !== ( $plan['type'] ?? '' ) || ! in_array( $plan['action'] ?? '', [ 'orders.create', 'orders.update_items' ], true ) || empty( $meta['pending_operation_token'] ) || empty( $meta['conversation_id'] ) || ! self::expected_displayed_write_preview( $plan, $preflight ) ) { return ''; }
 		$now = time();
 		$body = [ 'v' => 1, 'blog' => get_current_blog_id(), 'user' => get_current_user_id(), 'pending' => $meta['pending_operation_token'], 'conversation' => $meta['conversation_id'], 'action' => $plan['action'], 'params_hash' => YoRo_Safety_Contract::hash( $plan['params'] ), 'preview_hash' => $preflight['preview_hash'], 'issued' => $now, 'expires' => $now + 300 ];
 		$encoded = base64_encode( wp_json_encode( $body, JSON_UNESCAPED_SLASHES ) );
@@ -26,7 +33,7 @@ class YoRo_Runtime_Guard {
 			&& is_int( $body['issued'] ?? null ) && is_int( $body['expires'] ?? null ) && $body['issued'] <= time() && $body['expires'] > time() && $body['expires'] - $body['issued'] === 300
 			&& ! empty( $meta['pending_operation_token'] ) && ! empty( $meta['conversation_id'] ) && $meta['pending_operation_token'] === ( $body['pending'] ?? null ) && $meta['conversation_id'] === ( $body['conversation'] ?? null )
 			&& 'single' === ( $plan['type'] ?? '' ) && in_array( $plan['action'] ?? '', [ 'orders.create', 'orders.update_items' ], true ) && ( $plan['action'] ?? null ) === ( $body['action'] ?? null )
-			&& YoRo_Safety_Contract::hash( $plan['params'] ?? [] ) === ( $body['params_hash'] ?? null ) && ( 'orders.update_items' === ( $plan['action'] ?? '' ) || true === ( $preflight['preview']['operations'][0]['preview']['estimate'] ?? false ) )
+			&& YoRo_Safety_Contract::hash( $plan['params'] ?? [] ) === ( $body['params_hash'] ?? null ) && self::expected_displayed_write_preview( $plan, $preflight )
 			&& is_string( $body['preview_hash'] ?? null ) && hash_equals( $preflight['preview_hash'], $body['preview_hash'] );
 	}
 
