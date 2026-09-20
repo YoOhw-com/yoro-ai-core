@@ -20,6 +20,23 @@ $other = $plan; $other['action'] = 'orders.create';
 $assert( ! YoRo_Runtime_Guard::verify_creation_receipt( $receipt, $other, $parsed, $preflight ), 'Update receipt cannot cross to order creation.' );
 $blocked_preflight = [ 'preview_hash' => str_repeat( 'b', 64 ), 'preview' => [ 'operations' => [ [ 'preview' => [ 'type' => 'write', 'blocked' => true, 'changes_store' => false, 'estimate' => false, 'final' => false ] ] ] ] ];
 $assert( '' === YoRo_Runtime_Guard::creation_receipt( $plan, $parsed, $blocked_preflight ), 'Blocked update preview cannot receive a receipt.' );
+$products = []; $update_order = null;
+try {
+	foreach ( [ 'YR0085 retained line', 'YR0085 removable line' ] as $name ) { $product = new WC_Product_Simple(); $product->set_name( $name ); $product->set_status( 'publish' ); $product->set_regular_price( '11.00' ); $product->save(); $products[] = $product; }
+	$update_order = wc_create_order(); $update_order->set_status( 'pending' ); $update_order->add_product( $products[0], 1 ); $update_order->add_product( $products[1], 1 ); $update_order->calculate_totals(); $update_order->save();
+	$runtime_params = [ 'order_id' => $update_order->get_id(), 'line_items' => [ [ 'product_id' => $products[0]->get_id(), 'quantity' => 1 ] ] ];
+	$runtime_plan = [ 'type' => 'single', 'action' => 'orders.update_items', 'params' => $runtime_params ];
+	$runtime_preflight = YoRo_Safety_Contract::preflight( $runtime_plan );
+	$assert( false === ( $runtime_preflight['preview']['operations'][0]['preview']['blocked'] ?? true ), 'Disposable pending guest fixture has a positive update preview.' );
+	$after_remove = static function () { throw new RuntimeException( 'Injected calculation failure after item removal.' ); };
+	add_action( 'woocommerce_order_before_calculate_totals', $after_remove, 10, 2 );
+	try { $partial = YoRo_Orders_Write_Service::update_items( $runtime_params, [ 'plan' => $runtime_plan, 'preview_hash' => $runtime_preflight['preview_hash'] ] ); }
+	finally { remove_action( 'woocommerce_order_before_calculate_totals', $after_remove, 10 ); }
+	$assert( is_array( $partial ) && false === $partial['success'] && true === $partial['order_item_update']['outcome_unknown'] && 'reconciliation_required' === $partial['order_item_update']['status'] && $runtime_params['order_id'] === $partial['order_item_update']['order_id'], 'Injected post-removal failure is reconciliation-required and never reported as not applied.' );
+} finally {
+	if ( $update_order instanceof WC_Order ) { $update_order->delete( true ); }
+	foreach ( $products as $product ) { wp_delete_post( $product->get_id(), true ); }
+}
 $source = file_get_contents( dirname( __DIR__, 2 ) . '/includes/actions/class-yoro-orders-write-service.php' );
 $assert( is_string( $source ) && ! str_contains( $source, 'set_subtotal(' ) && ! str_contains( $source, 'set_total(' ), 'Item update has no YoRo custom repricing path.' );
 $assert( is_string( $source ) && str_contains( $source, "'current_subtotal'" ) && str_contains( $source, "'current_tax'" ) && str_contains( $source, '$stored_money' ) && str_contains( $source, "'subtotal' => \$final_money['subtotal']" ), 'Preview shows persisted money and execution verifies every final owner money fact.' );
