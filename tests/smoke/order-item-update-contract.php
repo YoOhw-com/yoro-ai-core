@@ -1,7 +1,17 @@
 <?php
 /** Bounded pending-order item update: local-only registry, closed inputs and receipt binding. */
 use Automattic\WooCommerce\Admin\Features\Fulfillments\FulfillmentsManager;
+use Automattic\WooCommerce\Admin\Features\Fulfillments\DataStore\FulfillmentsDataStore;
 if ( ! defined( 'ABSPATH' ) || ! class_exists( 'WooCommerce' ) ) { throw new RuntimeException( 'Disposable WordPress/WooCommerce fixture required.' ); }
+/** Keep the real Woo fulfillment manager available without requiring site-wide feature tables. */
+class YoRo_Order_Item_Update_Fulfillment_Store extends FulfillmentsDataStore {
+	public function create( &$data ): void { throw new RuntimeException( 'Fixture must not create native fulfillments.' ); }
+	public function read_meta( &$data ): array { return []; }
+	public function delete_by_entity( string $entity_type, string $entity_id ): int { return 0; }
+	public function read( &$data ): void { throw new RuntimeException( 'Fixture has no native fulfillment records.' ); }
+	public function update( &$data ): void { throw new RuntimeException( 'Fixture must not update native fulfillments.' ); }
+	public function read_fulfillments( string $entity_type, string $entity_id, bool $with_deleted = false ): array { return []; }
+}
 $assertions = 0;
 $assert = static function ( $value, $message ) use ( &$assertions ) { ++$assertions; if ( ! $value ) { throw new RuntimeException( $message ); } };
 $admins = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ] );
@@ -21,9 +31,10 @@ $other = $plan; $other['action'] = 'orders.create';
 $assert( ! YoRo_Runtime_Guard::verify_creation_receipt( $receipt, $other, $parsed, $preflight ), 'Update receipt cannot cross to order creation.' );
 $blocked_preflight = [ 'preview_hash' => str_repeat( 'b', 64 ), 'preview' => [ 'operations' => [ [ 'preview' => [ 'type' => 'write', 'blocked' => true, 'changes_store' => false, 'estimate' => false, 'final' => false ] ] ] ] ];
 $assert( '' === YoRo_Runtime_Guard::creation_receipt( $plan, $parsed, $blocked_preflight ), 'Blocked update preview cannot receive a receipt.' );
-$products = []; $parents = []; $orders = []; $update_order = null; $fulfillments_enabled = static function () { return 'yes'; };
+$products = []; $parents = []; $orders = []; $update_order = null; $fulfillments_enabled = static function () { return 'yes'; }; $fulfillment_store = static function ( $stores ) { $stores['order-fulfillment'] = YoRo_Order_Item_Update_Fulfillment_Store::class; return $stores; };
 try {
 	add_filter( 'pre_option_woocommerce_feature_fulfillments_enabled', $fulfillments_enabled );
+	add_filter( 'woocommerce_data_stores', $fulfillment_store, 100 );
 	wc_get_container()->get( FulfillmentsManager::class )->register();
 	foreach ( [ 'YR0085 retained line', 'YR0085 removable line' ] as $name ) { $product = new WC_Product_Simple(); $product->set_name( $name ); $product->set_status( 'publish' ); $product->set_regular_price( '11.00' ); $product->save(); $products[] = $product; }
 	$parent = new WC_Product_Variable(); $parent->set_name( 'YR0085 variation parent' ); $parent->set_status( 'publish' ); $attribute = new WC_Product_Attribute(); $attribute->set_name( 'YR0085 Color' ); $attribute->set_options( [ 'red' ] ); $attribute->set_visible( true ); $attribute->set_variation( true ); $parent->set_attributes( [ $attribute ] ); $parent->save(); $parents[] = $parent;
@@ -42,9 +53,7 @@ try {
 	$variation_same = [ 'order_id' => $variation_order->get_id(), 'line_items' => [ [ 'product_id' => $variation->get_id(), 'quantity' => 1 ] ] ]; $variation_same_plan = [ 'type' => 'single', 'action' => 'orders.update_items', 'params' => $variation_same ]; $variation_same_preflight = YoRo_Safety_Contract::preflight( $variation_same_plan );
 	$assert( false === ( $variation_same_preflight['preview']['operations'][0]['preview']['blocked'] ?? true ), 'Existing owner variation metadata remains eligible unchanged.' );
 	$variation_replace = [ 'order_id' => $variation_order->get_id(), 'line_items' => [ [ 'product_id' => $variation->get_id(), 'quantity' => 2 ] ] ]; $variation_replace_plan = [ 'type' => 'single', 'action' => 'orders.update_items', 'params' => $variation_replace ]; $variation_replace_preflight = YoRo_Safety_Contract::preflight( $variation_replace_plan ); $variation_result = YoRo_Orders_Write_Service::update_items( $variation_replace, [ 'plan' => $variation_replace_plan, 'preview_hash' => $variation_replace_preflight['preview_hash'] ] ); $variation_reloaded = wc_get_order( $variation_order->get_id() ); $variation_items = $variation_reloaded instanceof WC_Order ? $variation_reloaded->get_items( 'line_item' ) : []; $expected_variation_meta = []; foreach ( $variation->get_variation_attributes() as $key => $value ) { $expected_variation_meta[ str_starts_with( $key, 'attribute_' ) ? substr( $key, 10 ) : $key ] = $value; } $actual_variation_meta = []; foreach ( reset( $variation_items )->get_meta_data() as $meta ) { $actual_variation_meta[ $meta->key ] = $meta->value; } ksort( $expected_variation_meta ); ksort( $actual_variation_meta );
-	$variation_item = reset( $variation_items ); $variation_owner_facts = $variation_item instanceof WC_Order_Item_Product ? [ 'product_id' => $variation_item->get_product_id( 'edit' ), 'variation_id' => $variation_item->get_variation_id( 'edit' ), 'quantity' => $variation_item->get_quantity( 'edit' ), 'subtotal' => $variation_item->get_subtotal( 'edit' ), 'meta' => array_map( static function ( $meta ) { return [ $meta->key, $meta->value ]; }, $variation_item->get_meta_data() ) ] : null;
-	$fixed_boundary = new ReflectionMethod( YoRo_Orders_Write_Service::class, 'update_fixed_boundary' ); $fixed_boundary->setAccessible( true ); $fulfillment_guard = new ReflectionMethod( YoRo_Orders_Write_Service::class, 'update_fulfillment_guard' ); $fulfillment_guard->setAccessible( true ); $final_line_items = $variation_item instanceof WC_Order_Item_Product ? [ [ 'product_id' => $variation_item->get_variation_id( 'edit' ) ?: $variation_item->get_product_id( 'edit' ), 'quantity' => (int) $variation_item->get_quantity( 'edit' ) ] ] : []; $final_guard = [ 'lines_match' => $final_line_items === $variation_replace['line_items'], 'fixed_boundary' => $fixed_boundary->invoke( null, $variation_reloaded ), 'fulfillment' => null ]; try { $final_guard['fulfillment'] = $fulfillment_guard->invoke( null, $variation_order->get_id(), [ $variation_item->get_id() => (int) $variation_item->get_quantity( 'edit' ) ] ); } catch ( Throwable $error ) { $final_guard['fulfillment'] = $error->getMessage(); }
-	$assert( is_array( $variation_result ) && true === $variation_result['success'], 'Variation quantity replacement reports a verified success: ' . wp_json_encode( [ 'result' => $variation_result, 'item' => $variation_owner_facts, 'final_guard' => $final_guard ] ) );
+	$assert( is_array( $variation_result ) && true === $variation_result['success'], 'Variation quantity replacement reports a verified success.' );
 	$assert( 2 === ( $variation_result['order_item_update']['line_items'][0]['quantity'] ?? null ) && 1 === count( $variation_items ) && $variation->get_id() === reset( $variation_items )->get_variation_id( 'edit' ) && 2 === (int) reset( $variation_items )->get_quantity( 'edit' ), 'Variation quantity replacement preserves exact owner variation identity and quantity.' );
 	$assert( $expected_variation_meta === $actual_variation_meta, 'Variation quantity replacement preserves exact reproducible owner metadata.' );
 	$variation_remove_order = wc_create_order(); $orders[] = $variation_remove_order; $variation_remove_order->set_status( 'pending' ); $variation_remove_order->add_product( $variation, 1 ); $variation_remove_order->add_product( $products[0], 1 ); $variation_remove_order->calculate_totals(); $variation_remove_order->save(); $variation_remove = [ 'order_id' => $variation_remove_order->get_id(), 'line_items' => [ [ 'product_id' => $products[0]->get_id(), 'quantity' => 1 ] ] ]; $variation_remove_plan = [ 'type' => 'single', 'action' => 'orders.update_items', 'params' => $variation_remove ]; $variation_remove_preflight = YoRo_Safety_Contract::preflight( $variation_remove_plan ); $variation_remove_result = YoRo_Orders_Write_Service::update_items( $variation_remove, [ 'plan' => $variation_remove_plan, 'preview_hash' => $variation_remove_preflight['preview_hash'] ] );
@@ -61,6 +70,7 @@ try {
 	foreach ( $orders as $order ) { if ( $order instanceof WC_Order ) { $order->delete( true ); } }
 	foreach ( $products as $product ) { wp_delete_post( $product->get_id(), true ); }
 	foreach ( $parents as $parent ) { wp_delete_post( $parent->get_id(), true ); }
+	remove_filter( 'woocommerce_data_stores', $fulfillment_store, 100 );
 	remove_filter( 'pre_option_woocommerce_feature_fulfillments_enabled', $fulfillments_enabled );
 }
 $source = file_get_contents( dirname( __DIR__, 2 ) . '/includes/actions/class-yoro-orders-write-service.php' );
