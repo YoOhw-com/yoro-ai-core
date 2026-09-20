@@ -31,6 +31,11 @@ try {
 	$runtime_plan = [ 'type' => 'single', 'action' => 'orders.update_items', 'params' => $runtime_params ];
 	$runtime_preflight = YoRo_Safety_Contract::preflight( $runtime_plan );
 	$assert( false === ( $runtime_preflight['preview']['operations'][0]['preview']['blocked'] ?? true ), 'Disposable pending guest fixture has a positive update preview.' );
+	$hide_current_lines = static function ( $items, $order, $types ) use ( $update_order ) { return $order->get_id() === $update_order->get_id() && in_array( 'line_item', $types, true ) ? [] : $items; };
+	add_filter( 'woocommerce_order_get_items', $hide_current_lines, 10, 3 );
+	try { $filtered_preflight = YoRo_Safety_Contract::preflight( $runtime_plan ); }
+	finally { remove_filter( 'woocommerce_order_get_items', $hide_current_lines, 10 ); }
+	$assert( true === ( $filtered_preflight['preview']['operations'][0]['preview']['blocked'] ?? false ), 'Filtered current line view cannot become an approval preview.' );
 	$after_remove = static function () { throw new RuntimeException( 'Injected calculation failure after item removal.' ); };
 	add_action( 'woocommerce_order_before_calculate_totals', $after_remove, 10, 2 );
 	try { $partial = YoRo_Orders_Write_Service::update_items( $runtime_params, [ 'plan' => $runtime_plan, 'preview_hash' => $runtime_preflight['preview_hash'] ] ); }

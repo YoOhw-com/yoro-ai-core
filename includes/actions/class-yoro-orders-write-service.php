@@ -139,18 +139,33 @@ class YoRo_Orders_Write_Service {
 	}
 
 	private static function update_fixed_boundary( $order ) {
-		return $order instanceof WC_Order && ! $order instanceof WC_Order_Refund && 'pending' === $order->get_status( 'edit' ) && 0 === $order->get_customer_id( 'edit' ) && '' === $order->get_payment_method( 'edit' ) && '' === $order->get_transaction_id( 'edit' ) && null === $order->get_date_paid( 'edit' ) && ! array_filter( (array) $order->get_address( 'billing' ) ) && ! array_filter( (array) $order->get_address( 'shipping' ) ) && ! $order->get_items( 'shipping' ) && ! $order->get_items( 'fee' ) && ! $order->get_items( 'coupon' ) && ! wc_get_order_notes( [ 'order_id' => $order->get_id(), 'type' => 'customer', 'limit' => 1 ] ) && ! $order->get_refunds();
+		if ( ! $order instanceof WC_Order || $order instanceof WC_Order_Refund ) { return false; }
+		$store = $order->get_data_store();
+		return 'pending' === $order->get_status( 'edit' ) && 0 === $order->get_customer_id( 'edit' ) && '' === $order->get_payment_method( 'edit' ) && '' === $order->get_transaction_id( 'edit' ) && null === $order->get_date_paid( 'edit' ) && ! array_filter( (array) $order->get_address( 'billing' ) ) && ! array_filter( (array) $order->get_address( 'shipping' ) ) && ! $store->read_items( $order, 'shipping' ) && ! $store->read_items( $order, 'fee' ) && ! $store->read_items( $order, 'coupon' ) && ! wc_get_order_notes( [ 'order_id' => $order->get_id(), 'type' => 'customer', 'limit' => 1 ] ) && ! $order->get_refunds();
+	}
+
+	private static function update_supported_line_metadata( $item, $product ) {
+		$expected = $product instanceof WC_Product_Variation ? $product->get_variation_attributes() : [];
+		foreach ( $item->get_meta_data() as $meta ) {
+			$key = $meta->key ?? null; $value = $meta->value ?? null; $normalized = is_string( $key ) && str_starts_with( $key, 'attribute_' ) ? substr( $key, 10 ) : $key;
+			if ( ! is_string( $key ) || ! is_string( $value ) || ( ! array_key_exists( $key, $expected ) && ! array_key_exists( 'attribute_' . $normalized, $expected ) ) || $value !== ( $expected[ $key ] ?? $expected[ 'attribute_' . $normalized ] ) ) { return false; }
+		}
+		return true;
 	}
 
 	private static function update_snapshot( $params ) {
 		$valid = self::update_items_params( $params ); if ( is_wp_error( $valid ) ) { return $valid; }
 		$order = wc_get_order( $params['order_id'] );
 		if ( ! self::update_fixed_boundary( $order ) ) { return new WP_Error( 'order_item_update_ineligible', 'Only an unpaid pending guest order without identity, shipping, fees or coupons is eligible.' ); }
+		$store = $order->get_data_store(); $stored_items = $store->read_items( $order, 'line_item' ); $view_items = $order->get_items( 'line_item' );
+		if ( ! is_array( $stored_items ) || ! is_array( $view_items ) || count( $stored_items ) !== count( $view_items ) ) { return new WP_Error( 'order_item_update_ineligible', 'The current persisted order lines could not be verified.' ); }
 		$lines = []; $map = []; $by_product = []; $desired_products = [];
-		foreach ( $order->get_items( 'line_item' ) as $id => $item ) {
+		foreach ( $stored_items as $id => $item ) {
+			$view = $view_items[ $id ] ?? null;
 			$product_id = $item->get_variation_id( 'edit' ) ?: $item->get_product_id( 'edit' ); $qty = $item->get_quantity( 'edit' );
-			if ( ! is_int( $id ) || $id < 1 || ! is_int( $product_id ) || $product_id < 1 || ! is_numeric( $qty ) || (int) $qty < 1 || (float) $qty !== (float) (int) $qty || isset( $by_product[ $product_id ] ) || $item->get_meta_data() ) { return new WP_Error( 'order_item_update_ineligible', 'The current order has unsupported line identities or custom item metadata.' ); }
-			$product = wc_get_product( $product_id ); $unit = (float) $item->get_subtotal( 'edit' ) / (int) $qty;
+			$product = wc_get_product( $product_id );
+			if ( ! $view instanceof WC_Order_Item_Product || ! is_int( $id ) || $id < 1 || ! is_int( $product_id ) || $product_id < 1 || ! is_numeric( $qty ) || (int) $qty < 1 || (float) $qty !== (float) (int) $qty || isset( $by_product[ $product_id ] ) || ! self::update_supported_line_metadata( $item, $product ) || $product_id !== ( $view->get_variation_id( 'edit' ) ?: $view->get_product_id( 'edit' ) ) || (int) $qty !== (int) $view->get_quantity( 'edit' ) || wc_format_decimal( $item->get_subtotal( 'edit' ) ) !== wc_format_decimal( $view->get_subtotal( 'edit' ) ) ) { return new WP_Error( 'order_item_update_ineligible', 'The current order has unsupported line identities, metadata or filtered views.' ); }
+			$unit = (float) $item->get_subtotal( 'edit' ) / (int) $qty;
 			if ( ! $product instanceof WC_Product || ! is_finite( $unit ) || $unit < 0 ) { return new WP_Error( 'order_item_update_unavailable', 'Current order products cannot be verified.' ); }
 			$lines[] = [ 'line_item_id' => $id, 'product_id' => $product_id, 'quantity' => (int) $qty, 'subtotal' => (string) $item->get_subtotal( 'edit' ) ]; $map[ $id ] = (int) $qty; $by_product[ $product_id ] = end( $lines );
 		}
