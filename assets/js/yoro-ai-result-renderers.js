@@ -573,6 +573,15 @@
 			return finish('<div class="yoro-result-card"><h4>Unpaid pending guest order created</h4><p>' + knownId + '</p><p>Final persisted subtotal: ' + h.escapeHtml(facts.subtotal) + '; tax: ' + h.escapeHtml(facts.tax) + '; total: ' + h.escapeHtml(facts.total + ' ' + facts.currency) + '.</p><p>No payment was initiated. YoRo supplied no billing/shipping identity and performed no independent stock or customer-message action. Native WooCommerce/plugin hooks may have run.</p></div>');
 		}
 
+		if ((data.action || (data.result || {}).action || (data.parsed || {}).action) === 'orders.update_items') {
+			const result = data.result || data;
+			const facts = result.order_item_update || (result.data || {}).order_item_update;
+			const verified = result.success === true && facts && facts.status === 'updated' && facts.outcome_unknown === false
+				&& /^[A-Z]{3}$/.test(facts.currency || '') && ['subtotal', 'tax', 'total'].every(function (key) { return typeof facts[key] === 'string' && /^[0-9]+(\.[0-9]{1,6})?$/.test(facts[key]); });
+			if (!verified) return finish('<div class="yoro-result-card"><h4>Order item update requires reconciliation</h4><p>Do not retry, roll back, or repair automatically. Refresh the order and native fulfillment state.</p></div>');
+			return finish('<div class="yoro-result-card"><h4>Pending guest order items updated</h4><p>Final persisted subtotal: ' + h.escapeHtml(facts.subtotal) + '; tax: ' + h.escapeHtml(facts.tax) + '; total: ' + h.escapeHtml(facts.total + ' ' + facts.currency) + '.</p><p>Final owner line items and native fulfillment pending allocation were verified. Quantity replacements receive new line-item IDs. No payment, fulfillment, stock, or customer-message action was initiated.</p></div>');
+		}
+
 		if (data.stage === 'clarify') {
 			return finish(renderClarification(data, h));
 		}
@@ -1556,7 +1565,7 @@
 	}
 
 	function canApproveDirectConfirmation(data, action) {
-		if (action === 'orders.refund' || action === 'orders.record_external_refund' || action === 'orders.create') return false;
+		if (action === 'orders.refund' || action === 'orders.record_external_refund' || action === 'orders.create' || action === 'orders.update_items') return false;
 		return !!(
 			action &&
 			data &&
@@ -1582,6 +1591,23 @@
 				'YoRo supplies no customer or billing/shipping identity, shipping, fees, coupons, custom prices or stock action, and sends no independent customer message.',
 				'Native WooCommerce/plugin hooks may run. Native request metadata may be stored by WooCommerce.',
 				'An unknown or partial outcome requires reconciliation. Never retry or automatically delete the order.']);
+		}
+
+		if (action === 'orders.update_items') {
+			const quote = result.preview || result;
+			if (quote.estimate !== true || quote.final !== false || !Number.isSafeInteger(quote.order_id) || quote.order_id < 1
+				|| !Array.isArray(quote.current_line_items) || !Array.isArray(quote.desired_line_items) || !Array.isArray(quote.desired_product_facts) || !Array.isArray(quote.changes)
+				|| !/^[A-Z]{3}$/.test(quote.currency || '') || !['current_subtotal', 'current_tax', 'current_total'].every(function (key) { return typeof quote[key] === 'string' && /^[0-9]+(\.[0-9]{1,6})?$/.test(quote[key]); })) {
+				return ['The current order preview is unavailable. Refresh before confirming.'];
+			}
+			const current = quote.current_line_items.map(function (line) { return 'Current line #' + line.line_item_id + ': product #' + line.product_id + ' × ' + line.quantity + '.'; });
+			const desired = quote.desired_line_items.map(function (line) { return 'Desired final line: product #' + line.product_id + ' × ' + line.quantity + '.'; });
+			const estimates = quote.desired_product_facts.map(function (product) { return 'Catalog estimate for product #' + product.product_id + ': ' + product.estimated_catalog_amount + ' ' + quote.currency + ' (non-final).'; });
+			const changes = quote.changes.map(function (change) { return 'Change: product #' + change.product_id + ' — ' + change.kind + (change.old_line_item_id ? ' (replaces/removes line #' + change.old_line_item_id + ')' : '') + '.'; });
+			return ['Current persisted subtotal: ' + quote.current_subtotal + '; tax: ' + quote.current_tax + '; total: ' + quote.current_total + ' ' + quote.currency + '.',
+				'Catalog amounts are estimates only; WooCommerce determines final taxes and totals after save. Quantity replacements receive new line-item IDs.']
+				.concat(current, desired, estimates, changes, ['Native fulfillment must stay wholly pending and unallocated. No payment, stock, fulfillment, or customer-message action is initiated.',
+					'Native WooCommerce/plugin hooks may run. An unknown outcome requires reconciliation; never retry, roll back, or repair automatically.']);
 		}
 
 		if (action === 'orders.record_external_refund') {
@@ -2711,7 +2737,7 @@
 		const encodedParams = h.escapeHtml(JSON.stringify(params || {}));
 		const pendingOperationToken = getPendingOperationToken(data);
 		const useDirectConfirm = (plan.type || '') !== 'sequence' && action !== 'multi.query_and_apply';
-		const blocked = result.blocked === true || !!result.block_reason || (action === 'orders.create' && (!(result.preview && result.preview.estimate === true) || !data.displayed_preview_receipt));
+		const blocked = result.blocked === true || !!result.block_reason || ((action === 'orders.create' || action === 'orders.update_items') && (action === 'orders.create' && !(result.preview && result.preview.estimate === true) || !data.displayed_preview_receipt));
 		const changeLines = buildActionChangeLines(action, params, result).concat(safetyApprovalLines(data));
 		const intro = blocked ? '' : approvalIntro(action, params, result);
 		const title = blocked ? blockedConfirmationTitle(action, result) : (isCouponAction(action) ? 'Review coupon details' : 'Please approve this change');
@@ -2726,7 +2752,7 @@
 		} else {
 			actionsHtml += '<div class="yoro-confirm-actions">';
 			if (useDirectConfirm) {
-				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-direct-action="' + h.escapeHtml(action) + '" data-direct-params="' + encodedParams + '" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '"' + (action === 'orders.create' ? ' data-displayed-preview-receipt="' + h.escapeHtml(data.displayed_preview_receipt) + '"' : '') + '>Approve change</button>';
+				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-direct-action="' + h.escapeHtml(action) + '" data-direct-params="' + encodedParams + '" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '"' + ((action === 'orders.create' || action === 'orders.update_items') ? ' data-displayed-preview-receipt="' + h.escapeHtml(data.displayed_preview_receipt) + '"' : '') + '>Approve change</button>';
 			} else {
 				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '">Approve change</button>';
 			}

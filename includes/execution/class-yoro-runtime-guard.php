@@ -6,11 +6,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Runtime_Guard {
 
+	private static function expected_displayed_write_preview( $plan, $preflight ) {
+		$preview = $preflight['preview']['operations'][0]['preview'] ?? null;
+		if ( ! is_array( $preview ) || true !== ( $preview['estimate'] ?? false ) ) { return false; }
+		if ( 'orders.create' === ( $plan['action'] ?? '' ) ) { return true; }
+		return 'orders.update_items' === ( $plan['action'] ?? '' ) && 'write' === ( $preview['type'] ?? null ) && false === ( $preview['blocked'] ?? null ) && true === ( $preview['changes_store'] ?? null ) && false === ( $preview['final'] ?? null );
+	}
+
 	public static function creation_receipt( $plan, $parsed, $preflight ) {
 		$meta = $parsed['meta'] ?? [];
-		if ( 'single' !== ( $plan['type'] ?? '' ) || 'orders.create' !== ( $plan['action'] ?? '' ) || empty( $meta['pending_operation_token'] ) || empty( $meta['conversation_id'] ) || true !== ( $preflight['preview']['operations'][0]['preview']['estimate'] ?? false ) ) { return ''; }
+		if ( 'single' !== ( $plan['type'] ?? '' ) || ! in_array( $plan['action'] ?? '', [ 'orders.create', 'orders.update_items' ], true ) || empty( $meta['pending_operation_token'] ) || empty( $meta['conversation_id'] ) || ! self::expected_displayed_write_preview( $plan, $preflight ) ) { return ''; }
 		$now = time();
-		$body = [ 'v' => 1, 'blog' => get_current_blog_id(), 'user' => get_current_user_id(), 'pending' => $meta['pending_operation_token'], 'conversation' => $meta['conversation_id'], 'action' => 'orders.create', 'params_hash' => YoRo_Safety_Contract::hash( $plan['params'] ), 'preview_hash' => $preflight['preview_hash'], 'issued' => $now, 'expires' => $now + 300 ];
+		$body = [ 'v' => 1, 'blog' => get_current_blog_id(), 'user' => get_current_user_id(), 'pending' => $meta['pending_operation_token'], 'conversation' => $meta['conversation_id'], 'action' => $plan['action'], 'params_hash' => YoRo_Safety_Contract::hash( $plan['params'] ), 'preview_hash' => $preflight['preview_hash'], 'issued' => $now, 'expires' => $now + 300 ];
 		$encoded = base64_encode( wp_json_encode( $body, JSON_UNESCAPED_SLASHES ) );
 		return $encoded . '.' . hash_hmac( 'sha256', $encoded, wp_salt( 'auth' ) );
 	}
@@ -25,8 +32,8 @@ class YoRo_Runtime_Guard {
 		return is_array( $body ) && 1 === ( $body['v'] ?? null ) && get_current_blog_id() === ( $body['blog'] ?? null ) && get_current_user_id() === ( $body['user'] ?? null )
 			&& is_int( $body['issued'] ?? null ) && is_int( $body['expires'] ?? null ) && $body['issued'] <= time() && $body['expires'] > time() && $body['expires'] - $body['issued'] === 300
 			&& ! empty( $meta['pending_operation_token'] ) && ! empty( $meta['conversation_id'] ) && $meta['pending_operation_token'] === ( $body['pending'] ?? null ) && $meta['conversation_id'] === ( $body['conversation'] ?? null )
-			&& 'single' === ( $plan['type'] ?? '' ) && 'orders.create' === ( $plan['action'] ?? '' ) && 'orders.create' === ( $body['action'] ?? null )
-			&& YoRo_Safety_Contract::hash( $plan['params'] ?? [] ) === ( $body['params_hash'] ?? null ) && true === ( $preflight['preview']['operations'][0]['preview']['estimate'] ?? false )
+			&& 'single' === ( $plan['type'] ?? '' ) && in_array( $plan['action'] ?? '', [ 'orders.create', 'orders.update_items' ], true ) && ( $plan['action'] ?? null ) === ( $body['action'] ?? null )
+			&& YoRo_Safety_Contract::hash( $plan['params'] ?? [] ) === ( $body['params_hash'] ?? null ) && self::expected_displayed_write_preview( $plan, $preflight )
 			&& is_string( $body['preview_hash'] ?? null ) && hash_equals( $preflight['preview_hash'], $body['preview_hash'] );
 	}
 
@@ -108,7 +115,7 @@ class YoRo_Runtime_Guard {
 
 	public static function build_confirmation_response( $plan, $parsed, $runtime ) {
 		$action = self::get_plan_action_label( $plan );
-		$creation_preflight = 'orders.create' === ( $plan['action'] ?? '' ) ? YoRo_Safety_Contract::preflight( $plan ) : null;
+		$creation_preflight = in_array( $plan['action'] ?? '', [ 'orders.create', 'orders.update_items' ], true ) ? YoRo_Safety_Contract::preflight( $plan ) : null;
 		$confirmation_preview = is_array( $creation_preflight )
 			? ( $creation_preflight['preview']['operations'][0]['preview'] ?? [] )
 			: self::build_confirmation_preview( $plan );

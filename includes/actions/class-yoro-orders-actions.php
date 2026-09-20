@@ -15,6 +15,14 @@ class YoRo_Orders_Actions {
 	}
 
 	public static function register() {
+		YoRo_Action_Registry::register( 'orders.update_items', [
+			'label' => 'Update pending guest order items', 'description' => 'Replace the desired final line-item set of one pending guest order after a local preview and separate confirmation.',
+			'category' => 'orders', 'permission' => 'manage_woocommerce', 'callback' => [ 'YoRo_Orders_Write_Service', 'update_items' ], 'preview_callback' => [ 'YoRo_Orders_Write_Service', 'preview_update_items' ],
+			'effect' => 'mutate', 'external_side_effect' => false, 'risk_level' => 'high', 'write_action' => true, 'requires_confirmation' => true, 'reversibility' => 'none', 'idempotency_strategy' => 'operation_journal', 'concurrency_strategy' => 'optimistic_version',
+			'input_schema' => [ 'order_id' => 'integer', 'line_items' => 'array' ],
+			'canonical_input_schema' => [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 9007199254740991 ], 'line_items' => [ 'type' => 'array', 'minItems' => 1, 'maxItems' => 20, 'items' => [ 'type' => 'object', 'properties' => [ 'product_id' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 9007199254740991 ], 'quantity' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 1000 ] ], 'required' => [ 'product_id', 'quantity' ], 'additionalProperties' => false ] ] ],
+			'required_params' => [ 'order_id', 'line_items' ], 'max_items' => 1, 'max_targets' => 1, 'target_type' => 'order', 'supports_bulk' => false, 'capabilities' => [ 'orders', 'write' ],
+		] );
 		YoRo_Action_Registry::register( 'orders.create', [
 			'label' => 'Create a pending guest order', 'description' => 'Create one unpaid guest order after a local catalog estimate and separate confirmation. WordPress local only; no payment or stock action. Final totals are determined by WooCommerce.',
 			'category' => 'orders', 'permission' => 'manage_woocommerce', 'callback' => [ 'YoRo_Orders_Write_Service', 'create' ], 'preview_callback' => [ 'YoRo_Orders_Write_Service', 'preview_create' ],

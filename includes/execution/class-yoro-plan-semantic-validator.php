@@ -11,7 +11,7 @@ class YoRo_Plan_Semantic_Validator {
 		$parsed = is_array( $parsed ) ? $parsed : [];
 		if ( 'single' !== ( $plan['type'] ?? '' ) ) {
 			foreach ( (array) ( $plan['steps'] ?? [] ) as $step ) {
-				if ( 'orders.create' === ( $step['action'] ?? '' ) ) { return new WP_Error( 'order_creation_separate_confirmation_required', 'Order creation requires one separate local confirmation.' ); }
+				if ( in_array( $step['action'] ?? '', [ 'orders.create', 'orders.update_items' ], true ) ) { return new WP_Error( 'order_write_separate_confirmation_required', 'Order item writes require one separate local confirmation.' ); }
 				if ( 'orders.record_external_refund' === ( $step['action'] ?? '' ) ) { return new WP_Error( 'external_refund_separate_confirmation_required', 'External refund recording requires its own separate confirmation.' ); }
 				if ( 'orders.refund' === ( $step['action'] ?? '' ) ) { return new WP_Error( 'refund_separate_confirmation_required', 'A gateway refund requires its own separate confirmation.' ); }
 			}
