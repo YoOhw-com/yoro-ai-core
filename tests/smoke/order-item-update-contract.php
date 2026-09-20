@@ -1,5 +1,6 @@
 <?php
 /** Bounded pending-order item update: local-only registry, closed inputs and receipt binding. */
+use Automattic\WooCommerce\Admin\Features\Fulfillments\FulfillmentsManager;
 if ( ! defined( 'ABSPATH' ) || ! class_exists( 'WooCommerce' ) ) { throw new RuntimeException( 'Disposable WordPress/WooCommerce fixture required.' ); }
 $assertions = 0;
 $assert = static function ( $value, $message ) use ( &$assertions ) { ++$assertions; if ( ! $value ) { throw new RuntimeException( $message ); } };
@@ -20,8 +21,10 @@ $other = $plan; $other['action'] = 'orders.create';
 $assert( ! YoRo_Runtime_Guard::verify_creation_receipt( $receipt, $other, $parsed, $preflight ), 'Update receipt cannot cross to order creation.' );
 $blocked_preflight = [ 'preview_hash' => str_repeat( 'b', 64 ), 'preview' => [ 'operations' => [ [ 'preview' => [ 'type' => 'write', 'blocked' => true, 'changes_store' => false, 'estimate' => false, 'final' => false ] ] ] ] ];
 $assert( '' === YoRo_Runtime_Guard::creation_receipt( $plan, $parsed, $blocked_preflight ), 'Blocked update preview cannot receive a receipt.' );
-$products = []; $update_order = null;
+$products = []; $update_order = null; $fulfillments_enabled = static function () { return 'yes'; };
 try {
+	add_filter( 'pre_option_woocommerce_feature_fulfillments_enabled', $fulfillments_enabled );
+	wc_get_container()->get( FulfillmentsManager::class )->register();
 	foreach ( [ 'YR0085 retained line', 'YR0085 removable line' ] as $name ) { $product = new WC_Product_Simple(); $product->set_name( $name ); $product->set_status( 'publish' ); $product->set_regular_price( '11.00' ); $product->save(); $products[] = $product; }
 	$update_order = wc_create_order(); $update_order->set_status( 'pending' ); $update_order->add_product( $products[0], 1 ); $update_order->add_product( $products[1], 1 ); $update_order->calculate_totals(); $update_order->save();
 	$runtime_params = [ 'order_id' => $update_order->get_id(), 'line_items' => [ [ 'product_id' => $products[0]->get_id(), 'quantity' => 1 ] ] ];
@@ -36,6 +39,7 @@ try {
 } finally {
 	if ( $update_order instanceof WC_Order ) { $update_order->delete( true ); }
 	foreach ( $products as $product ) { wp_delete_post( $product->get_id(), true ); }
+	remove_filter( 'pre_option_woocommerce_feature_fulfillments_enabled', $fulfillments_enabled );
 }
 $source = file_get_contents( dirname( __DIR__, 2 ) . '/includes/actions/class-yoro-orders-write-service.php' );
 $assert( is_string( $source ) && ! str_contains( $source, 'set_subtotal(' ) && ! str_contains( $source, 'set_total(' ), 'Item update has no YoRo custom repricing path.' );
