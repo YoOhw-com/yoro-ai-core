@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit( 1 );
 }
 
-echo "YoRo connector runtime smoke contract started.\n";
+fwrite( STDERR, "YoRo connector runtime smoke contract started.\n" );
 
 $plugin_root = dirname( __DIR__, 2 );
 
