@@ -3,13 +3,16 @@
  * YoRo canonical connector publisher and pull-runtime smoke contract.
  *
  * Run from the WordPress root with:
- * wp eval-file wp-content/plugins/yoro-ai-core/tests/smoke/connector-runtime-contract.php
+ * wp eval 'require WP_PLUGIN_DIR . "/yoro-ai-core/tests/smoke/connector-runtime-contract.php";'
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	fwrite( STDERR, "Run this smoke contract through WordPress, for example with wp eval-file.\n" );
 	exit( 1 );
 }
+
+global $wpdb;
+
 
 $plugin_root = dirname( __DIR__, 2 );
 
@@ -48,6 +51,7 @@ foreach (
 }
 
 $runtime_schedules = YoRo_Connector_Runtime::register_cron_schedule( [] );
+$assert( 5 === YoRo_Connector_Runtime::MAX_DELIVERIES_PER_TICK && 45 === YoRo_Connector_Runtime::MAX_TICK_SECONDS, 'The runner must retain its five-delivery and 45-second caps.' );
 $assert(
 	MINUTE_IN_SECONDS === ( $runtime_schedules[ YoRo_Connector_Runtime::CRON_SCHEDULE ]['interval'] ?? 0 ),
 	'The connector runtime cron schedule must run every minute.'
@@ -118,6 +122,8 @@ class YoRo_Connector_Smoke_Client extends YoRo_Connector_Client {
 	public $context_publications = 0;
 	public $claim = [];
 	public $claims = [];
+	public $claim_calls = 0;
+	public $claim_callback = null;
 	public $events = [];
 	public $renewals = [];
 	public $results = [];
@@ -137,6 +143,12 @@ class YoRo_Connector_Smoke_Client extends YoRo_Connector_Client {
 	}
 
 	public function claim_delivery() {
+		$this->claim_calls++;
+
+		if ( is_callable( $this->claim_callback ) ) {
+			return ( $this->claim_callback )();
+		}
+
 		if ( ! empty( $this->claims ) ) {
 			return array_shift( $this->claims );
 		}
@@ -1355,6 +1367,189 @@ try {
 	$assert( empty( $batch_result['drained'] ), 'A capped runtime drain must not claim the queue is empty.' );
 	$assert( 3 === count( $batch_client->results ), 'Bounded runtime drain must publish one result per claimed delivery.' );
 	$assert( 4 === count( $batch_client->claims ), 'Bounded runtime drain must leave later deliveries for the next tick.' );
+
+	$fake_time = 0.0;
+	$slept = [];
+	$clock = static function() use ( &$fake_time ) { return $fake_time; };
+	$sleeper = static function( $seconds ) use ( &$fake_time, &$slept ) {
+		$slept[] = $seconds;
+		$fake_time += $seconds;
+	};
+	$poll_client = new YoRo_Connector_Smoke_Client();
+	$poll_client->claims = [
+		[ 'success' => true, 'empty' => true, 'retry_after' => 5 ],
+		$batch_client->claims[0],
+		[ 'success' => true, 'empty' => true, 'retry_after' => 5 ],
+	];
+	$poll_client->claim = [ 'success' => true, 'empty' => true, 'retry_after' => 5 ];
+	$poll_result = ( new YoRo_Connector_Runtime( $poll_client, $clock, $sleeper ) )->run_batch( 5, 12 );
+	$assert( 1 === ( $poll_result['processed'] ?? 0 ) && 1 === count( $poll_client->results ), 'A delivery appearing after an initial 204 must complete in the same batch.' );
+	$assert( [ 5, 5 ] === $slept && 4 === $poll_client->claim_calls && 10.0 === $fake_time, 'Empty claims must honor bounded Retry-After without spinning or sleeping past the deadline.' );
+	$assert( ! empty( $poll_result['drained'] ), 'A final empty claim reports a drained queue.' );
+
+	foreach ( [
+		[ null, 11, [ 5, 5 ], 3 ],
+		[ 0, 11, [ 5, 5 ], 3 ],
+		[ 'malformed', 11, [ 5, 5 ], 3 ],
+		[ 999, 11, [ 5, 5 ], 3 ],
+		[ 2, 5, [ 2, 2 ], 3 ],
+		[ 0.2, 3, [ 1, 1 ], 3 ],
+	] as $case ) {
+		$fake_time = 0.0;
+		$slept = [];
+		$empty_client = new YoRo_Connector_Smoke_Client();
+		$empty_client->claim = [ 'success' => true, 'empty' => true ];
+		if ( null !== $case[0] ) { $empty_client->claim['retry_after'] = $case[0]; }
+		$empty_result = ( new YoRo_Connector_Runtime( $empty_client, $clock, $sleeper ) )->run_batch( 5, $case[1] );
+		$assert( 0 === ( $empty_result['processed'] ?? -1 ) && ! empty( $empty_result['drained'] ), 'A permanently empty queue must terminate normally.' );
+		$assert( $case[2] === $slept && $case[3] === $empty_client->claim_calls, 'Missing, zero, malformed, excessive and fractional retry hints must normalize to bounded waits.' );
+	}
+
+	$fake_time = 0.0;
+	$slept = [];
+	$deadline_client = new YoRo_Connector_Smoke_Client();
+	$deadline_client->claim = [ 'success' => true, 'empty' => true, 'retry_after' => 5 ];
+	$deadline_result = ( new YoRo_Connector_Runtime( $deadline_client, $clock, $sleeper ) )->run_batch( 5, 4 );
+	$assert( 0 === $deadline_result['processed'] && 1 === $deadline_client->claim_calls && [] === $slept, 'A retry hint beyond the remaining deadline must not sleep or repoll.' );
+	$deadline_client->claim_callback = static function() use ( &$fake_time ) {
+		$fake_time += 45;
+		return [ 'success' => true, 'empty' => true, 'retry_after' => 5 ];
+	};
+	$fake_time = 0.0;
+	$deadline_client->claim_calls = 0;
+	$deadline_result = ( new YoRo_Connector_Runtime( $deadline_client, $clock, $sleeper ) )->run_batch();
+	$assert( 0 === $deadline_result['processed'] && 1 === $deadline_client->claim_calls && [] === $slept, 'An in-flight claim exhausting the 45-second window must not sleep or repoll.' );
+
+	$failure_client = new YoRo_Connector_Smoke_Client();
+	$failure_client->claim = new WP_Error( 'simulated_claim_failure', 'Claim failed.' );
+	$failure_result = ( new YoRo_Connector_Runtime( $failure_client, $clock, $sleeper ) )->run_batch();
+	$assert( is_wp_error( $failure_result ) && 1 === $failure_client->claim_calls && [] === $failure_client->results, 'A failed claim must not retry or execute a business action.' );
+	$fake_time = 0.0;
+	$invalid_empty_client = new YoRo_Connector_Smoke_Client();
+	$invalid_empty_client->claim = [ 'success' => false, 'empty' => true, 'retry_after' => 1 ];
+	$invalid_empty_result = ( new YoRo_Connector_Runtime( $invalid_empty_client, $clock, $sleeper ) )->run_batch();
+	$assert( 0 === $invalid_empty_result['processed'] && 1 === $invalid_empty_client->claim_calls && [] === $slept, 'Only a successful empty claim may be polled again.' );
+	$cutover_status = YoRo_AI_Settings::get_ai_api_status();
+	try {
+		$disabled_status = $cutover_status;
+		$disabled_status['connector_runtime']['cutover']['cutover_allowed'] = false;
+		YoRo_AI_Settings::update_ai_api_status( $disabled_status );
+		$disabled_client = new YoRo_Connector_Smoke_Client();
+		$disabled_result = ( new YoRo_Connector_Runtime( $disabled_client, $clock, $sleeper ) )->run_batch();
+		$assert( 0 === $disabled_result['processed'] && 0 === $disabled_client->claim_calls, 'Disabled live cutover must not poll or execute.' );
+	} finally {
+		YoRo_AI_Settings::update_ai_api_status( $cutover_status );
+	}
+
+	$lock_acquire = new ReflectionMethod( 'YoRo_Connector_Runtime', 'acquire_lock' );
+	$lock_release = new ReflectionMethod( 'YoRo_Connector_Runtime', 'release_lock' );
+	$prior_lock = get_option( YoRo_Connector_Runtime::LOCK_KEY, null );
+	try {
+		delete_option( YoRo_Connector_Runtime::LOCK_KEY );
+		$owner = $lock_acquire->invoke( null );
+		$assert( is_string( $owner ) && null === $lock_acquire->invoke( null ), 'Overlapping runners must not acquire the same local lock.' );
+		$lock_release->invoke( null, 'not-the-owner' );
+		$assert( $owner === get_option( YoRo_Connector_Runtime::LOCK_KEY ), 'A non-owner must not release the active runner lock.' );
+		$lock_release->invoke( null, $owner );
+		$assert( false === get_option( YoRo_Connector_Runtime::LOCK_KEY ), 'The owner must release its lock.' );
+		$stale_lock = 'stale-owner|' . ( time() - 1 );
+		add_option( YoRo_Connector_Runtime::LOCK_KEY, $stale_lock, '', false );
+		$recovered = $lock_acquire->invoke( null );
+		$assert( is_string( $recovered ) && $recovered !== $owner, 'An expired runner lock must be reclaimed atomically.' );
+		$lock_release->invoke( null, $stale_lock );
+		$assert( $recovered === get_option( YoRo_Connector_Runtime::LOCK_KEY ), 'A stale owner must not release a recovered runner lock.' );
+		$lock_release->invoke( null, $recovered );
+
+		$real_wpdb = $wpdb;
+		$unavailable_db = new class( $real_wpdb ) {
+			public $options;
+			public $calls = 0;
+			private $real;
+
+			public function __construct( $real ) {
+				$this->real = $real;
+				$this->options = $real->options;
+			}
+
+			public function prepare( $query, ...$args ) {
+				return $this->real->prepare( $query, ...$args );
+			}
+
+			public function get_var( $query ) {
+				$this->calls++;
+				return null;
+			}
+		};
+		try {
+			$wpdb = $unavailable_db;
+			YoRo_Connector_Runtime::tick();
+		} finally {
+			$wpdb = $real_wpdb;
+		}
+		$assert( 1 === $unavailable_db->calls && false === get_option( YoRo_Connector_Runtime::LOCK_KEY ), 'Unavailable GET_LOCK must fail closed before tick work.' );
+
+		$owner = $lock_acquire->invoke( null );
+		$other_db = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+		$other_db->set_prefix( $real_wpdb->prefix );
+		$session_client = new YoRo_Connector_Smoke_Client();
+		try {
+			$wpdb = $other_db;
+			$session_result = ( new YoRo_Connector_Runtime( $session_client ) )->run_once();
+		} finally {
+			$wpdb = $real_wpdb;
+			$lock_release->invoke( null, $owner );
+		}
+		$assert( is_wp_error( $session_result ) && 'yoro_connector_runner_lock_lost' === $session_result->get_error_code() && 0 === $session_client->claim_calls, 'A changed database session must fail closed before claiming work.' );
+
+		$worker_code = <<<'PHP'
+require $argv[1];
+$acquire = new ReflectionMethod( 'YoRo_Connector_Runtime', 'acquire_lock' );
+$release = new ReflectionMethod( 'YoRo_Connector_Runtime', 'release_lock' );
+fread( STDIN, 1 );
+$owner = $acquire->invoke( null );
+fwrite( STDOUT, null === $owner ? "BLOCKED\n" : "OWNER\n" );
+fflush( STDOUT );
+fread( STDIN, 1 );
+if ( null !== $owner ) { $release->invoke( null, $owner ); }
+PHP;
+		$start_worker = static function() use ( $worker_code ) {
+			$pipes = [];
+			$process = proc_open(
+				[ PHP_BINARY, '-d', 'display_errors=0', '-d', 'log_errors=0', '-r', $worker_code, ABSPATH . 'wp-load.php' ],
+				[ 0 => [ 'pipe', 'r' ], 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ],
+				$pipes
+			);
+			if ( is_resource( $process ) ) { stream_set_timeout( $pipes[1], 15 ); }
+			return [ $process, $pipes ];
+		};
+		$workers = [ $start_worker(), $start_worker() ];
+		try {
+			$assert( is_resource( $workers[0][0] ) && is_resource( $workers[1][0] ), 'Two independent runner processes must start.' );
+			foreach ( $workers as $worker ) { fwrite( $worker[1][0], 'G' ); fflush( $worker[1][0] ); }
+			$outcomes = [];
+			foreach ( $workers as $worker ) { $outcomes[] = trim( (string) fgets( $worker[1][1] ) ); }
+			sort( $outcomes );
+			$assert( [ 'BLOCKED', 'OWNER' ] === $outcomes, 'Simultaneous independent runners must have exactly one lock owner.' );
+
+			$expired_while_active = 'expired-while-active|' . ( time() - 1 );
+			$changed = $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s", $expired_while_active, YoRo_Connector_Runtime::LOCK_KEY ) );
+			$assert( 1 === $changed, 'The slow-runner fixture must expire an active option row.' );
+			$assert( null === $lock_acquire->invoke( null ), 'An expired option must not admit a new runner while its database owner is active.' );
+		} finally {
+			foreach ( $workers as $worker ) {
+				if ( ! is_resource( $worker[0] ) ) { continue; }
+				fwrite( $worker[1][0], 'R' ); fclose( $worker[1][0] );
+				fclose( $worker[1][1] ); fclose( $worker[1][2] );
+				proc_close( $worker[0] );
+			}
+		}
+		$recovered_after_owner_exit = $lock_acquire->invoke( null );
+		$assert( is_string( $recovered_after_owner_exit ), 'A stale option must be recoverable after the database owner exits.' );
+		$lock_release->invoke( null, $recovered_after_owner_exit );
+	} finally {
+		delete_option( YoRo_Connector_Runtime::LOCK_KEY );
+		if ( null !== $prior_lock ) { add_option( YoRo_Connector_Runtime::LOCK_KEY, $prior_lock, '', false ); }
+	}
 
 	foreach ( $batch_operations as $batch_operation ) {
 		YoRo_Connector_Execution_Journal::clear( $batch_operation );

@@ -11,13 +11,25 @@ class YoRo_Connector_Runtime {
 	const CRON_SCHEDULE_OPTION = 'yoro_connector_runtime_schedule_version';
 	const CRON_SCHEDULE_VERSION = 2;
 	const LOCK_KEY = 'yoro_connector_runtime_lock';
+	const LOCK_SECONDS = 120;
 	const MAX_DELIVERIES_PER_TICK = 5;
 	const MAX_TICK_SECONDS = 45;
+	const DEFAULT_RETRY_SECONDS = 5;
 
 	private $client;
+	private $clock;
+	private $sleeper;
+	private static $held_lock = null;
+	private static $held_lock_name = null;
 
-	public function __construct( $client = null ) {
+	public function __construct( $client = null, $clock = null, $sleeper = null ) {
 		$this->client = $client instanceof YoRo_Connector_Client ? $client : new YoRo_Connector_Client();
+		$this->clock = is_callable( $clock ) ? $clock : static function() {
+			return function_exists( 'hrtime' ) ? hrtime( true ) / 1000000000 : microtime( true );
+		};
+		$this->sleeper = is_callable( $sleeper ) ? $sleeper : static function( $seconds ) {
+			usleep( (int) round( $seconds * 1000000 ) );
+		};
 	}
 
 	public static function init() {
@@ -56,11 +68,11 @@ class YoRo_Connector_Runtime {
 	}
 
 	public static function tick() {
-		if ( get_transient( self::LOCK_KEY ) ) {
+		$lock = self::acquire_lock();
+
+		if ( null === $lock ) {
 			return;
 		}
-
-		set_transient( self::LOCK_KEY, 1, 55 );
 
 		try {
 			$client = new YoRo_Connector_Client();
@@ -71,29 +83,154 @@ class YoRo_Connector_Runtime {
 				( new self( $client ) )->run_batch();
 			}
 		} finally {
-			delete_transient( self::LOCK_KEY );
+			self::release_lock( $lock );
 		}
+	}
+
+	private static function acquire_lock() {
+		if ( null !== self::$held_lock ) {
+			return null;
+		}
+
+		global $wpdb;
+		$lock_name = 'yoro_connector_' . md5( ( defined( 'DB_NAME' ) ? DB_NAME : '' ) . '|' . $wpdb->options );
+		if ( 1 !== (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 0)', $lock_name ) ) ) {
+			return null;
+		}
+
+		try {
+			$lock = wp_generate_uuid4() . '|' . ( time() + self::LOCK_SECONDS );
+			if ( ! self::insert_lock( $lock ) ) {
+				$current = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::LOCK_KEY ) );
+				$parts = is_string( $current ) ? explode( '|', $current, 2 ) : [];
+
+				if ( 2 !== count( $parts ) || ! ctype_digit( $parts[1] ) || (int) $parts[1] >= time() ) {
+					return null;
+				}
+
+				// GET_LOCK excludes a live runner, even if its option expiry has passed.
+				if ( ! self::delete_lock_if_owned( $current ) || ! self::insert_lock( $lock ) ) {
+					return null;
+				}
+			}
+
+			self::$held_lock = $lock;
+			self::$held_lock_name = $lock_name;
+			return $lock;
+		} finally {
+			if ( null === self::$held_lock ) {
+				$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+			}
+		}
+	}
+
+	private static function release_lock( $lock ) {
+		if ( null === self::$held_lock || ! hash_equals( self::$held_lock, $lock ) ) {
+			return;
+		}
+
+		global $wpdb;
+		try {
+			self::delete_lock_if_owned( $lock );
+		} finally {
+			try {
+				$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', self::$held_lock_name ) );
+			} finally {
+				self::$held_lock = null;
+				self::$held_lock_name = null;
+			}
+		}
+	}
+
+	private static function insert_lock( $lock ) {
+		global $wpdb;
+		$inserted = $wpdb->query( $wpdb->prepare( "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, %s)", self::LOCK_KEY, $lock, 'off' ) );
+
+		if ( 1 === $inserted ) {
+			self::clear_lock_cache();
+			return true;
+		}
+
+		return false;
+	}
+
+	private static function delete_lock_if_owned( $lock ) {
+		global $wpdb;
+		$deleted = $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s", self::LOCK_KEY, $lock ) );
+
+		if ( 1 === $deleted ) {
+			self::clear_lock_cache();
+			return true;
+		}
+
+		return false;
+	}
+
+	private static function clear_lock_cache() {
+		wp_cache_delete( self::LOCK_KEY, 'options' );
+		wp_cache_delete( 'alloptions', 'options' );
+		wp_cache_delete( 'notoptions', 'options' );
+	}
+
+	private static function runner_lock_valid() {
+		if ( null === self::$held_lock ) {
+			return true;
+		}
+
+		global $wpdb;
+		$owns_session = $wpdb->get_var( $wpdb->prepare( 'SELECT IS_USED_LOCK(%s) = CONNECTION_ID()', self::$held_lock_name ) );
+		$current = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::LOCK_KEY ) );
+
+		return 1 === (int) $owns_session && self::$held_lock === $current;
+	}
+
+	private static function lock_lost_error() {
+		return new WP_Error( 'yoro_connector_runner_lock_lost', 'The connector runner lock was lost.' );
 	}
 
 	public function run_batch( $limit = self::MAX_DELIVERIES_PER_TICK, $time_budget = self::MAX_TICK_SECONDS ) {
 		$limit       = max( 1, min( self::MAX_DELIVERIES_PER_TICK, absint( $limit ) ) );
 		$time_budget = max( 1, min( self::MAX_TICK_SECONDS, absint( $time_budget ) ) );
-		$started_at  = microtime( true );
+		$deadline    = ( $this->clock )() + $time_budget;
 		$deliveries  = [];
 		$drained     = false;
 
-		while ( count( $deliveries ) < $limit && ( microtime( true ) - $started_at ) < $time_budget ) {
+		while ( count( $deliveries ) < $limit && ( $this->clock )() < $deadline ) {
 			$result = $this->run_once();
 
 			if ( is_wp_error( $result ) ) {
 				return $result;
 			}
 
-			if ( ! is_array( $result ) || ! empty( $result['empty'] ) || ! empty( $result['skipped'] ) ) {
-				$drained = ! empty( $result['empty'] );
+			if ( ! is_array( $result ) || ! empty( $result['skipped'] ) ) {
 				break;
 			}
 
+			if ( ! empty( $result['empty'] ) ) {
+				if ( empty( $result['success'] ) ) {
+					break;
+				}
+
+				$drained = true;
+				$delay = self::retry_delay( $result['retry_after'] ?? null );
+				$before_sleep = ( $this->clock )();
+				$remaining = $deadline - $before_sleep;
+
+				if ( $remaining <= 0 || $delay >= $remaining ) {
+					break;
+				}
+
+				( $this->sleeper )( $delay );
+
+				// A broken sleeper or clock must never turn an empty queue into a spin.
+				if ( ( $this->clock )() <= $before_sleep ) {
+					break;
+				}
+
+				continue;
+			}
+
+			$drained = false;
 			$deliveries[] = $result;
 		}
 
@@ -105,6 +242,14 @@ class YoRo_Connector_Runtime {
 		];
 	}
 
+	private static function retry_delay( $hint ) {
+		if ( ! is_numeric( $hint ) || ! is_finite( (float) $hint ) || (float) $hint <= 0 ) {
+			return self::DEFAULT_RETRY_SECONDS;
+		}
+
+		return max( 1, min( self::DEFAULT_RETRY_SECONDS, (int) ceil( (float) $hint ) ) );
+	}
+
 	public function run_once() {
 		if ( ! self::live_cutover_allowed() ) {
 			return [
@@ -112,6 +257,10 @@ class YoRo_Connector_Runtime {
 				'skipped' => true,
 				'reason'  => 'live_cutover_not_allowed',
 			];
+		}
+
+		if ( ! self::runner_lock_valid() ) {
+			return self::lock_lost_error();
 		}
 
 		$claim = $this->client->claim_delivery();
@@ -127,6 +276,10 @@ class YoRo_Connector_Runtime {
 			return $authority;
 		}
 
+		if ( ! self::runner_lock_valid() ) {
+			return self::lock_lost_error();
+		}
+
 		$acknowledged = $this->client->publish_event(
 			$this->acknowledgement_event( $delivery ),
 			$authority['claim_token'],
@@ -140,6 +293,10 @@ class YoRo_Connector_Runtime {
 		$accepted = [];
 
 		foreach ( $authority['operations'] as $operation ) {
+			if ( ! self::runner_lock_valid() ) {
+				return self::lock_lost_error();
+			}
+
 			$renewed = $this->client->renew_lease(
 				$authority['delivery_id'],
 				$authority['claim_token'],
@@ -151,6 +308,14 @@ class YoRo_Connector_Runtime {
 			}
 
 			$result = $this->result_for_operation( $operation );
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
+
+			if ( ! self::runner_lock_valid() ) {
+				return self::lock_lost_error();
+			}
+
 			$published = $this->client->publish_result(
 				$result,
 				$authority['claim_token'],
@@ -223,6 +388,10 @@ class YoRo_Connector_Runtime {
 	}
 
 	private function result_for_operation( array $operation ) {
+		if ( ! self::runner_lock_valid() ) {
+			return self::lock_lost_error();
+		}
+
 		$journal = YoRo_Connector_Execution_Journal::begin( $operation );
 
 		if ( 'completed' === ( $journal['state'] ?? '' ) && is_array( $journal['result'] ?? null ) ) {
@@ -250,6 +419,10 @@ class YoRo_Connector_Runtime {
 		}
 
 		$original_user_id = get_current_user_id();
+		if ( ! self::runner_lock_valid() ) {
+			return self::lock_lost_error();
+		}
+
 		wp_set_current_user( $validation['user_id'] );
 
 		try {
