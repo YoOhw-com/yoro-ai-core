@@ -3,7 +3,7 @@
  * YoRo canonical connector publisher and pull-runtime smoke contract.
  *
  * Run from the WordPress root with:
- * wp eval-file wp-content/plugins/yoro-ai-core/tests/smoke/connector-runtime-contract.php
+ * wp eval 'require WP_PLUGIN_DIR . "/yoro-ai-core/tests/smoke/connector-runtime-contract.php";'
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -11,7 +11,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit( 1 );
 }
 
-fwrite( STDERR, "YoRo connector runtime smoke contract started.\n" );
 
 $plugin_root = dirname( __DIR__, 2 );
 
