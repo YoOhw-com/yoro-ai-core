@@ -48,6 +48,7 @@ foreach (
 }
 
 $runtime_schedules = YoRo_Connector_Runtime::register_cron_schedule( [] );
+$assert( 5 === YoRo_Connector_Runtime::MAX_DELIVERIES_PER_TICK && 45 === YoRo_Connector_Runtime::MAX_TICK_SECONDS, 'The runner must retain its five-delivery and 45-second caps.' );
 $assert(
 	MINUTE_IN_SECONDS === ( $runtime_schedules[ YoRo_Connector_Runtime::CRON_SCHEDULE ]['interval'] ?? 0 ),
 	'The connector runtime cron schedule must run every minute.'
@@ -118,6 +119,8 @@ class YoRo_Connector_Smoke_Client extends YoRo_Connector_Client {
 	public $context_publications = 0;
 	public $claim = [];
 	public $claims = [];
+	public $claim_calls = 0;
+	public $claim_callback = null;
 	public $events = [];
 	public $renewals = [];
 	public $results = [];
@@ -137,6 +140,12 @@ class YoRo_Connector_Smoke_Client extends YoRo_Connector_Client {
 	}
 
 	public function claim_delivery() {
+		$this->claim_calls++;
+
+		if ( is_callable( $this->claim_callback ) ) {
+			return ( $this->claim_callback )();
+		}
+
 		if ( ! empty( $this->claims ) ) {
 			return array_shift( $this->claims );
 		}
@@ -1355,6 +1364,102 @@ try {
 	$assert( empty( $batch_result['drained'] ), 'A capped runtime drain must not claim the queue is empty.' );
 	$assert( 3 === count( $batch_client->results ), 'Bounded runtime drain must publish one result per claimed delivery.' );
 	$assert( 4 === count( $batch_client->claims ), 'Bounded runtime drain must leave later deliveries for the next tick.' );
+
+	$fake_time = 0.0;
+	$slept = [];
+	$clock = static function() use ( &$fake_time ) { return $fake_time; };
+	$sleeper = static function( $seconds ) use ( &$fake_time, &$slept ) {
+		$slept[] = $seconds;
+		$fake_time += $seconds;
+	};
+	$poll_client = new YoRo_Connector_Smoke_Client();
+	$poll_client->claims = [
+		[ 'success' => true, 'empty' => true, 'retry_after' => 5 ],
+		$batch_client->claims[0],
+		[ 'success' => true, 'empty' => true, 'retry_after' => 5 ],
+	];
+	$poll_client->claim = [ 'success' => true, 'empty' => true, 'retry_after' => 5 ];
+	$poll_result = ( new YoRo_Connector_Runtime( $poll_client, $clock, $sleeper ) )->run_batch( 5, 12 );
+	$assert( 1 === ( $poll_result['processed'] ?? 0 ) && 1 === count( $poll_client->results ), 'A delivery appearing after an initial 204 must complete in the same batch.' );
+	$assert( [ 5, 5 ] === $slept && 4 === $poll_client->claim_calls && 10.0 === $fake_time, 'Empty claims must honor bounded Retry-After without spinning or sleeping past the deadline.' );
+	$assert( ! empty( $poll_result['drained'] ), 'A final empty claim reports a drained queue.' );
+
+	foreach ( [
+		[ null, 11, [ 5, 5 ], 3 ],
+		[ 0, 11, [ 5, 5 ], 3 ],
+		[ 'malformed', 11, [ 5, 5 ], 3 ],
+		[ 999, 11, [ 5, 5 ], 3 ],
+		[ 2, 5, [ 2, 2 ], 3 ],
+		[ 0.2, 3, [ 1, 1 ], 3 ],
+	] as $case ) {
+		$fake_time = 0.0;
+		$slept = [];
+		$empty_client = new YoRo_Connector_Smoke_Client();
+		$empty_client->claim = [ 'success' => true, 'empty' => true ];
+		if ( null !== $case[0] ) { $empty_client->claim['retry_after'] = $case[0]; }
+		$empty_result = ( new YoRo_Connector_Runtime( $empty_client, $clock, $sleeper ) )->run_batch( 5, $case[1] );
+		$assert( 0 === ( $empty_result['processed'] ?? -1 ) && ! empty( $empty_result['drained'] ), 'A permanently empty queue must terminate normally.' );
+		$assert( $case[2] === $slept && $case[3] === $empty_client->claim_calls, 'Missing, zero, malformed, excessive and fractional retry hints must normalize to bounded waits.' );
+	}
+
+	$fake_time = 0.0;
+	$slept = [];
+	$deadline_client = new YoRo_Connector_Smoke_Client();
+	$deadline_client->claim = [ 'success' => true, 'empty' => true, 'retry_after' => 5 ];
+	$deadline_result = ( new YoRo_Connector_Runtime( $deadline_client, $clock, $sleeper ) )->run_batch( 5, 4 );
+	$assert( 0 === $deadline_result['processed'] && 1 === $deadline_client->claim_calls && [] === $slept, 'A retry hint beyond the remaining deadline must not sleep or repoll.' );
+	$deadline_client->claim_callback = static function() use ( &$fake_time ) {
+		$fake_time += 45;
+		return [ 'success' => true, 'empty' => true, 'retry_after' => 5 ];
+	};
+	$fake_time = 0.0;
+	$deadline_client->claim_calls = 0;
+	$deadline_result = ( new YoRo_Connector_Runtime( $deadline_client, $clock, $sleeper ) )->run_batch();
+	$assert( 0 === $deadline_result['processed'] && 1 === $deadline_client->claim_calls && [] === $slept, 'An in-flight claim exhausting the 45-second window must not sleep or repoll.' );
+
+	$failure_client = new YoRo_Connector_Smoke_Client();
+	$failure_client->claim = new WP_Error( 'simulated_claim_failure', 'Claim failed.' );
+	$failure_result = ( new YoRo_Connector_Runtime( $failure_client, $clock, $sleeper ) )->run_batch();
+	$assert( is_wp_error( $failure_result ) && 1 === $failure_client->claim_calls && [] === $failure_client->results, 'A failed claim must not retry or execute a business action.' );
+	$fake_time = 0.0;
+	$invalid_empty_client = new YoRo_Connector_Smoke_Client();
+	$invalid_empty_client->claim = [ 'success' => false, 'empty' => true, 'retry_after' => 1 ];
+	$invalid_empty_result = ( new YoRo_Connector_Runtime( $invalid_empty_client, $clock, $sleeper ) )->run_batch();
+	$assert( 0 === $invalid_empty_result['processed'] && 1 === $invalid_empty_client->claim_calls && [] === $slept, 'Only a successful empty claim may be polled again.' );
+	$cutover_status = YoRo_AI_Settings::get_ai_api_status();
+	try {
+		$disabled_status = $cutover_status;
+		$disabled_status['connector_runtime']['cutover']['cutover_allowed'] = false;
+		YoRo_AI_Settings::update_ai_api_status( $disabled_status );
+		$disabled_client = new YoRo_Connector_Smoke_Client();
+		$disabled_result = ( new YoRo_Connector_Runtime( $disabled_client, $clock, $sleeper ) )->run_batch();
+		$assert( 0 === $disabled_result['processed'] && 0 === $disabled_client->claim_calls, 'Disabled live cutover must not poll or execute.' );
+	} finally {
+		YoRo_AI_Settings::update_ai_api_status( $cutover_status );
+	}
+
+	$lock_acquire = new ReflectionMethod( 'YoRo_Connector_Runtime', 'acquire_lock' );
+	$lock_release = new ReflectionMethod( 'YoRo_Connector_Runtime', 'release_lock' );
+	$prior_lock = get_option( YoRo_Connector_Runtime::LOCK_KEY, null );
+	try {
+		delete_option( YoRo_Connector_Runtime::LOCK_KEY );
+		$owner = $lock_acquire->invoke( null );
+		$assert( is_string( $owner ) && null === $lock_acquire->invoke( null ), 'Overlapping runners must not acquire the same local lock.' );
+		$lock_release->invoke( null, 'not-the-owner' );
+		$assert( $owner === get_option( YoRo_Connector_Runtime::LOCK_KEY ), 'A non-owner must not release the active runner lock.' );
+		$lock_release->invoke( null, $owner );
+		$assert( false === get_option( YoRo_Connector_Runtime::LOCK_KEY ), 'The owner must release its lock.' );
+		$stale_lock = 'stale-owner|' . ( time() - 1 );
+		add_option( YoRo_Connector_Runtime::LOCK_KEY, $stale_lock, '', false );
+		$recovered = $lock_acquire->invoke( null );
+		$assert( is_string( $recovered ) && $recovered !== $owner, 'An expired runner lock must be reclaimed atomically.' );
+		$lock_release->invoke( null, $stale_lock );
+		$assert( $recovered === get_option( YoRo_Connector_Runtime::LOCK_KEY ), 'A stale owner must not release a recovered runner lock.' );
+		$lock_release->invoke( null, $recovered );
+	} finally {
+		delete_option( YoRo_Connector_Runtime::LOCK_KEY );
+		if ( null !== $prior_lock ) { add_option( YoRo_Connector_Runtime::LOCK_KEY, $prior_lock, '', false ); }
+	}
 
 	foreach ( $batch_operations as $batch_operation ) {
 		YoRo_Connector_Execution_Journal::clear( $batch_operation );
