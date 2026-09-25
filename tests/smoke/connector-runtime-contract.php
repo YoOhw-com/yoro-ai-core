@@ -11,6 +11,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit( 1 );
 }
 
+echo "YoRo connector runtime smoke contract started.\n";
+
 $plugin_root = dirname( __DIR__, 2 );
 
 if ( ! class_exists( 'YoRo_AI_Core' ) && file_exists( $plugin_root . '/yoro-ai-core.php' ) ) {
