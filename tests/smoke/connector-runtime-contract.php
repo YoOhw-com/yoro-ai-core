@@ -11,6 +11,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit( 1 );
 }
 
+global $wpdb;
+
 
 $plugin_root = dirname( __DIR__, 2 );
 
@@ -1457,6 +1459,93 @@ try {
 		$lock_release->invoke( null, $stale_lock );
 		$assert( $recovered === get_option( YoRo_Connector_Runtime::LOCK_KEY ), 'A stale owner must not release a recovered runner lock.' );
 		$lock_release->invoke( null, $recovered );
+
+		$real_wpdb = $wpdb;
+		$unavailable_db = new class( $real_wpdb ) {
+			public $options;
+			public $calls = 0;
+			private $real;
+
+			public function __construct( $real ) {
+				$this->real = $real;
+				$this->options = $real->options;
+			}
+
+			public function prepare( $query, ...$args ) {
+				return $this->real->prepare( $query, ...$args );
+			}
+
+			public function get_var( $query ) {
+				$this->calls++;
+				return null;
+			}
+		};
+		try {
+			$wpdb = $unavailable_db;
+			YoRo_Connector_Runtime::tick();
+		} finally {
+			$wpdb = $real_wpdb;
+		}
+		$assert( 1 === $unavailable_db->calls && false === get_option( YoRo_Connector_Runtime::LOCK_KEY ), 'Unavailable GET_LOCK must fail closed before tick work.' );
+
+		$owner = $lock_acquire->invoke( null );
+		$other_db = new wpdb( DB_USER, DB_PASSWORD, DB_NAME, DB_HOST );
+		$other_db->set_prefix( $real_wpdb->prefix );
+		$session_client = new YoRo_Connector_Smoke_Client();
+		try {
+			$wpdb = $other_db;
+			$session_result = ( new YoRo_Connector_Runtime( $session_client ) )->run_once();
+		} finally {
+			$wpdb = $real_wpdb;
+			$lock_release->invoke( null, $owner );
+		}
+		$assert( is_wp_error( $session_result ) && 'yoro_connector_runner_lock_lost' === $session_result->get_error_code() && 0 === $session_client->claim_calls, 'A changed database session must fail closed before claiming work.' );
+
+		$worker_code = <<<'PHP'
+require $argv[1];
+$acquire = new ReflectionMethod( 'YoRo_Connector_Runtime', 'acquire_lock' );
+$release = new ReflectionMethod( 'YoRo_Connector_Runtime', 'release_lock' );
+fread( STDIN, 1 );
+$owner = $acquire->invoke( null );
+fwrite( STDOUT, null === $owner ? "BLOCKED\n" : "OWNER\n" );
+fflush( STDOUT );
+fread( STDIN, 1 );
+if ( null !== $owner ) { $release->invoke( null, $owner ); }
+PHP;
+		$start_worker = static function() use ( $worker_code ) {
+			$pipes = [];
+			$process = proc_open(
+				[ PHP_BINARY, '-d', 'display_errors=0', '-d', 'log_errors=0', '-r', $worker_code, ABSPATH . 'wp-load.php' ],
+				[ 0 => [ 'pipe', 'r' ], 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ],
+				$pipes
+			);
+			if ( is_resource( $process ) ) { stream_set_timeout( $pipes[1], 15 ); }
+			return [ $process, $pipes ];
+		};
+		$workers = [ $start_worker(), $start_worker() ];
+		try {
+			$assert( is_resource( $workers[0][0] ) && is_resource( $workers[1][0] ), 'Two independent runner processes must start.' );
+			foreach ( $workers as $worker ) { fwrite( $worker[1][0], 'G' ); fflush( $worker[1][0] ); }
+			$outcomes = [];
+			foreach ( $workers as $worker ) { $outcomes[] = trim( (string) fgets( $worker[1][1] ) ); }
+			sort( $outcomes );
+			$assert( [ 'BLOCKED', 'OWNER' ] === $outcomes, 'Simultaneous independent runners must have exactly one lock owner.' );
+
+			$expired_while_active = 'expired-while-active|' . ( time() - 1 );
+			$changed = $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s", $expired_while_active, YoRo_Connector_Runtime::LOCK_KEY ) );
+			$assert( 1 === $changed, 'The slow-runner fixture must expire an active option row.' );
+			$assert( null === $lock_acquire->invoke( null ), 'An expired option must not admit a new runner while its database owner is active.' );
+		} finally {
+			foreach ( $workers as $worker ) {
+				if ( ! is_resource( $worker[0] ) ) { continue; }
+				fwrite( $worker[1][0], 'R' ); fclose( $worker[1][0] );
+				fclose( $worker[1][1] ); fclose( $worker[1][2] );
+				proc_close( $worker[0] );
+			}
+		}
+		$recovered_after_owner_exit = $lock_acquire->invoke( null );
+		$assert( is_string( $recovered_after_owner_exit ), 'A stale option must be recoverable after the database owner exits.' );
+		$lock_release->invoke( null, $recovered_after_owner_exit );
 	} finally {
 		delete_option( YoRo_Connector_Runtime::LOCK_KEY );
 		if ( null !== $prior_lock ) { add_option( YoRo_Connector_Runtime::LOCK_KEY, $prior_lock, '', false ); }
