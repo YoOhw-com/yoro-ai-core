@@ -697,7 +697,19 @@ try {
 		foreach ( [ false, true ] as $c2_fail ) {
 			$c2_order = wc_create_order(); $c2_order->add_product( $c2_product, 1 ); $c2_order->set_status( 'completed' ); $c2_order->save();
 			WC_Data_Store::load( 'customer-download' )->delete_by_order_id( $c2_order->get_id() );
-			$c2_guard = YoRo_Orders_Read_Service::download_regeneration_state( wc_get_order( $c2_order->get_id() ) )['guard'];
+			$c2_items = $c2_order->get_items( 'line_item' ); $c2_item = reset( $c2_items );
+			$c2_state = YoRo_Orders_Read_Service::download_regeneration_state( wc_get_order( $c2_order->get_id() ) );
+			$c2_guard = $c2_state['guard'];
+			$c2_float_quantity = static function ( $actual, $item ) use ( $c2_item ) { return $item->get_id() === $c2_item->get_id() ? 1.0 : $actual; };
+			add_filter( 'woocommerce_order_item_get_quantity', $c2_float_quantity, 10, 2 );
+			try { $c2_float_state = YoRo_Orders_Read_Service::download_regeneration_state( wc_get_order( $c2_order->get_id() ) ); }
+			finally { remove_filter( 'woocommerce_order_item_get_quantity', $c2_float_quantity, 10 ); }
+			$assert( in_array( $c2_item->get_quantity(), [ 1, 1.0 ], true )
+				&& $c2_guard['eligible'] && 'eligible' === $c2_guard['blocked_reason'] && 64 === strlen( $c2_guard['state_token'] )
+				&& $c2_float_state['guard']['eligible'] && $c2_guard['state_token'] === $c2_float_state['guard']['state_token']
+				&& $c2_state['sources'] === $c2_float_state['sources']
+				&& 1 === $c2_state['sources'][0]['quantity'] && is_int( $c2_state['sources'][0]['quantity'] ),
+				'C2 integral-float quantity mints the same eligible guard with integer source material.' );
 			$c2_operation = $operation; $c2_operation['envelope_id'] = 'envelope_' . hash( 'sha256', wp_generate_uuid4() );
 			$c2_operation['idempotency_key'] = 'operation_' . hash( 'sha256', wp_generate_uuid4() ); $c2_operation['action'] = 'orders.regenerate_download_permissions';
 			$c2_operation['params'] = [ 'order_id' => $c2_order->get_id(), 'expected_version' => $c2_guard['current_version'], 'expected_download_permissions_state' => $c2_guard['state_token'] ];

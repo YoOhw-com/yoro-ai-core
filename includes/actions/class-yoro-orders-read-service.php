@@ -39,8 +39,11 @@ class YoRo_Orders_Read_Service {
 				$quantity = $item->get_quantity();
 				$limit = $product->get_download_limit();
 				$expiry = $product->get_download_expiry();
-				if ( ! is_int( $quantity ) || $quantity < 1 || $quantity > 1000000 || ! is_int( $limit ) || $limit < -1 || $limit > 1000000
+				if ( ( ! is_int( $quantity ) && ! is_float( $quantity ) ) || ( is_float( $quantity ) && ! is_finite( $quantity ) )
+					|| $quantity < 1 || $quantity > 1000000 || ( is_float( $quantity ) && $quantity !== (float) (int) $quantity )
+					|| ! is_int( $limit ) || $limit < -1 || $limit > 1000000
 					|| ! is_int( $expiry ) || $expiry < -1 || $expiry > 36500 ) { throw new UnexpectedValueException(); }
+				$quantity = (int) $quantity;
 				$files = $product->get_downloads();
 				if ( ! is_array( $files ) ) { throw new UnexpectedValueException(); }
 				foreach ( $files as $download_id => $file ) {
