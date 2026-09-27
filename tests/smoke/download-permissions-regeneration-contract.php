@@ -28,7 +28,29 @@ try {
 	$user = wp_insert_user( [ 'user_login' => 'yoro-c2-' . wp_generate_password( 10, false ), 'user_pass' => wp_generate_password(), 'role' => 'administrator' ] ); $users[] = $user;
 	get_user_by( 'id', $user )->add_cap( 'yoro_view_store_data' ); wp_set_current_user( $user );
 	$product = $make_product(); $order = $make_order( $product, $user ); $id = $order->get_id();
-	$g = $state( $order )['guard'];
+	$line_items = $order->get_items( 'line_item' ); $line_item = reset( $line_items );
+	$assert( is_float( $line_item->get_quantity() ) && 2.0 === $line_item->get_quantity(), 'Native Woo line-item quantity is an integral float.' );
+	$state_with_quantity = static function ( $quantity ) use ( $state, $order, $line_item ) {
+		$override = static function ( $actual, $item ) use ( $quantity, $line_item ) { return $item->get_id() === $line_item->get_id() ? $quantity : $actual; };
+		add_filter( 'woocommerce_order_item_get_quantity', $override, 10, 2 );
+		try { return $state( $order ); } finally { remove_filter( 'woocommerce_order_item_get_quantity', $override, 10 ); }
+	};
+	foreach ( [ 1, 2, 1000000 ] as $valid_quantity ) {
+		$integer_state = $state_with_quantity( $valid_quantity );
+		$float_state = $state_with_quantity( (float) $valid_quantity );
+		$assert( $integer_state['guard']['eligible'] && $float_state['guard']['eligible']
+			&& $integer_state['sources'] === $float_state['sources']
+			&& $integer_state['guard']['state_token'] === $float_state['guard']['state_token']
+			&& is_int( $float_state['sources'][0]['quantity'] ) && $valid_quantity === $float_state['sources'][0]['quantity'],
+			'Integral float quantity canonicalizes to the same integer sources and token as native int.' );
+	}
+	foreach ( [ 0, -1, 1000001, 0.0, -1.0, 1.5, 1000000.5, NAN, INF, -INF, '2', true, false, null, [], new stdClass() ] as $invalid_quantity ) {
+		$invalid_state = $state_with_quantity( $invalid_quantity );
+		$assert( ! $invalid_state['guard']['eligible'] && null === $invalid_state['guard']['state_token']
+			&& 'unsafe_state' === $invalid_state['guard']['blocked_reason'], 'Invalid quantity never mints regeneration authority.' );
+	}
+	$native_state = $state( $order ); $g = $native_state['guard'];
+	$assert( $g['eligible'] && 2 === $native_state['sources'][0]['quantity'] && is_int( $native_state['sources'][0]['quantity'] ), 'Native Woo integral float is eligible with an integer source quantity.' );
 	$assert( $g['eligible'] && 0 === $g['permission_count'] && 2 === $g['source_file_grant_count'] && 64 === strlen( $g['state_token'] ), 'Zero-row current source state must mint a bounded keyed guard.' );
 	$read = YoRo_Orders_Read_Service::get_download_permissions( [ 'order_id' => $id ] );
 	$assert( $g === $read['download_permissions']['regeneration_guard'], 'C1 publishes the matching current guard and version.' );
