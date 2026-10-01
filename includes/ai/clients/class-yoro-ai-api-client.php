@@ -27,7 +27,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return is_wp_error( $saved ) ? $status : $saved;
 	}
 
-	public function handshake_with_credentials( $api_url, $site_key, $record_status = true ) {
+	public function handshake_with_credentials( $api_url, $site_key, $record_status = true, $lifecycle_phase = 'finalize' ) {
 		if ( '' === $api_url || '' === $site_key ) {
 			$error = new WP_Error(
 				'yoro_ai_api_missing_config',
@@ -49,6 +49,8 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode(
 					[
+						'credential_lifecycle_version' => 2,
+						'credential_lifecycle_phase' => $lifecycle_phase,
 						'site_url'         => home_url(),
 						'installation_uuid' => YoRo_AI_Settings::get_installation_uuid(),
 						'plugin_version'   => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
@@ -90,7 +92,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			return new WP_Error( 'yoro_ai_api_handshake_error', $message );
 		}
 
-		if ( ! is_array( $json ) ) {
+		if ( ! is_array( $json ) || true !== ( $json['success'] ?? false ) ) {
 			$message = __( 'YoRo AI API returned an invalid handshake response.', 'yoro-ai-core' );
 
 			$this->record_request( 'handshake', $duration_ms, 'error' );
@@ -222,7 +224,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 					'Accept'       => 'application/json',
 					'Content-Type' => 'application/json',
 				],
-				'body'    => wp_json_encode( $payload ),
+				'body'    => wp_json_encode( array_merge( $payload, [ 'credential_lifecycle_version' => 2 ] ) ),
 			]
 		);
 
@@ -285,6 +287,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode(
 					[
+						'credential_lifecycle_version' => 2,
 						'installation_uuid' => YoRo_AI_Settings::get_installation_uuid(),
 						'plugin_version'    => defined( 'YORO_AI_CORE_VERSION' ) ? YORO_AI_CORE_VERSION : '',
 					]
@@ -1863,6 +1866,9 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			&& $connection_id === absint( $credential['site_connection_id'] ?? 0 );
 
 		return [
+			'credential_finalization_pending' => false,
+			'credential_lifecycle_version' => absint( $response['credential_lifecycle_version'] ?? 1 ),
+			'credential_lifecycle_phase' => sanitize_key( $response['credential_lifecycle_phase'] ?? '' ),
 			'connected'    => $account_connected,
 			'service_available' => true,
 			'checked_at'   => current_time( 'mysql' ),

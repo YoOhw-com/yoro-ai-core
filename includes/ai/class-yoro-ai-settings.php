@@ -464,7 +464,7 @@ class YoRo_AI_Settings {
 	}
 
 	private static function test_ai_api_credentials( $api_url, $site_key ) {
-		$result = ( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $site_key, false );
+		$result = ( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $site_key, false, 'verify' );
 
 		if ( is_wp_error( $result ) || self::is_ai_api_account_connected( $result ) ) {
 			return $result;
@@ -494,23 +494,62 @@ class YoRo_AI_Settings {
 			);
 		}
 
-		$connection_result = self::test_ai_api_credentials( $target_ai_api_url, $target_site_key );
-
-		if ( is_wp_error( $connection_result ) ) {
-			return $connection_result;
-		}
-
-		if ( ! self::is_ai_api_url_locked() ) {
-			update_option( self::OPTION_AI_API_URL, $target_ai_api_url );
-		}
-
 		$encrypted_site_key = self::encrypt_ai_api_site_key( $target_site_key );
 
 		if ( is_wp_error( $encrypted_site_key ) ) {
 			return $encrypted_site_key;
 		}
 
+		$previous = [];
+		foreach ( [ self::OPTION_AI_API_URL, self::OPTION_AI_API_SITE_KEY ] as $name ) {
+			$previous[ $name ] = get_option( $name, null );
+		}
+		$restore = static function () use ( $previous ) {
+			foreach ( $previous as $name => $value ) {
+				if ( null === $value ) {
+					delete_option( $name );
+				} else {
+					update_option( $name, $value, false );
+				}
+			}
+		};
+
+		if ( ! self::is_ai_api_url_locked() ) {
+			update_option( self::OPTION_AI_API_URL, $target_ai_api_url, false );
+		}
 		update_option( self::OPTION_AI_API_SITE_KEY, $encrypted_site_key, false );
+		$stored_key = self::decrypt_ai_api_site_key( (string) get_option( self::OPTION_AI_API_SITE_KEY, '' ) );
+		if ( ! hash_equals( $target_site_key, $stored_key ) || self::get_ai_api_url() !== $target_ai_api_url ) {
+			$restore();
+			return new WP_Error( 'yoro_ai_api_persistence_failed', __( 'YoRo could not commit secure credential storage.', 'yoro-ai-core' ) );
+		}
+
+		$client = new YoRo_AI_API_Client();
+		$connection_result = $client->handshake_with_credentials( $target_ai_api_url, $target_site_key, false, 'verify' );
+		if ( is_wp_error( $connection_result ) || ! self::is_ai_api_account_connected( $connection_result ) ) {
+			$restore();
+			return is_wp_error( $connection_result ) ? $connection_result : new WP_Error(
+				'yoro_ai_account_connection_required',
+				__( 'This credential is not linked to an active YoRo account connection. Use Connect YoRo Account instead.', 'yoro-ai-core' )
+			);
+		}
+
+		if ( 2 === ( $connection_result['credential_lifecycle_version'] ?? 1 ) ) {
+			if ( 'verify' !== ( $connection_result['credential_lifecycle_phase'] ?? '' ) ) {
+				$restore();
+				return new WP_Error( 'yoro_ai_api_invalid_verification', __( 'YoRo could not verify the credential lifecycle response.', 'yoro-ai-core' ) );
+			}
+			$finalized = $client->handshake_with_credentials( $target_ai_api_url, $target_site_key, false, 'finalize' );
+			if ( is_wp_error( $finalized ) || ! self::is_ai_api_account_connected( $finalized )
+				|| 2 !== ( $finalized['credential_lifecycle_version'] ?? 1 )
+				|| 'finalize' !== ( $finalized['credential_lifecycle_phase'] ?? '' )
+				|| ( $finalized['credential']['id'] ?? 0 ) !== ( $connection_result['credential']['id'] ?? 0 ) ) {
+				$connection_result['credential_finalization_pending'] = true;
+			} else {
+				$connection_result = $finalized;
+			}
+		}
+
 		update_option( self::OPTION_AI_API_ENABLED, 'yes' );
 		self::update_ai_api_status( $connection_result );
 
@@ -537,6 +576,9 @@ class YoRo_AI_Settings {
 
 			if ( is_wp_error( $disconnect_result ) ) {
 				return $disconnect_result;
+			}
+			if ( true !== ( $disconnect_result['success'] ?? false ) ) {
+				return new WP_Error( 'yoro_ai_api_disconnect_unconfirmed', __( 'YoRo could not confirm remote disconnect.', 'yoro-ai-core' ) );
 			}
 		}
 
