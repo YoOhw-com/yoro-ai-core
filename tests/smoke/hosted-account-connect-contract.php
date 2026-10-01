@@ -59,7 +59,8 @@ $api_url       = 'http://yoro-account-connect.test/api/v1';
 $plain_key     = 'yoro_ai_sk_hosted_connect_smoke';
 
 $http_mode = 'normal';
-$http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http, &$http_mode ) {
+$reconnect_site_key = '';
+$http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http, &$http_mode, &$reconnect_site_key ) {
 	$body = [];
 
 	if ( is_string( $args['body'] ?? null ) ) {
@@ -150,6 +151,10 @@ $http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http, 
 
 	if ( 'disconnect_unconfirmed' === $http_mode && false !== strpos( (string) $url, '/sites/disconnect' ) ) {
 		$payload = [ 'success' => false ];
+	}
+
+	if ( '' !== $reconnect_site_key && false !== strpos( (string) $url, '/wordpress/exchange' ) ) {
+		$payload['site_key'] = $reconnect_site_key;
 	}
 
 	return [
@@ -358,6 +363,34 @@ try {
 	$ambiguous = YoRo_AI_Settings::save_connected_ai_api_credentials( $api_url, $proven_replacement );
 	$assert( ! is_wp_error( $ambiguous ) && ! empty( $ambiguous['credential_finalization_pending'] ), 'Ambiguous finalize did not retain truthful pending state.' );
 	$assert( $proven_replacement === YoRo_AI_Settings::get_ai_api_site_key(), 'Ambiguous finalize restored an old potentially revoked credential.' );
+	$pending_storage = get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY );
+	$pending_status = YoRo_AI_Settings::get_ai_api_status();
+	$assert( ! empty( $pending_status['credential_finalization_pending'] ), 'Pending K2 finalization status was not durable locally.' );
+	foreach ( [ 'persistence', 'verify' ] as $failure ) {
+		$reconnect_site_key = 'yoro_ai_sk_reconnect_after_lost_finalize_' . $failure;
+		$http_mode = 'normal';
+		$reconnect = $client->exchange_wordpress_connect_code( [ 'code' => 'recovery_chain_' . $failure ], $api_url );
+		$assert( ! is_wp_error( $reconnect ) && $reconnect_site_key === ( $reconnect['site_key'] ?? '' ), 'Reconnect did not issue the next K3 replacement.' );
+		$before_commit_http_count = count( $captured_http );
+		if ( 'persistence' === $failure ) {
+			add_filter( 'pre_update_option_' . YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $deny_persistence, 10, 2 );
+		} else {
+			$http_mode = 'verify_failure';
+		}
+		try {
+			$failed_successor = YoRo_AI_Settings::save_connected_ai_api_credentials( $api_url . '/successor', $reconnect_site_key );
+		} finally {
+			remove_filter( 'pre_update_option_' . YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $deny_persistence, 10 );
+		}
+		$assert( is_wp_error( $failed_successor ), 'K3 ' . $failure . ' failure was accepted after unprocessed K2 finalize.' );
+		$assert( $pending_storage === get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY ) && $proven_replacement === YoRo_AI_Settings::get_ai_api_site_key(), 'Failed K3 did not restore exact encrypted verified K2.' );
+		$assert( $api_url === YoRo_AI_Settings::get_ai_api_url() && $pending_status === YoRo_AI_Settings::get_ai_api_status(), 'Failed K3 changed K2 URL or pending status.' );
+		$successor_requests = array_slice( $captured_http, $before_commit_http_count );
+		$assert( 'persistence' === $failure ? [] === $successor_requests : [ 'verify' ] === array_column( array_column( $successor_requests, 'body' ), 'credential_lifecycle_phase' ), 'Failed K3 called finalize or verified before local commit.' );
+		$http_mode = 'normal';
+		$assert( ! is_wp_error( $client->handshake_with_credentials( $api_url, YoRo_AI_Settings::get_ai_api_site_key(), false, 'verify' ) ), 'Restored K2 cannot verify after failed K3.' );
+	}
+	$reconnect_site_key = '';
 	$http_mode = 'normal';
 	$converged = $client->handshake_with_credentials( $api_url, $proven_replacement );
 	$assert( ! is_wp_error( $converged ) && empty( $converged['credential_finalization_pending'] ), 'Ordinary handshake did not converge pending finalization.' );
