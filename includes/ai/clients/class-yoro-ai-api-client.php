@@ -46,6 +46,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_handshake_endpoint_url( $api_url ),
 			[
 				'timeout' => 15,
+				'redirection' => 0,
 				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode(
 					[
@@ -251,6 +252,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_site_disconnect_endpoint_url( $api_url ),
 			[
 				'timeout' => 15,
+				'redirection' => 0,
 				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode(
 					[
@@ -284,6 +286,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_site_credential_rotation_endpoint_url( $api_url ),
 			[
 				'timeout' => 15,
+				'redirection' => 0,
 				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode(
 					[
@@ -584,6 +587,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_conversation_message_endpoint_url( $api_url ),
 			[
 				'timeout' => $this->api_timeout( $operation, $payload ),
+				'redirection' => 0,
 				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode( $payload ),
 			]
@@ -648,6 +652,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_conversation_show_endpoint_url( $api_url, $conversation_id ),
 			[
 				'timeout' => 15,
+				'redirection' => 0,
 				'headers' => $this->authenticated_headers( $site_key ),
 			]
 		);
@@ -702,6 +707,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_action_confirm_endpoint_url( $api_url ),
 			[
 				'timeout' => 15,
+				'redirection' => 0,
 				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode( $payload ),
 			]
@@ -748,6 +754,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_action_execution_endpoint_url( $api_url ),
 			[
 				'timeout' => 15,
+				'redirection' => 0,
 				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode( $payload ),
 			]
@@ -791,6 +798,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_action_claim_endpoint_url( $api_url ),
 			[
 				'timeout' => 15,
+				'redirection' => 0,
 				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode( $payload ),
 			]
@@ -845,6 +853,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			$this->build_email_compose_endpoint_url( $api_url ),
 			[
 				'timeout' => $this->api_timeout( $operation, $payload ),
+				'redirection' => 0,
 				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode( $payload ),
 			]
@@ -919,6 +928,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 
 		$args = [
 			'timeout' => $this->api_timeout( $operation, $payload ),
+			'redirection' => 0,
 			'headers' => $this->authenticated_headers( $site_key ),
 		];
 

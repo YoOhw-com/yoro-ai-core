@@ -127,6 +127,7 @@ class YoRo_AI_API_Connection_Client {
 			$url,
 			[
 				'timeout' => 15,
+				'redirection' => 0,
 				'headers' => $this->authenticated_headers( $site_key ),
 				'body'    => wp_json_encode( $payload ),
 			]
