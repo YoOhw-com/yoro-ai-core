@@ -36,7 +36,6 @@ class YoRo_Store_Fulfillment_Service {
 					'limit_per_queue' => $limit,
 					'applicable'      => false,
 					'applicability_reason' => 'shipping_locations_disabled',
-					'queue_evidence' => [ 'version' => 1, 'captured_at' => gmdate( 'c' ), 'applicable' => false ],
 					'changes_store'   => false,
 				],
 				'processed'            => [],
@@ -63,21 +62,10 @@ class YoRo_Store_Fulfillment_Service {
 			'fulfillment_queue',
 			[
 				'limit'          => $limit,
-				'schema_version' => 3,
+				'schema_version' => 2,
 			],
 			function() use ( $limit ) {
 				$candidates = YoRo_Orders_Read_Service::fulfillment_get_processing_candidates( 50 );
-				if ( is_wp_error( $candidates ) ) {
-					return $candidates;
-				}
-				foreach ( $candidates as $candidate ) {
-					if ( $candidate instanceof WC_Order && YoRo_Orders_Read_Service::fulfillment_order_requires_shipping( $candidate ) ) {
-						$age = YoRo_Orders_Read_Service::queue_order_age_hours( $candidate );
-						if ( is_wp_error( $age ) ) {
-							return $age;
-						}
-					}
-				}
 
 				$queues = [
 					YoRo_Orders_Read_Service::fulfillment_build_candidate_queue(
@@ -96,7 +84,7 @@ class YoRo_Store_Fulfillment_Service {
 					YoRo_Orders_Read_Service::fulfillment_build_candidate_queue(
 						'processing_older_than_48h',
 						__( 'Processing older than 48h', 'yoro-ai-core' ),
-						__( 'Shippable orders currently processing, created more than 48 hours ago. Status duration is unknown.', 'yoro-ai-core' ),
+						__( 'Shippable processing orders that have been waiting more than 48 hours.', 'yoro-ai-core' ),
 						$candidates,
 						$limit,
 						function( $order ) {
@@ -104,7 +92,7 @@ class YoRo_Store_Fulfillment_Service {
 								&& YoRo_Orders_Read_Service::fulfillment_order_requires_shipping( $order )
 								&& YoRo_Orders_Read_Service::fulfillment_order_is_older_than_hours( $order, 48 );
 						},
-						__( 'Currently processing; created more than 48 hours ago. This does not establish a fulfillment delay.', 'yoro-ai-core' )
+						__( 'Processing order has been waiting for fulfillment review for more than 48 hours.', 'yoro-ai-core' )
 					),
 					YoRo_Orders_Read_Service::fulfillment_build_candidate_queue(
 						'missing_shipping_address',
@@ -128,22 +116,32 @@ class YoRo_Store_Fulfillment_Service {
 						function( $order ) {
 							return $order instanceof WC_Order && YoRo_Orders_Read_Service::fulfillment_order_is_ready_to_fulfill( $order );
 						},
-						__( 'Tracking and address fields are present; inspect the order before deciding the next step.', 'yoro-ai-core' )
+						__( 'Tracked processing order looks ready for the next fulfillment step.', 'yoro-ai-core' )
 					),
 				];
-				foreach ( $queues as $queue ) {
-					if ( is_wp_error( $queue ) ) {
-						return $queue;
-					}
-				}
 				$queues = self::rank_fulfillment_queue_orders( $queues );
 
-				$total_items = array_sum( array_column( $queues, 'count' ) );
+				$total_items = 0;
+				$orders      = [];
+
+				foreach ( $queues as $queue ) {
+					$total_items += absint( $queue['count'] ?? 0 );
+
+					foreach ( $queue['orders'] as $order ) {
+						$orders[ $order['id'] ] = $order;
+					}
+				}
+
+				$orders               = array_values( $orders );
+				usort(
+					$orders,
+					function( $a, $b ) {
+						return (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 );
+					}
+				);
 				$fulfillment_context  = self::build_fulfillment_orchestrator_context( $queues );
 				$priority_items       = self::build_fulfillment_priority_items( $queues, $fulfillment_context );
 				$case_rankings        = self::build_fulfillment_case_rankings( $queues, $fulfillment_context );
-				$orders = array_column( $case_rankings, 'order' );
-				$queue_evidence = YoRo_Orders_Read_Service::queue_evidence( $queues, $orders );
 				$recommended_sequence = self::build_fulfillment_recommended_sequence( $case_rankings, $fulfillment_context );
 				$next_case            = self::build_fulfillment_next_recommended_case( $case_rankings );
 				$batch_candidates     = self::build_fulfillment_batch_draft_candidates( $case_rankings );
@@ -157,7 +155,7 @@ class YoRo_Store_Fulfillment_Service {
 				$visible_unique_order_count = count( $orders );
 				$queue_summary        = sprintf(
 					/* translators: 1: queue match count, 2: queue count */
-					__( 'Fulfillment queue: %1$d queue memberships across %2$d queues.', 'yoro-ai-core' ),
+					__( 'Fulfillment queue: %1$d queue matches across %2$d queues.', 'yoro-ai-core' ),
 					$total_items,
 					$queue_count
 				);
@@ -178,7 +176,6 @@ class YoRo_Store_Fulfillment_Service {
 					'undo_plan'            => [],
 					'data'                 => [],
 					'meta'                 => [
-						'queue_evidence' => $queue_evidence,
 						'limit_per_queue'        => $limit,
 						'tracking_meta_detected' => true,
 						'changes_store'          => false,
@@ -219,7 +216,6 @@ class YoRo_Store_Fulfillment_Service {
 			$counts[ $key ] = absint( $queue['count'] ?? 0 );
 		}
 
-		ksort( $counts );
 		arsort( $counts );
 		$top_topic = (string) key( $counts );
 		$top_count = (int) reset( $counts );
@@ -253,7 +249,7 @@ class YoRo_Store_Fulfillment_Service {
 				'topic'   => 'processing_without_tracking',
 				'score'   => absint( $queue_map['processing_without_tracking']['count'] ?? 0 ) + 200,
 				'tone'    => 'warning',
-				'title'   => __( 'Tracking evidence needs inspection', 'yoro-ai-core' ),
+				'title'   => __( 'Missing tracking is still the sharpest shipping risk', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $queue_map['processing_without_tracking']['description'] ?? '' ),
 			];
 		}
@@ -283,7 +279,7 @@ class YoRo_Store_Fulfillment_Service {
 				'topic'   => 'recent_ready_to_fulfill',
 				'score'   => absint( $queue_map['recent_ready_to_fulfill']['count'] ?? 0 ),
 				'tone'    => 'positive',
-				'title'   => __( 'Recent tracked orders are available for inspection', 'yoro-ai-core' ),
+				'title'   => __( 'Recent tracked orders are ready for the next fulfillment pass', 'yoro-ai-core' ),
 				'message' => sanitize_text_field( $queue_map['recent_ready_to_fulfill']['description'] ?? '' ),
 			];
 		}
@@ -315,7 +311,7 @@ class YoRo_Store_Fulfillment_Service {
 			usort(
 				$queues[ $queue_index ]['orders'],
 				function( $a, $b ) {
-					return ( (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 ) ) ?: ( (int) $a['id'] <=> (int) $b['id'] );
+					return (float) ( $b['case_priority_score'] ?? 0 ) <=> (float) ( $a['case_priority_score'] ?? 0 );
 				}
 			);
 		}
@@ -348,7 +344,14 @@ class YoRo_Store_Fulfillment_Service {
 			}
 		}
 
-		return YoRo_Orders_Read_Service::queue_case_rankings( $rankings );
+		usort(
+			$rankings,
+			function( $a, $b ) {
+				return (float) ( $b['score'] ?? 0 ) <=> (float) ( $a['score'] ?? 0 );
+			}
+		);
+
+		return $rankings;
 	}
 
 	private static function score_fulfillment_case( $topic, $order, $fulfillment_context = [] ) {
@@ -587,32 +590,39 @@ class YoRo_Store_Fulfillment_Service {
 	private static function build_fulfillment_case_reason( $topic ) {
 		switch ( sanitize_key( $topic ) ) {
 			case 'processing_without_tracking':
-				return __( 'No supported tracking signal was found. Shipment and delivery state are unknown.', 'yoro-ai-core' );
+				return __( 'Missing tracking is the clearest shipping risk to resolve first.', 'yoro-ai-core' );
 			case 'missing_shipping_address':
 				return __( 'An incomplete shipping address can block physical shipment outright.', 'yoro-ai-core' );
 			case 'processing_older_than_48h':
-				return __( 'Created-age makes this order a review candidate; status duration and SLA compliance are unknown.', 'yoro-ai-core' );
+				return __( 'This shippable order has been waiting long enough to deserve a manual fulfillment check.', 'yoro-ai-core' );
 			case 'recent_ready_to_fulfill':
-				return __( 'Tracking and address fields are present; inspect the order before deciding the next step.', 'yoro-ai-core' );
+				return __( 'This is a good candidate if you want a quick tracked fulfillment win next.', 'yoro-ai-core' );
 			default:
 				return __( 'This case is the clearest next fulfillment follow-up from the queue.', 'yoro-ai-core' );
 		}
 	}
 
 	private static function get_fulfillment_primary_action_label( $topic ) {
-		return __( 'Review order details', 'yoro-ai-core' );
+		switch ( sanitize_key( $topic ) ) {
+			case 'processing_without_tracking':
+				return __( 'Preview delay email', 'yoro-ai-core' );
+			case 'recent_ready_to_fulfill':
+				return __( 'Preview fulfillment check', 'yoro-ai-core' );
+			default:
+				return __( 'Preview next follow-up', 'yoro-ai-core' );
+		}
 	}
 
 	private static function get_fulfillment_sequence_label( $topic ) {
 		switch ( sanitize_key( $topic ) ) {
 			case 'processing_without_tracking':
-				return __( 'Inspect the next order without tracking', 'yoro-ai-core' );
+				return __( 'Prepare the next delay email', 'yoro-ai-core' );
 			case 'missing_shipping_address':
 				return __( 'Check the next shipping address issue', 'yoro-ai-core' );
 			case 'processing_older_than_48h':
 				return __( 'Review the next aging shippable order', 'yoro-ai-core' );
 			case 'recent_ready_to_fulfill':
-				return __( 'Inspect the next tracked order', 'yoro-ai-core' );
+				return __( 'Review the next tracked order ready to move', 'yoro-ai-core' );
 			default:
 				return __( 'Review the next fulfillment follow-up', 'yoro-ai-core' );
 		}

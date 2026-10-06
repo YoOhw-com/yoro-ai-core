@@ -44,199 +44,6 @@
 			};
 	}
 
-	function renderExternalRefundRecord(result, h) {
-		const facts = (result.data && result.data.external_refund) || result.external_refund;
-		const safe = facts && Number.isSafeInteger(facts.order_id) && facts.order_id > 0
-			&& typeof facts.amount === 'string' && /^(0|[1-9][0-9]{0,8})(\.[0-9]{1,6})?$/.test(facts.amount) && /^[A-Z]{3}$/.test(facts.currency || '')
-			&& facts.payment_transfer_initiated === false && facts.external_transfer_verification === 'not_observed' && facts.restocked === false && facts.retry_allowed === false;
-		if (!safe) return '<div class="yoro-result-card"><p>Local refund result unavailable. No money was sent by this action and no external transfer was verified. Reconcile refund history before any new confirmation; do not retry.</p></div>';
-		const recorded = result.success === true && facts.status === 'recorded' && facts.outcome_unknown === false && facts.refunded_payment === false
-			&& Number.isSafeInteger(facts.refund_id) && facts.refund_id > 0 && /^[a-f0-9]{64}$/.test(facts.current_version || '') && facts.next_action === null;
-		return '<div class="yoro-result-card"><h4>' + (recorded ? 'Local refund record verified' : 'Local refund recording requires reconciliation')
-			+ '</h4><p>Order #' + h.escapeHtml(facts.order_id) + ': ' + h.escapeHtml(facts.amount) + ' ' + h.escapeHtml(facts.currency)
-			+ '</p><p>No money was sent by this action. External completion is a Human assertion; YoRo did not observe or independently verify the external transfer.</p><p>'
-			+ (recorded ? 'WooCommerce created the local refund record. Standard refund hooks and notifications may run; a full local refund may change order status.' : 'The local recording outcome is unknown. Reconcile refund history before a fresh confirmation. Do not retry this operation.')
-			+ ' No stock was restocked and no item quantities or taxes were allocated.</p></div>';
-	}
-
-	function renderRefundHistory(result, h) {
-		const data = result.data && Array.isArray(result.data.refunds) ? result.data : result;
-		const unavailable = '<p>Refund observations are unavailable.</p>';
-		if (!data || !Number.isSafeInteger(data.order_id) || data.order_id < 1 || !/^[A-Z]{3}$/.test(data.currency || '') || !Array.isArray(data.refunds) || data.refunds.length > 50) return unavailable;
-		const escape = value => h.escapeHtml(String(value));
-		const money = value => typeof value === 'string' && value.length <= 32 && /^[0-9]+\.[0-9]{2}$/.test(value);
-		const page = data.pagination;
-		if (!page || !Number.isInteger(page.limit) || page.limit < 1 || page.limit > 50 || !Number.isInteger(page.page) || page.page < 1 || page.page > 100 || typeof page.has_more !== 'boolean' || page.snapshot_consistent !== false || data.refunds.length > page.limit || !money(data.total_refunded) || !money(data.remaining_refundable)) return unavailable;
-		let html = '<div class="yoro-result-card"><h4>Refund history — Order #' + escape(data.order_id) + '</h4><p>Total refunded: ' + escape(data.total_refunded) + ' ' + escape(data.currency) + '; remaining: ' + escape(data.remaining_refundable) + '</p><ul>';
-		const seen = new Set();
-		for (const row of data.refunds) {
-			if (!row || !Number.isSafeInteger(row.refund_id) || row.refund_id < 1 || seen.has(row.refund_id) || !money(row.amount) || typeof row.reason !== 'string' || [...row.reason].length > 500 || typeof row.created_at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00$/.test(row.created_at) || !Number.isFinite(Date.parse(row.created_at)) || typeof row.refunded_payment !== 'boolean') return unavailable;
-			seen.add(row.refund_id);
-			html += '<li>#' + escape(row.refund_id) + ': ' + escape(row.amount) + ' ' + escape(data.currency) + ' — ' + escape(row.reason) + ' — ' + escape(row.created_at) + '</li>';
-		}
-		return html + '</ul><p>Page ' + escape(page.page) + (page.has_more ? '; more records available.' : '.') + ' Live observations may change between pages. Payment transfer is not verified.</p></div>';
-	}
-
-	function renderLoyalty(result, h) {
-		const data = result.data && typeof result.data.status === 'string' ? result.data : result;
-		const balance = result.display_type === 'loyalty_customer_balance';
-		const unavailable = '<p>Loyalty observations are unavailable.</p>';
-		if (!data || !(balance ? ['observed', 'unavailable'] : ['available', 'absent', 'incompatible', 'ambiguous']).includes(data.status)
-			|| !['free', 'premium', 'absent', 'incompatible', 'ambiguous'].includes(data.owner_kind) || !['', '1.2.2'].includes(data.version)) return unavailable;
-		const available = balance ? data.status === 'observed' : data.status === 'available';
-		if (available && (!['free', 'premium'].includes(data.owner_kind) || data.version !== '1.2.2')) return unavailable;
-		const escape = value => h.escapeHtml(String(value));
-		let html = '<div class="yoro-result-card"><h4>Loyalty</h4><p>' + escape(data.status) + ' / ' + escape(data.owner_kind) + ' / ' + escape(data.version) + '</p>';
-		if (balance && available) {
-			if (!Number.isSafeInteger(data.customer_id) || data.customer_id < 1 || !Number.isSafeInteger(data.current_points) || data.current_points < 0
-				|| !Number.isSafeInteger(data.earning_points) || data.earning_points < 0) return unavailable;
-			html += '<p>Customer #' + escape(data.customer_id) + '</p><p>Current points: ' + escape(data.current_points) + '</p><p>Earning points: ' + escape(data.earning_points) + '</p>';
-		}
-		return html + '</div>';
-	}
-
-	function renderSubscriptions(result, h) {
-		const data = result.data && typeof result.data.status === 'string' ? result.data : result;
-		const context = result.display_type === 'subscriptions_order_context';
-		const unavailable = '<p>Subscription observations are unavailable.</p>';
-		if (!data || !(context ? ['observed', 'unavailable'] : ['available', 'absent', 'incompatible']).includes(data.status)
-			|| !['subscriptions', 'absent', 'incompatible'].includes(data.owner_kind) || !['', '9.2.0'].includes(data.version)) return unavailable;
-		const escape = value => h.escapeHtml(String(value));
-		let html = '<div class="yoro-result-card"><h4>Subscriptions</h4><p>' + escape(data.status) + ' / ' + escape(data.version) + '</p>';
-		if (context && data.status === 'observed') {
-			if (!Number.isInteger(data.order_id) || data.order_id < 1 || typeof data.order_status !== 'string' || data.order_status.length > 40
-				|| !Array.isArray(data.subscriptions) || data.subscriptions.length > 20) return unavailable;
-			html += '<p>Order #' + escape(data.order_id) + ' / ' + escape(data.order_status) + '</p><ul>';
-			const seen = new Set();
-			for (const entry of data.subscriptions) {
-				if (!entry || !Number.isInteger(entry.subscription_id) || entry.subscription_id < 1 || seen.has(entry.subscription_id)
-					|| !['pending', 'active', 'on-hold', 'pending-cancel', 'cancelled', 'switched', 'expired'].includes(entry.status)
-					|| !['day', 'week', 'month', 'year'].includes(entry.billing_period) || !Number.isInteger(entry.billing_interval) || entry.billing_interval < 1 || entry.billing_interval > 365
-					|| !['manual', 'automatic'].includes(entry.renewal_mode) || !entry.schedule
-					|| !['start', 'trial_end', 'next_payment', 'end'].every(k => typeof entry.schedule[k] === 'string' && entry.schedule[k].length <= 25)) return unavailable;
-				seen.add(entry.subscription_id);
-				html += '<li>Subscription #' + escape(entry.subscription_id) + ' / ' + escape(entry.status) + '<br>Every ' + escape(entry.billing_interval) + ' ' + escape(entry.billing_period) + '; renewal: ' + escape(entry.renewal_mode);
-				for (const key of ['start', 'trial_end', 'next_payment', 'end']) html += '<br>' + escape(key) + ': ' + escape(entry.schedule[key]);
-				html += '</li>';
-			}
-			html += '</ul>';
-		}
-		return html + '</div>';
-	}
-
-	function renderOrderSplitter(result, h) {
-		const data = result.data && typeof result.data.status === 'string' ? result.data : result;
-		const activity = result.display_type === 'order_splitter_order_activity';
-		const unavailable = '<p>Order Splitter observations are unavailable.</p>';
-		if (!data || !(activity ? ['observed', 'unavailable'] : ['available', 'absent', 'incompatible']).includes(data.status)
-			|| !['order_splitter', 'absent', 'incompatible'].includes(data.owner_kind) || !['', '1.5.0'].includes(data.version)) return unavailable;
-		const escape = value => h.escapeHtml(String(value));
-		let html = '<div class="yoro-result-card"><h4>Order Splitter</h4><p>' + escape(data.status) + ' / ' + escape(data.version) + '</p>';
-		if (activity && data.status === 'observed') {
-			const lineage = data.lineage;
-			if (!Number.isInteger(data.order_id) || data.order_id < 1 || typeof data.order_status !== 'string' || data.order_status.length > 40
-				|| !lineage || !['source', 'child', 'none', 'ambiguous'].includes(lineage.role) || !Number.isInteger(lineage.parent_order_id) || lineage.parent_order_id < 0
-				|| !Array.isArray(lineage.child_order_ids) || lineage.child_order_ids.length > 50 || !lineage.child_order_ids.every(id => Number.isInteger(id) && id > 0)
-				|| !Array.isArray(data.activity) || data.activity.length > 20 || !['present', 'not_observed'].includes(data.manual_reconciliation)) return unavailable;
-			html += '<p>Order #' + escape(data.order_id) + ' / ' + escape(data.order_status) + '</p><p>Split lineage: ' + escape(lineage.role) + '</p>';
-			if (lineage.parent_order_id) html += '<p>Parent order: #' + escape(lineage.parent_order_id) + '</p>';
-			if (lineage.child_order_ids.length) html += '<p>Child orders: ' + lineage.child_order_ids.map(id => '#' + escape(id)).join(', ') + '</p>';
-			html += '<ul>';
-			for (const entry of data.activity) {
-				if (!entry || !['split', 'duplicate', 'merge', 'return'].includes(entry.type) || !Number.isInteger(entry.revision) || entry.revision < 1
-					|| !['started', 'committed', 'completed', 'failed', 'recovery_required', 'compensating', 'compensated', 'manual_reconciliation', 'manual_reconciled'].includes(entry.status)
-					|| typeof entry.stage !== 'string' || !/^[a-z_]{1,80}$/.test(entry.stage)
-					|| !['started_at', 'updated_at', 'completed_at'].every(k => typeof entry[k] === 'string' && entry[k].length <= 40)) return unavailable;
-				html += '<li>' + escape(entry.type) + ' / ' + escape(entry.status) + ' / ' + escape(entry.stage) + ' (revision ' + escape(entry.revision) + ')'
-					+ '<br>Started: ' + escape(entry.started_at) + '; updated: ' + escape(entry.updated_at) + '; completed: ' + escape(entry.completed_at) + '</li>';
-			}
-			html += '</ul><p>Retained manual reconciliation: ' + escape(data.manual_reconciliation) + '</p>';
-		}
-		return html + '<p>Retained observations only. This does not verify recovery state or authorize an order change.</p></div>';
-	}
-
-	function renderCancellationReturn(result, h) {
-		const payload = result.data && typeof result.data.status === 'string' ? result.data : result;
-		const isCase = result.display_type === 'cancellation_return_order_case';
-		const unavailable = '<p>Cancellation & Return observations are unavailable.</p>';
-		const states = isCase ? ['observed', 'not_observed', 'unavailable'] : ['available', 'absent', 'incompatible'];
-		if (!payload || !states.includes(payload.status) || !['free', 'premium', 'absent', 'incompatible'].includes(payload.owner_kind) || typeof payload.version !== 'string' || payload.version.length > 32) return unavailable;
-		const escape = value => h.escapeHtml(String(value));
-		let html = '<div class="yoro-result-card"><h4>Cancellation & Return</h4><p>' + escape(payload.owner_kind) + ' ' + escape(payload.version) + ' / ' + escape(payload.status) + '</p>';
-		if (isCase && payload.status !== 'unavailable') {
-			if (!Number.isInteger(payload.order_id) || payload.order_id < 1 || typeof payload.order_status !== 'string' || payload.order_status.length > 40) return unavailable;
-			html += '<p>Order #' + escape(payload.order_id) + ' / ' + escape(payload.order_status) + '</p>';
-			for (const kind of ['cancellation', 'return']) {
-				const observation = payload[kind];
-				if (!observation || !['none', 'pending', 'approved', 'rejected', 'completed', 'not_observed'].includes(observation.state) || !observation.eligibility || !['eligible', 'ineligible', 'not_observed', 'unavailable'].includes(observation.eligibility.status)) return unavailable;
-				html += '<h5>' + escape(kind) + '</h5><p>Retained state: ' + escape(observation.state) + '; eligibility: ' + escape(observation.eligibility.status) + '</p><dl>';
-				for (const field of ['requested_at', 'approved_at', 'rejected_at', 'completed_at']) {
-					if (typeof observation[field] !== 'string' || observation[field].length > 40) return unavailable;
-					if (observation[field]) html += '<dt>' + escape(field.replace(/_/g, ' ')) + '</dt><dd>' + escape(observation[field]) + '</dd>';
-				}
-				for (const field of ['request_reason_present', 'rejection_reason_present', 'approval_message_present', 'completion_reason_present', 'resolution_present', 'item_scope_present']) {
-					if (typeof observation[field] !== 'boolean') return unavailable;
-					html += '<dt>' + escape(field.replace(/_/g, ' ')) + '</dt><dd>' + (observation[field] ? 'Yes' : 'No') + '</dd>';
-				}
-				html += '</dl>';
-			}
-		}
-		return html + '<p>Retained owner evidence only. Reasons, messages and item payloads are omitted. Premium eligibility is not observed.</p></div>';
-	}
-
-	function renderBlacklistObservation(result, h) {
-		const payload = result.data && typeof result.data.status === 'string' ? result.data : result;
-		const assessment = result.display_type === 'blacklist_order_assessment';
-		const allowed = assessment ? ['observed', 'not_observed', 'unavailable', 'schema_not_ready'] : ['available', 'absent', 'incompatible', 'schema_not_ready'];
-		if (!payload || !allowed.includes(payload.status) || !payload.coverage) return '<p>Blacklist Manager observations are unavailable.</p>';
-		const escape = value => h.escapeHtml(String(value == null ? '' : value));
-		let html = '<div class="yoro-result-card"><h4>' + (assessment ? 'Retained order assessment' : 'Blacklist Manager status') + '</h4><p>' + escape(payload.status) + '</p>';
-		if (assessment && payload.status === 'observed') {
-			const facts = payload.facts;
-			if (!Number.isInteger(payload.order_id) || payload.order_id < 1 || !facts || !Array.isArray(facts.matches) || facts.matches.length > 8) return '<p>Blacklist Manager observations are unavailable.</p>';
-			html += '<dl><dt>Order</dt><dd>#' + escape(payload.order_id) + '</dd><dt>Retained decision</dt><dd>' + escape(facts.decision) + '</dd><dt>Check status / tier</dt><dd>' + escape(facts.check_status) + ' / ' + escape(facts.tier) + '</dd><dt>Recorded at</dt><dd>' + escape(facts.decided_at || 'not_observed') + '</dd><dt>Reference retained</dt><dd>' + (facts.reference_present === true ? 'Yes' : 'No') + '</dd></dl>';
-			if (facts.matches.length) {
-				html += '<ul>';
-				facts.matches.forEach(match => {
-					if (!match || typeof match !== 'object') return;
-					html += '<li>' + escape(match.type) + ' / ' + escape(match.match_mode) + (match.requires_corroboration === true ? ' — requires corroboration' : '') + '</li>';
-				});
-				html += '</ul>';
-			}
-		} else if (!assessment) {
-			html += '<dl><dt>Free version</dt><dd>' + escape(payload.free_version || 'not_observed') + '</dd><dt>Premium presence</dt><dd>' + escape(payload.premium_state) + ' ' + escape(payload.premium_version) + '</dd><dt>Schema readiness</dt><dd>' + escape(payload.schema_status) + '</dd></dl>';
-		}
-		html += '<p>Owner observations only. Remote checks and Premium-only facts are not observed. Raw identity values and detailed risk data are omitted.</p></div>';
-		return html;
-	}
-
-	function renderCustomer360(result, h) {
-		const payload = result.data && !Array.isArray(result.data) ? result.data : result;
-		const timeline = result.display_type === 'customer_timeline';
-		const rows = timeline ? payload.events : payload.cases;
-		if (!Array.isArray(rows) || rows.length > (timeline ? 50 : 20) || !payload.coverage) {
-			return '<p>Customer observations are unavailable.</p>';
-		}
-		const escape = value => h.escapeHtml(String(value == null ? '' : value));
-		const topics = {pending_payment_followup: 'Pending payment', on_hold_followup: 'On hold', failed_checkout_followup: 'Failed checkout', saved_email_drafts: 'Saved email draft'};
-		let html = '<div class="yoro-result-card"><h4>' + (timeline ? 'Customer timeline' : 'Customer follow-up queue') + '</h4>';
-		if (!rows.length) html += '<p>No observations in this bounded view.</p>';
-		else {
-			html += '<table class="widefat striped"><thead><tr><th>Order</th><th>' + (timeline ? 'Time' : 'Rank') + '</th><th>' + (timeline ? 'Observation' : 'Follow-up topics') + '</th><th>' + (timeline ? 'Visibility / source' : 'Identity basis') + '</th></tr></thead><tbody>';
-			rows.forEach(row => {
-				if (!row || !Number.isInteger(row.order_id) || row.order_id < 1) return;
-				const detail = timeline ? row.summary : (Array.isArray(row.topics) ? row.topics.map(topic => topics[topic] || '').filter(Boolean).join(', ') : '');
-				const identity = row.identity || {};
-				const basis = identity.basis === 'customer_id' ? 'Customer #' + identity.customer_id : identity.basis === 'email' ? identity.email_masked : 'Order only';
-				html += '<tr><td>#' + escape(row.order_id) + '</td><td>' + escape(timeline ? row.occurred_at : row.rank) + '</td><td>' + escape(detail) + '</td><td>' + escape(timeline ? row.visibility + ' / ' + row.source : basis) + '</td></tr>';
-			});
-			html += '</tbody></table>';
-		}
-		if (payload.coverage.truncated) html += '<p>This view is limited; additional observations may exist.</p>';
-		html += '<p>WooCommerce observations only. External CRM and mailbox activity are not observed.</p></div>';
-		return html;
-	}
-
 	function formatAgeHours(value) {
 		const hours = parseInt(value || 0, 10) || 0;
 
@@ -276,10 +83,7 @@
 		const labels = {
 			'orders.search': 'Find orders',
 			'orders.get_details': 'Open order details',
-			'orders.get_refunds': 'Refund history',
 			'orders.refund_preview': 'Preview refund',
-			'orders.refund': 'Refund through payment gateway',
-			'orders.record_external_refund': 'Record externally completed refund',
 			'orders.email_customer_preview': 'Preview customer email',
 			'orders.email_customer_template': 'Send customer email',
 			'orders.update_status': 'Update order status',
@@ -517,18 +321,12 @@
 		return friendly.slice(0, 4);
 	}
 
-	function isQueueDataFailure(data) {
-		const result = data && data.result;
-		return result && result.success === false && !result.multi_action && !Array.isArray(result.actions)
-			&& ['operations.get_attention_queue', 'operations.get_fulfillment_queue', 'customers.get_service_queue', 'operations.get_summary', 'store.get_daily_briefing'].indexOf(result.action || data.action) >= 0;
-	}
-
 		function renderResult(data, h) {
 		function finish(html) {
 			const markup = typeof html === 'string' ? html : '';
 			const trimmed = markup.trim();
 			const hasAssistantMarkup = trimmed.indexOf('yoro-assistant-message-result') !== -1;
-			const assistant = data && !isQueueDataFailure(data) && data.stage !== 'clarify' && !hasAssistantMarkup && !(data.result && (data.result.report_presentation || (Array.isArray(data.result.actions) && data.result.actions.some(item => item && item.result && item.result.report_presentation)))) && !isConfirmationResult(data)
+			const assistant = data && data.stage !== 'clarify' && !hasAssistantMarkup && !isConfirmationResult(data)
 				? renderAssistantResponse(data, h)
 				: '';
 
@@ -563,34 +361,11 @@
 			return finish(renderConfirmation(data, h));
 		}
 
-		if ((data.action || (data.result || {}).action || (data.parsed || {}).action) === 'orders.create') {
-			const result = data.result || data;
-			const facts = result.order_creation || (result.data || {}).order_creation;
-			const knownId = facts && Number.isSafeInteger(facts.order_id) && facts.order_id > 0 ? ' Order #' + h.escapeHtml(facts.order_id) + '.' : '';
-			const verified = result.success === true && facts && facts.status === 'pending' && facts.outcome_unknown === false && facts.payment_initiated === false
-				&& /^[A-Z]{3}$/.test(facts.currency || '') && ['subtotal', 'tax', 'total'].every(function (key) { return typeof facts[key] === 'string' && /^[0-9]+(\.[0-9]{1,6})?$/.test(facts[key]); });
-			if (!verified) return finish('<div class="yoro-result-card"><h4>Order creation requires reconciliation</h4><p>' + knownId + ' The outcome is not proven. Do not retry or automatically delete.</p></div>');
-			return finish('<div class="yoro-result-card"><h4>Unpaid pending guest order created</h4><p>' + knownId + '</p><p>Final persisted subtotal: ' + h.escapeHtml(facts.subtotal) + '; tax: ' + h.escapeHtml(facts.tax) + '; total: ' + h.escapeHtml(facts.total + ' ' + facts.currency) + '.</p><p>No payment was initiated. YoRo supplied no billing/shipping identity and performed no independent stock or customer-message action. Native WooCommerce/plugin hooks may have run.</p></div>');
-		}
-
-		if ((data.action || (data.result || {}).action || (data.parsed || {}).action) === 'orders.update_items') {
-			const result = data.result || data;
-			const facts = result.order_item_update || (result.data || {}).order_item_update;
-			const verified = result.success === true && facts && facts.status === 'updated' && facts.outcome_unknown === false
-				&& /^[A-Z]{3}$/.test(facts.currency || '') && ['subtotal', 'tax', 'total'].every(function (key) { return typeof facts[key] === 'string' && /^[0-9]+(\.[0-9]{1,6})?$/.test(facts[key]); });
-			if (!verified) return finish('<div class="yoro-result-card"><h4>Order item update requires reconciliation</h4><p>Do not retry, roll back, or repair automatically. Refresh the order and native fulfillment state.</p></div>');
-			return finish('<div class="yoro-result-card"><h4>Pending guest order items updated</h4><p>Final persisted subtotal: ' + h.escapeHtml(facts.subtotal) + '; tax: ' + h.escapeHtml(facts.tax) + '; total: ' + h.escapeHtml(facts.total + ' ' + facts.currency) + '.</p><p>Final owner line items and native fulfillment pending allocation were verified. Quantity replacements receive new line-item IDs. No payment, fulfillment, stock, or customer-message action was initiated.</p></div>');
-		}
-
 		if (data.stage === 'clarify') {
 			return finish(renderClarification(data, h));
 		}
 
-		if (data.result && data.result.action === 'orders.record_external_refund' && data.stage !== 'preview' && !data.result.preview) {
-			return finish(renderExternalRefundRecord(data.result, h));
-		}
-
-		if (!data.success || isQueueDataFailure(data)) {
+		if (!data.success) {
 			return finish(renderError(data, h));
 		}
 
@@ -602,7 +377,7 @@
 		const displayType = result.display_type || data.display_type || '';
 		const resultType = result.result_type || data.result_type || '';
 
-		if ((result.report || result.report_presentation) && typeof h.renderReportResult === 'function') {
+		if (result.report && typeof h.renderReportResult === 'function') {
 			return finish(h.renderReportResult(data));
 		}
 
@@ -610,28 +385,6 @@
 			return finish(typeof h.renderOrdersResult === 'function'
 				? h.renderOrdersResult(data)
 				: renderJson(data, h));
-		}
-
-		if (displayType === 'loyalty_status' || displayType === 'loyalty_customer_balance') {
-			return finish(renderLoyalty(Object.assign({}, result, {display_type: displayType}), h));
-		}
-		if (displayType === 'subscriptions_status' || displayType === 'subscriptions_order_context') {
-			return finish(renderSubscriptions(Object.assign({}, result, {display_type: displayType}), h));
-		}
-		if (displayType === 'order_splitter_status' || displayType === 'order_splitter_order_activity') {
-			return finish(renderOrderSplitter(Object.assign({}, result, {display_type: displayType}), h));
-		}
-
-		if (displayType === 'cancellation_return_status' || displayType === 'cancellation_return_order_case') {
-			return finish(renderCancellationReturn(Object.assign({}, result, {display_type: displayType}), h));
-		}
-
-		if (displayType === 'blacklist_status' || displayType === 'blacklist_order_assessment') {
-			return finish(renderBlacklistObservation(Object.assign({}, result, {display_type: displayType}), h));
-		}
-
-		if (displayType === 'customer_timeline' || displayType === 'customer_follow_up_queue') {
-			return finish(renderCustomer360(Object.assign({}, result, {display_type: displayType}), h));
 		}
 
 		if (displayType === 'customer_summary') {
@@ -682,15 +435,6 @@
 				: renderJson(data, h));
 		}
 
-		if (result.action === 'orders.refund') {
-			const refund = (result.data && result.data.refund) || result.refund;
-			const safe = refund && Number.isSafeInteger(refund.order_id) && refund.order_id > 0 && typeof refund.amount === 'string' && /^(0|[1-9][0-9]{0,8})(\.[0-9]{1,6})?$/.test(refund.amount) && /^[A-Z]{3}$/.test(refund.currency || '') && refund.restocked === false && refund.retry_allowed === false;
-			if (!safe) return finish('<div class="yoro-result-card"><p>Refund result unavailable. Reconcile before any new confirmation; do not retry.</p></div>');
-			const verified = result.success === true && refund.status === 'refunded' && refund.outcome_unknown === false && refund.refunded_payment === true && Number.isSafeInteger(refund.refund_id) && refund.refund_id > 0;
-			return finish('<div class="yoro-result-card"><h4>' + (verified ? 'Gateway refund verified' : 'Refund requires reconciliation') + '</h4><p>Order #' + h.escapeHtml(refund.order_id) + ': ' + h.escapeHtml(refund.amount) + ' ' + h.escapeHtml(refund.currency) + '</p><p>' + (verified ? 'WooCommerce returned a successful gateway refund and its local refund record was verified. Standard refund hooks and notifications may run; a full refund may change order status.' : 'The payment outcome is unknown. Check refund history and the gateway transaction before a new confirmation. Do not retry this operation.') + ' No stock was restocked.</p></div>');
-		}
-
-		if (displayType === 'order_refund_history') { return finish(renderRefundHistory(result, h)); }
 		if (displayType === 'refund_preview') {
 			return finish(typeof h.renderRefundPreviewResult === 'function'
 				? h.renderRefundPreviewResult(data)
@@ -715,22 +459,6 @@
 
 		if (displayType === 'assistant_message') {
 			return finish(renderAssistantMessageResult(data, h));
-		}
-
-		if (displayType === 'multi_action' && Array.isArray(result.actions) && typeof h.renderReportResult === 'function') {
-			const reportSteps = result.actions.filter(item => item && item.result && item.result.report_presentation);
-			if (reportSteps.length) {
-				const otherSteps = result.actions.filter(item => !reportSteps.includes(item));
-				let output = '';
-				if (otherSteps.length) {
-					const remaining = Object.assign({}, data, { result: Object.assign({}, result, { actions: otherSteps }) });
-					output = typeof h.renderMultiActionResult === 'function' ? h.renderMultiActionResult(remaining) : renderJson(remaining, h);
-				}
-				reportSteps.forEach(item => {
-					output += h.renderReportResult(Object.assign({}, data, { result: item.result }));
-				});
-				return finish(output);
-			}
 		}
 
 		if (displayType === 'multi_action') {
@@ -1565,7 +1293,6 @@
 	}
 
 	function canApproveDirectConfirmation(data, action) {
-		if (action === 'orders.refund' || action === 'orders.record_external_refund' || action === 'orders.create' || action === 'orders.update_items') return false;
 		return !!(
 			action &&
 			data &&
@@ -1579,64 +1306,6 @@
 		options = options || {};
 		const completed = options.completed === true;
 		const lines = [];
-
-		if (action === 'orders.create') {
-			const quote = result.preview || result;
-			if (quote.estimate !== true || quote.final !== false || !Array.isArray(quote.line_items)) return ['The current catalog estimate is unavailable. Refresh before confirming.'];
-			return ['Estimate only — these are not final order subtotal, tax or total.',
-				'Create one unpaid pending guest order. No money will be sent or captured.']
-				.concat(quote.line_items.map(function (line) {
-					return '#' + line.product_id + ' ' + line.name + ' × ' + line.quantity + ': estimated catalog amount ' + line.estimated_catalog_amount + ' ' + quote.currency;
-				})).concat(['WooCommerce determines final taxes and totals when the order is saved.',
-				'YoRo supplies no customer or billing/shipping identity, shipping, fees, coupons, custom prices or stock action, and sends no independent customer message.',
-				'Native WooCommerce/plugin hooks may run. Native request metadata may be stored by WooCommerce.',
-				'An unknown or partial outcome requires reconciliation. Never retry or automatically delete the order.']);
-		}
-
-		if (action === 'orders.update_items') {
-			const quote = result.preview || result;
-			if (quote.estimate !== true || quote.final !== false || !Number.isSafeInteger(quote.order_id) || quote.order_id < 1
-				|| !Array.isArray(quote.current_line_items) || !Array.isArray(quote.desired_line_items) || !Array.isArray(quote.desired_product_facts) || !Array.isArray(quote.changes)
-				|| !/^[A-Z]{3}$/.test(quote.currency || '') || !['current_subtotal', 'current_tax', 'current_total'].every(function (key) { return typeof quote[key] === 'string' && /^[0-9]+(\.[0-9]{1,6})?$/.test(quote[key]); })) {
-				return ['The current order preview is unavailable. Refresh before confirming.'];
-			}
-			const current = quote.current_line_items.map(function (line) { return 'Current line #' + line.line_item_id + ': product #' + line.product_id + ' × ' + line.quantity + '.'; });
-			const desired = quote.desired_line_items.map(function (line) { return 'Desired final line: product #' + line.product_id + ' × ' + line.quantity + '.'; });
-			const estimates = quote.desired_product_facts.map(function (product) { return 'Catalog estimate for product #' + product.product_id + ': ' + product.estimated_catalog_amount + ' ' + quote.currency + ' (non-final).'; });
-			const changes = quote.changes.map(function (change) { return 'Change: product #' + change.product_id + ' — ' + change.kind + (change.old_line_item_id ? ' (replaces/removes line #' + change.old_line_item_id + ')' : '') + '.'; });
-			return ['Current persisted subtotal: ' + quote.current_subtotal + '; tax: ' + quote.current_tax + '; total: ' + quote.current_total + ' ' + quote.currency + '.',
-				'Catalog amounts are estimates only; WooCommerce determines final taxes and totals after save. Quantity replacements receive new line-item IDs.']
-				.concat(current, desired, estimates, changes, ['Native fulfillment must stay wholly pending and unallocated. No payment, stock, fulfillment, or customer-message action is initiated.',
-					'Native WooCommerce/plugin hooks may run. An unknown outcome requires reconciliation; never retry, roll back, or repair automatically.']);
-		}
-
-		if (action === 'orders.record_external_refund') {
-			const id = result.order_id || params.order_id;
-			const amount = result.amount || params.amount;
-			if (!Number.isSafeInteger(id) || id < 1 || typeof amount !== 'string' || !/^(0|[1-9][0-9]{0,8})(\.[0-9]{1,6})?$/.test(amount) || !/^[A-Z]{3}$/.test(result.currency || '')) return ['External recording preview unavailable. Read a fresh preview before confirming.'];
-			return [
-				'No money will be sent by this action. You are asserting that the money was already refunded outside WooCommerce.',
-				'YoRo does not observe or independently verify that external transfer or a provider receipt.',
-				'Create one local WooCommerce refund record for ' + amount + ' ' + result.currency + ' on order #' + id + '.',
-				'Reason: ' + (result.reason || params.reason || '(none)'),
-				'Remaining after local recording: ' + result.remaining_after_refund + ' ' + result.currency + '.',
-				'No stock restoration or item allocation. Standard WooCommerce hooks and notifications may run; a full local refund may change order status.',
-				'Unknown local outcomes require reconciliation with refund history before a fresh confirmation. Do not retry this operation.'
-			];
-		}
-
-		if (action === 'orders.refund') {
-			const id = result.order_id || params.order_id;
-			const amount = result.amount || params.amount;
-			if (!Number.isSafeInteger(id) || id < 1 || typeof amount !== 'string' || !/^(0|[1-9][0-9]{0,8})(\.[0-9]{1,6})?$/.test(amount) || !/^[A-Z]{3}$/.test(result.currency || '')) return ['Refund preview unavailable. Read a fresh preview before confirming.'];
-			return [
-				'Refund ' + amount + ' ' + result.currency + ' for order #' + id + ' through payment gateway ' + (result.payment_method || '(order gateway)') + '.',
-				'Reason: ' + (result.reason || params.reason || '(none)'),
-				'Remaining after refund: ' + result.remaining_after_refund + ' ' + result.currency + '.',
-				'No stock restoration or item allocation. WooCommerce may run standard refund hooks and customer notifications; a full refund may change order status.',
-				'Unknown outcomes require reconciliation with refund history and the gateway transaction. Do not retry this operation.'
-			];
-		}
 
 		if (isCouponAction(action) && (result.blocked === true || result.block_reason)) {
 			return couponConfirmationLines(action, params, result).filter(Boolean);
@@ -2737,7 +2406,7 @@
 		const encodedParams = h.escapeHtml(JSON.stringify(params || {}));
 		const pendingOperationToken = getPendingOperationToken(data);
 		const useDirectConfirm = (plan.type || '') !== 'sequence' && action !== 'multi.query_and_apply';
-		const blocked = result.blocked === true || !!result.block_reason || ((action === 'orders.create' || action === 'orders.update_items') && (action === 'orders.create' && !(result.preview && result.preview.estimate === true) || !data.displayed_preview_receipt));
+		const blocked = result.blocked === true || !!result.block_reason;
 		const changeLines = buildActionChangeLines(action, params, result).concat(safetyApprovalLines(data));
 		const intro = blocked ? '' : approvalIntro(action, params, result);
 		const title = blocked ? blockedConfirmationTitle(action, result) : (isCouponAction(action) ? 'Review coupon details' : 'Please approve this change');
@@ -2752,7 +2421,7 @@
 		} else {
 			actionsHtml += '<div class="yoro-confirm-actions">';
 			if (useDirectConfirm) {
-				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-direct-action="' + h.escapeHtml(action) + '" data-direct-params="' + encodedParams + '" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '"' + ((action === 'orders.create' || action === 'orders.update_items') ? ' data-displayed-preview-receipt="' + h.escapeHtml(data.displayed_preview_receipt) + '"' : '') + '>Approve change</button>';
+				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-direct-action="' + h.escapeHtml(action) + '" data-direct-params="' + encodedParams + '" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '">Approve change</button>';
 			} else {
 				actionsHtml += '<button class="button button-primary yoro-confirm-run" data-pending-operation-token="' + h.escapeHtml(pendingOperationToken) + '">Approve change</button>';
 			}

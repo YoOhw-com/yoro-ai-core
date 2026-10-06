@@ -186,22 +186,16 @@ class YoRo_Commerce_Discovery_Service {
 		}
 
 		$status = [] === $shipments ? 'unavailable' : 'available';
-		$native = YoRo_Fulfillment_Service::observations( $order_id );
 		$summary = [] === $shipments
 			? sprintf( __( 'No tracking number is stored for order #%d.', 'yoro-ai-core' ), $order_id )
 			: sprintf( __( 'Loaded %1$d tracking record(s) for order #%2$d.', 'yoro-ai-core' ), count( $shipments ), $order_id );
-		if ( ! empty( $native['native_fulfillments'] ) ) {
-			$native_tracking_count = count( array_filter( $native['native_fulfillments'], static function ( $item ) { return '' !== $item['tracking_number']; } ) );
-			$status = $native_tracking_count > 0 ? 'available' : $status;
-			$summary = sprintf( 'Loaded %d legacy tracking record(s) and %d native fulfillment observation(s), %d with tracking, for order #%d.', count( $shipments ), count( $native['native_fulfillments'] ), $native_tracking_count, $order_id );
-		}
 
-		return self::read_result( 'fulfillment.get_tracking', $summary, array_merge( [
+		return self::read_result( 'fulfillment.get_tracking', $summary, [
 			'order_id' => $order_id,
 			'status' => $status,
 			'shipments' => $shipments,
 			'count' => count( $shipments ),
-		], $native ) );
+		] );
 	}
 
 	private static function present_product( $product ) {
@@ -232,8 +226,6 @@ class YoRo_Commerce_Discovery_Service {
 
 	public static function product_version( WC_Product $product ) {
 		$date_modified = $product->get_date_modified();
-		$sale_from = $product->get_date_on_sale_from( 'edit' );
-		$sale_to = $product->get_date_on_sale_to( 'edit' );
 
 		return hash(
 			'sha256',
@@ -244,14 +236,7 @@ class YoRo_Commerce_Discovery_Service {
 					$product->get_status(),
 					$product->get_stock_quantity(),
 					$product->get_stock_status(),
-					$product->get_name( 'edit' ),
-					$product->get_description( 'edit' ),
-					$product->get_short_description( 'edit' ),
-					$product->get_regular_price( 'edit' ),
-					$product->get_sale_price( 'edit' ),
-					$product->get_price( 'edit' ),
-					$sale_from ? $sale_from->getTimestamp() : null,
-					$sale_to ? $sale_to->getTimestamp() : null,
+					$product->get_price(),
 				]
 			)
 		);

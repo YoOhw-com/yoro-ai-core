@@ -6,223 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Orders_Actions {
 
-	public static function search_coupons( $params ) {
-		// ActionExecutor adds these transport flags; neither is a public search parameter.
-		if ( is_array( $params ) ) {
-			unset( $params['_yoro_confirmed'], $params['_yoro_preview'] );
-		}
-		return YoRo_Coupons_Service::search_coupons( $params );
-	}
-
 	public static function register() {
-		YoRo_Action_Registry::register( 'orders.update_items', [
-			'label' => 'Update pending guest order items', 'description' => 'Replace the desired final line-item set of one pending guest order after a local preview and separate confirmation.',
-			'category' => 'orders', 'permission' => 'manage_woocommerce', 'callback' => [ 'YoRo_Orders_Write_Service', 'update_items' ], 'preview_callback' => [ 'YoRo_Orders_Write_Service', 'preview_update_items' ],
-			'effect' => 'mutate', 'external_side_effect' => false, 'risk_level' => 'high', 'write_action' => true, 'requires_confirmation' => true, 'reversibility' => 'none', 'idempotency_strategy' => 'operation_journal', 'concurrency_strategy' => 'optimistic_version',
-			'input_schema' => [ 'order_id' => 'integer', 'line_items' => 'array' ],
-			'canonical_input_schema' => [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 9007199254740991 ], 'line_items' => [ 'type' => 'array', 'minItems' => 1, 'maxItems' => 20, 'items' => [ 'type' => 'object', 'properties' => [ 'product_id' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 9007199254740991 ], 'quantity' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 1000 ] ], 'required' => [ 'product_id', 'quantity' ], 'additionalProperties' => false ] ] ],
-			'required_params' => [ 'order_id', 'line_items' ], 'max_items' => 1, 'max_targets' => 1, 'target_type' => 'order', 'supports_bulk' => false, 'capabilities' => [ 'orders', 'write' ],
-		] );
-		YoRo_Action_Registry::register( 'orders.create', [
-			'label' => 'Create a pending guest order', 'description' => 'Create one unpaid guest order after a local catalog estimate and separate confirmation. WordPress local only; no payment or stock action. Final totals are determined by WooCommerce.',
-			'category' => 'orders', 'permission' => 'manage_woocommerce', 'callback' => [ 'YoRo_Orders_Write_Service', 'create' ], 'preview_callback' => [ 'YoRo_Orders_Write_Service', 'preview_create' ],
-			'effect' => 'mutate', 'external_side_effect' => false, 'risk_level' => 'high', 'write_action' => true, 'requires_confirmation' => true, 'reversibility' => 'none',
-			'idempotency_strategy' => 'operation_journal', 'concurrency_strategy' => 'optimistic_version',
-			'input_schema' => [ 'line_items' => 'array' ],
-			'canonical_input_schema' => [ 'line_items' => [ 'type' => 'array', 'minItems' => 1, 'maxItems' => 20, 'items' => [ 'type' => 'object', 'properties' => [ 'product_id' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 9007199254740991 ], 'quantity' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 1000 ] ], 'required' => [ 'product_id', 'quantity' ], 'additionalProperties' => false ] ] ],
-			'required_params' => [ 'line_items' ], 'max_items' => 1, 'max_targets' => 1, 'target_type' => 'order', 'supports_bulk' => false, 'capabilities' => [ 'orders', 'write' ],
-		] );
-		YoRo_Action_Registry::register( 'orders.record_external_refund', [
-			'label' => 'Record an externally completed refund',
-			'description' => 'Record one exact amount already refunded externally, after a fresh preview and separate Human confirmation. Sends no money and does not verify the external transfer. No stock or item allocation.',
-			'category' => 'orders', 'permission' => 'manage_woocommerce',
-			'callback' => [ 'YoRo_Orders_Write_Service', 'record_external_refund' ], 'preview_callback' => [ 'YoRo_Orders_Write_Service', 'preview_record_external_refund' ],
-			'effect' => 'mutate', 'external_side_effect' => false, 'risk_level' => 'high',
-			'write_action' => true, 'requires_confirmation' => true, 'reversibility' => 'none',
-			'idempotency_strategy' => 'operation_journal', 'concurrency_strategy' => 'optimistic_version',
-			'input_schema' => [ 'order_id' => 'integer', 'amount' => 'string', 'expected_version' => 'string', 'expected_external_refund_state' => 'string', 'reason' => 'string' ],
-			'canonical_input_schema' => [
-				'order_id' => [
-					'type' => 'integer',
-					'minimum' => 1,
-					'maximum' => 9007199254740991,
-				],
-				'amount' => [
-					'type' => 'string',
-					'pattern' => '^(0|[1-9][0-9]{0,8})(\\.[0-9]{1,6})?$',
-					'maxLength' => 16,
-				],
-				'expected_version' => [
-					'type' => 'string',
-					'pattern' => '^[a-f0-9]{64}$',
-					'minLength' => 64,
-					'maxLength' => 64,
-				],
-				'expected_external_refund_state' => [
-					'type' => 'string',
-					'pattern' => '^[a-f0-9]{64}$',
-					'minLength' => 64,
-					'maxLength' => 64,
-				],
-				'reason' => [
-					'type' => 'string',
-					'maxLength' => 500,
-				],
-			],
-			'required_params' => [
-				'order_id',
-				'amount',
-				'expected_version',
-				'expected_external_refund_state',
-			],
-			'max_items' => 1, 'max_targets' => 1, 'target_type' => 'order', 'supports_bulk' => false,
-			'capabilities' => [ 'orders', 'write', 'refunds', 'financial' ],
-		] );
-		YoRo_Action_Registry::register( 'orders.refund', [
-			'label' => 'Refund through payment gateway',
-			'description' => 'Refund one exact amount through the order gateway after a fresh preview and separate claimed confirmation. No restock or item allocation. Unknown outcomes require reconciliation, never retry.',
-			'category' => 'orders', 'permission' => 'manage_woocommerce',
-			'callback' => [ 'YoRo_Orders_Write_Service', 'refund' ], 'preview_callback' => [ 'YoRo_Orders_Write_Service', 'preview_refund' ],
-			'effect' => 'financial', 'external_side_effect' => true, 'risk_level' => 'high',
-			'write_action' => true, 'requires_confirmation' => true, 'reversibility' => 'none',
-			'idempotency_strategy' => 'operation_journal', 'concurrency_strategy' => 'optimistic_version',
-			'input_schema' => [ 'order_id' => 'integer', 'amount' => 'string', 'expected_version' => 'string', 'expected_refund_state' => 'string', 'reason' => 'string' ],
-			'canonical_input_schema' => [
-				'order_id' => [
-					'type' => 'integer',
-					'minimum' => 1,
-					'maximum' => 9007199254740991,
-				],
-				'amount' => [
-					'type' => 'string',
-					'pattern' => '^(0|[1-9][0-9]{0,8})(\\.[0-9]{1,6})?$',
-					'maxLength' => 16,
-				],
-				'expected_version' => [
-					'type' => 'string',
-					'pattern' => '^[a-f0-9]{64}$',
-					'minLength' => 64,
-					'maxLength' => 64,
-				],
-				'expected_refund_state' => [
-					'type' => 'string',
-					'pattern' => '^[a-f0-9]{64}$',
-					'minLength' => 64,
-					'maxLength' => 64,
-				],
-				'reason' => [
-					'type' => 'string',
-					'maxLength' => 500,
-				],
-			],
-			'required_params' => [
-				'order_id',
-				'amount',
-				'expected_version',
-				'expected_refund_state',
-			],
-			'max_items' => 1, 'max_targets' => 1, 'target_type' => 'order', 'supports_bulk' => false,
-			'capabilities' => [ 'orders', 'write', 'refunds' ],
-		] );
-		YoRo_Action_Registry::register( 'orders.regenerate_download_permissions', [
-			'label' => __( 'Regenerate order download permissions', 'yoro-ai-core' ),
-			'description' => __( 'Delete and recreate exact-order permissions from current product files; counters and dates reset. Requires a fresh guarded read and separate claimed confirmation.', 'yoro-ai-core' ),
-			'category' => 'orders', 'permission' => 'manage_woocommerce',
-			'callback' => [ 'YoRo_Orders_Write_Service', 'regenerate_download_permissions' ],
-			'preview_callback' => [ 'YoRo_Orders_Write_Service', 'preview_regenerate_download_permissions' ],
-			'risk_level' => 'high', 'write_action' => true, 'requires_confirmation' => true, 'reversibility' => 'none',
-			'idempotency_strategy' => 'operation_journal', 'concurrency_strategy' => 'optimistic_version',
-			'input_schema' => [ 'order_id' => 'integer', 'expected_version' => 'string', 'expected_download_permissions_state' => 'string' ],
-			'canonical_input_schema' => [
-				'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$', 'minLength' => 64, 'maxLength' => 64 ],
-				'expected_download_permissions_state' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$', 'minLength' => 64, 'maxLength' => 64 ],
-			],
-			'required_params' => [ 'order_id', 'expected_version', 'expected_download_permissions_state' ], 'max_items' => 1, 'max_targets' => 1,
-			'target_type' => 'order', 'supports_bulk' => false, 'capabilities' => [ 'orders', 'write', 'downloads' ],
-		] );
-		YoRo_Action_Registry::register( 'orders.get_download_permissions', [
-			'label' => __( 'Get order download permissions', 'yoro-ai-core' ),
-			'description' => __( 'Observe bounded WooCommerce download permissions for one order. No URL, license or file delivery.', 'yoro-ai-core' ),
-			'category' => 'orders', 'permission' => 'yoro_view_store_data',
-			'callback' => [ 'YoRo_Orders_Read_Service', 'get_download_permissions' ],
-			'risk_level' => 'low', 'write_action' => false, 'requires_confirmation' => false,
-			'input_schema' => [ 'order_id' => 'integer', 'limit' => 'integer', 'page' => 'integer' ],
-			'canonical_input_schema' => [
-				'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-				'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ],
-				'page' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 100 ],
-			],
-			'required_params' => [ 'order_id' ], 'max_items' => 1, 'max_targets' => 1,
-			'target_type' => 'order', 'supports_bulk' => false, 'capabilities' => [ 'orders', 'read', 'downloads' ],
-		] );
-		YoRo_Action_Registry::register( 'orders.get_email_history', [
-			'label' => __( 'Get local order email history', 'yoro-ai-core' ),
-			'description' => __( 'Read bounded local YoRo email observations for one order. Delivery and remote receipts are not observed.', 'yoro-ai-core' ),
-			'category' => 'orders', 'permission' => 'yoro_view_store_data',
-			'callback' => [ 'YoRo_Orders_Read_Service', 'get_email_history' ],
-			'risk_level' => 'low', 'write_action' => false, 'requires_confirmation' => false,
-			'input_schema' => [ 'order_id' => 'integer', 'limit' => 'integer', 'cursor' => 'string' ],
-			'canonical_input_schema' => [
-				'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-				'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ],
-				'cursor' => [ 'type' => 'string', 'minLength' => 66, 'maxLength' => 512, 'pattern' => '^[A-Za-z0-9_-]+\\.[a-f0-9]{64}$' ],
-			],
-			'required_params' => [ 'order_id' ], 'max_items' => 1, 'max_targets' => 1,
-			'target_type' => 'order', 'supports_bulk' => false, 'capabilities' => [ 'orders', 'read', 'email' ],
-		] );
-		YoRo_Action_Registry::register( 'orders.send_transactional_email', [
-			'label' => __( 'Resend native order email', 'yoro-ai-core' ),
-			'description' => __( 'Resend one eligible native WooCommerce customer transactional email after a current read and explicit confirmation. No custom content or recipient override.', 'yoro-ai-core' ),
-			'category' => 'orders', 'permission' => 'manage_woocommerce',
-			'callback' => [ 'YoRo_Orders_Email_Service', 'send_transactional_email' ],
-			'preview_callback' => [ 'YoRo_Orders_Email_Service', 'preview_send_transactional_email' ],
-			'requires_confirmation' => true, 'risk_level' => 'medium', 'write_action' => true,
-			'effect' => 'communicate', 'external_side_effect' => true, 'reversibility' => 'none',
-			'idempotency_strategy' => 'operation_journal', 'concurrency_strategy' => 'external_delivery',
-			'target_type' => 'order', 'supports_bulk' => false, 'max_items' => 1, 'max_targets' => 1,
-			'input_schema' => [ 'order_id' => 'integer', 'expected_version' => 'string', 'email_type' => 'string' ],
-			'canonical_input_schema' => [
-				'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$', 'minLength' => 64, 'maxLength' => 64 ],
-				'email_type' => [ 'type' => 'string', 'enum' => [ 'customer_processing_order', 'customer_completed_order' ] ],
-			],
-			'required_params' => [ 'order_id', 'expected_version', 'email_type' ],
-			'capabilities' => [ 'orders', 'write', 'email', 'customer_communication' ],
-			'ai_description' => __( 'Resend an explicitly selected native processing or completed order email. Clarify ambiguous email intent; custom messages, saved templates and mailbox replies are different actions.', 'yoro-ai-core' ),
-			'param_hints' => [
-				'order_id' => __( 'One grounded order only.', 'yoro-ai-core' ),
-				'expected_version' => __( 'Copy only the current version from the matching authorized order read.', 'yoro-ai-core' ),
-				'email_type' => __( 'An explicit supported native transactional email type, never inferred from an ambiguous request to email the customer.', 'yoro-ai-core' ),
-			],
-		] );
-		$shipping_fields = [];
-		foreach ( [ 'first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country' ] as $field ) {
-			$shipping_fields[ $field ] = [ 'type' => 'string', 'maxLength' => 200 ];
-		}
-		YoRo_Action_Registry::register( 'orders.update_addresses', [
-			'label' => __( 'Update order shipping address', 'yoro-ai-core' ),
-			'description' => __( 'Patch only explicitly supplied shipping fields on one order after a current read and confirmation.', 'yoro-ai-core' ),
-			'category' => 'orders', 'permission' => 'manage_woocommerce',
-			'callback' => [ __CLASS__, 'update_order_addresses' ],
-			'preview_callback' => [ 'YoRo_Orders_Write_Service', 'preview_update_order_addresses' ],
-			'requires_confirmation' => true, 'risk_level' => 'medium', 'write_action' => true,
-			'concurrency_strategy' => 'optimistic_version', 'max_items' => 1,
-			'reversibility' => 'none',
-			'input_schema' => [ 'order_id' => 'int', 'expected_version' => 'string', 'shipping' => 'object' ],
-			'canonical_input_schema' => [
-				'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
-				'shipping' => [ 'type' => 'object', 'properties' => $shipping_fields, 'required' => [], 'additionalProperties' => false ],
-			],
-			'required_params' => [ 'order_id', 'expected_version', 'shipping' ],
-			'capabilities' => [ 'orders', 'write' ],
-			'param_hints' => [
-				'order_id' => __( 'One grounded order ID, never a bulk target.', 'yoro-ai-core' ),
-				'expected_version' => __( 'Bind only from the matching trusted order context after a fresh read.', 'yoro-ai-core' ),
-				'shipping' => __( 'Only explicitly requested shipping fields; omitted fields remain unchanged. Never include billing or customer-profile data.', 'yoro-ai-core' ),
-			],
-		] );
 		YoRo_Action_Registry::register(
 			'orders.search',
 			[
@@ -281,46 +65,6 @@ class YoRo_Orders_Actions {
 					'read',
 					'search',
 				],
-			]
-		);
-
-		YoRo_Action_Registry::register(
-			'orders.get_payment_context',
-			[
-				'label' => __( 'Get order payment context', 'yoro-ai-core' ),
-				'description' => __( 'Read bounded WooCommerce payment facts for one order; independent gateway verification is not observed.', 'yoro-ai-core' ),
-				'category' => 'orders',
-				'permission' => 'yoro_view_store_data',
-				'callback' => [ __CLASS__, 'get_payment_context' ],
-				'risk_level' => 'low',
-				'write_action' => false,
-				'input_schema' => [ 'order_id' => 'integer' ],
-				'canonical_input_schema' => [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ] ],
-				'required_params' => [ 'order_id' ],
-				'max_items' => 1,
-				'max_targets' => 1,
-				'target_type' => 'order',
-				'capabilities' => [ 'orders', 'read', 'payment' ],
-			]
-		);
-
-		YoRo_Action_Registry::register(
-			'orders.get_payment_link',
-			[
-				'label' => __( 'Get order payment link', 'yoro-ai-core' ),
-				'description' => __( 'Read the opaque WooCommerce payment link for one payable order without charging or sending it.', 'yoro-ai-core' ),
-				'category' => 'orders',
-				'permission' => 'yoro_view_store_data',
-				'callback' => [ __CLASS__, 'get_payment_link' ],
-				'risk_level' => 'low',
-				'write_action' => false,
-				'input_schema' => [ 'order_id' => 'integer' ],
-				'canonical_input_schema' => [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ] ],
-				'required_params' => [ 'order_id' ],
-				'max_items' => 1,
-				'max_targets' => 1,
-				'target_type' => 'order',
-				'capabilities' => [ 'orders', 'read', 'payment' ],
 			]
 		);
 
@@ -591,168 +335,6 @@ class YoRo_Orders_Actions {
 			]
 		);
 
-		YoRo_Action_Registry::register( 'fulfillment.create', [
-			'label' => 'Create native fulfillment allocation',
-			'description' => 'Create one unfulfilled native allocation from exactly the selected pending item quantities after authenticated read and claimed confirmation.',
-			'category' => 'fulfillment', 'permission' => 'manage_woocommerce',
-			'callback' => [ 'YoRo_Fulfillment_Service', 'create' ],
-			'preview_callback' => [ 'YoRo_Fulfillment_Service', 'preview_create' ],
-			'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
-			'reversibility' => 'none', 'idempotency_strategy' => 'operation_journal',
-			'input_schema' => [ 'order_id' => 'integer', 'items' => 'array', 'expected_version' => 'string' ],
-			'canonical_input_schema' => [
-				'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-				'items' => [ 'type' => 'array', 'minItems' => 1, 'maxItems' => 100, 'items' => [
-					'type' => 'object', 'properties' => [ 'item_id' => [ 'type' => 'integer', 'minimum' => 1 ], 'qty' => [ 'type' => 'integer', 'minimum' => 1 ] ],
-					'required' => [ 'item_id', 'qty' ], 'additionalProperties' => false,
-				] ],
-				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}(?![\\s\\S])' ],
-			],
-			'concurrency_strategy' => 'optimistic_version', 'max_items' => 1, 'max_targets' => 1,
-			'target_type' => 'order', 'supports_bulk' => false,
-			'required_params' => [ 'order_id', 'items', 'expected_version' ],
-			'capabilities' => [ 'orders', 'fulfillment', 'write' ],
-		] );
-
-		foreach ( [ 'add_tracking', 'update_tracking' ] as $tracking_action ) {
-			YoRo_Action_Registry::register( 'fulfillment.' . $tracking_action, [
-				'label' => 'add_tracking' === $tracking_action ? 'Add native fulfillment tracking' : 'Update native fulfillment tracking',
-				'description' => 'Change tracking on one exact existing native fulfillment after authenticated read and claimed confirmation.',
-				'category' => 'fulfillment', 'permission' => 'manage_woocommerce',
-				'callback' => [ 'YoRo_Fulfillment_Service', $tracking_action ],
-				'preview_callback' => [ 'YoRo_Fulfillment_Service', 'preview_' . $tracking_action ],
-				'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
-				'reversibility' => 'none', 'idempotency_strategy' => 'operation_journal',
-				'input_schema' => [ 'order_id' => 'integer', 'fulfillment_id' => 'integer', 'tracking_number' => 'string', 'shipment_provider' => 'string', 'expected_version' => 'string' ],
-				'canonical_input_schema' => [
-					'order_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-					'fulfillment_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-					'tracking_number' => [ 'type' => 'string', 'minLength' => 1, 'maxLength' => 200, 'pattern' => '^[^\\x00-\\x1f\\x7f<>]+(?![\\s\\S])' ],
-					'shipment_provider' => [ 'type' => 'string', 'minLength' => 1, 'maxLength' => 100, 'pattern' => '^[a-zA-Z0-9_-]+(?![\\s\\S])' ],
-					'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}(?![\\s\\S])' ],
-				],
-				'concurrency_strategy' => 'optimistic_version', 'max_items' => 1, 'max_targets' => 1,
-				'target_type' => 'order', 'supports_bulk' => false,
-				'required_params' => [ 'order_id', 'fulfillment_id', 'tracking_number', 'shipment_provider', 'expected_version' ],
-				'capabilities' => [ 'orders', 'fulfillment', 'tracking', 'write' ],
-			] );
-		}
-
-		YoRo_Action_Registry::register( 'coupons.update', [
-			'label' => __( 'Update coupon discount amount', 'yoro-ai-core' ),
-			'description' => __( 'Set only the discount amount of one exact coupon after a fresh authenticated lookup.', 'yoro-ai-core' ),
-			'category' => 'coupons', 'permission' => 'manage_woocommerce',
-			'callback' => [ 'YoRo_Coupons_Service', 'update_coupon' ],
-			'preview_callback' => [ 'YoRo_Coupons_Service', 'preview_update_coupon' ],
-			'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
-			'reversibility' => 'none', 'idempotency_strategy' => 'operation_journal',
-			'input_schema' => [ 'coupon_id' => 'integer', 'discount_amount' => 'string', 'expected_version' => 'string' ],
-			'canonical_input_schema' => [
-				'coupon_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-				'discount_amount' => [ 'type' => 'string', 'pattern' => '^(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,6})?(?![\\s\\S])' ],
-				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}(?![\\s\\S])' ],
-			],
-			'concurrency_strategy' => 'optimistic_version', 'max_items' => 1, 'max_targets' => 1,
-			'target_type' => 'coupon', 'supports_bulk' => false,
-			'required_params' => [ 'coupon_id', 'discount_amount', 'expected_version' ],
-			'capabilities' => [ 'coupons', 'write' ],
-			'ai_description' => __( 'Change one coupon discount amount only, preserving its code, type and restrictions. Requires an authenticated exact lookup and explicit confirmation; no bulk, delete, usage-history or wider edits.', 'yoro-ai-core' ),
-		] );
-
-		YoRo_Action_Registry::register( 'products.update_pricing', [
-			'label' => __( 'Update product regular price', 'yoro-ai-core' ),
-			'description' => __( 'Set the regular price for one exact simple product or variation with no sale pricing.', 'yoro-ai-core' ),
-			'category' => 'products', 'permission' => 'manage_woocommerce',
-			'callback' => [ 'YoRo_Store_Inventory_Service', 'update_product_pricing' ],
-			'preview_callback' => [ 'YoRo_Store_Inventory_Service', 'preview_update_product_pricing' ],
-			'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
-			'reversibility' => 'partial', 'idempotency_strategy' => 'operation_journal',
-			'input_schema' => [ 'product_id' => 'integer', 'regular_price' => 'string', 'expected_version' => 'string' ],
-			'canonical_input_schema' => [
-				'product_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-				'regular_price' => [ 'type' => 'string', 'pattern' => '^(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,6})?$' ],
-				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
-			],
-			'concurrency_strategy' => 'optimistic_version', 'max_items' => 1, 'max_targets' => 1,
-			'target_type' => 'product', 'supports_bulk' => false,
-			'required_params' => [ 'product_id', 'regular_price', 'expected_version' ],
-			'capabilities' => [ 'products', 'pricing', 'write' ],
-			'ai_description' => __( 'Set only the regular price for one exact simple product or exact variation after a fresh read. Sale prices, schedules, variable or grouped parents, bulk and identifier aliases are unsupported.', 'yoro-ai-core' ),
-			'param_hints' => [
-				'product_id' => __( 'Use one exact positive WooCommerce product or variation ID.', 'yoro-ai-core' ),
-				'regular_price' => __( 'Use an explicit non-negative decimal string without a currency symbol, sign, exponent or grouping separator.', 'yoro-ai-core' ),
-				'expected_version' => __( 'Copy only the opaque version from the matching trusted product context.', 'yoro-ai-core' ),
-			],
-		] );
-
-		YoRo_Action_Registry::register( 'products.update_content', [
-			'label' => __( 'Update product content', 'yoro-ai-core' ),
-			'description' => __( 'Update one bounded content field on one exact simple product.', 'yoro-ai-core' ),
-			'category' => 'products', 'permission' => 'manage_woocommerce',
-			'callback' => [ 'YoRo_Store_Inventory_Service', 'update_product_content' ],
-			'preview_callback' => [ 'YoRo_Store_Inventory_Service', 'preview_update_product_content' ],
-			'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
-			'reversibility' => 'partial', 'idempotency_strategy' => 'operation_journal',
-			'input_schema' => [ 'product_id' => 'integer', 'field' => 'string', 'value' => 'string', 'expected_version' => 'string' ],
-			'canonical_input_schema' => [
-				'product_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-				'field' => [ 'type' => 'string', 'enum' => [ 'name', 'description', 'short_description' ] ],
-				'value' => [ 'type' => 'string', 'maxLength' => 100000 ],
-				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
-			],
-			'concurrency_strategy' => 'optimistic_version', 'max_items' => 1, 'max_targets' => 1,
-			'target_type' => 'product', 'supports_bulk' => false,
-			'required_params' => [ 'product_id', 'field', 'value', 'expected_version' ],
-			'capabilities' => [ 'products', 'content', 'write' ],
-			'ai_description' => __( 'Update exactly one of name, description, or short_description on one exact simple product after a fresh read. Variations, aliases, bulk and unrelated product fields are unsupported.', 'yoro-ai-core' ),
-			'param_hints' => [
-				'product_id' => __( 'Use one exact positive WooCommerce simple product ID.', 'yoro-ai-core' ),
-				'field' => __( 'Use exactly name, description, or short_description.', 'yoro-ai-core' ),
-				'value' => __( 'Use only the explicit requested content value for that one field.', 'yoro-ai-core' ),
-				'expected_version' => __( 'Copy only the opaque version from the matching trusted product context.', 'yoro-ai-core' ),
-			],
-		] );
-
-		YoRo_Action_Registry::register( 'products.create_draft', [
-			'label' => __( 'Create product draft', 'yoro-ai-core' ),
-			'description' => __( 'Create one unpublished simple WooCommerce product draft with only a name.', 'yoro-ai-core' ),
-			'category' => 'products', 'permission' => 'manage_woocommerce',
-			'callback' => [ 'YoRo_Store_Inventory_Service', 'create_product_draft' ],
-			'preview_callback' => [ 'YoRo_Store_Inventory_Service', 'preview_create_product_draft' ],
-			'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
-			'reversibility' => 'none', 'idempotency_strategy' => 'operation_journal',
-			'input_schema' => [ 'name' => 'string' ],
-			'canonical_input_schema' => [
-				'name' => [ 'type' => 'string', 'maxLength' => 200 ],
-			],
-			'concurrency_strategy' => 'create_only', 'max_items' => 1, 'max_targets' => 1,
-			'target_type' => 'product', 'supports_bulk' => false,
-			'required_params' => [ 'name' ],
-			'capabilities' => [ 'products', 'create', 'draft', 'write' ],
-			'ai_description' => __( 'Create exactly one fresh unpublished simple product draft with only the explicit normalized name. Pricing, stock, descriptions, taxonomy, media, visibility, aliases, bulk and all other fields are unsupported.', 'yoro-ai-core' ),
-			'param_hints' => [
-				'name' => __( 'Use the explicit product name only; it must be valid UTF-8, plain text, non-empty after normalization, and at most 200 characters.', 'yoro-ai-core' ),
-			],
-		] );
-
-		YoRo_Action_Registry::register( 'products.adjust_stock', [
-			'label' => __( 'Adjust product stock', 'yoro-ai-core' ),
-			'description' => __( 'Increase or decrease one independently managed product stock quantity by a signed delta.', 'yoro-ai-core' ),
-			'category' => 'products', 'permission' => 'manage_woocommerce',
-			'callback' => [ 'YoRo_Store_Inventory_Service', 'adjust_product_stock' ],
-			'preview_callback' => [ 'YoRo_Store_Inventory_Service', 'preview_adjust_product_stock' ],
-			'risk_level' => 'medium', 'write_action' => true, 'requires_confirmation' => true,
-			'input_schema' => [ 'product_id' => 'integer', 'stock_delta' => 'integer', 'expected_version' => 'string' ],
-			'canonical_input_schema' => [
-				'product_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-				'stock_delta' => [ 'type' => 'integer', 'minimum' => -1000000, 'maximum' => 1000000 ],
-				'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
-			],
-			'concurrency_strategy' => 'optimistic_version', 'max_items' => 1,
-			'required_params' => [ 'product_id', 'stock_delta', 'expected_version' ],
-			'capabilities' => [ 'products', 'inventory', 'stock', 'write' ],
-		] );
-
 		YoRo_Action_Registry::register(
 			'products.update_stock',
 			[
@@ -872,66 +454,6 @@ class YoRo_Orders_Actions {
 		);
 
 		YoRo_Action_Registry::register(
-			'products.restore_content_state',
-			[
-				'label' => __( 'Restore product content', 'yoro-ai-core' ),
-				'description' => __( 'Restore one captured product content field during a bounded YoRo undo.', 'yoro-ai-core' ),
-				'category' => 'products',
-				'permission' => 'manage_woocommerce',
-				'callback' => [ __CLASS__, 'restore_product_content_state' ],
-				'risk_level' => 'medium',
-				'write_action' => true,
-				'ai_exposed' => false,
-				'concurrency_strategy' => 'optimistic_version',
-				'input_schema' => [
-					'product_id' => 'integer',
-					'field' => 'string',
-					'previous_value' => 'string',
-					'expected_version' => 'string',
-				],
-				'canonical_input_schema' => [
-					'product_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-					'field' => [ 'type' => 'string', 'enum' => [ 'name', 'description', 'short_description' ] ],
-					'previous_value' => [ 'type' => 'string', 'maxLength' => 100000 ],
-					'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
-				],
-				'required_params' => [ 'product_id', 'field', 'previous_value', 'expected_version' ],
-				'max_items' => 1,
-				'max_targets' => 1,
-				'capabilities' => [ 'products', 'content', 'write', 'undo' ],
-			]
-		);
-
-		YoRo_Action_Registry::register(
-			'products.restore_pricing_state',
-			[
-				'label' => __( 'Restore product regular price', 'yoro-ai-core' ),
-				'description' => __( 'Restore the captured regular price during a bounded YoRo undo.', 'yoro-ai-core' ),
-				'category' => 'products',
-				'permission' => 'manage_woocommerce',
-				'callback' => [ __CLASS__, 'restore_product_pricing_state' ],
-				'risk_level' => 'medium',
-				'write_action' => true,
-				'ai_exposed' => false,
-				'concurrency_strategy' => 'optimistic_version',
-				'input_schema' => [
-					'product_id' => 'integer',
-					'expected_version' => 'string',
-					'previous_regular_price' => 'string',
-				],
-				'canonical_input_schema' => [
-					'product_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-					'expected_version' => [ 'type' => 'string', 'pattern' => '^[a-f0-9]{64}$' ],
-					'previous_regular_price' => [ 'type' => 'string', 'pattern' => '^(?:$|0|[1-9][0-9]{0,11}(?:\\.[0-9]{1,6})?)$' ],
-				],
-				'required_params' => [ 'product_id', 'expected_version', 'previous_regular_price' ],
-				'max_items' => 1,
-				'max_targets' => 1,
-				'capabilities' => [ 'products', 'pricing', 'write', 'undo' ],
-			]
-		);
-
-		YoRo_Action_Registry::register(
 			'products.restore_stock_state',
 			[
 				'label'                 => __( 'Restore product stock state', 'yoro-ai-core' ),
@@ -960,30 +482,6 @@ class YoRo_Orders_Actions {
 				'required_params'       => [ 'product_id', 'expected_version', 'manage_stock', 'stock_quantity', 'stock_status' ],
 				'max_items'             => 1,
 				'capabilities'          => [ 'products', 'inventory', 'write', 'undo' ],
-			]
-		);
-
-		YoRo_Action_Registry::register(
-			'coupons.search',
-			[
-				'label' => __( 'Search coupons', 'yoro-ai-core' ),
-				'description' => __( 'Read a bounded live page of coupon codes. No customer usage history.', 'yoro-ai-core' ),
-				'category' => 'coupons',
-				'permission' => 'manage_woocommerce',
-				'callback' => [ __CLASS__, 'search_coupons' ],
-				'risk_level' => 'low',
-				'write_action' => false,
-				'requires_confirmation' => false,
-				'input_schema' => [ 'query' => 'string', 'limit' => 'integer', 'page' => 'integer' ],
-				'canonical_input_schema' => [
-					'query' => [ 'type' => 'string', 'maxLength' => 100, 'pattern' => '^(?!\s*-)[^\x00-\x1f\x7f<>%*\\\\]*(?![\s\S])' ],
-					'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ],
-					'page' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 100 ],
-				],
-				'required_params' => [],
-				'max_items' => 50,
-				'capabilities' => [ 'coupons', 'read', 'search' ],
-				'ai_description' => __( 'List recent coupons or search coupon codes by a bounded text substring. Exact code or ID targeting uses coupons.lookup. No create, update, delete or customer usage history.', 'yoro-ai-core' ),
 			]
 		);
 
@@ -1254,99 +752,6 @@ class YoRo_Orders_Actions {
 			]
 		);
 
-		foreach ( [ 'get_status', 'get_customer_balance' ] as $method ) {
-			$customer_balance = 'get_customer_balance' === $method;
-			YoRo_Action_Registry::register( 'loyalty.' . $method, [
-				'label' => $customer_balance ? 'Loyalty customer balance' : 'Loyalty status',
-				'description' => $customer_balance ? 'Read only retained current_points and earning_points for one exact current-site customer ID. No history, PII, inference or mutation.' : 'Read characterized Loyalty owner availability and version without construction or settings access.',
-				'category' => 'customers', 'permission' => 'manage_woocommerce', 'risk_level' => 'low',
-				'write_action' => false, 'requires_confirmation' => false, 'max_items' => 1, 'max_targets' => 1,
-				'callback' => [ 'YoRo_Loyalty_Service', $method ],
-				'input_schema' => $customer_balance ? [ 'customer_id' => 'integer' ] : [],
-				'canonical_input_schema' => $customer_balance ? [ 'customer_id' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 9007199254740991 ] ] : [],
-				'required_params' => $customer_balance ? [ 'customer_id' ] : [],
-				'capabilities' => [ 'customers', 'read', 'loyalty' ],
-			] );
-		}
-
-		foreach ( [ 'get_status', 'get_order_context' ] as $method ) {
-			$order_context = 'get_order_context' === $method;
-			YoRo_Action_Registry::register( 'subscriptions.' . $method, [
-				'label' => $order_context ? 'Subscriptions order context' : 'Subscriptions status',
-				'description' => $order_context ? 'Read bounded owner-related subscriptions for one exact order. No customer/payment data or lifecycle mutation.' : 'Read characterized Subscriptions availability and public read coverage without construction or settings access.',
-				'category' => 'orders', 'permission' => 'manage_woocommerce', 'risk_level' => 'low',
-				'write_action' => false, 'requires_confirmation' => false, 'max_items' => 1, 'max_targets' => 1,
-				'callback' => [ 'YoRo_Subscriptions_Service', $method ],
-				'input_schema' => $order_context ? [ 'order_id' => 'integer' ] : [],
-				'canonical_input_schema' => $order_context ? [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ] ] : [],
-				'required_params' => $order_context ? [ 'order_id' ] : [],
-				'capabilities' => [ 'orders', 'read', 'subscriptions' ],
-			] );
-		}
-
-		foreach ( [ 'get_status', 'get_order_activity' ] as $method ) {
-			$order_activity = 'get_order_activity' === $method;
-			YoRo_Action_Registry::register( 'order_splitter.' . $method, [
-				'label' => $order_activity ? 'Order Splitter order activity' : 'Order Splitter status',
-				'description' => $order_activity ? 'Read bounded split lineage and retained mutation summary for one exact order. No operation identifiers, commercial data, preview, execution or recovery.' : 'Read characterized Order Splitter availability and coverage without construction, settings or journal options.',
-				'category' => 'orders', 'permission' => 'manage_woocommerce', 'risk_level' => 'low',
-				'write_action' => false, 'requires_confirmation' => false, 'max_items' => 1, 'max_targets' => 1,
-				'callback' => [ 'YoRo_Order_Splitter_Service', $method ],
-				'input_schema' => $order_activity ? [ 'order_id' => 'integer' ] : [],
-				'canonical_input_schema' => $order_activity ? [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ] ] : [],
-				'required_params' => $order_activity ? [ 'order_id' ] : [],
-				'capabilities' => [ 'orders', 'read', 'order_splitter' ],
-			] );
-		}
-
-		foreach ( [ 'get_status', 'get_order_case' ] as $method ) {
-			$order_case = 'get_order_case' === $method;
-			YoRo_Action_Registry::register( 'cancellation_return.' . $method, [
-				'label' => $order_case ? 'Cancellation and return order case' : 'Cancellation and return owner status',
-				'description' => $order_case ? 'Read bounded retained request facts and characterized owner eligibility for one exact order. No request, approval, refund or mutation.' : 'Read alternative owner availability and coverage without activation, license checks or settings access.',
-				'category' => 'orders', 'permission' => 'manage_woocommerce', 'risk_level' => 'low',
-				'write_action' => false, 'requires_confirmation' => false, 'max_items' => 1, 'max_targets' => 1,
-				'callback' => [ 'YoRo_Cancellation_Return_Service', $method ],
-				'input_schema' => $order_case ? [ 'order_id' => 'integer' ] : [],
-				'canonical_input_schema' => $order_case ? [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ] ] : [],
-				'required_params' => $order_case ? [ 'order_id' ] : [],
-				'capabilities' => [ 'orders', 'read', 'cancellation_return' ],
-			] );
-		}
-
-		foreach ( [ 'get_status', 'get_order_assessment' ] as $blacklist_action ) {
-			$assessment = 'get_order_assessment' === $blacklist_action;
-			YoRo_Action_Registry::register( 'blacklist.' . $blacklist_action, [
-				'label' => $assessment ? 'Retained Blacklist Manager order assessment' : 'Blacklist Manager status',
-				'description' => $assessment ? 'Read bounded retained owner assessment facts for one exact local order; no PII, remote recheck or mutation.' : 'Read safe owner availability and schema readiness; no repair, settings or license lookup.',
-				'category' => 'orders', 'permission' => 'manage_woocommerce', 'risk_level' => 'low',
-				'write_action' => false, 'requires_confirmation' => false, 'max_items' => 1, 'max_targets' => 1,
-				'callback' => [ 'YoRo_Blacklist_Manager_Service', $blacklist_action ],
-				'input_schema' => $assessment ? [ 'order_id' => 'integer' ] : [],
-				'canonical_input_schema' => $assessment ? [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1 ] ] : [],
-				'required_params' => $assessment ? [ 'order_id' ] : [], 'capabilities' => [ 'orders', 'read', 'blacklist' ],
-			] );
-		}
-
-		foreach ( [ 'get_timeline', 'get_follow_up_queue' ] as $customer_action ) {
-			$timeline = 'get_timeline' === $customer_action;
-			YoRo_Action_Registry::register( 'customers.' . $customer_action, [
-				'label' => $timeline ? 'Customer timeline' : 'Customer follow-up queue',
-				'description' => $timeline ? 'Read bounded cross-order history for exactly one explicit customer ID or billing email, with source and visibility.' : 'Read bounded follow-up cases from the existing service queue; no send, draft or scheduling.',
-				'category' => 'customers', 'permission' => 'manage_woocommerce', 'risk_level' => 'low',
-				'write_action' => false, 'requires_confirmation' => false,
-				'callback' => $timeline ? [ 'YoRo_Orders_Read_Service', 'get_customer_timeline' ] : [ 'YoRo_Store_Customer_Service', 'get_customer_follow_up_queue' ],
-				'input_schema' => $timeline ? [ 'customer_id' => 'integer', 'email' => 'string', 'limit' => 'integer' ] : [ 'limit' => 'integer' ],
-				'canonical_input_schema' => $timeline ? [
-					'customer_id' => [ 'type' => 'integer', 'minimum' => 1 ],
-					'email' => [ 'type' => 'string', 'maxLength' => 254 ],
-					'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ],
-				] : [ 'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 20 ] ],
-				'required_params' => [], 'max_items' => $timeline ? 50 : 20, 'max_targets' => $timeline ? 1 : 20,
-				'capabilities' => [ 'customers', 'orders', 'read' ],
-			] );
-		}
-
 		YoRo_Action_Registry::register(
 			'customers.get_service_queue',
 			[
@@ -1469,15 +874,6 @@ class YoRo_Orders_Actions {
 			]
 		);
 
-		YoRo_Action_Registry::register( 'orders.get_refunds', [
-			'label' => 'Refund history', 'description' => 'Read bounded refund observations for one exact order. No payment transfer, external refund recording or mutation.',
-			'category' => 'orders', 'permission' => 'manage_woocommerce', 'risk_level' => 'low', 'write_action' => false, 'requires_confirmation' => false,
-			'callback' => [ 'YoRo_Orders_Read_Service', 'get_refunds' ], 'max_items' => 1, 'max_targets' => 1,
-			'input_schema' => [ 'order_id' => 'integer', 'limit' => 'integer', 'page' => 'integer' ],
-			'canonical_input_schema' => [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 9007199254740991 ], 'limit' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 50 ], 'page' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 100 ] ],
-			'required_params' => [ 'order_id' ], 'capabilities' => [ 'orders', 'read', 'refunds' ],
-		] );
-
 		YoRo_Action_Registry::register(
 			'orders.refund_preview',
 			[
@@ -1488,8 +884,6 @@ class YoRo_Orders_Actions {
 				'callback'         => [ __CLASS__, 'refund_preview' ],
 				'risk_level'       => 'low',
 				'write_action'     => false,
-				'requires_confirmation' => false,
-				'canonical_input_schema' => [ 'order_id' => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 9007199254740991 ] ],
 				'input_schema'     => [
 					'order_id' => 'integer',
 				],
@@ -2332,22 +1726,6 @@ class YoRo_Orders_Actions {
 		return YoRo_Store_Inventory_Service::update_product_stock( $params );
 	}
 
-	public static function update_product_pricing( $params ) {
-		return YoRo_Store_Inventory_Service::update_product_pricing( $params );
-	}
-
-	public static function update_product_content( $params ) {
-		return YoRo_Store_Inventory_Service::update_product_content( $params );
-	}
-
-	public static function restore_product_content_state( $params ) {
-		return YoRo_Store_Inventory_Service::restore_product_content_state( $params );
-	}
-
-	public static function restore_product_pricing_state( $params ) {
-		return YoRo_Store_Inventory_Service::restore_product_pricing_state( $params );
-	}
-
 	public static function update_product_stock_status( $params ) {
 		return YoRo_Store_Inventory_Service::update_product_stock_status( $params );
 	}
@@ -2374,15 +1752,6 @@ class YoRo_Orders_Actions {
 
 	public static function get_daily_briefing( $params ) {
 		return YoRo_Orders_Read_Service::get_daily_briefing( $params );
-	}
-
-	public static function get_payment_context( $params ) {
-		return YoRo_Orders_Read_Service::get_payment_context( $params );
-	}
-
-
-	public static function get_payment_link( $params ) {
-		return YoRo_Orders_Read_Service::get_payment_link( $params );
 	}
 
 	public static function refund_preview( $params ) {
@@ -2579,14 +1948,6 @@ class YoRo_Orders_Actions {
 
 	public static function preview_restore_order_statuses( $params ) {
 		return YoRo_Orders_Write_Service::preview_restore_order_statuses( $params );
-	}
-
-	public static function update_order_addresses( $params ) {
-		if ( ! is_array( $params ) || true !== ( $params['_yoro_confirmed'] ?? false ) || ! empty( $params['_yoro_preview'] ) ) {
-			return new WP_Error( 'shipping_confirmation_required', __( 'Confirm the shipping-address change before execution.', 'yoro-ai-core' ) );
-		}
-		unset( $params['_yoro_confirmed'], $params['_yoro_preview'] );
-		return YoRo_Orders_Write_Service::update_order_addresses( $params );
 	}
 
 	public static function update_order_status( $params ) {

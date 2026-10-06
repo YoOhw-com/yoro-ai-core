@@ -58,7 +58,6 @@ class YoRo_Connector_Client {
 			[
 				'method'  => strtoupper( sanitize_key( $method ) ),
 				'timeout' => 20,
-				'redirection' => 0,
 				'headers' => array_merge(
 					[
 						'Authorization' => 'Bearer ' . $site_key,

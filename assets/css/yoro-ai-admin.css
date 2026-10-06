@@ -6547,9 +6547,3 @@ body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant :is(
 		justify-content: flex-start;
 	}
 }
-
-/* The report control only reveals its accepted, local result snapshot. */
-.yoro-report-details[hidden] { display: none !important; }
-.yoro-report-toggle { margin: 0.5rem 0 1rem; }
-.yoro-report-toggle:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
-.yoro-report-summary { white-space: pre-line; }

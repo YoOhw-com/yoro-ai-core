@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Action_Executor {
 
-	public static function execute( $action_name, $params = [], $confirm = false, $preview = false, $context = [], $claimed_execution_context = null ) {
+	public static function execute( $action_name, $params = [], $confirm = false, $preview = false, $context = [] ) {
 		$action = YoRo_Action_Registry::get( $action_name );
 
 		if ( ! $action ) {
@@ -25,17 +25,6 @@ class YoRo_Action_Executor {
 
 		if ( $preview ) {
 			return self::preview( $action_name, $action, $params );
-		}
-
-		$creation_approval = null;
-		if ( in_array( $action_name, [ 'orders.create', 'orders.update_items' ], true ) ) {
-			if ( ! $confirm || ! empty( $context['connector_remote_agent'] ) || ! $claimed_execution_context instanceof Closure ) {
-				return new WP_Error( 'order_creation_local_permit_required', 'Order creation requires a freshly claimed local displayed-preview approval. Remote execution is unsupported.' );
-			}
-			$creation_approval = $claimed_execution_context( $action_name, $params );
-			if ( ! is_array( $creation_approval ) || ! is_string( $creation_approval['preview_hash'] ?? null ) || ! is_array( $creation_approval['plan'] ?? null ) ) {
-				return new WP_Error( 'order_creation_local_permit_required', 'The local order-creation approval is unavailable or consumed.' );
-			}
 		}
 
 		$is_undo = (
@@ -64,39 +53,6 @@ class YoRo_Action_Executor {
 			);
 		}
 
-		if ( in_array( $action_name, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund' ], true ) ) {
-			// Connector context is emitted only by the validated, journal-owning runtime call site.
-			// PlanExecutor strips all caller/captured context for this action before reaching here.
-			$connector_owned = is_array( $context ) && true === ( $context['connector_remote_agent'] ?? false )
-				&& is_string( $context['workflow_id'] ?? null ) && '' !== $context['workflow_id']
-				&& is_string( $context['operation_id'] ?? null ) && '' !== $context['operation_id'];
-			if ( in_array( $action_name, [ 'products.create_draft', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund' ], true ) ) {
-				$connector_owned = $connector_owned && self::connector_journal_runtime_is_immediate_caller();
-			}
-			$claimed = $confirm && $claimed_execution_context instanceof Closure && $claimed_execution_context( $action_name, $params );
-			if ( ! $confirm || ( ! $connector_owned && ! $claimed ) ) {
-				$error_code = 'orders.refund' === $action_name ? 'refund_execution_permit_required' : 'transactional_email_execution_permit_required';
-				if ( 'orders.record_external_refund' === $action_name ) { $error_code = 'external_refund_execution_permit_required'; }
-				if ( 'products.adjust_stock' === $action_name ) {
-					$error_code = 'stock_adjustment_execution_permit_required';
-				} elseif ( 'products.create_draft' === $action_name ) {
-					$error_code = 'product_draft_execution_permit_required';
-				} elseif ( 'products.update_content' === $action_name ) {
-					$error_code = 'product_content_execution_permit_required';
-				} elseif ( 'coupons.update' === $action_name ) {
-					$error_code = 'coupon_update_execution_permit_required';
-				} elseif ( in_array( $action_name, [ 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create' ], true ) ) {
-					$error_code = 'fulfillment.create' === $action_name ? 'fulfillment_creation_execution_permit_required' : 'fulfillment_tracking_execution_permit_required';
-				} elseif ( 'products.update_pricing' === $action_name ) {
-					$error_code = 'pricing_execution_permit_required';
-				} elseif ( 'orders.regenerate_download_permissions' === $action_name ) {
-					$error_code = 'download_regeneration_execution_permit_required';
-				}
-
-				return new WP_Error( $error_code, 'A successfully claimed pending-operation permit is required. Reconcile unknown outcomes before creating a new operation.' );
-			}
-		}
-
 		if ( is_array( $params ) ) {
 			$params['_yoro_confirmed'] = ! empty( $confirm );
 			$params['_yoro_preview']   = ! empty( $preview );
@@ -118,15 +74,10 @@ class YoRo_Action_Executor {
 			]
 		);
 
-		$execution = 'orders.create' === $action_name ? [ 'result' => YoRo_Orders_Write_Service::create( $params, $creation_approval ) ] : ( 'orders.update_items' === $action_name ? [ 'result' => YoRo_Orders_Write_Service::update_items( $params, $creation_approval ) ] : ( new YoRo_Action_Execution_Router() )->execute( $action_name, $action, $params, $context ) );
+		$execution = ( new YoRo_Action_Execution_Router() )->execute( $action_name, $action, $params, $context );
 		$result = is_array( $execution ) && array_key_exists( 'result', $execution )
 			? $execution['result']
 			: new WP_Error( 'yoro_execution_provider_failed', __( 'YoRo could not safely execute that action.', 'yoro-ai-core' ) );
-		$creation_remote_error = 'fulfillment.create' === $action_name && ! empty( $connector_owned ) && is_wp_error( $result ) ? $result : null;
-		$refund_remote_error = 'orders.refund' === $action_name && ! empty( $connector_owned ) && is_array( $result ) && true === ( $result['refund']['outcome_unknown'] ?? false )
-			? new WP_Error( 'refund_outcome_unknown', 'Refund outcome is unknown; reconciliation is required. Do not retry this operation.' ) : null;
-		$external_refund_remote_error = 'orders.record_external_refund' === $action_name && ! empty( $connector_owned ) && is_array( $result ) && true === ( $result['external_refund']['outcome_unknown'] ?? false )
-			? new WP_Error( 'external_refund_outcome_unknown', 'Local refund recording outcome is unknown; reconcile refund history. No money was sent by this action. Do not retry.' ) : null;
 		$result = self::normalize_result( $action_name, $result, $action );
 
 		if (
@@ -157,22 +108,7 @@ class YoRo_Action_Executor {
 			]
 		);
 
-		$age_error = YoRo_Commerce_Contract_Builder::queue_age_guard( $result, $action_name );
-		if ( is_wp_error( $age_error ) ) {
-			return $age_error;
-		}
-		if ( is_array( $result ) && empty( $result['success'] ) && 'yoro_queue_age_unavailable' === ( $result['error']['code'] ?? '' )
-			&& in_array( $action_name, [ 'operations.get_attention_queue', 'operations.get_fulfillment_queue', 'customers.get_service_queue', 'operations.get_summary', 'store.get_daily_briefing' ], true ) ) {
-			return YoRo_Orders_Read_Service::queue_age_error();
-		}
-		return $external_refund_remote_error ?? $refund_remote_error ?? $creation_remote_error ?? $result;
-	}
-
-	private static function connector_journal_runtime_is_immediate_caller() {
-		$caller = debug_backtrace( DEBUG_BACKTRACE_IGNORE_ARGS, 3 )[2] ?? [];
-
-		return 'YoRo_Connector_Runtime' === ( $caller['class'] ?? '' )
-			&& 'result_for_operation' === ( $caller['function'] ?? '' );
+		return $result;
 	}
 
 	private static function preview( $action_name, $action, $params ) {
@@ -268,10 +204,6 @@ class YoRo_Action_Executor {
 
 	private static function normalize_result( $action_name, $result, $action = null ) {
 		$action = is_array( $action ) ? $action : YoRo_Action_Registry::get( $action_name );
-		$age_error = YoRo_Commerce_Contract_Builder::queue_age_guard( $result, $action_name );
-		if ( is_wp_error( $age_error ) ) {
-			$result = $age_error;
-		}
 
 		if ( is_wp_error( $result ) ) {
 			return self::normalize_error_result( $action_name, $result, $action );
@@ -430,10 +362,6 @@ class YoRo_Action_Executor {
 
 		if ( $is_write_action ) {
 			return $summary;
-		}
-
-		if ( in_array( $action_name, [ 'operations.get_attention_queue', 'operations.get_fulfillment_queue', 'customers.get_service_queue' ], true ) ) {
-			return $summary . ' ' . __( 'Counts are queue memberships and may overlap. Query and sample limits are listed per queue; created-age does not measure time in the current status.', 'yoro-ai-core' );
 		}
 
 		switch ( $action_name ) {

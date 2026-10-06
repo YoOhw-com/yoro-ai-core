@@ -6,96 +6,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Order_Presenter {
 
-	const DOWNLOAD_PERMISSION_LIMITATIONS = [ 'download_permission_not_license', 'download_url_not_exposed', 'file_delivery_not_verified', 'permission_regeneration_not_performed', 'live_view_not_snapshot', 'empty_means_no_permission_rows_observed', 'current_product_file_display_metadata_not_observed' ];
-
-	/** Getter allowlist excludes customer identity, order keys, URLs and metadata. */
-	public static function format_download_permission( $permission, $order_id ) {
-		if ( ! $permission instanceof WC_Customer_Download || $permission->get_order_id( 'edit' ) !== $order_id ) { return null; }
-		$product_id = $permission->get_product_id( 'edit' );
-		$download_id = $permission->get_download_id( 'edit' );
-		$remaining = $permission->get_downloads_remaining( 'edit' );
-		$count = $permission->get_download_count( 'edit' );
-		if ( ! is_int( $product_id ) || $product_id < 1 || ! is_string( $download_id ) || ! preg_match( '/^[A-Za-z0-9_-]{1,64}$/D', $download_id ) ) { return null; }
-		$unlimited = '' === $remaining;
-		if ( ! $unlimited ) {
-			$remaining = self::download_permission_integer( $remaining );
-			if ( null === $remaining ) { return null; }
-		}
-		$count = self::download_permission_integer( $count );
-		if ( null === $count ) { return null; }
-		$facts = [ 'product_id' => $product_id, 'download_id' => $download_id, 'downloads_remaining' => $unlimited ? null : $remaining,
-			'unlimited_downloads' => $unlimited, 'download_count' => $count ];
-		foreach ( [ 'access_granted', 'access_expires' ] as $field ) {
-			$method = 'get_' . $field;
-			$date = $permission->$method( 'edit' );
-			if ( null !== $date && ! $date instanceof DateTimeInterface ) { return null; }
-			$facts[ $field ] = null === $date ? null : gmdate( 'Y-m-d\TH:i:s\Z', $date->getTimestamp() );
-		}
-		return $facts;
-	}
-
-	private static function download_permission_integer( $value ) {
-		if ( is_int( $value ) ) { return $value >= 0 ? $value : null; }
-		if ( ! is_string( $value ) || ! preg_match( '/^(0|[1-9][0-9]{0,18})$/D', $value ) ) { return null; }
-		$integer = (int) $value;
-		return $integer >= 0 && (string) $integer === $value ? $integer : null;
-	}
-
-	const PAYMENT_EVIDENCE_LIMITATION = 'WooCommerce order facts do not independently verify gateway capture, settlement, or confirmation.';
-
-	public static function format_payment_context( WC_Order $order ) {
-		$facts = [ 'order_id' => $order->get_id(), 'order_number' => $order->get_order_number() ];
-		foreach ( [ 'status', 'currency', 'total', 'total_refunded', 'payment_method', 'payment_method_title', 'transaction_id', 'date_created', 'date_paid', 'is_paid', 'needs_payment' ] as $field ) {
-			$method = in_array( $field, [ 'is_paid', 'needs_payment' ], true ) ? $field : 'get_' . $field;
-			$facts[ $field ] = is_callable( [ $order, $method ] ) ? $order->$method() : null;
-		}
-		$facts['status_label'] = is_string( $facts['status'] ) && '' !== $facts['status']
-			? YoRo_Order_Helper::get_order_status_label( $facts['status'] ) : null;
-		foreach ( [ 'date_created', 'date_paid' ] as $field ) {
-			$facts[ $field ] = $facts[ $field ] instanceof DateTimeInterface ? $facts[ $field ]->format( DATE_ATOM ) : null;
-		}
-		return self::normalize_payment_context( $facts );
-	}
-
-	/** Project explicit WooCommerce facts only; never read arbitrary metadata or gateway providers. */
-	public static function normalize_payment_context( $facts ) {
-		if ( ! is_array( $facts ) || ! is_int( $facts['order_id'] ?? null ) || $facts['order_id'] < 1 ) {
-			return null;
-		}
-		$number = self::payment_text( $facts['order_number'] ?? null, 64 );
-		if ( null === $number ) {
-			return null;
-		}
-		$data = [ 'order_id' => $facts['order_id'], 'order_number' => $number ];
-		foreach ( [ 'status' => 64, 'status_label' => 256, 'currency' => 8, 'payment_method' => 128, 'payment_method_title' => 256, 'transaction_id' => 128, 'date_created' => 40, 'date_paid' => 40 ] as $field => $limit ) {
-			$data[ $field ] = self::payment_text( $facts[ $field ] ?? null, $limit );
-		}
-		foreach ( [ 'total', 'total_refunded' ] as $field ) {
-			$value = $facts[ $field ] ?? null;
-			$data[ $field ] = ( is_string( $value ) || is_int( $value ) || is_float( $value ) )
-				&& preg_match( '/^[0-9]{1,18}(?:\.[0-9]{1,8})?$/D', (string) $value )
-				? (string) $value : null;
-		}
-		$data['remaining_refundable'] = null !== $data['total'] && null !== $data['total_refunded']
-			? wc_format_decimal( max( 0, (float) $data['total'] - (float) $data['total_refunded'] ), min( 8, max( 0, (int) wc_get_price_decimals() ) ) ) : null;
-		if ( null !== $data['remaining_refundable'] && ! preg_match( '/^[0-9]{1,18}(?:\.[0-9]{1,8})?$/D', $data['remaining_refundable'] ) ) {
-			$data['remaining_refundable'] = null;
-		}
-		foreach ( [ 'is_paid', 'needs_payment' ] as $field ) {
-			$data[ $field ] = is_bool( $facts[ $field ] ?? null ) ? $facts[ $field ] : null;
-		}
-		$data['evidence'] = [ 'source' => 'woocommerce_order', 'gateway_verification' => 'not_observed', 'limitation' => self::PAYMENT_EVIDENCE_LIMITATION ];
-		return $data;
-	}
-
-	private static function payment_text( $value, $limit ) {
-		if ( ! is_string( $value ) && ! is_int( $value ) ) {
-			return null;
-		}
-		$value = sanitize_text_field( (string) $value );
-		return '' !== $value && strlen( $value ) <= $limit ? $value : null;
-	}
-
 	public static function format_order_summary( WC_Order $order ) {
 		$date_created = $order->get_date_created();
 		$date_paid     = $order->get_date_paid();
@@ -126,7 +36,7 @@ class YoRo_Order_Presenter {
 		];
 	}
 
-	public static function order_version( WC_Order $order, $native_email_material = null ) {
+	public static function order_version( WC_Order $order ) {
 		$date_modified = $order->get_date_modified();
 
 		return hash(
@@ -138,17 +48,6 @@ class YoRo_Order_Presenter {
 					$order->get_status(),
 					$order->get_total(),
 					$order->get_currency(),
-					$order->get_shipping_first_name( 'edit' ),
-					$order->get_shipping_last_name( 'edit' ),
-					$order->get_shipping_company( 'edit' ),
-					$order->get_shipping_address_1( 'edit' ),
-					$order->get_shipping_address_2( 'edit' ),
-					$order->get_shipping_city( 'edit' ),
-					$order->get_shipping_state( 'edit' ),
-					$order->get_shipping_postcode( 'edit' ),
-					$order->get_shipping_country( 'edit' ),
-					$order->get_billing_email( 'edit' ),
-					null === $native_email_material ? YoRo_Orders_Email_Service::transactional_version_material( $order ) : $native_email_material,
 				]
 			)
 		);

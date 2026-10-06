@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Plan_Executor {
 
-	public static function execute( $plan, $confirm, $preview, $claimed_execution_context = null ) {
+	public static function execute( $plan, $confirm, $preview ) {
 
 		if ( ! is_array( $plan ) || empty( $plan['type'] ) ) {
 			return new WP_Error(
@@ -16,15 +16,6 @@ class YoRo_Plan_Executor {
 		}
 
 		$type = sanitize_key( $plan['type'] );
-		if ( 'single' !== $type ) {
-			foreach ( (array) ( $plan['steps'] ?? [] ) as $step ) {
-				if ( in_array( $step['action'] ?? '', [ 'orders.create', 'orders.update_items' ], true ) ) { return new WP_Error( 'order_write_separate_confirmation_required', 'Order item writes require one separate local confirmation.' ); }
-				if ( 'orders.record_external_refund' === ( $step['action'] ?? '' ) ) { return new WP_Error( 'external_refund_separate_confirmation_required', 'External refund recording requires its own separate confirmation.' ); }
-				if ( 'orders.refund' === ( $step['action'] ?? '' ) ) { return new WP_Error( 'refund_separate_confirmation_required', 'A gateway refund requires its own separate confirmation.' ); }
-				if ( 'orders.regenerate_download_permissions' === ( $step['action'] ?? '' ) ) { return new WP_Error( 'regeneration_separate_confirmation_required', 'Download regeneration requires its own separate confirmation.' ); }
-			}
-		}
-
 
 		do_action(
 			'yoro_before_plan_execute',
@@ -37,11 +28,11 @@ class YoRo_Plan_Executor {
 		);
 
 		if ( 'single' === $type ) {
-			return self::execute_single( $plan, $confirm, $preview, $claimed_execution_context );
+			return self::execute_single( $plan, $confirm, $preview );
 		}
 
 		if ( 'sequence' === $type ) {
-			return self::execute_sequence( $plan, $confirm, $preview, $claimed_execution_context );
+			return self::execute_sequence( $plan, $confirm, $preview );
 		}
 
 		return new WP_Error(
@@ -50,23 +41,18 @@ class YoRo_Plan_Executor {
 		);
 	}
 
-	private static function action_context( $action, $context ) {
-		// Plan/captured context is caller-controlled and cannot assert journal or permit ownership.
-		return in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund', 'orders.create', 'orders.update_items' ], true ) ? [] : $context;
-	}
-
-	private static function execute_single( $plan, $confirm, $preview, $claimed_execution_context ) {
+	private static function execute_single( $plan, $confirm, $preview ) {
 		$action = $plan['action'] ?? '';
 		$params = isset( $plan['params'] ) && is_array( $plan['params'] ) ? $plan['params'] : [];
 		$context = isset( $plan['context'] ) && is_array( $plan['context'] ) ? $plan['context'] : [];
 
 		if ( $preview ) {
-			return YoRo_Action_Executor::execute( $action, $params, $confirm, $preview, self::action_context( $action, $context ), $claimed_execution_context );
+			return YoRo_Action_Executor::execute( $action, $params, $confirm, $preview, $context );
 		}
 
 		$pre_undo = self::build_pre_execution_undo_for_step( $action, $params );
 
-		$result = YoRo_Action_Executor::execute( $action, $params, $confirm, $preview, self::action_context( $action, $context ), $claimed_execution_context );
+		$result = YoRo_Action_Executor::execute( $action, $params, $confirm, $preview, $context );
 
 		if ( is_wp_error( $result ) ) {
 			return [
@@ -123,7 +109,7 @@ class YoRo_Plan_Executor {
 		return $result;
 	}
 
-	private static function execute_sequence( $plan, $confirm, $preview, $claimed_execution_context ) {
+	private static function execute_sequence( $plan, $confirm, $preview ) {
 
 		$steps = $plan['steps'] ?? [];
 
@@ -152,8 +138,7 @@ class YoRo_Plan_Executor {
 					$params,
 					false,
 					true,
-					self::action_context( $action, $context ),
-					$claimed_execution_context
+					$context
 				);
 
 				$results[] = [
@@ -309,9 +294,6 @@ class YoRo_Plan_Executor {
 				? max( 1, absint( $retry['max_attempts'] ) )
 				: 1;
 
-			if ( in_array( $action, [ 'orders.send_transactional_email', 'orders.regenerate_download_permissions', 'products.adjust_stock', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'coupons.update', 'fulfillment.add_tracking', 'fulfillment.update_tracking', 'fulfillment.create', 'orders.refund', 'orders.record_external_refund', 'orders.create', 'orders.update_items' ], true ) ) {
-				$max_attempts = 1; // External communication is never blindly retried by a sequence.
-			}
 			$attempt = 0;
 			$result  = null;
 
@@ -323,8 +305,7 @@ class YoRo_Plan_Executor {
 					$params,
 					true,
 					false,
-					self::action_context( $action, $context ),
-					$claimed_execution_context
+					$context
 				);
 
 				if ( ! self::is_step_failure( $result ) ) {
@@ -888,9 +869,6 @@ class YoRo_Plan_Executor {
 		switch ( $action ) {
 
 			case 'orders.update_status':
-			case 'products.adjust_stock':
-			case 'products.update_content':
-			case 'products.update_pricing':
 			case 'products.update_stock':
 			case 'products.update_stock_status':
 				$undo_plan = is_array( $result['undo_plan'] ?? null ) ? array_values( $result['undo_plan'] ) : [];

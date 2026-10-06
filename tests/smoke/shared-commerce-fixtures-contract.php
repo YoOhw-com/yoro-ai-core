@@ -150,47 +150,4 @@ if ( $has_action_result_contracts ) {
 	);
 }
 
-$payment_schema = YoRo_Commerce_Contract_Builder::execution_output_schema( 'orders.get_payment_context' );
-$assert( [ 'payment_context' ] === $payment_schema['properties']['data']['required'], 'Payment context uses one bounded canonical data root.' );
-$assert( [ 'not_observed' ] === $payment_schema['properties']['data']['properties']['payment_context']['properties']['evidence']['properties']['gateway_verification']['enum'], 'Shared payment evidence never claims independent gateway verification.' );
-$assert( isset( $action_result_contracts['connector_actions']['orders.get_payment_context'] ), 'The canonical B1 payment fixture must be present.' );
-$payment_fixture = $action_result_contracts['connector_actions']['orders.get_payment_context'];
-$payment_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( array_merge( [ 'success' => true ], $payment_fixture['sample_data'] ), 'orders.get_payment_context' );
-$assert( true === $payment_payload['success'], 'The API payment fixture is accepted by the actual Core projection.' );
-$assert( 'not_observed' === $payment_payload['data']['payment_context']['evidence']['gateway_verification'], 'API/Core fixture evidence semantics agree.' );
-
-$link_fixture = $action_result_contracts['connector_actions']['orders.get_payment_link'];
-$link_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( array_merge( [ 'success' => true ], $link_fixture['sample_data'] ), 'orders.get_payment_link' );
-$assert( true === $link_payload['success'], 'The canonical B2 fixture is accepted by the Core owner.' );
-$assert( $link_fixture['sample_data'] === $link_payload['data'], 'B2 fixture preserves the exact opaque URL and fixed provenance.' );
-$assert( YoRo_Commerce_Contract_Builder::strict_output_validation_ready( 'orders.get_payment_link' ), 'B2 output is recursively closed.' );
-
 echo "YoRo shared commerce fixtures: PASS\n";
-
-$coupon_search_fixture = $action_result_contracts['connector_actions']['coupons.search'] ?? null;
-$assert( is_array( $coupon_search_fixture ), 'The API owner must supply the canonical coupon search fixture.' );
-$coupon_search_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload(
-	[ 'success' => true, 'data' => $coupon_search_fixture['sample_data'], 'debug' => 'secret', 'extensions' => [ 'raw' => 'secret' ] ],
-	'coupons.search'
-);
-$assert( is_array( $coupon_search_payload ) && $coupon_search_fixture['sample_data'] === $coupon_search_payload['data'], 'Coupon search fixture must be accepted unchanged by the Core projection.' );
-$assert( $coupon_search_fixture['data_required'] === YoRo_Commerce_Contract_Builder::execution_output_schema( 'coupons.search' )['properties']['data']['required'], 'Coupon search data roots must match the canonical API fixture.' );
-$assert( [] === (array) $coupon_search_payload['extensions'] && false === strpos( wp_json_encode( $coupon_search_payload ), 'secret' ), 'Coupon search must strip arbitrary debug and extension material.' );
-
-$address_fixture = $action_result_contracts['connector_actions']['orders.update_addresses'] ?? null;
-$assert( is_array( $address_fixture ), 'The B3 shipping-address fixture must be supplied by the API owner.' );
-$address_execution = array_merge( [ 'success' => true, 'debug' => 'unrelated secret', 'billing' => [ 'city' => 'private' ], 'extensions' => [ 'raw' => 'secret' ] ], $address_fixture['sample_data'] );
-$address_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $address_execution, 'orders.update_addresses' );
-$address_schema = YoRo_Commerce_Contract_Builder::execution_output_schema( 'orders.update_addresses' );
-$assert( $address_fixture['data_required'] === $address_schema['properties']['data']['required'], 'B3 output data roots match the API fixture.' );
-$assert( $address_fixture['sample_data'] === $address_payload['data'], 'B3 fixture projects without coercion or unrelated order data.' );
-$assert( [] === (array) $address_payload['extensions'] && false === $address_payload['read_only'] && false === $address_payload['undoable'], 'B3 output is bounded and has no invented undo.' );
-$assert( false === strpos( wp_json_encode( $address_payload ), 'secret' ), 'B3 canonical payload strips provider debug and arbitrary extensions.' );
-
-$creation_fixture = $action_result_contracts['connector_actions']['orders.create'] ?? null;
-if ( is_array( $creation_fixture ) ) {
-    $creation_payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload( [ 'success' => true, 'data' => $creation_fixture['sample_data'], 'debug' => 'do-not-expose' ], 'orders.create' );
-    $assert( $creation_payload['success'] && $creation_fixture['sample_data'] === $creation_payload['data'], 'Creation final facts match the exact API fixture.' );
-    $assert( false === strpos( wp_json_encode( $creation_payload ), 'do-not-expose' ), 'Creation does not expose unrelated provider fields.' );
-    $assert( YoRo_Commerce_Contract_Builder::strict_output_validation_ready( 'orders.create' ), 'Creation result schema is recursively closed.' );
-}

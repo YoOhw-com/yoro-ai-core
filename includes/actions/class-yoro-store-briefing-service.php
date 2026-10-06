@@ -995,11 +995,6 @@ class YoRo_Store_Briefing_Service {
 		$attention        = YoRo_Orders_Read_Service::get_operations_attention_queue( [ 'limit' => $limit ] );
 		$fulfillment      = YoRo_Orders_Read_Service::get_fulfillment_queue( [ 'limit' => $limit ] );
 		$customer_service = YoRo_Orders_Read_Service::get_customer_service_queue( [ 'limit' => $limit ] );
-		foreach ( [ $operations, $attention, $fulfillment, $customer_service ] as $queue_result ) {
-			if ( is_wp_error( $queue_result ) ) {
-				return $queue_result;
-			}
-		}
 		$business         = self::get_business_summary(
 			[
 				'window' => $window_key,
@@ -1138,7 +1133,6 @@ class YoRo_Store_Briefing_Service {
 				'window'        => $window,
 				'limit'         => $limit,
 				'changes_store' => false,
-				'queue_evidence' => [ 'version' => 1, 'captured_at' => $operations['meta']['queue_evidence']['captured_at'], 'age_basis' => 'date_created', 'status_duration' => 'unknown', 'count_basis' => 'queue_memberships', 'sections' => [ 'operations' => $operations['meta']['queue_evidence'], 'attention' => $attention['meta']['queue_evidence'], 'fulfillment' => $fulfillment['meta']['queue_evidence'], 'customer_service' => $customer_service['meta']['queue_evidence'] ] ],
 			],
 			'processed'    => [],
 			'skipped'      => [],
@@ -1789,7 +1783,7 @@ class YoRo_Store_Briefing_Service {
 		if ( ! empty( $fulfillment_orders[0]['suggested_command'] ) ) {
 			$actions[] = [
 				'topic'   => 'fulfillment',
-				'label'   => __( 'Inspect next fulfillment order', 'yoro-ai-core' ),
+				'label'   => __( 'Preview next delay email', 'yoro-ai-core' ),
 				'command' => sanitize_text_field( $fulfillment_orders[0]['suggested_command'] ),
 				'tone'    => 'fulfillment' === $top_topic ? 'primary' : 'secondary',
 			];
@@ -1798,7 +1792,7 @@ class YoRo_Store_Briefing_Service {
 		if ( ! empty( $service_orders[0]['suggested_command'] ) ) {
 			$actions[] = [
 				'topic'   => 'customer_service',
-				'label'   => __( 'Inspect next customer service order', 'yoro-ai-core' ),
+				'label'   => __( 'Draft next customer reply', 'yoro-ai-core' ),
 				'command' => sanitize_text_field( $service_orders[0]['suggested_command'] ),
 				'tone'    => 'customer_service' === $top_topic ? 'primary' : 'secondary',
 			];

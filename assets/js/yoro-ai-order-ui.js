@@ -144,12 +144,12 @@
 		return displayLabel(value, { key: true });
 	}
 
-	function displayReportValue(value, locale) {
+	function displayReportValue(value) {
 		if (value === undefined || value === null) {
 			return '';
 		}
 
-		return locale ? String(value) : displayText(String(value));
+		return displayText(String(value));
 	}
 
 	function productStockStatusLabel(product) {
@@ -1735,31 +1735,7 @@
 		return html;
 	}
 
-	function reportPayloadText(value, locale) {
-		return locale ? String(value === undefined || value === null ? '' : value) : displayText(value);
-	}
-
-	// UI chrome only; report content and conversation language come from the API.
-	function reportDetailText(text, locale) {
-		const vi = {
-			'Store report': 'Báo cáo cửa hàng', 'Overview': 'Tổng quan', 'Sales': 'Doanh số',
-			'Orders': 'Đơn hàng', 'Customers': 'Khách hàng', 'Products': 'Sản phẩm',
-			'Operations': 'Vận hành', 'Inventory': 'Tồn kho', 'Signals': 'Tín hiệu',
-			'Good': 'Tốt', 'Watch': 'Theo dõi', 'Risk': 'Rủi ro',
-			'Key takeaways': 'Điểm chính', 'Needs attention': 'Cần chú ý', 'Breakdown': 'Phân tích chi tiết',
-			'Additional signals': 'Tín hiệu bổ sung',
-			'Supporting commercial and operating signals for this window.': 'Các tín hiệu kinh doanh và vận hành bổ sung trong kỳ này.',
-			'Order flow, backlog, and execution pressure': 'Luồng đơn hàng, đơn tồn và áp lực thực thi',
-			'Revenue, orders, customers, and product demand': 'Doanh thu, đơn hàng, khách hàng và nhu cầu sản phẩm',
-			'The broad store picture for this window': 'Bức tranh tổng quan cửa hàng trong kỳ này',
-			'Patterns across orders, customers, products, and inventory': 'Các xu hướng trong đơn hàng, khách hàng, sản phẩm và tồn kho',
-			'Up': 'Tăng', 'Down': 'Giảm', 'Flat': 'Không đổi', 'share': 'tỷ trọng'
-		};
-		return normalizeLocale(locale) === 'vi' && Object.prototype.hasOwnProperty.call(vi, text) ? vi[text] : text;
-	}
-
-	function renderUnifiedReportPanel(report, h, locale, windowInfo, completePresentation) {
-		const detailLocale = completePresentation ? locale : '';
+	function renderUnifiedReportPanel(report, h, locale, windowInfo) {
 		const health = ['good', 'watch', 'risk'].indexOf(report.health) !== -1 ? report.health : 'watch';
 		const metrics = filterApplicableReportItems(Array.isArray(report.metrics) ? report.metrics : [], report);
 		const insights = filterApplicableReportItems(Array.isArray(report.insights) ? report.insights : [], report);
@@ -1774,24 +1750,24 @@
 		html += '<div class="yoro-report-header">';
 		html += '<div class="yoro-report-header-main">';
 		html += '<div class="yoro-report-kicker">';
-		html += '<span>' + h.escapeHtml(reportDetailText(typeMeta.surface, detailLocale)) + '</span>';
-		html += '<span class="yoro-report-scope-badge">' + h.escapeHtml(reportDetailText(typeMeta.scope, detailLocale)) + '</span>';
+		html += '<span>' + h.escapeHtml(typeMeta.surface) + '</span>';
+		html += '<span class="yoro-report-scope-badge">' + h.escapeHtml(typeMeta.scope) + '</span>';
 		html += '</div>';
-		html += '<strong class="yoro-report-headline">' + h.escapeHtml(report.headline || reportDetailText('Store report', detailLocale)) + '</strong>';
+		html += '<strong class="yoro-report-headline">' + h.escapeHtml(report.headline || 'Store report') + '</strong>';
 		if (typeMeta.description) {
-			html += '<span class="yoro-report-scope-line">' + h.escapeHtml(reportDetailText(typeMeta.description, detailLocale)) + '</span>';
+			html += '<span class="yoro-report-scope-line">' + h.escapeHtml(typeMeta.description) + '</span>';
 		}
 		html += renderReportWindowMeta(windowInfo || report.window || {}, h, locale);
 		html += '</div>';
-		html += '<span class="yoro-report-health-badge">' + h.escapeHtml(reportDetailText(reportHealthLabel(health), detailLocale)) + '</span>';
+		html += '<span class="yoro-report-health-badge">' + h.escapeHtml(reportHealthLabel(health)) + '</span>';
 		html += '</div>';
 
-		html += renderReportHighlights(report, metrics, h, detailLocale);
-		html += renderReportMetricGroups(metrics, report.metric_groups, h, report, detailLocale);
-		html += renderReportBreakdowns(breakdowns, h, detailLocale, completePresentation);
+		html += renderReportHighlights(report, metrics, h);
+		html += renderReportMetricGroups(metrics, report.metric_groups, h, report);
+		html += renderReportBreakdowns(breakdowns, h);
 
-		html += renderReportInsightList(reportDetailText('Key takeaways', detailLocale), insights, h, 'yoro-report-insights', detailLocale, completePresentation);
-		html += renderReportInsightList(reportDetailText('Needs attention', detailLocale), alerts, h, 'yoro-report-alerts', detailLocale, completePresentation);
+		html += renderReportInsightList('Key takeaways', insights, h, 'yoro-report-insights');
+		html += renderReportInsightList('Needs attention', alerts, h, 'yoro-report-alerts');
 		html += renderReportProfileFollowups(profileFollowups, h);
 		html += renderReportActionGroup('Next actions', recommendedActions, h);
 		html += renderReportActionGroup('Related views', filterDuplicateReportActions(drilldowns, recommendedActions), h);
@@ -1823,7 +1799,7 @@
 		}).join(' · ') + '</span>';
 	}
 
-	function renderReportHighlights(report, metrics, h, locale) {
+	function renderReportHighlights(report, metrics, h) {
 		const highlighted = selectReportHighlights(report, metrics);
 
 		if (!highlighted.length) {
@@ -1835,12 +1811,12 @@
 			const severity = ['positive', 'neutral', 'watch', 'risk'].indexOf(metric.severity) !== -1 ? metric.severity : 'neutral';
 			const unit = metric.unit ? String(metric.unit) : '';
 			html += '<div class="yoro-report-highlight yoro-report-severity-' + h.escapeHtml(severity) + '">';
-			html += '<span class="yoro-report-highlight-label">' + h.escapeHtml(reportPayloadText(metric.label || metric.key || '', locale)) + '</span>';
-			html += '<strong class="yoro-report-highlight-value">' + h.escapeHtml(displayReportValue(metric.value, locale)) + '</strong>';
+			html += '<span class="yoro-report-highlight-label">' + h.escapeHtml(displayText(metric.label || metric.key || '')) + '</span>';
+			html += '<strong class="yoro-report-highlight-value">' + h.escapeHtml(displayReportValue(metric.value)) + '</strong>';
 			if (unit) {
 				html += '<span class="yoro-report-highlight-unit">' + h.escapeHtml(unit) + '</span>';
 			}
-			html += renderReportMetricTrend(metric, h, locale);
+			html += renderReportMetricTrend(metric, h);
 			html += '</div>';
 		});
 		html += '</div>';
@@ -1896,7 +1872,7 @@
 		}
 	}
 
-	function renderReportMetricGroups(metrics, metricGroups, h, report, locale) {
+	function renderReportMetricGroups(metrics, metricGroups, h, report) {
 		if (!Array.isArray(metrics) || !metrics.length) {
 			return '';
 		}
@@ -1913,8 +1889,8 @@
 		if (reportType === 'store_overview') {
 			groupsByDomain.overview = {
 				domain: 'overview',
-				label: reportDetailText('Additional signals', locale),
-				description: reportDetailText('Supporting commercial and operating signals for this window.', locale),
+				label: 'Additional signals',
+				description: 'Supporting commercial and operating signals for this window.',
 				priority: 20,
 				metrics: []
 			};
@@ -1928,7 +1904,7 @@
 
 				groupsByDomain[domain] = {
 					domain: domain,
-					label: group.label || reportMetricDomainLabel(domain, locale),
+					label: group.label || reportMetricDomainLabel(domain),
 					description: group.description || '',
 					priority: parseInt(group.priority, 10) || reportMetricDomainPriority(domain),
 					metrics: []
@@ -1948,7 +1924,7 @@
 			if (!groupsByDomain[domain]) {
 				groupsByDomain[domain] = {
 					domain: domain,
-					label: reportMetricDomainLabel(domain, locale),
+					label: reportMetricDomainLabel(domain),
 					description: '',
 					priority: reportMetricDomainPriority(domain),
 					metrics: []
@@ -1980,14 +1956,14 @@
 			});
 			html += '<div class="yoro-report-metric-group yoro-report-metric-group-' + h.escapeHtml(group.domain) + '">';
 			html += '<div class="yoro-report-metric-group-head">';
-			html += '<h4>' + h.escapeHtml(group.label || reportMetricDomainLabel(group.domain, locale)) + '</h4>';
+			html += '<h4>' + h.escapeHtml(group.label || reportMetricDomainLabel(group.domain)) + '</h4>';
 			if (group.description) {
 				html += '<span>' + h.escapeHtml(group.description) + '</span>';
 			}
 			html += '</div>';
 			html += '<div class="yoro-report-metrics">';
 			group.metrics.forEach(function(metric) {
-				html += renderReportMetric(metric, h, !!highlighted[metric.key], locale);
+				html += renderReportMetric(metric, h, !!highlighted[metric.key]);
 			});
 			html += '</div>';
 			html += '</div>';
@@ -2092,7 +2068,7 @@
 		});
 	}
 
-	function renderReportMetric(metric, h, highlighted, locale) {
+	function renderReportMetric(metric, h, highlighted) {
 		metric = metric || {};
 		const severity = ['positive', 'neutral', 'watch', 'risk'].indexOf(metric.severity) !== -1 ? metric.severity : 'neutral';
 		const unit = metric.unit ? String(metric.unit) : '';
@@ -2106,18 +2082,18 @@
 		}
 
 		let html = '<div class="' + h.escapeHtml(classes.join(' ')) + '">';
-		html += '<span class="yoro-report-metric-label">' + h.escapeHtml(reportPayloadText(metric.label || metric.key || '', locale)) + '</span>';
-		html += '<strong class="yoro-report-metric-value">' + h.escapeHtml(displayReportValue(metric.value, locale)) + '</strong>';
+		html += '<span class="yoro-report-metric-label">' + h.escapeHtml(displayText(metric.label || metric.key || '')) + '</span>';
+		html += '<strong class="yoro-report-metric-value">' + h.escapeHtml(displayReportValue(metric.value)) + '</strong>';
 		if (unit) {
 			html += '<span class="yoro-report-metric-unit">' + h.escapeHtml(unit) + '</span>';
 		}
-		html += renderReportMetricTrend(metric, h, locale);
+		html += renderReportMetricTrend(metric, h);
 		html += '</div>';
 
 		return html;
 	}
 
-	function renderReportMetricTrend(metric, h, locale) {
+	function renderReportMetricTrend(metric, h) {
 		metric = metric || {};
 		const trend = ['up', 'down', 'flat'].indexOf(metric.trend) !== -1 ? metric.trend : '';
 		const delta = metric.delta === undefined || metric.delta === null ? '' : String(metric.delta);
@@ -2126,14 +2102,14 @@
 			return '';
 		}
 
-		const label = delta || reportDetailText(trend.replace(/\b\w/g, function(chr) {
+		const label = delta || trend.replace(/\b\w/g, function(chr) {
 			return chr.toUpperCase();
-		}), locale);
+		});
 
 		return '<span class="yoro-report-metric-trend yoro-report-trend-' + h.escapeHtml(trend || 'neutral') + '">' + h.escapeHtml(label) + '</span>';
 	}
 
-	function renderReportBreakdowns(breakdowns, h, locale, completePresentation) {
+	function renderReportBreakdowns(breakdowns, h) {
 		if (!Array.isArray(breakdowns) || !breakdowns.length) {
 			return '';
 		}
@@ -2144,7 +2120,7 @@
 			.sort(function(a, b) {
 				return (parseInt((a || {}).priority, 10) || 50) - (parseInt((b || {}).priority, 10) || 50);
 			})
-			.slice(0, completePresentation ? breakdowns.length : 3)
+			.slice(0, 3)
 			.forEach(function(breakdown) {
 				const items = Array.isArray(breakdown && breakdown.items) ? breakdown.items : [];
 
@@ -2156,16 +2132,16 @@
 				let section = '<div class="yoro-report-breakdown yoro-report-breakdown-' + h.escapeHtml(domain) + '">';
 				section += '<div class="yoro-report-breakdown-head">';
 				section += '<div>';
-				section += '<h4>' + h.escapeHtml(reportPayloadText(breakdown.label || reportDetailText('Breakdown', locale), locale)) + '</h4>';
+				section += '<h4>' + h.escapeHtml(displayText(breakdown.label || 'Breakdown')) + '</h4>';
 				if (breakdown.description) {
-					section += '<span>' + h.escapeHtml(reportPayloadText(breakdown.description, locale)) + '</span>';
+					section += '<span>' + h.escapeHtml(displayText(breakdown.description)) + '</span>';
 				}
 				section += '</div>';
-				section += renderReportDomainBadge(domain, h, locale);
+				section += renderReportDomainBadge(domain, h);
 				section += '</div>';
 				section += '<div class="yoro-report-breakdown-list">';
-				items.slice(0, completePresentation ? items.length : 5).forEach(function(item) {
-					section += renderReportBreakdownItem(item, h, locale);
+				items.slice(0, 5).forEach(function(item) {
+					section += renderReportBreakdownItem(item, h);
 				});
 				section += '</div>';
 				section += '</div>';
@@ -2179,15 +2155,15 @@
 		return '<div class="yoro-report-breakdowns">' + sections + '</div>';
 	}
 
-	function renderReportBreakdownItem(item, h, locale) {
+	function renderReportBreakdownItem(item, h) {
 		item = item || {};
-		const value = displayReportValue(item.value, locale);
+		const value = displayReportValue(item.value);
 		const unit = item.unit ? String(item.unit) : '';
-		const subvalue = item.subvalue ? reportPayloadText(item.subvalue, locale) : '';
+		const subvalue = item.subvalue ? displayText(String(item.subvalue)) : '';
 		const share = item.share ? String(item.share) : '';
 		let html = '<div class="yoro-report-breakdown-item">';
 		html += '<div class="yoro-report-breakdown-main">';
-		html += '<strong>' + h.escapeHtml(reportPayloadText(item.label || '', locale)) + '</strong>';
+		html += '<strong>' + h.escapeHtml(displayText(item.label || '')) + '</strong>';
 		html += renderReportBreakdownMeta(item, h);
 		html += '</div>';
 		html += '<div class="yoro-report-breakdown-value">';
@@ -2196,7 +2172,7 @@
 			html += '<span>' + h.escapeHtml(unit) + '</span>';
 		}
 		if (subvalue || share) {
-			html += '<small>' + h.escapeHtml([subvalue, share ? (share + ' ' + reportDetailText('share', locale)) : ''].filter(Boolean).join(' · ')) + '</small>';
+			html += '<small>' + h.escapeHtml([subvalue, share ? (share + ' share') : ''].filter(Boolean).join(' · ')) + '</small>';
 		}
 		html += '</div>';
 		html += '</div>';
@@ -2269,9 +2245,23 @@
 		return 'overview';
 	}
 
-	function reportMetricDomainLabel(domain, locale) {
-		const labels = { sales: 'Sales', orders: 'Orders', customers: 'Customers', products: 'Products', operations: 'Operations', inventory: 'Inventory' };
-		return reportDetailText(labels[domain] || 'Overview', locale);
+	function reportMetricDomainLabel(domain) {
+		switch (domain) {
+			case 'sales':
+				return 'Sales';
+			case 'orders':
+				return 'Orders';
+			case 'customers':
+				return 'Customers';
+			case 'products':
+				return 'Products';
+			case 'operations':
+				return 'Operations';
+			case 'inventory':
+				return 'Inventory';
+			default:
+				return 'Overview';
+		}
 	}
 
 	function reportMetricDomainPriority(domain) {
@@ -2293,7 +2283,7 @@
 		}
 	}
 
-	function renderReportInsightList(title, items, h, className, locale, completePresentation) {
+	function renderReportInsightList(title, items, h, className) {
 		if (!Array.isArray(items) || !items.length) {
 			return '';
 		}
@@ -2301,7 +2291,7 @@
 		let html = '<div class="yoro-report-section ' + h.escapeHtml(className || '') + '">';
 		html += '<h4>' + h.escapeHtml(title) + '</h4>';
 		html += '<div class="yoro-report-list">';
-		sortReportItems(items).slice(0, completePresentation ? items.length : 4).forEach(function(item) {
+		sortReportItems(items).slice(0, 4).forEach(function(item) {
 			const severity = item && ['positive', 'neutral', 'watch', 'risk'].indexOf(item.severity) !== -1 ? item.severity : 'neutral';
 			const domain = normalizeReportMetricDomain(item && item.domain, item && item.topic);
 			html += '<div class="yoro-report-list-item yoro-report-severity-' + h.escapeHtml(severity) + '">';
@@ -2309,7 +2299,7 @@
 			if (item && item.title) {
 				html += '<strong>' + h.escapeHtml(item.title) + '</strong>';
 			}
-			html += renderReportDomainBadge(domain, h, locale);
+			html += renderReportDomainBadge(domain, h);
 			html += '</div>';
 			if (item && item.message) {
 				html += '<p>' + h.escapeHtml(item.message) + '</p>';
@@ -2429,10 +2419,10 @@
 		return 'Run';
 	}
 
-	function renderReportDomainBadge(domain, h, locale) {
+	function renderReportDomainBadge(domain, h) {
 		domain = normalizeReportMetricDomain(domain, '');
 
-		return '<span class="yoro-report-domain-badge yoro-report-domain-' + h.escapeHtml(domain) + '">' + h.escapeHtml(reportMetricDomainLabel(domain, locale)) + '</span>';
+		return '<span class="yoro-report-domain-badge yoro-report-domain-' + h.escapeHtml(domain) + '">' + h.escapeHtml(reportMetricDomainLabel(domain)) + '</span>';
 	}
 
 	function sortReportItems(items) {
@@ -2530,68 +2520,11 @@
 		}
 	}
 
-	let reportPresentationSequence = 0;
-
 	function renderReportResult(data, h) {
-		if (data.result && data.result.report_presentation) {
-			return renderReportPresentation(data, h);
-		}
 		const locale = getResultLocale(data);
 
 		return renderUnifiedReportResult(data, h, locale)
 			|| renderReportContractFallback(data, h, locale, 'Store report');
-	}
-
-	function renderReportPresentation(data, h) {
-		const result = data.result || {};
-		const p = result.report_presentation;
-		const state = h.getConversationState ? h.getConversationState() : {};
-		const valid = ['store.get_daily_briefing', 'store.get_business_summary', 'operations.get_summary', 'store.get_insights'].indexOf(p.action) !== -1
-			&& p.version === 1 && typeof p.conversation_id === 'string' && p.action_event_id > 0
-			&& p.result_id === p.conversation_id + ':' + p.action_event_id
-			&& (!h.getConversationState || state.conversation_id === p.conversation_id)
-			&& (!data.conversation_id || data.conversation_id === p.conversation_id)
-			&& (!result.action || result.action === p.action);
-		if (!valid) {
-			return '<p class="yoro-report-unavailable">' + h.escapeHtml(p.state === 'unavailable' ? result.summary : '') + '</p>';
-		}
-		const id = 'yoro-report-details-' + (++reportPresentationSequence);
-		const expanded = p.expanded === true;
-		let html = '<div class="yoro-report-presentation" data-report-result-id="' + h.escapeHtml(p.result_id)
-			+ '" data-conversation-id="' + h.escapeHtml(p.conversation_id) + '">';
-		html += '<p class="yoro-report-summary">' + h.escapeHtml(p.summary || '') + '</p>';
-		if (p.state !== 'error' && validQueueCapture(p.as_of) && ['operations.get_summary', 'store.get_daily_briefing'].indexOf(p.action) >= 0) {
-			html += '<p class="yoro-result-subtle">' + h.escapeHtml((isVietnamese(p.language) ? 'Mốc quan sát: ' : 'Observed at: ') + p.as_of) + '</p>';
-		}
-		if (p.has_details === true && ['complete', 'partial', 'no_data'].indexOf(p.state) !== -1 && p.report && typeof p.report === 'object') {
-			html += '<button type="button" class="button yoro-report-toggle" aria-expanded="' + expanded + '" aria-controls="' + id
-				+ '" data-open-label="' + h.escapeHtml(p.open_label) + '" data-close-label="' + h.escapeHtml(p.close_label) + '">'
-				+ h.escapeHtml(expanded ? p.close_label : p.open_label) + '</button>';
-			html += '<div class="yoro-report-details" id="' + id + '"' + (expanded ? '' : ' hidden') + '>';
-			html += renderUnifiedReportPanel(p.report, h, normalizeLocale(p.language) || getResultLocale(data), p.report.window || {}, true);
-			html += renderReportQueueEvidence(p.report.extensions && p.report.extensions['woocommerce.queue_evidence'], normalizeLocale(p.language), h);
-			html += '</div>';
-		}
-		return html + '</div>';
-	}
-
-	function renderReportQueueEvidence(e, locale, h, depth) {
-		if (!e || e.version !== 1 || !validQueueCapture(e.captured_at) || (depth || 0) > 1) return '';
-		const vi = isVietnamese(locale);
-		let lines = [(vi ? 'Mốc quan sát: ' : 'Observed at: ') + e.captured_at];
-		if (e.applicable === false) lines.push(vi ? 'Không áp dụng' : 'Not applicable');
-		if (Number.isSafeInteger(e.backlog_sample_size) && e.backlog_candidate_limit === 200 && typeof e.backlog_complete === 'boolean') {
-			lines.push((vi ? 'Mẫu đơn tồn: ' : 'Backlog sample: ') + e.backlog_sample_size + '/200; ' + (e.backlog_complete ? (vi ? 'mẫu bao phủ truy vấn' : 'sample covers query') : (vi ? 'mẫu có giới hạn' : 'bounded sample')));
-		}
-		if (e.queues && typeof e.queues === 'object') {
-			Object.entries(e.queues).slice(0, 5).forEach(([key, o]) => {
-				if (!validQueueObservation(o)) return;
-				lines.push(key + ': ' + o.match_count + (o.count_basis === 'sample_matches' ? (vi ? ' khớp trong mẫu ' : ' sample matches ') + o.sample_size + '/50' : (vi ? ' khớp truy vấn' : ' query matches')) + '; ' + (vi ? 'giới hạn ' : 'limit ') + o.limit + '; ' + (vi ? 'lượt trong phần trả về ' : 'returned memberships ') + o.visible_memberships + '; ' + (o.complete ? (vi ? 'đếm đầy đủ trong phạm vi truy vấn' : 'count complete within query scope') : (vi ? 'tổng chưa xác định' : 'full total unknown')));
-			});
-		}
-		let html = '<div class="yoro-queue-evidence">' + lines.map(line => '<p class="yoro-result-subtle">' + h.escapeHtml(line) + '</p>').join('') + '</div>';
-		if (e.sections && typeof e.sections === 'object') Object.values(e.sections).slice(0, 4).forEach(section => { html += renderReportQueueEvidence(section, locale, h, (depth || 0) + 1); });
-		return html;
 	}
 
 	function renderQueueWorkbenchIntro(config, h) {
@@ -2998,49 +2931,6 @@
 		}, h);
 	}
 
-	function validQueueCapture(value) {
-		return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|\+00:00)$/.test(value)
-			&& Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.now()
-			&& new Date(Date.parse(value)).toISOString().slice(0, 19) === value.slice(0, 19);
-	}
-
-	function validQueueObservation(o) {
-		if (!o || ['query_matches', 'sample_matches'].indexOf(o.count_basis) < 0
-			|| !['match_count', 'visible_memberships', 'limit'].every(key => Number.isSafeInteger(o[key]) && o[key] >= 0)
-			|| o.limit < 1 || o.limit > 20 || o.visible_memberships > Math.min(o.limit, o.match_count)
-			|| typeof o.complete !== 'boolean' || o.visible_truncated !== (o.match_count > o.visible_memberships)) return false;
-		return o.count_basis === 'query_matches' ? o.complete === true
-			: o.candidate_limit === 50 && Number.isSafeInteger(o.sample_size) && o.sample_size >= o.match_count && o.sample_size <= 50 && o.complete === (o.sample_size < 50);
-	}
-
-	function queueEvidence(result) {
-		const extension = result.extensions && result.extensions['wordpress.execution'];
-		const e = (result.meta && result.meta.queue_evidence) || (extension && extension.meta && extension.meta.queue_evidence);
-		if (!e || e.version !== 1 || e.age_basis !== 'date_created' || e.status_duration !== 'unknown' || !validQueueCapture(e.captured_at)
-			|| !e.queues || typeof e.queues !== 'object' || Object.keys(e.queues).length > 5
-			|| !Object.values(e.queues).every(validQueueObservation)) return null;
-		return e;
-	}
-
-	function queueAgeText(order, locale) {
-		const e = order.extensions && order.extensions['woocommerce.queue_evidence'];
-		const captured = e && Date.parse(e.captured_at);
-		const created = order.date_created_ts;
-		const valid = e && e.age_basis === 'date_created' && e.status_duration === 'unknown' && validQueueCapture(e.captured_at)
-			&& Number.isSafeInteger(created) && created > 0 && created * 1000 <= captured
-			&& Number.isSafeInteger(order.age_hours) && order.age_hours === Math.floor((captured / 1000 - created) / 3600);
-		return valid ? formatAgeHoursForLocale(order.age_hours, locale) : (isVietnamese(locale) ? 'Chưa xác định' : 'Unknown');
-	}
-
-	function renderQueueEvidence(result, locale, h) {
-		const vi = isVietnamese(locale);
-		const e = queueEvidence(result);
-		const text = vi ? 'Tuổi đơn tính từ ngày tạo; thời gian ở trạng thái hiện tại chưa xác định. Số lượt thuộc nhóm có thể trùng đơn. Chưa thấy tracking không chứng minh đơn chưa gửi hoặc giao trễ.' : 'Age is measured from creation; time in the current status is unknown. Queue memberships may overlap. Missing tracking does not establish shipment state or delay.';
-		let html = '<p class="yoro-result-subtle yoro-queue-evidence">' + h.escapeHtml(text) + '</p>';
-		html += '<p class="yoro-result-subtle">' + h.escapeHtml(e ? (vi ? 'Mốc quan sát: ' : 'Observed at: ') + e.captured_at + (vi ? '. Số đơn duy nhất chỉ trong mẫu trả về.' : '. Unique orders refer only to the returned sample.') : (vi ? 'Thiếu thông tin quan sát và giới hạn mẫu; kết quả cũ chưa được xác thực lại.' : 'Observation and sample limits are unavailable; legacy results are not re-certified.')) + '</p>';
-		return html;
-	}
-
 	function getQueueMatchCount(result) {
 		return parseInt(result && Object.prototype.hasOwnProperty.call(result, 'queue_item_count') ? result.queue_item_count : (result && result.count ? result.count : 0), 10) || 0;
 	}
@@ -3096,19 +2986,7 @@
 			const visibleOrders = maxRows > 0 ? orders.slice(0, maxRows) : orders;
 			let rowsHtml = '';
 			html += '<div class="yoro-order-detail-section yoro-queue-section">';
-			const observation = config.evidence && config.evidence.queues && config.evidence.queues[queue.key];
-			const observed = validQueueObservation(observation) && observation.match_count === queue.count && observation.visible_memberships === orders.length;
-			html += renderQueueSectionHeading(queue, observed ? (observation.count_basis === 'sample_matches' ? 'sample matches' : 'query matches') : 'reported matches; scope unknown', h);
-			if (observed) {
-				const vi = isVietnamese(config.locale);
-				const facts = [
-					(vi ? 'Giới hạn mỗi nhóm: ' : 'Per-queue limit: ') + observation.limit,
-					observation.count_basis === 'sample_matches' ? (vi ? 'Mẫu ứng viên: ' : 'Candidate sample: ') + observation.sample_size + '/' + observation.candidate_limit : (vi ? 'Số khớp toàn truy vấn' : 'Full query match count'),
-					observation.complete ? (vi ? 'Đếm đầy đủ trong phạm vi truy vấn' : 'Count complete within query scope') : (vi ? 'Mẫu có giới hạn; tổng chưa xác định' : 'Bounded sample; full total unknown'),
-					(vi ? 'Đang hiển thị: ' : 'Displayed memberships: ') + visibleOrders.length + '/' + observation.match_count
-				];
-				html += '<p class="yoro-result-subtle">' + h.escapeHtml(facts.join(' · ')) + '</p>';
-			}
+			html += renderQueueSectionHeading(queue, 'matches', h);
 
 			if (!orders.length) {
 				html += '<p class="yoro-result-subtle yoro-queue-empty">' + h.escapeHtml(config.emptyMessage || 'No matching orders in this queue.') + '</p>';
@@ -3240,40 +3118,35 @@
 
 	function renderOperationsAttentionQueueResult(data, h) {
 		const result = data.result || {};
-		const locale = getResultLocale(data);
-		if (result.success === false) {
-			return '<div class="yoro-result-error">' + h.escapeHtml(isVietnamese(locale) ? 'Không đọc được dữ liệu hàng đợi. Đây không phải kết quả 0 đơn.' : 'Queue data is unavailable. This is not a zero-order result.') + '</div>';
-		}
 		const parsed = data.parsed || {};
 		const queues = Array.isArray(result.queues) ? result.queues : [];
 		const attentionContext = result.attention_context || {};
-		const priorityItems = queueEvidence(result) && Array.isArray(result.priority_items) ? result.priority_items : [];
-		const recommendedSequence = queueEvidence(result) && Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
-		const nextRecommendedCase = queueEvidence(result) ? (result.next_recommended_case || null) : null;
-		const batchDraftCandidates = queueEvidence(result) && Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
+		const priorityItems = Array.isArray(result.priority_items) ? result.priority_items : [];
+		const recommendedSequence = Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
+		const nextRecommendedCase = result.next_recommended_case || null;
+		const batchDraftCandidates = Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
 		const topPriority = buildOperationsAttentionHeroItem(attentionContext, priorityItems, result);
 		const supportingPriorityItems = filterOperationsAttentionSupportingPriorities(priorityItems, attentionContext);
 		const queueMatches = getQueueMatchCount(result);
-		const visibleCases = Array.isArray(result.orders) ? result.orders.length : 'Unknown';
+		const visibleCases = getQueueVisibleCaseCount(result, 'orders');
 
 		let html = renderQueueWorkbenchIntro({
 			result: result,
-				showAssistantIntro: !!queueEvidence(result),
+				showAssistantIntro: true,
 				showBoundary: true,
 				summary: result.summary || 'Operations attention queue',
 				subtle: 'Orders that may need review next.',
 				parserRule: parsed.parser_rule,
 				title: 'Operations attention cases',
 				contextLine: 'Top cases from each active queue.',
-				badge: queueMatches + ' memberships'
+				badge: queueMatches + ' matches'
 			}, h);
 		html += renderQueueWorkbenchHero(topPriority, [
-			{ label: 'Queue memberships', value: queueMatches },
+			{ label: 'Queue matches', value: queueMatches },
 			{ label: 'Pending payment', value: attentionContext.pending_count || 0 },
 			{ label: 'Aging processing', value: attentionContext.processing_count || 0 },
 			{ label: 'High-value open', value: attentionContext.high_value_count || 0 }
 		], h);
-		html += renderQueueEvidence(result, locale, h);
 		html += renderWorklistModeCard(result, h);
 		html += renderQueueStartHereCard(nextRecommendedCase, h, {
 			hideCommands: ['Show operations attention queue']
@@ -3290,26 +3163,24 @@
 		html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
 		html += renderQueueMetaMetrics([
 			{ label: 'Queues', value: queues.length },
-			{ label: 'Unique orders in returned sample', value: visibleCases },
+			{ label: 'Shown cases', value: visibleCases },
 			{ label: 'High-value threshold', value: result.high_value_threshold || 0 }
 		], h);
 		html += renderOrderQueueSections(queues, {
 			emptyMessage: 'No matching orders in this queue.',
 			maxRows: 5,
-			evidence: queueEvidence(result),
-			locale: locale,
 			columns: [
 				{ label: 'Order' },
 				{ label: 'Case' },
-				{ label: isVietnamese(locale) ? 'Tuổi từ ngày tạo' : 'Age since creation' },
+				{ label: 'Age' },
 				{ label: 'Next action' }
 			],
 			renderRow: function(order, queue, h2) {
 				const queueKey = String(queue && queue.key ? queue.key : '');
 				const customerMeta = order.customer_name || order.billing_email || '';
 				const caseMeta = [
-					displayText(humanizeAttentionTopic(queueKey || '')),
-					displayText(orderDisplayStatus(order) || ''),
+					humanizeAttentionTopic(queueKey || ''),
+					orderDisplayStatus(order) || '',
 					order.total ? ((order.total || '') + ' ' + (order.currency || '')) : ''
 				].filter(Boolean).join(' · ');
 				const primaryCommand = getOperationsAttentionRowCommand(queueKey, order);
@@ -3317,8 +3188,8 @@
 				const detailsCommand = 'Show order ' + order.id + ' details';
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
-				row += '<td><strong>' + h2.escapeHtml(caseMeta || displayText(orderDisplayStatus(order) || 'Case')) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(customerMeta ? String(customerMeta) : displayText(queue.description || '')) + '</div></td>';
-				row += '<td>' + h2.escapeHtml(queueAgeText(order, locale)) + '</td>';
+				row += '<td><strong>' + h2.escapeHtml(displayText(caseMeta || (orderDisplayStatus(order) || 'Case'))) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(displayText(customerMeta || queue.description || '')) + '</div></td>';
+				row += '<td>' + h2.escapeHtml(formatAgeHours(order.age_hours)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(primaryLabel, primaryCommand, h2) + ' ';
 				if (primaryCommand !== detailsCommand) {
@@ -3342,21 +3213,17 @@
 
 	function renderFulfillmentQueueResult(data, h) {
 		const result = data.result || {};
-		const locale = getResultLocale(data);
-		if (result.success === false) {
-			return '<div class="yoro-result-error">' + h.escapeHtml(isVietnamese(locale) ? 'Không đọc được dữ liệu hàng đợi. Đây không phải kết quả 0 đơn.' : 'Queue data is unavailable. This is not a zero-order result.') + '</div>';
-		}
 		const parsed = data.parsed || {};
 		const queues = Array.isArray(result.queues) ? result.queues : [];
 		const fulfillmentContext = result.fulfillment_context || {};
-		const priorityItems = queueEvidence(result) && Array.isArray(result.priority_items) ? result.priority_items : [];
-		const recommendedSequence = queueEvidence(result) && Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
-		const nextRecommendedCase = queueEvidence(result) ? (result.next_recommended_case || null) : null;
-		const batchDraftCandidates = queueEvidence(result) && Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
+		const priorityItems = Array.isArray(result.priority_items) ? result.priority_items : [];
+		const recommendedSequence = Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
+		const nextRecommendedCase = result.next_recommended_case || null;
+		const batchDraftCandidates = Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
 		if (fulfillmentContext && fulfillmentContext.applicable === false) {
 			return renderQueueWorkbenchIntro({
 				result: result,
-				showAssistantIntro: !!queueEvidence(result),
+				showAssistantIntro: true,
 				showBoundary: true,
 				summary: result.summary || 'Fulfillment queue is not currently applicable.',
 				subtle: 'Shipping-related fulfillment signals are hidden while shipping is disabled for this store.',
@@ -3369,26 +3236,25 @@
 		const topPriority = buildFulfillmentHeroItem(fulfillmentContext, priorityItems, result);
 		const supportingPriorityItems = filterFulfillmentSupportingPriorities(priorityItems, fulfillmentContext);
 		const queueMatches = getQueueMatchCount(result);
-		const visibleCases = Array.isArray(result.orders) ? result.orders.length : 'Unknown';
+		const visibleCases = getQueueVisibleCaseCount(result, 'orders');
 
 		let html = renderQueueWorkbenchIntro({
 			result: result,
-				showAssistantIntro: !!queueEvidence(result),
+				showAssistantIntro: true,
 				showBoundary: true,
 				summary: result.summary || 'Fulfillment queue',
 				subtle: 'Orders that may need shipping or tracking follow-up.',
 				parserRule: parsed.parser_rule,
 				title: 'Fulfillment candidates',
 				contextLine: 'Top fulfillment cases from each queue.',
-				badge: queueMatches + ' memberships'
+				badge: queueMatches + ' matches'
 			}, h);
 		html += renderQueueWorkbenchHero(topPriority, [
-			{ label: 'Queue memberships', value: queueMatches },
+			{ label: 'Queue matches', value: queueMatches },
 			{ label: 'Missing tracking', value: fulfillmentContext.tracking_count || 0 },
 			{ label: 'Aging orders', value: fulfillmentContext.aging_count || 0 },
 			{ label: 'Tracked ready', value: fulfillmentContext.ready_count || 0 }
 		], h);
-		html += renderQueueEvidence(result, locale, h);
 		html += renderWorklistModeCard(result, h);
 		html += renderQueueStartHereCard(nextRecommendedCase, h, {
 			hideCommands: ['Show fulfillment queue']
@@ -3405,34 +3271,32 @@
 		html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
 		html += renderQueueMetaMetrics([
 			{ label: 'Queues', value: queues.length },
-			{ label: 'Unique orders in returned sample', value: visibleCases },
+			{ label: 'Shown cases', value: visibleCases },
 			{ label: 'Store changes', value: 'No' }
 		], h);
 		html += renderOrderQueueSections(queues, {
 			emptyMessage: 'No matching orders in this queue.',
 			maxRows: 5,
-			evidence: queueEvidence(result),
-			locale: locale,
 			columns: [
 				{ label: 'Order' },
 				{ label: 'Case' },
-				{ label: isVietnamese(locale) ? 'Tuổi từ ngày tạo' : 'Age since creation' },
+				{ label: 'Age' },
 				{ label: 'Next action' }
 			],
 			renderRow: function(order, queue, h2) {
 				const shipTo = [order.shipping_city || '', order.shipping_country || ''].filter(Boolean).join(', ');
 				const queueKey = String(queue && queue.key ? queue.key : '');
-				const primaryCommand = getOperationsAttentionRowCommand(queueKey, order);
+				const primaryCommand = order.suggested_command || ('Preview shipping delay email for order ' + order.id);
 				const primaryLabel = getFulfillmentRowActionLabel(queueKey);
 				const caseMeta = [
-					displayText(humanizeFulfillmentTopic(queueKey || '')),
+					humanizeFulfillmentTopic(queueKey || ''),
 					order.shipping_method || '',
 					shipTo || ''
 				].filter(Boolean).join(' · ');
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
-				row += '<td><strong>' + h2.escapeHtml(caseMeta || displayText(orderDisplayStatus(order) || 'Case')) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(String(order.fulfillment_reason || queue.description || '')) + '</div></td>';
-				row += '<td>' + h2.escapeHtml(queueAgeText(order, locale)) + '</td>';
+				row += '<td><strong>' + h2.escapeHtml(displayText(caseMeta || (orderDisplayStatus(order) || 'Case'))) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(displayText(order.fulfillment_reason || queue.description || '')) + '</div></td>';
+				row += '<td>' + h2.escapeHtml(formatAgeHours(order.age_hours)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(primaryLabel, primaryCommand, h2) + ' ';
 				row += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h2.escapeHtml(order.id) + '">Details</button> ';
@@ -3526,50 +3390,45 @@
 
 	function renderCustomerServiceQueueResult(data, h) {
 		const result = data.result || {};
-		const locale = getResultLocale(data);
-		if (result.success === false) {
-			return '<div class="yoro-result-error">' + h.escapeHtml(isVietnamese(locale) ? 'Không đọc được dữ liệu hàng đợi. Đây không phải kết quả 0 đơn.' : 'Queue data is unavailable. This is not a zero-order result.') + '</div>';
-		}
 		const parsed = data.parsed || {};
 		const queues = Array.isArray(result.queues) ? result.queues : [];
 		const serviceContext = result.service_context || {};
-		const priorityItems = queueEvidence(result) && Array.isArray(result.priority_items) ? result.priority_items : [];
-		const recommendedSequence = queueEvidence(result) && Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
-		const nextRecommendedCase = queueEvidence(result) ? (result.next_recommended_case || null) : null;
-		const batchDraftCandidates = queueEvidence(result) && Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
+		const priorityItems = Array.isArray(result.priority_items) ? result.priority_items : [];
+		const recommendedSequence = Array.isArray(result.recommended_sequence) ? result.recommended_sequence : [];
+		const nextRecommendedCase = result.next_recommended_case || null;
+		const batchDraftCandidates = Array.isArray(result.batch_draft_candidates) ? result.batch_draft_candidates : [];
 		const topPriority = buildCustomerServiceHeroItem(serviceContext, priorityItems, result);
 		const supportingPriorityItems = filterCustomerServiceSupportingPriorities(priorityItems, serviceContext);
 		const queueMatches = getQueueMatchCount(result);
-		const visibleCases = Array.isArray(result.orders) ? result.orders.length : 'Unknown';
+		const visibleCases = getQueueVisibleCaseCount(result, 'orders');
 
 		let html = renderQueueWorkbenchIntro({
 			result: result,
-				showAssistantIntro: !!queueEvidence(result),
+				showAssistantIntro: true,
 				showBoundary: true,
 				summary: result.summary || 'Customer service queue',
 				subtle: 'Customer follow-ups that may need a reply.',
 				parserRule: parsed.parser_rule,
 				title: 'Customer follow-up candidates',
 				contextLine: 'Top customer cases from each queue.',
-				badge: queueMatches + ' memberships',
+				badge: queueMatches + ' matches',
 				cardClassName: 'yoro-queue-workbench-card-customer-service'
 			}, h);
 		html += renderQueueWorkbenchHero(topPriority, [
-			{ label: 'Queue memberships', value: queueMatches },
+			{ label: 'Queue matches', value: queueMatches },
 			{ label: 'On hold', value: serviceContext.on_hold_count || 0 },
 			{ label: 'Pending payment', value: serviceContext.payment_count || 0 },
 			{ label: 'Saved drafts', value: serviceContext.draft_count || 0 }
 		], h, {
 			className: 'yoro-briefing-hero-compact'
 		});
-		html += renderQueueEvidence(result, locale, h);
 		html += renderWorklistModeCard(result, h);
 		html += renderQueueStartHereCard(nextRecommendedCase, h, {
 			hideCommands: ['Show customer service queue']
 		});
 			html += renderBatchDraftPreparation({
-				title: 'Inspect these customer cases next',
-				description: 'Review the observed facts before deciding whether to reply.',
+				title: 'Prepare these reply drafts next',
+				description: 'Start here when you want to finish several likely replies.',
 				items: batchDraftCandidates
 			}, h);
 		html += renderQueueRecommendedSequence(recommendedSequence, h, 'What comes after this', {
@@ -3579,18 +3438,16 @@
 		html += renderQueuePriorityCards(supportingPriorityItems, h, 'Other pressures to watch');
 		html += renderQueueMetaMetrics([
 			{ label: 'Queues', value: queues.length },
-			{ label: 'Unique orders in returned sample', value: visibleCases },
+			{ label: 'Shown cases', value: visibleCases },
 			{ label: 'Auto-send', value: 'No' }
 		], h);
 		html += renderOrderQueueSections(queues, {
 			emptyMessage: 'No matching orders in this queue.',
 			maxRows: 5,
-			evidence: queueEvidence(result),
-			locale: locale,
 			columns: [
 				{ label: 'Order' },
 				{ label: 'Case' },
-				{ label: isVietnamese(locale) ? 'Tuổi từ ngày tạo' : 'Age since creation' },
+				{ label: 'Age' },
 				{ label: 'Next action' }
 			],
 			renderRow: function(order, queue, h2) {
@@ -3599,13 +3456,13 @@
 				const rowActionCommand = getCustomerServiceRowActionCommand(queueKey, order);
 				const caseMeta = [
 					order.customer_name || order.billing_email || 'Customer',
-					displayText(humanizeServiceTopic(queueKey || '')),
-					displayText(orderDisplayStatus(order) || '')
+					humanizeServiceTopic(queueKey || ''),
+					orderDisplayStatus(order) || ''
 				].filter(Boolean).join(' · ');
 				let row = '<tr>';
 				row += '<td><strong>#' + h2.escapeHtml(order.number || order.id) + '</strong></td>';
-				row += '<td><strong>' + h2.escapeHtml(caseMeta) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(String(order.followup_reason || '')) + '</div></td>';
-				row += '<td>' + h2.escapeHtml(queueAgeText(order, locale)) + '</td>';
+				row += '<td><strong>' + h2.escapeHtml(displayText(caseMeta)) + '</strong><div class="yoro-result-subtle">' + h2.escapeHtml(displayText(order.followup_reason || '')) + '</div></td>';
+				row += '<td>' + h2.escapeHtml(formatAgeHours(order.age_hours)) + '</td>';
 				row += '<td class="yoro-row-actions">';
 				row += renderDirectActionButton(rowActionLabel, rowActionCommand, h2) + ' ';
 				row += '<button type="button" class="button button-small yoro-row-details" data-order-id="' + h2.escapeHtml(order.id) + '">Details</button> ';
@@ -3641,7 +3498,33 @@
 	}
 
 	function buildCustomerServiceHeroItem(serviceContext, priorityItems, result) {
-		return { title: 'Observed queue memberships', message: 'Review the returned cases and their recorded reasons. Memberships can overlap; counts and limits are listed for each group below.' };
+		const topTopic = String(serviceContext && serviceContext.top_topic ? serviceContext.top_topic : '');
+		const totalItems = serviceContext && serviceContext.total_items ? serviceContext.total_items : (result && result.count ? result.count : 0);
+		const onHold = serviceContext && serviceContext.on_hold_count ? serviceContext.on_hold_count : 0;
+		const drafts = serviceContext && serviceContext.draft_count ? serviceContext.draft_count : 0;
+		const payments = serviceContext && serviceContext.payment_count ? serviceContext.payment_count : 0;
+		const topPriority = Array.isArray(priorityItems) && priorityItems.length ? priorityItems[0] : null;
+		let title = 'Customer replies need attention across the queue.';
+		let message = 'Use Start here for the fastest next case, then work through the shortlist below.';
+
+		if (topTopic === 'on_hold_followup') {
+			title = 'Most customer reply pressure is sitting in On hold orders.';
+			message = 'There are ' + onHold + ' On hold follow-ups carrying most of the live backlog, plus ' + drafts + ' saved drafts you can finish quickly.';
+		} else if (topTopic === 'saved_email_drafts') {
+			title = 'Saved drafts give you the fastest route to completed replies.';
+			message = 'There are ' + drafts + ' saved drafts ready now, while the wider queue still holds ' + totalItems + ' customer follow-up items.';
+		} else if (topTopic === 'pending_payment_followup') {
+			title = 'Payment follow-ups are the clearest active customer pressure.';
+			message = 'There are ' + payments + ' pending payment cases to clear, plus ' + drafts + ' saved drafts you can finish quickly.';
+		} else if (topPriority && topPriority.message) {
+			title = topPriority.title || title;
+			message = topPriority.message;
+		}
+
+		return {
+			title: title,
+			message: message
+		};
 	}
 
 	function filterCustomerServiceSupportingPriorities(priorityItems, serviceContext) {
@@ -3654,11 +3537,28 @@
 	}
 
 	function getCustomerServiceRowActionLabel(queueKey) {
-		return 'Open order details';
+		switch (String(queueKey || '')) {
+			case 'saved_email_drafts':
+				return 'Open draft';
+			case 'pending_payment_followup':
+				return 'Draft payment follow-up';
+			case 'on_hold_followup':
+				return 'Draft On hold reply';
+			case 'failed_checkout_followup':
+				return 'Draft support reply';
+			default:
+				return 'Draft reply';
+		}
 	}
 
 	function getCustomerServiceRowActionCommand(queueKey, order) {
-		return getOperationsAttentionRowCommand(queueKey, order);
+		const orderId = order && order.id ? order.id : '';
+
+		if (String(queueKey || '') === 'saved_email_drafts') {
+			return 'Load email drafts for order #' + orderId;
+		}
+
+		return (order && order.suggested_command) || ('Write email for order #' + orderId);
 	}
 
 	function humanizeAttentionTopic(topic) {
@@ -3679,16 +3579,75 @@
 	}
 
 	function getOperationsAttentionRowActionLabel(queueKey) {
-		return 'Open order details';
+		switch (String(queueKey || '')) {
+			case 'pending_payment_older_than_24h':
+				return 'Draft payment follow-up';
+			case 'processing_older_than_72h':
+				return 'Preview delay email';
+			case 'on_hold_older_than_48h':
+				return 'Draft On hold reply';
+			case 'recent_failed_orders':
+				return 'Draft support reply';
+			case 'high_value_open_orders':
+				return 'Open order details';
+			default:
+				return 'Review order';
+		}
 	}
 
 	function getOperationsAttentionRowCommand(queueKey, order) {
-		const id = Number(order && order.id);
-		return Number.isSafeInteger(id) && id > 0 ? 'Show order ' + id + ' details' : '';
+		const orderId = parseInt(order && order.id ? order.id : 0, 10);
+		if (!orderId) {
+			return '';
+		}
+
+		switch (String(queueKey || '')) {
+			case 'pending_payment_older_than_24h':
+				return 'Write email for order #' + orderId + ' about: Payment follow-up may be useful.';
+			case 'processing_older_than_72h':
+				return 'Preview shipping delay email for order ' + orderId;
+			case 'on_hold_older_than_48h':
+				return 'Write email for order #' + orderId + ' about: Order is still on hold and may need clarification.';
+			case 'recent_failed_orders':
+				return 'Write email for order #' + orderId + ' about: Failed checkout may need support follow-up.';
+			case 'high_value_open_orders':
+				return 'Show order ' + orderId + ' details';
+			default:
+				return 'Show order ' + orderId + ' details';
+		}
 	}
 
 	function buildOperationsAttentionHeroItem(attentionContext, priorityItems, result) {
-		return { title: 'Observed queue memberships', message: 'Review the returned cases and their recorded reasons. Memberships can overlap; counts and limits are listed for each group below.' };
+		const topTopic = String(attentionContext && attentionContext.top_topic ? attentionContext.top_topic : '');
+		const pending = attentionContext && attentionContext.pending_count ? attentionContext.pending_count : 0;
+		const processing = attentionContext && attentionContext.processing_count ? attentionContext.processing_count : 0;
+		const onHold = attentionContext && attentionContext.on_hold_count ? attentionContext.on_hold_count : 0;
+		const highValue = attentionContext && attentionContext.high_value_count ? attentionContext.high_value_count : 0;
+		const topPriority = Array.isArray(priorityItems) && priorityItems.length ? priorityItems[0] : null;
+		let title = 'Operations attention still needs a direct pass.';
+		let message = 'Use Start here for the clearest next case, then move through the shortlist below.';
+
+		if (topTopic === 'pending_payment_older_than_24h') {
+			title = 'Pending payment is carrying most of the operations pressure.';
+			message = 'There are ' + pending + ' payment-delay cases, while ' + processing + ' processing orders are still aging behind them.';
+		} else if (topTopic === 'processing_older_than_72h') {
+			title = 'Aging processing orders now need the next manual check.';
+			message = 'There are ' + processing + ' older processing orders to review, plus ' + pending + ' payment-delay cases still waiting.';
+		} else if (topTopic === 'on_hold_older_than_48h') {
+			title = 'On hold orders are waiting for a clear decision.';
+			message = 'There are ' + onHold + ' older orders in On hold status still sitting in backlog, with ' + pending + ' payment-delay cases also active.';
+		} else if (topTopic === 'high_value_open_orders') {
+			title = 'High-value open orders deserve the next direct check.';
+			message = 'There are ' + highValue + ' higher-value open orders still unresolved, alongside ' + processing + ' aging processing cases.';
+		} else if (topPriority && topPriority.message) {
+			title = topPriority.title || title;
+			message = topPriority.message;
+		}
+
+		return {
+			title: title,
+			message: message
+		};
 	}
 
 	function filterOperationsAttentionSupportingPriorities(priorityItems, attentionContext) {
@@ -3739,11 +3698,51 @@
 	}
 
 	function getFulfillmentRowActionLabel(queueKey) {
-		return 'Open order details';
+		switch (String(queueKey || '')) {
+			case 'processing_without_tracking':
+				return 'Preview delay email';
+			case 'missing_shipping_address':
+				return 'Check address issue';
+			case 'processing_older_than_48h':
+				return 'Review aging order';
+			case 'recent_ready_to_fulfill':
+				return 'Preview fulfillment check';
+			default:
+				return 'Preview follow-up';
+		}
 	}
 
 	function buildFulfillmentHeroItem(fulfillmentContext, priorityItems, result) {
-		return { title: 'Observed queue memberships', message: 'Review the returned cases and their recorded reasons. Memberships can overlap; counts and limits are listed for each group below.' };
+		const topTopic = String(fulfillmentContext && fulfillmentContext.top_topic ? fulfillmentContext.top_topic : '');
+		const tracking = fulfillmentContext && fulfillmentContext.tracking_count ? fulfillmentContext.tracking_count : 0;
+		const aging = fulfillmentContext && fulfillmentContext.aging_count ? fulfillmentContext.aging_count : 0;
+		const address = fulfillmentContext && fulfillmentContext.address_count ? fulfillmentContext.address_count : 0;
+		const ready = fulfillmentContext && fulfillmentContext.ready_count ? fulfillmentContext.ready_count : 0;
+		const topPriority = Array.isArray(priorityItems) && priorityItems.length ? priorityItems[0] : null;
+		let title = 'Shippable fulfillment cases still need active review.';
+		let message = 'Use Start here for the clearest next shipping case, then work through the shortlist below.';
+
+		if (topTopic === 'processing_without_tracking') {
+			title = 'Missing tracking is carrying most of the shipping risk.';
+			message = 'There are ' + tracking + ' shippable processing orders without tracking signals, while ' + aging + ' more are aging deeper into the queue.';
+		} else if (topTopic === 'missing_shipping_address') {
+			title = 'Address gaps are blocking otherwise normal shipment work.';
+			message = 'There are ' + address + ' shippable orders with incomplete shipping details, while ' + ready + ' tracked orders are otherwise ready to move.';
+		} else if (topTopic === 'processing_older_than_48h') {
+			title = 'Older shippable processing orders now need the next manual check.';
+			message = 'There are ' + aging + ' older shippable orders to review, plus ' + tracking + ' missing-tracking cases that may need outbound follow-up.';
+		} else if (topTopic === 'recent_ready_to_fulfill') {
+			title = 'Tracked orders are ready for the next fulfillment pass.';
+			message = 'There are ' + ready + ' recent tracked orders with complete shipping details ready to move through the next step.';
+		} else if (topPriority && topPriority.message) {
+			title = topPriority.title || title;
+			message = topPriority.message;
+		}
+
+		return {
+			title: title,
+			message: message
+		};
 	}
 
 	function filterFulfillmentSupportingPriorities(priorityItems, fulfillmentContext) {
@@ -3975,23 +3974,6 @@
 		
 	function handleOrderClick(event, h) {
 		const rawTarget = event.target;
-
-		const toggle = rawTarget.closest('.yoro-report-toggle');
-		if (toggle) {
-			event.preventDefault();
-			const card = toggle.closest('.yoro-report-presentation');
-			const details = card && card.querySelector('.yoro-report-details');
-			const state = h.getConversationState ? h.getConversationState() : {};
-			if (!card || !details || !toggle.isConnected || details.id !== toggle.getAttribute('aria-controls')
-				|| (h.getConversationState && state.conversation_id !== card.getAttribute('data-conversation-id'))) {
-				return true;
-			}
-			const expanded = toggle.getAttribute('aria-expanded') !== 'true';
-			details.hidden = !expanded;
-			toggle.setAttribute('aria-expanded', String(expanded));
-			toggle.textContent = toggle.getAttribute(expanded ? 'data-close-label' : 'data-open-label');
-			return true;
-		}
 
 		const target =
 			rawTarget.closest(
