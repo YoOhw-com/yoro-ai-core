@@ -39,13 +39,7 @@ if ( class_exists( 'YoRo_Action_Registry' ) && 0 === count( YoRo_Action_Registry
 $registry = YoRo_Action_Registry::all();
 
 foreach ( [
-	'coupons.update' => 'optimistic_version',
-	'fulfillment.create' => 'optimistic_version',
-	'orders.update_addresses' => 'optimistic_version',
 	'orders.update_status' => 'per_item_optimistic_version',
-	'products.update_content' => 'optimistic_version',
-	'products.create_draft' => 'create_only',
-		'products.update_pricing' => 'optimistic_version',
 	'products.update_stock' => 'optimistic_version',
 	'products.update_stock_status' => 'optimistic_version',
 ] as $action_name => $concurrency_strategy ) {
@@ -66,14 +60,12 @@ foreach ( $catalog as $item ) {
 	}
 }
 
-	foreach ( [ 'orders.update_addresses', 'orders.update_status', 'products.create_draft', 'products.update_content', 'products.update_pricing', 'products.update_stock', 'products.update_stock_status' ] as $action_name ) {
+foreach ( [ 'orders.update_status', 'products.update_stock', 'products.update_stock_status' ] as $action_name ) {
 	$assert( isset( $catalog_by_name[ $action_name ] ), sprintf( '%s must be published to Chat only after its safety contract is complete.', $action_name ) );
 }
 
 $assert( ! isset( $catalog_by_name['orders.restore_statuses'] ), 'Order recovery must remain hidden from AI selection.' );
-	$assert( ! isset( $catalog_by_name['products.restore_stock_state'] ), 'Product recovery must remain hidden from AI selection.' );
-	$assert( ! isset( $catalog_by_name['products.restore_pricing_state'] ), 'Pricing recovery must remain hidden from AI selection.' );
-	$assert( ! isset( $catalog_by_name['products.restore_content_state'] ), 'Content recovery must remain hidden from AI selection.' );
+$assert( ! isset( $catalog_by_name['products.restore_stock_state'] ), 'Product recovery must remain hidden from AI selection.' );
 
 global $wpdb;
 
@@ -95,21 +87,6 @@ try {
 	$product_id = $product->save();
 	$product = wc_get_product( $product_id );
 	$product_version = YoRo_Commerce_Discovery_Service::product_version( $product );
-	$product->set_name( $product->get_name( 'edit' ) . ' changed' );
-	$product->save();
-	$name_version = YoRo_Commerce_Discovery_Service::product_version( wc_get_product( $product_id ) );
-	$assert( $name_version !== $product_version, 'Raw product name must participate in product version.' );
-	$product = wc_get_product( $product_id );
-	$product->set_description( '<p>Versioned description</p>' );
-	$product->save();
-	$description_version = YoRo_Commerce_Discovery_Service::product_version( wc_get_product( $product_id ) );
-	$assert( $description_version !== $name_version, 'Raw product description must participate in product version.' );
-	$product = wc_get_product( $product_id );
-	$product->set_short_description( '<p>Versioned short description</p>' );
-	$product->save();
-	$product = wc_get_product( $product_id );
-	$product_version = YoRo_Commerce_Discovery_Service::product_version( $product );
-	$assert( $product_version !== $description_version, 'Raw product short description must participate in product version.' );
 
 	$stale_product = YoRo_Store_Inventory_Service::update_product_stock(
 		[
@@ -247,127 +224,6 @@ try {
 	$order_recovery = YoRo_Orders_Write_Service::restore_order_statuses( $order_undo['params'] ?? [] );
 	$assert( is_array( $order_recovery ) && ! empty( $order_recovery['success'] ), 'Order recovery must succeed against exact post-write versions.' );
 	$assert( 'processing' === wc_get_order( $order_id )->get_status(), 'Order recovery must restore the previous status.' );
-	// B3 fixtures share the disposable transaction; no existing customer/order is mutated.
-	$customer_id = wp_insert_user( [ 'user_login' => 'yoro_b3_' . wp_generate_uuid4(), 'user_pass' => wp_generate_password(), 'role' => 'customer' ] );
-	$assert( ! is_wp_error( $customer_id ), 'The disposable registered customer must exist.' );
-	$customer = new WC_Customer( $customer_id );
-	$customer->set_shipping_city( 'Saved profile city' );
-	$customer->save();
-	$order = wc_get_order( $order_id );
-	$order->set_customer_id( $customer_id );
-	$order->set_shipping_first_name( 'Fixture' );
-	$order->set_shipping_last_name( 'Recipient' );
-	$order->set_shipping_company( 'Company' );
-	$order->set_shipping_address_1( '1 Old Street' );
-	$order->set_shipping_address_2( 'Unit 2' );
-	$order->set_shipping_city( 'Old city' );
-	$order->set_shipping_state( 'CA' );
-	$order->set_shipping_postcode( '90001' );
-	$order->set_shipping_country( 'US' );
-	$order->set_billing_city( 'Billing city' );
-	$order->set_payment_method( 'bacs' );
-	$shipping_line = new WC_Order_Item_Shipping();
-	$shipping_line->set_method_title( 'Fixture shipping' );
-	$shipping_line->set_method_id( 'flat_rate' );
-	$shipping_line->set_total( '5.00' );
-	$order->add_item( $shipping_line );
-	$tax_line = new WC_Order_Item_Tax();
-	$tax_line->set_label( 'Fixture tax' );
-	$tax_line->set_tax_total( '2.00' );
-	$order->add_item( $tax_line );
-	$order->set_shipping_total( '5.00' );
-	$order->set_cart_tax( '2.00' );
-	$order->set_total( '17.00' );
-	$order->save();
-	$snapshot = static function ( $id ) {
-		$current = wc_get_order( $id );
-		$data = $current->get_data();
-		unset( $data['shipping'], $data['date_modified'], $data['version'] );
-		$data['meta_data'] = array_values( array_filter( $data['meta_data'], static function ( $item ) {
-			return '_shipping_address_index' !== $item->key;
-		} ) );
-		foreach ( [ 'line_items', 'tax_lines', 'shipping_lines', 'fee_lines', 'coupon_lines' ] as $key ) {
-			$data[ $key ] = array_map( static function ( $item ) { return $item->get_data(); }, $data[ $key ] );
-		}
-		return wp_json_encode( $data );
-	};
-	$commercial_before = $snapshot( $order_id );
-	$profile_before = ( new WC_Customer( $customer_id ) )->get_shipping();
-	$order = wc_get_order( $order_id );
-	$version = YoRo_Order_Presenter::order_version( $order );
-	$address_params = [ 'order_id' => $order_id, 'expected_version' => $version, 'shipping' => [ 'city' => 'New city', 'company' => '', 'address_2' => '', 'state' => '', 'postcode' => '', 'country' => 'us' ] ];
-	$address_save_count = 0;
-	$count_address_save = static function ( $saved ) use ( &$address_save_count, $order_id ) {
-		if ( $saved instanceof WC_Order && $saved->get_id() === $order_id ) { ++$address_save_count; }
-	};
-	add_action( 'woocommerce_after_order_object_save', $count_address_save, 10, 1 );
-	$preview = YoRo_Orders_Write_Service::preview_update_order_addresses( $address_params );
-	$assert( false === $preview['blocked'] && 0 === $address_save_count, 'Valid address preview is read-only.' );
-	$assert( ! isset( $preview['changes']['country'] ) && 5 === count( $preview['changes'] ), 'Preview contains only normalized material deltas.' );
-	$assert( [ 'before' => 'Company', 'after' => '' ] === $preview['changes']['company'], 'Preview preserves an explicit clear.' );
-	$assert( false !== strpos( $preview['message'], 'order #' . $order_id ) && false !== strpos( $preview['message'], 'city: "Old city" → "New city"' ) && false !== strpos( $preview['message'], 'company: "Company" → ""' ), 'The existing confirmation renderer receives visible target and exact deltas, including clears.' );
-	$assert( false === strpos( wp_json_encode( $preview ), 'Billing city' ), 'Preview must not disclose unrelated billing data.' );
-	$assert( $version === $preview['expected_version'] && $version === $preview['current_version'], 'Preview binds the current read version.' );
-	$negative_patches = [ [], [ 'billing' => 'bad' ], [ 'city' => '' ], [ 'first_name' => '' ], [ 'last_name' => '' ], [ 'address_1' => ' ' ], [ 'country' => '' ], [ 'country' => 'ZZ' ], [ 'city' => null ], [ 'city' => 123 ], [ 'city' => [ 'nested' ] ], [ 'city' => str_repeat( 'x', 201 ) ], [ 'city' => "bad\0value" ], [ 'city' => 'Old city' ] ];
-	foreach ( $negative_patches as $patch ) {
-		$invalid = array_replace( $address_params, [ 'shipping' => $patch ] );
-		$blocked = YoRo_Orders_Write_Service::preview_update_order_addresses( $invalid );
-		$assert( true === $blocked['blocked'] && false === $blocked['will_execute'], 'Invalid/no-op address preview must not offer execution.' );
-		$assert( is_wp_error( YoRo_Orders_Write_Service::update_order_addresses( $invalid ) ), 'Invalid/no-op address execution fails closed.' );
-	}
-	foreach ( [ [ 'order_ids' => [ $order_id ] ], [ 'billing' => [ 'city' => 'bad' ] ], [ 'customer_id' => $customer_id ], [ 'expected_version' => str_repeat( '0', 64 ) ], [ 'order_id' => (string) $order_id ] ] as $override ) {
-		$assert( is_wp_error( YoRo_Orders_Write_Service::update_order_addresses( array_replace( $address_params, $override ) ) ), 'Unknown, bulk, untyped target and stale requests fail closed.' );
-	}
-	wp_set_current_user( $customer_id );
-	$assert( true === YoRo_Orders_Write_Service::preview_update_order_addresses( $address_params )['blocked'], 'Customer role cannot preview a store write.' );
-	$assert( is_wp_error( YoRo_Orders_Write_Service::update_order_addresses( $address_params ) ), 'Customer role cannot execute a store write.' );
-	wp_set_current_user( absint( $admin_ids[0] ) );
-	$assert( 0 === $address_save_count && $commercial_before === $snapshot( $order_id ), 'All rejected requests must leave the order unchanged.' );
-	$unconfirmed = YoRo_Action_Executor::execute( 'orders.update_addresses', $address_params, false );
-	$assert( true === $unconfirmed['requires_confirmation'] && 0 === $address_save_count, 'Executor requires confirmation before invoking B3.' );
-	$address_result = YoRo_Action_Executor::execute( 'orders.update_addresses', $address_params, true );
-	$assert( is_array( $address_result ) && true === $address_result['success'], 'Confirmed current address write succeeds.' );
-	$assert( 1 === $address_save_count, 'Address mutation saves exactly once.' );
-	$assert( $commercial_before === $snapshot( $order_id ), 'Totals, tax/shipping line identities, billing, payment and other order data remain unchanged.' );
-	$assert( $profile_before === ( new WC_Customer( $customer_id ) )->get_shipping(), 'Registered customer shipping profile remains unchanged.' );
-	$after = wc_get_order( $order_id );
-	$assert( 'New city' === $after->get_shipping_city() && '' === $after->get_shipping_company() && '1 Old Street' === $after->get_shipping_address_1(), 'Only explicit shipping deltas persist.' );
-	$assert( $version !== $address_result['current_version'] && YoRo_Order_Presenter::order_version( $after ) === $address_result['current_version'], 'Result reports the persisted current version.' );
-	$replay = YoRo_Orders_Write_Service::update_order_addresses( $address_params );
-	$assert( is_wp_error( $replay ) && 'order_version_conflict' === $replay->get_error_code() && 1 === $address_save_count, 'Consumed address version cannot save again.' );
-	remove_action( 'woocommerce_after_order_object_save', $count_address_save, 10 );
-
-	// Bind all shipping fields even when the timestamp and every commercial fact are identical.
-	foreach ( [ 'first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country' ] as $field ) {
-		$copy = clone $after;
-		$copy->{ 'set_shipping_' . $field }( 'Changed' );
-		$assert( YoRo_Order_Presenter::order_version( $copy ) !== YoRo_Order_Presenter::order_version( $after ), 'Same-second shipping change must invalidate the shared version: ' . $field );
-	}
-	$prior_version = YoRo_Order_Presenter::order_version( $after );
-	$after->set_shipping_city( '<img src=x onerror=alert(1)> & Old city' );
-	$after->save();
-	$stale_preview = YoRo_Orders_Write_Service::preview_update_order_addresses( [ 'order_id' => $order_id, 'expected_version' => $prior_version, 'shipping' => [ 'city' => 'Next city' ] ] );
-	$assert( true === $stale_preview['blocked'] && 'order_version_conflict' === $stale_preview['block_reason'], 'Intervening address write blocks confirmation of an old preview.' );
-	$xss_preview = YoRo_Orders_Write_Service::preview_update_order_addresses( [ 'order_id' => $order_id, 'expected_version' => YoRo_Order_Presenter::order_version( wc_get_order( $order_id ) ), 'shipping' => [ 'city' => 'Next <b>city</b> & data' ] ] );
-	$assert( false === $xss_preview['blocked'] && false === strpos( wp_json_encode( $xss_preview['changes'] ), '<' ), 'Provider-authored preview values are escaped as data.' );
-	$assert( 'Next city &amp; data' === $xss_preview['changes']['city']['after'], 'Preview uses the exact sanitized value with presentation escaping.' );
-	$unknown_save_count = 0;
-	$unknown_save_hook = static function ( $saved ) use ( $order_id, &$unknown_save_count ) {
-		if ( $saved instanceof WC_Order && $saved->get_id() === $order_id ) {
-			++$unknown_save_count;
-			throw new Error( 'Disposable post-save failure; do not expose this detail.' );
-		}
-	};
-	add_action( 'woocommerce_after_order_object_save', $unknown_save_hook, 10, 1 );
-	try {
-		$unknown = YoRo_Orders_Write_Service::update_order_addresses( [ 'order_id' => $order_id, 'expected_version' => YoRo_Order_Presenter::order_version( wc_get_order( $order_id ) ), 'shipping' => [ 'city' => 'Reconcile this state' ] ] );
-		$assert( is_wp_error( $unknown ) && 'shipping_save_outcome_unknown' === $unknown->get_error_code(), 'Unknown post-save outcome requires reconciliation: ' . ( is_wp_error( $unknown ) ? $unknown->get_error_code() : wp_json_encode( $unknown ) ) );
-		$assert( 1 === $unknown_save_count && false === strpos( $unknown->get_error_message(), 'Disposable' ), 'Unknown outcome is never retried or exposed as a raw exception.' );
-	} finally {
-		remove_action( 'woocommerce_after_order_object_save', $unknown_save_hook, 10 );
-	}
-
-
 } finally {
 	$wpdb->query( 'ROLLBACK' );
 

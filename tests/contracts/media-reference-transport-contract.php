@@ -391,7 +391,7 @@ $run_transport_contract = static function ( $label, $client ) use ( $assert, $as
 	$assert( [] === $GLOBALS['yoro_media_contract_requests'], $label . ' must not issue HTTP without the site credential.' );
 	@unlink( $destination );
 
-	foreach ( [ 301 => 'permanent redirect', 302 => 'temporary redirect', 307 => 'method-preserving redirect', 308 => 'permanent method-preserving redirect', 401 => 'unauthorized credential', 403 => 'revoked credential', 404 => 'missing reference', 503 => 'non-2xx response' ] as $status => $context ) {
+	foreach ( [ 401 => 'unauthorized credential', 403 => 'revoked credential', 404 => 'missing reference', 503 => 'non-2xx response' ] as $status => $context ) {
 		yoro_media_contract_reset( 'http_error' );
 		$GLOBALS['yoro_media_contract_http_status'] = $status;
 		$GLOBALS['yoro_media_contract_error_body'] = 'site-key-fixture-private https://signed.example.test/?token=signed-secret-fixture';

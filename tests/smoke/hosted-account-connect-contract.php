@@ -58,9 +58,7 @@ $captured_http = [];
 $api_url       = 'http://yoro-account-connect.test/api/v1';
 $plain_key     = 'yoro_ai_sk_hosted_connect_smoke';
 
-$http_mode = 'normal';
-$reconnect_site_key = '';
-$http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http, &$http_mode, &$reconnect_site_key ) {
+$http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http ) {
 	$body = [];
 
 	if ( is_string( $args['body'] ?? null ) ) {
@@ -72,20 +70,12 @@ $http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http, 
 		'url'     => (string) $url,
 		'headers' => is_array( $args['headers'] ?? null ) ? $args['headers'] : [],
 		'body'    => $body,
-		'stored_key' => YoRo_AI_Settings::get_ai_api_site_key(),
 	];
 
-	if ( ( 'verify_failure' === $http_mode && 'verify' === ( $body['credential_lifecycle_phase'] ?? '' ) )
-		|| ( 'finalize_ambiguous' === $http_mode && 'finalize' === ( $body['credential_lifecycle_phase'] ?? '' ) )
-		|| ( 'disconnect_failure' === $http_mode && false !== strpos( (string) $url, '/sites/disconnect' ) ) ) {
-		return new WP_Error( 'lifecycle_transport_failure', 'Simulated lost lifecycle response.' );
-	}
 	$payload = false !== strpos( (string) $url, '/sites/disconnect' )
 		? [ 'success' => true ]
 		: [
 			'success'      => true,
-			'credential_lifecycle_version' => 2,
-			'credential_lifecycle_phase' => $body['credential_lifecycle_phase'] ?? 'finalize',
 			'account_url'  => 'http://yoro-account-connect.test/app',
 			'billing_url'  => 'http://yoro-account-connect.test/app/billing',
 			'site'         => [
@@ -149,14 +139,6 @@ $http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http, 
 			],
 		];
 
-	if ( 'disconnect_unconfirmed' === $http_mode && false !== strpos( (string) $url, '/sites/disconnect' ) ) {
-		$payload = [ 'success' => false ];
-	}
-
-	if ( '' !== $reconnect_site_key && false !== strpos( (string) $url, '/wordpress/exchange' ) ) {
-		$payload['site_key'] = $reconnect_site_key;
-	}
-
 	return [
 		'headers'  => [],
 		'body'     => wp_json_encode( $payload ),
@@ -167,36 +149,6 @@ $http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http, 
 };
 
 add_filter( 'pre_http_request', $http_filter, 10, 3 );
-
-$negative_control = getenv( 'YORO_CREDENTIAL_NEGATIVE_CONTROL' );
-if ( in_array( $negative_control, [ 'encryption_unavailable', 'constant_locked' ], true ) ) {
-	try {
-		if ( 'constant_locked' === $negative_control ) {
-			define( 'YORO_AI_API_SITE_KEY', 'yoro_ai_sk_constant_control' );
-			$assert( is_wp_error( YoRo_AI_Settings::save_connected_ai_api_credentials( $api_url, $plain_key ) ), 'Constant key was replaced.' );
-			$assert( is_wp_error( YoRo_AI_Settings::disconnect_ai_api() ), 'Constant key was disconnected.' );
-			$assert( 'yoro_ai_sk_constant_control' === YoRo_AI_Settings::get_ai_api_site_key(), 'Constant credential changed.' );
-		} else {
-			$assert( ! function_exists( 'openssl_encrypt' ), 'Encryption-negative control must disable openssl_encrypt in this isolated PHP process.' );
-			update_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, 'yoro_enc_v1:prior_control', false );
-			$result = YoRo_AI_Settings::save_connected_ai_api_credentials( $api_url, $plain_key );
-			$assert( is_wp_error( $result ) && 'yoro_ai_api_encryption_unavailable' === $result->get_error_code(), 'Unavailable encryption was accepted.' );
-			$assert( 'yoro_enc_v1:prior_control' === get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY ), 'Encryption failure discarded previous storage.' );
-		}
-		$assert( [] === $captured_http, 'Negative storage controls performed a network mutation.' );
-	} finally {
-		remove_filter( 'pre_http_request', $http_filter, 10 );
-		foreach ( $old_options as $name => $value ) {
-			if ( null === $value ) {
-				delete_option( $name );
-			} else {
-				update_option( $name, $value, false );
-			}
-		}
-	}
-	echo wp_json_encode( [ 'success' => [] === $failures, 'control' => $negative_control, 'failures' => $failures ] ) . PHP_EOL;
-	exit( [] === $failures ? 0 : 1 );
-}
 
 try {
 	update_option( YoRo_AI_Settings::OPTION_AI_API_URL, $api_url, false );
@@ -317,96 +269,6 @@ try {
 	$assert( false !== strpos( (string) $admin_script, "chatShell.classList.toggle('is-account-locked', !accessible && !checking);" ), 'The chat board renders a locked visual state while access is still loading.' );
 	$assert( false !== strpos( (string) $admin_script, 'account_connection_permission_check' ) || method_exists( 'YoRo_REST_API', 'account_connection_permission_check' ), 'The server-side account gate is missing.' );
 
-	$handshakes = array_values( array_filter( $captured_http, static fn ( $request ) => false !== strpos( $request['url'], '/sites/handshake' ) ) );
-	$assert( [ 'verify', 'finalize' ] === array_column( array_column( $handshakes, 'body' ), 'credential_lifecycle_phase' ), 'V2 credential commit did not verify before finalizing.' );
-	$assert( $plain_key === ( $handshakes[0]['stored_key'] ?? '' ), 'Verify occurred before credential persistence/read-back.' );
-	$client = new YoRo_AI_API_Client();
-	$client->exchange_wordpress_connect_code( [ 'code' => 'control_code' ], $api_url );
-	$client->rotate_site_credential();
-	$lifecycle_requests = array_values( array_filter( $captured_http, static fn ( $request ) => false !== strpos( $request['url'], '/wordpress/exchange' ) || false !== strpos( $request['url'], '/credentials/rotate' ) ) );
-	$assert( 2 === count( $lifecycle_requests ), 'Lifecycle negotiation requests are missing.' );
-	foreach ( $lifecycle_requests as $request ) {
-		$assert( 2 === ( $request['body']['credential_lifecycle_version'] ?? null ), 'Core did not negotiate credential lifecycle v2.' );
-	}
-
-	$previous_storage = get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY );
-	$previous_status = YoRo_AI_Settings::get_ai_api_status();
-	$previous_http_count = count( $captured_http );
-	$deny_persistence = static fn ( $value, $old_value ) => $old_value;
-	add_filter( 'pre_update_option_' . YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $deny_persistence, 10, 2 );
-	$failed_commit = YoRo_AI_Settings::save_connected_ai_api_credentials( $api_url, 'yoro_ai_sk_storage_failure' );
-	remove_filter( 'pre_update_option_' . YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $deny_persistence, 10 );
-	$assert( is_wp_error( $failed_commit ) && 'yoro_ai_api_persistence_failed' === $failed_commit->get_error_code(), 'Failed option write was accepted.' );
-	$assert( $previous_storage === get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY ), 'Failed persistence lost previous credential.' );
-	$assert( count( $captured_http ) === $previous_http_count, 'Failed persistence invoked verify/finalize.' );
-
-	$corrupt_readback = static function ( $value ) use ( $previous_storage ) {
-		return $previous_storage === $value ? $value : 'yoro_enc_v1:corrupt';
-	};
-	add_filter( 'option_' . YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $corrupt_readback );
-	$failed_readback = YoRo_AI_Settings::save_connected_ai_api_credentials( $api_url, 'yoro_ai_sk_readback_failure' );
-	remove_filter( 'option_' . YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $corrupt_readback );
-	$assert( is_wp_error( $failed_readback ), 'Corrupt encrypted read-back was accepted.' );
-	$assert( $previous_storage === get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY ), 'Read-back failure did not restore previous credential.' );
-	$assert( count( $captured_http ) === $previous_http_count, 'Failed read-back invoked verify/finalize.' );
-
-	$http_mode = 'verify_failure';
-	$failed_verify = YoRo_AI_Settings::save_connected_ai_api_credentials( $api_url . '/other', 'yoro_ai_sk_verify_failure' );
-	$assert( is_wp_error( $failed_verify ), 'Verify failure was accepted.' );
-	$assert( $previous_storage === get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY ) && $api_url === YoRo_AI_Settings::get_ai_api_url(), 'Verify failure did not restore previous credential and URL.' );
-	$assert( $previous_status === YoRo_AI_Settings::get_ai_api_status(), 'Verify failure changed prior local account status.' );
-	$http_mode = 'normal';
-	$assert( ! is_wp_error( $client->handshake_with_credentials( $api_url, $plain_key, false, 'verify' ) ), 'Old credential is unusable after failed verify.' );
-
-	$http_mode = 'finalize_ambiguous';
-	$proven_replacement = 'yoro_ai_sk_finalization_control';
-	$ambiguous = YoRo_AI_Settings::save_connected_ai_api_credentials( $api_url, $proven_replacement );
-	$assert( ! is_wp_error( $ambiguous ) && ! empty( $ambiguous['credential_finalization_pending'] ), 'Ambiguous finalize did not retain truthful pending state.' );
-	$assert( $proven_replacement === YoRo_AI_Settings::get_ai_api_site_key(), 'Ambiguous finalize restored an old potentially revoked credential.' );
-	$pending_storage = get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY );
-	$pending_status = YoRo_AI_Settings::get_ai_api_status();
-	$assert( ! empty( $pending_status['credential_finalization_pending'] ), 'Pending K2 finalization status was not durable locally.' );
-	foreach ( [ 'persistence', 'verify' ] as $failure ) {
-		$reconnect_site_key = 'yoro_ai_sk_reconnect_after_lost_finalize_' . $failure;
-		$http_mode = 'normal';
-		$reconnect = $client->exchange_wordpress_connect_code( [ 'code' => 'recovery_chain_' . $failure ], $api_url );
-		$assert( ! is_wp_error( $reconnect ) && $reconnect_site_key === ( $reconnect['site_key'] ?? '' ), 'Reconnect did not issue the next K3 replacement.' );
-		$before_commit_http_count = count( $captured_http );
-		if ( 'persistence' === $failure ) {
-			add_filter( 'pre_update_option_' . YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $deny_persistence, 10, 2 );
-		} else {
-			$http_mode = 'verify_failure';
-		}
-		try {
-			$failed_successor = YoRo_AI_Settings::save_connected_ai_api_credentials( $api_url . '/successor', $reconnect_site_key );
-		} finally {
-			remove_filter( 'pre_update_option_' . YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $deny_persistence, 10 );
-		}
-		$assert( is_wp_error( $failed_successor ), 'K3 ' . $failure . ' failure was accepted after unprocessed K2 finalize.' );
-		$assert( $pending_storage === get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY ) && $proven_replacement === YoRo_AI_Settings::get_ai_api_site_key(), 'Failed K3 did not restore exact encrypted verified K2.' );
-		$assert( $api_url === YoRo_AI_Settings::get_ai_api_url() && $pending_status === YoRo_AI_Settings::get_ai_api_status(), 'Failed K3 changed K2 URL or pending status.' );
-		$successor_requests = array_slice( $captured_http, $before_commit_http_count );
-		$assert( 'persistence' === $failure ? [] === $successor_requests : [ 'verify' ] === array_column( array_column( $successor_requests, 'body' ), 'credential_lifecycle_phase' ), 'Failed K3 called finalize or verified before local commit.' );
-		$http_mode = 'normal';
-		$assert( ! is_wp_error( $client->handshake_with_credentials( $api_url, YoRo_AI_Settings::get_ai_api_site_key(), false, 'verify' ) ), 'Restored K2 cannot verify after failed K3.' );
-	}
-	$reconnect_site_key = '';
-	$http_mode = 'normal';
-	$converged = $client->handshake_with_credentials( $api_url, $proven_replacement );
-	$assert( ! is_wp_error( $converged ) && empty( $converged['credential_finalization_pending'] ), 'Ordinary handshake did not converge pending finalization.' );
-
-	$deactivation_http_count = count( $captured_http );
-	yoro_ai_core_deactivate();
-	$assert( count( $captured_http ) === $deactivation_http_count, 'Deactivation performed a remote lifecycle mutation.' );
-	$assert( $proven_replacement === YoRo_AI_Settings::get_ai_api_site_key(), 'Deactivation cleared recovery material.' );
-	foreach ( [ 'disconnect_failure', 'disconnect_unconfirmed' ] as $mode ) {
-		$http_mode = $mode;
-		$disconnect_failure = YoRo_AI_Settings::disconnect_ai_api();
-		$assert( is_wp_error( $disconnect_failure ), 'Unconfirmed remote disconnect was accepted.' );
-		$assert( $proven_replacement === YoRo_AI_Settings::get_ai_api_site_key(), 'Remote disconnect failure discarded local recovery credential.' );
-	}
-	$http_mode = 'normal';
-
 	$disconnect_result = YoRo_AI_Settings::disconnect_ai_api();
 	$assert( true === $disconnect_result, 'Remote disconnect did not succeed.' );
 	$assert( '' === (string) get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, '' ), 'Local credential was not cleared after remote revoke.' );
@@ -417,7 +279,7 @@ try {
 			static fn ( $request ) => false !== strpos( $request['url'], '/sites/disconnect' )
 		)
 	);
-	$assert( 3 === count( $disconnect_requests ), 'Expected two failed controls and one confirmed disconnect request.' );
+	$assert( 1 === count( $disconnect_requests ), 'Expected one server-side disconnect request.' );
 	$assert( $installation_uuid === ( $disconnect_requests[0]['body']['installation_uuid'] ?? '' ), 'Disconnect did not bind the installation UUID.' );
 } finally {
 	remove_filter( 'pre_http_request', $http_filter, 10 );

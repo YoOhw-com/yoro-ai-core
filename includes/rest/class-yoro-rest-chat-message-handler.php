@@ -341,16 +341,6 @@ class YoRo_REST_Chat_Message_Handler {
 			if ( 'assistant' === $role ) {
 				$payload = isset( $message['payload'] ) && is_array( $message['payload'] ) ? $message['payload'] : [];
 				$decision = isset( $payload['decision'] ) && is_array( $payload['decision'] ) ? $payload['decision'] : [];
-				if ( 'action_event' === ( $payload['stage'] ?? '' ) && is_array( $payload['report_presentation'] ?? null ) ) {
-					$presentation = $payload['report_presentation'];
-					$result = YoRo_REST_Conversation_Action_Coordinator::apply_report_presentation(
-						[ 'success' => 'executed' === ( $payload['status'] ?? '' ), 'action' => $payload['action'] ?? '', 'read_only' => true, 'display_type' => 'report' ],
-						[ 'report_presentation' => $presentation, 'action_event' => [ 'id' => $payload['action_event_id'] ?? 0 ] ],
-						$conversation_id, $payload['action'] ?? '', $presentation['operation_id'] ?? ''
-					);
-					$item['ui'] = [ 'success' => $result['success'], 'stage' => 'done', 'conversation_id' => $conversation_id, 'result' => $result ];
-				}
-
 
 				if ( [] === $decision && ! empty( $payload['email_preview'] ) && is_array( $payload['email_preview'] ) ) {
 					$decision = $payload;
