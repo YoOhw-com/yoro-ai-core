@@ -229,6 +229,7 @@ class YoRo_Admin_Page {
 				'contextUrl'                            => esc_url_raw( rest_url( 'yoro-ai-core/v1/context' ) ),
 				'actionsUrl'                            => esc_url_raw( rest_url( 'yoro-ai-core/v1/actions' ) ),
 				'undoUrl'                               => esc_url_raw( rest_url( 'yoro-ai-core/v1/undo' ) ),
+				'aiApiUrl' => esc_url_raw( YoRo_AI_Settings::get_ai_api_url() ),
 				'aiApiStatusUrl'                        => esc_url_raw( rest_url( 'yoro-ai-core/v1/ai-api/status' ) ),
 				'aiApiHandshakeUrl'                     => esc_url_raw( rest_url( 'yoro-ai-core/v1/ai-api/handshake' ) ),
 				'emailInboxUrl'                         => esc_url_raw( rest_url( 'yoro-ai-core/v1/email/inbox' ) ),
@@ -1068,6 +1069,17 @@ class YoRo_Admin_Page {
 								<?php endif; ?>
 							</td>
 						</tr>
+
+						<?php if ( current_user_can( YoRo_Capabilities::MANAGE_CONNECTION ) ) : ?>
+							<?php $early_access = YoRo_AI_Settings::get_early_access_onboarding(); ?>
+							<tr><th scope="row"><?php esc_html_e( 'Early Access', 'yoro-ai-core' ); ?></th><td class="yoro-early-access-onboarding">
+								<p><?php echo esc_html( [ 'unknown' => __( 'Unknown — refresh connection', 'yoro-ai-core' ), 'available' => __( 'Available to request', 'yoro-ai-core' ), 'not_available' => __( 'Not available', 'yoro-ai-core' ), 'requested_pending' => __( 'Request pending activation', 'yoro-ai-core' ), 'withdrawn' => __( 'Request withdrawn', 'yoro-ai-core' ) ][ $early_access['status'] ] ?? __( 'Unknown', 'yoro-ai-core' ) ); ?></p>
+								<p><?php esc_html_e( 'Runtime disabled. This endpoint is not currently connectable. A request records interest only.', 'yoro-ai-core' ); ?></p>
+								<?php if ( ! empty( $early_access['future_endpoint'] ) ) : ?><p><?php esc_html_e( 'Future Custom MCP endpoint:', 'yoro-ai-core' ); ?> <code><?php echo esc_html( $early_access['future_endpoint'] ); ?></code></p><?php endif; ?>
+								<p><?php esc_html_e( 'After separately approved activation, complete ChatGPT Custom MCP or Personal Plugin setup through the YoRo account.', 'yoro-ai-core' ); ?></p>
+								<?php if ( ! empty( $early_access['future_endpoint'] ) ) : ?><a class="button" href="<?php echo esc_url( preg_replace( '#/mcp/early-access$#', '/app/stores', $early_access['future_endpoint'] ) ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Manage request in YoRo account', 'yoro-ai-core' ); ?></a><?php endif; ?>
+							</td></tr>
+						<?php endif; ?>
 
 						<tr>
 							<th scope="row"><?php esc_html_e( 'Connection status', 'yoro-ai-core' ); ?></th>

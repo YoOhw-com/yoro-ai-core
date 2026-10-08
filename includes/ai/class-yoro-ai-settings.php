@@ -192,6 +192,60 @@ class YoRo_AI_Settings {
 		return is_array( $status ) ? self::normalize_ai_api_status( $status ) : [];
 	}
 
+	public static function get_early_access_onboarding( $status = null ) {
+		$status = is_array( $status ) ? $status : self::get_ai_api_status();
+		return self::normalize_early_access_onboarding( $status['early_access_onboarding'] ?? null, $status );
+	}
+
+	/** Validate a read-only API projection; this never grants runtime access. */
+	public static function normalize_early_access_onboarding( $input, array $context, $api_url = null, $site_key = null ) {
+		$unknown = [ 'status' => 'unknown', 'source' => 'api_handshake', 'connection_healthy' => false,
+			'compatible' => false, 'checked_at' => '', 'expires_at' => '', 'future_endpoint' => '', 'runtime_enabled' => false ];
+		$keys = [ 'status', 'source', 'site_id', 'installation_uuid', 'connection_healthy', 'compatible', 'checked_at', 'expires_at', 'future_endpoint', 'runtime_enabled' ];
+		if ( ! is_array( $input ) || array_diff( array_keys( $input ), $keys ) || array_diff( $keys, array_keys( $input ) ) ) {
+			return $unknown;
+		}
+		$api_url = null === $api_url ? self::get_ai_api_url() : $api_url;
+		$site_key = null === $site_key ? self::get_ai_api_site_key() : $site_key;
+		$connection = $context['connection'] ?? [];
+		$site = $context['site'] ?? [];
+		$credential = $context['credential'] ?? [];
+		$manifest = $context['connector_runtime']['capability_manifest'] ?? [];
+		$checked = is_string( $input['checked_at'] ) ? strtotime( $input['checked_at'] ) : false;
+		$expires = is_string( $input['expires_at'] ) ? strtotime( $input['expires_at'] ) : false;
+		$base = preg_replace( '#/api/v[0-9]+(?:/.*)?$#', '', untrailingslashit( (string) $api_url ) );
+		$endpoint = is_string( $input['future_endpoint'] ) ? wp_parse_url( $input['future_endpoint'] ) : false;
+		$valid_endpoint = '' === $input['future_endpoint'] || ( is_array( $endpoint ) && 'https' === ( $endpoint['scheme'] ?? '' )
+			&& ! isset( $endpoint['user'] ) && ! isset( $endpoint['pass'] ) && ! isset( $endpoint['query'] ) && ! isset( $endpoint['fragment'] )
+			&& $input['future_endpoint'] === $base . '/mcp/early-access' );
+		if ( ! in_array( $input['status'], [ 'unknown', 'available', 'not_available', 'requested_pending', 'withdrawn' ], true )
+			|| 'api_handshake' !== $input['source'] || false !== $input['runtime_enabled']
+			|| ! is_bool( $input['connection_healthy'] ) || ! is_bool( $input['compatible'] )
+			|| ! is_int( $input['site_id'] ) || $input['site_id'] <= 0 || $input['site_id'] !== ( $site['id'] ?? null )
+			|| ! is_string( $input['installation_uuid'] ) || ! hash_equals( self::get_installation_uuid(), $input['installation_uuid'] )
+			|| $input['installation_uuid'] !== ( $connection['installation_uuid'] ?? '' )
+			|| rtrim( strtolower( (string) ( $site['url'] ?? '' ) ), '/' ) !== rtrim( strtolower( home_url() ), '/' )
+			|| empty( $context['account_connection']['connected'] ) || 'active' !== ( $connection['status'] ?? '' )
+			|| 'wordpress_connection' !== ( $credential['type'] ?? '' ) || empty( $credential['id'] )
+			|| ( $credential['site_connection_id'] ?? 0 ) !== ( $connection['id'] ?? 0 )
+			|| ( ! empty( $credential['expires_at'] ) && strtotime( $credential['expires_at'] ) <= time() )
+			|| ( isset( $context['service_available'] ) && false === $context['service_available'] )
+			|| ! is_string( $site_key ) || '' === $site_key || ! hash_equals( hash( 'sha256', $site_key ), (string) ( $context['early_access_credential_fingerprint'] ?? '' ) )
+			|| false === $checked || false === $expires || $checked > time() + 30 || $checked < time() - 300 || $expires <= time() || $expires > $checked + 300
+			|| ! $valid_endpoint ) {
+			return $unknown;
+		}
+		if ( in_array( $input['status'], [ 'available', 'requested_pending', 'withdrawn' ], true )
+			&& ( true !== $input['connection_healthy'] || true !== $input['compatible'] || empty( $manifest['current'] )
+				|| empty( $manifest['manifest_id'] ) || empty( $manifest['revision'] ) || strtotime( $manifest['expires_at'] ?? '' ) < $expires
+				|| ! defined( 'YORO_AI_CORE_VERSION' ) || ( $connection['plugin_version'] ?? '' ) !== YORO_AI_CORE_VERSION
+				|| ( $context['connector_runtime']['connector_version'] ?? '' ) !== YORO_AI_CORE_VERSION
+				|| 1 !== ( $context['connector_runtime']['protocol_version'] ?? null ) || '' === $input['future_endpoint'] ) ) {
+			return $unknown;
+		}
+		return array_intersect_key( $input, array_flip( $keys ) );
+	}
+
 	public static function get_ai_api_account_connection( $status = null ) {
 		$status = is_array( $status ) ? self::normalize_ai_api_status( $status ) : self::get_ai_api_status();
 		$account_connection = isset( $status['account_connection'] ) && is_array( $status['account_connection'] )
@@ -282,6 +336,14 @@ class YoRo_AI_Settings {
 
 	public static function update_ai_api_status( array $status ) {
 		update_option( self::OPTION_AI_API_STATUS, self::normalize_ai_api_status( $status ), false );
+	}
+
+	public static function invalidate_early_access_onboarding() {
+		$status = get_option( self::OPTION_AI_API_STATUS, [] );
+		if ( is_array( $status ) ) {
+			unset( $status['early_access_onboarding'], $status['early_access_credential_fingerprint'] );
+			self::update_ai_api_status( $status );
+		}
 	}
 
 	public static function clear_ai_api_status() {
@@ -404,6 +466,7 @@ class YoRo_AI_Settings {
 			if ( is_wp_error( $connection_result ) ) {
 				$ai_api_connection_can_save            = false;
 				$result['ai_api_connection_error']     = $connection_result;
+				self::invalidate_early_access_onboarding();
 				$result['ai_api_credentials_rejected'] = true;
 				$result['ai_api_connection_changed']   = true;
 			} else {
@@ -445,7 +508,8 @@ class YoRo_AI_Settings {
 				if ( is_wp_error( $encrypted_site_key ) ) {
 					$ai_api_connection_can_save = false;
 					$result['ai_api_connection_error'] = $encrypted_site_key;
-					$result['ai_api_credentials_rejected'] = true;
+					self::invalidate_early_access_onboarding();
+				$result['ai_api_credentials_rejected'] = true;
 				} else {
 					update_option( self::OPTION_AI_API_SITE_KEY, $encrypted_site_key, false );
 				}
@@ -488,6 +552,7 @@ class YoRo_AI_Settings {
 		$target_site_key   = sanitize_text_field( (string) $site_key );
 
 		if ( '' === $target_ai_api_url || '' === $target_site_key ) {
+			self::invalidate_early_access_onboarding();
 			return new WP_Error(
 				'yoro_ai_api_missing_connect_credentials',
 				__( 'YoRo did not return a complete connection payload.', 'yoro-ai-core' )
@@ -497,6 +562,7 @@ class YoRo_AI_Settings {
 		$connection_result = self::test_ai_api_credentials( $target_ai_api_url, $target_site_key );
 
 		if ( is_wp_error( $connection_result ) ) {
+			self::invalidate_early_access_onboarding();
 			return $connection_result;
 		}
 
@@ -507,11 +573,17 @@ class YoRo_AI_Settings {
 		$encrypted_site_key = self::encrypt_ai_api_site_key( $target_site_key );
 
 		if ( is_wp_error( $encrypted_site_key ) ) {
+			self::invalidate_early_access_onboarding();
 			return $encrypted_site_key;
 		}
 
 		update_option( self::OPTION_AI_API_SITE_KEY, $encrypted_site_key, false );
 		update_option( self::OPTION_AI_API_ENABLED, 'yes' );
+		if ( ! hash_equals( $target_site_key, (string) self::get_ai_api_site_key() )
+			|| $target_ai_api_url !== self::get_ai_api_url() || ! self::is_ai_api_enabled() ) {
+			unset( $connection_result['early_access_onboarding'], $connection_result['early_access_credential_fingerprint'] );
+			self::invalidate_early_access_onboarding();
+		}
 		self::update_ai_api_status( $connection_result );
 
 		return $connection_result;
@@ -617,6 +689,7 @@ class YoRo_AI_Settings {
 	}
 
 	private static function normalize_ai_api_status( array $status ) {
+		$status['early_access_onboarding'] = self::normalize_early_access_onboarding( $status['early_access_onboarding'] ?? null, $status );
 		$status = self::sanitize_ai_api_status_value( $status );
 
 		if ( empty( $status['entitlements'] ) || ! is_array( $status['entitlements'] ) ) {

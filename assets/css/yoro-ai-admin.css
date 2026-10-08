@@ -6547,3 +6547,7 @@ body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant :is(
 		justify-content: flex-start;
 	}
 }
+
+.yoro-early-access-onboarding { max-width: 100%; padding: 12px; border: 1px solid #dcdcde; border-radius: 6px; }
+.yoro-early-access-onboarding code { overflow-wrap: anywhere; word-break: break-word; }
+.yoro-early-access-onboarding h4 { margin: 0 0 8px; }

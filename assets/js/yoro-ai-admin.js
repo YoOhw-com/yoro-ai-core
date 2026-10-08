@@ -1433,6 +1433,7 @@
 			html += renderAiApiStatusRow('Usage', renderAiApiUsageText(usage));
 			html += renderAiApiStatusRow('Last checked', connection.checked_at || 'not checked');
 			html += '</dl>';
+			html += renderEarlyAccessOnboarding(data && data.early_access_onboarding);
 			html += '<div class="yoro-ai-api-status-features">';
 			html += renderAiApiFeatureBadge('Conversation AI', capabilities.conversation, entitlements.conversation);
 			html += renderAiApiFeatureBadge('Email compose', capabilities.email_compose, entitlements.email_composer);
@@ -1463,6 +1464,27 @@
 			}
 
 			aiApiStatusBody.innerHTML = html;
+		}
+
+		function renderEarlyAccessOnboarding(onboarding) {
+			if (!onboarding || typeof onboarding !== 'object') {
+				return '';
+			}
+			const labels = { unknown: 'Unknown — refresh connection', available: 'Available to request', not_available: 'Not available', requested_pending: 'Request pending activation', withdrawn: 'Request withdrawn' };
+			const valid = onboarding.runtime_enabled === false && Object.prototype.hasOwnProperty.call(labels, onboarding.status);
+			const label = valid ? labels[onboarding.status] : labels.unknown;
+			let html = '<section class="yoro-early-access-onboarding" aria-label="Early Access onboarding"><h4>Early Access</h4><p>' + escapeHtml(label) + '</p>';
+			html += '<p>Runtime disabled. This endpoint is not currently connectable. A request records interest only.</p>';
+			const endpoint = String(onboarding.future_endpoint || '');
+			try {
+				const url = new URL(endpoint);
+				const api = new URL(YoRoAIAdmin.aiApiUrl || '');
+				if (valid && url.protocol === 'https:' && url.origin === api.origin && url.pathname === '/mcp/early-access' && !url.username && !url.password && !url.search && !url.hash) {
+					html += '<p>Future Custom MCP endpoint: <code>' + escapeHtml(endpoint) + '</code></p>';
+				}
+			} catch (error) {}
+			html += '<p>After separately approved activation, complete ChatGPT Custom MCP or Personal Plugin setup through the YoRo account.</p></section>';
+			return html;
 		}
 
 		function getConversationDashboardUrl(conversationId, data) {

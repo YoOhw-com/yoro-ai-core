@@ -241,6 +241,9 @@ if ( defined( 'ABSPATH' ) && function_exists( 'get_users' ) ) {
 	}
 }
 
+$settings_source = $read_source( 'includes/ai/class-yoro-ai-settings.php' );
+$assert( false !== strpos( $settings_source, "'runtime_enabled' => false" ), 'Onboarding fallback must stay runtime disabled.' );
+
 if ( $failures ) {
 	foreach ( $failures as $failure ) {
 		fwrite( STDERR, "FAIL: {$failure}\n" );
