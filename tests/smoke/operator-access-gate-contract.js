@@ -42,6 +42,23 @@ assert(!accessGateSource.includes('Open YoRo account'), 'WordPress operator acce
 assert(primaryControlsSource.includes('[data-yoro-operator-access-check]'), 'Operator access action must trigger an in-plugin access check.');
 assert(primaryControlsSource.includes('loadAiApiStatus(true)'), 'Operator access action must refresh the signed WordPress actor handshake.');
 
+const onboardingSource = functionSource('function renderEarlyAccessOnboarding(onboarding)', 'function getConversationDashboardUrl');
+const renderOnboarding = new Function('onboarding', 'YoRoAIAdmin', 'escapeHtml', onboardingSource + '\nreturn renderEarlyAccessOnboarding(onboarding);');
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+for (const status of ['unknown', 'available', 'not_available', 'requested_pending', 'withdrawn']) {
+	const html = renderOnboarding({ status, runtime_enabled: false, future_endpoint: 'https://api.example/mcp/early-access' }, { aiApiUrl: 'https://api.example/api/v1' }, escapeHtml);
+	assert(html.includes('not currently connectable'), `Missing dormant notice: ${status}`);
+	assert(html.includes('https://api.example/mcp/early-access'), `Missing informational endpoint: ${status}`);
+	assert(!html.includes('href='), 'Future endpoint must not become a connect link.');
+}
+for (const future_endpoint of ['javascript:alert(1)', 'https://evil.test/mcp/early-access', 'https://api.example/mcp/early-access?token=secret', '<img src=x onerror=alert(1)>']) {
+	const html = renderOnboarding({ status: 'requested_pending', runtime_enabled: false, future_endpoint }, { aiApiUrl: 'https://api.example/api/v1' }, escapeHtml);
+	assert(!html.includes(future_endpoint), 'Unsafe endpoint reached UI.');
+}
+assert(renderOnboarding({ status: '<img>', runtime_enabled: true }, {}, escapeHtml).includes('Unknown'), 'Unknown status or activation must fail closed.');
+assert(renderOnboarding(null, {}, escapeHtml) === '', 'Omitted REST enrollment field must stay omitted in UI.');
+assert(code.includes('renderEarlyAccessOnboarding(data && data.early_access_onboarding)'), 'Status refresh does not consume the real REST projection.');
+
 if (failures.length) {
 	failures.forEach((failure) => {
 		console.error(`FAIL: ${failure}`);

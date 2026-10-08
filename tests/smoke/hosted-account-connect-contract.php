@@ -55,10 +55,11 @@ foreach ( $option_names as $option_name ) {
 }
 
 $captured_http = [];
-$api_url       = 'http://yoro-account-connect.test/api/v1';
+$api_url       = 'https://yoro-account-connect.test/api/v1';
 $plain_key     = 'yoro_ai_sk_hosted_connect_smoke';
 
-$http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http ) {
+$handshake_transform = null;
+$http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http, &$handshake_transform ) {
 	$body = [];
 
 	if ( is_string( $args['body'] ?? null ) ) {
@@ -103,7 +104,7 @@ $http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http )
 				'type'               => 'wordpress_connection',
 				'site_connection_id' => 1,
 				'abilities'          => [ 'site:handshake', 'site:disconnect' ],
-				'expires_at'         => gmdate( 'c', time() + DAY_IN_SECONDS ),
+				'expires_at'         => gmdate( 'c', time() + 30 * DAY_IN_SECONDS ),
 			],
 			'entitlements' => [ 'conversation' => true, 'usage_plan' => 'trial' ],
 			'usage'        => [ 'limit' => 100, 'used' => 0, 'remaining' => 100 ],
@@ -138,6 +139,20 @@ $http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http )
 				],
 			],
 		];
+
+	if ( false === strpos( (string) $url, '/sites/disconnect' ) ) {
+		$payload['early_access_onboarding'] = [
+			'status' => 'available', 'source' => 'api_handshake', 'site_id' => 1,
+			'installation_uuid' => YoRo_AI_Settings::get_installation_uuid(),
+			'connection_healthy' => true, 'compatible' => true,
+			'checked_at' => gmdate( 'c' ), 'expires_at' => gmdate( 'c', time() + 300 ),
+			'future_endpoint' => 'https://yoro-account-connect.test/mcp/early-access', 'runtime_enabled' => false,
+		];
+		if ( is_callable( $handshake_transform ) ) {
+			$payload = $handshake_transform( $payload );
+			if ( is_wp_error( $payload ) ) { return $payload; }
+		}
+	}
 
 	return [
 		'headers'  => [],
@@ -269,8 +284,91 @@ try {
 	$assert( false !== strpos( (string) $admin_script, "chatShell.classList.toggle('is-account-locked', !accessible && !checking);" ), 'The chat board renders a locked visual state while access is still loading.' );
 	$assert( false !== strpos( (string) $admin_script, 'account_connection_permission_check' ) || method_exists( 'YoRo_REST_API', 'account_connection_permission_check' ), 'The server-side account gate is missing.' );
 
+	$previous_actor = get_current_user_id();
+	$admins = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ids' ] );
+	$assert( ! empty( $admins ), 'Disposable runtime must provide an administrator for onboarding certification.' );
+	if ( ! empty( $admins ) ) {
+		wp_set_current_user( $admins[0] );
+		foreach ( [ 'unknown', 'available', 'not_available', 'requested_pending', 'withdrawn' ] as $state ) {
+			$handshake_transform = static function ( $payload ) use ( $state ) { $payload['early_access_onboarding']['status'] = $state; return $payload; };
+			$result = ( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $plain_key );
+			$assert( $state === ( $result['early_access_onboarding']['status'] ?? '' ), 'Client dropped onboarding state: ' . $state );
+			$assert( $state === YoRo_AI_Settings::get_early_access_onboarding()['status'], 'Persisted status changed: ' . $state );
+			$get = YoRo_REST_API::get_ai_api_status()->get_data();
+			$post = YoRo_REST_API::test_ai_api_handshake();
+			$post = is_wp_error( $post ) ? [] : $post->get_data();
+			$assert( $state === ( $get['early_access_onboarding']['status'] ?? '' ), 'REST GET dropped status: ' . $state );
+			$assert( $state === ( $post['early_access_onboarding']['status'] ?? '' ), 'REST POST dropped status: ' . $state );
+			$assert( false === ( $get['early_access_onboarding']['runtime_enabled'] ?? null ), 'REST status granted runtime authority.' );
+			$assert( ! array_key_exists( 'early_access_credential_fingerprint', $get ) && ! array_key_exists( 'credential', $get['early_access_onboarding'] ?? [] ), 'Status projection leaked credential binding.' );
+		}
+		$cases = [
+			'unknown status' => static function ( $p ) { $p['early_access_onboarding']['status'] = 'enabled'; return $p; },
+			'activation hint' => static function ( $p ) { $p['early_access_onboarding']['runtime_enabled'] = true; return $p; },
+			'unsafe URL' => static function ( $p ) { $p['early_access_onboarding']['future_endpoint'] = 'javascript:alert(1)'; return $p; },
+			'foreign host' => static function ( $p ) { $p['early_access_onboarding']['future_endpoint'] = 'https://evil.test/mcp/early-access'; return $p; },
+			'URL credentials' => static function ( $p ) { $p['early_access_onboarding']['future_endpoint'] = 'https://user:secret@yoro-account-connect.test/mcp/early-access'; return $p; },
+			'site mismatch' => static function ( $p ) { $p['early_access_onboarding']['site_id'] = 2; return $p; },
+			'installation mismatch' => static function ( $p ) { $p['early_access_onboarding']['installation_uuid'] = wp_generate_uuid4(); return $p; },
+			'foreign site URL' => static function ( $p ) { $p['site']['url'] = 'https://other-store.test'; return $p; },
+			'missing field' => static function ( $p ) { unset( $p['early_access_onboarding'] ); return $p; },
+			'malformed field' => static function ( $p ) { $p['early_access_onboarding'] = 'requested_pending'; return $p; },
+			'expired' => static function ( $p ) { $p['early_access_onboarding']['expires_at'] = gmdate( 'c', time() - 1 ); return $p; },
+			'stale' => static function ( $p ) { $p['early_access_onboarding']['checked_at'] = gmdate( 'c', time() - 3600 ); return $p; },
+			'manifest expired' => static function ( $p ) { $p['connector_runtime']['capability_manifest']['expires_at'] = gmdate( 'c', time() - 1 ); return $p; },
+			'unsupported Core' => static function ( $p ) { $p['connection']['plugin_version'] = '0.0.1'; return $p; },
+			'PII authority hints' => static function ( $p ) { $p['early_access_onboarding']['tenant'] = [ 'email' => 'secret@example.test' ]; $p['early_access_onboarding']['client_id'] = 'secret-client'; return $p; },
+		];
+		foreach ( $cases as $label => $transform ) {
+			$handshake_transform = $transform;
+			$result = ( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $plain_key );
+			$assert( 'unknown' === ( $result['early_access_onboarding']['status'] ?? '' ), 'Unsafe onboarding payload survived: ' . $label );
+			$rest = YoRo_REST_API::get_ai_api_status()->get_data();
+			$assert( 'unknown' === ( $rest['early_access_onboarding']['status'] ?? '' ), 'Unsafe stored payload reached REST: ' . $label );
+			$assert( false === strpos( wp_json_encode( $rest['early_access_onboarding'] ?? [] ), 'secret' ), 'New field leaked private content.' );
+		}
+		$handshake_transform = static function ( $p ) { $p['early_access_onboarding']['status'] = 'requested_pending'; return $p; };
+		( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $plain_key );
+		$use_ai_user = wp_create_user( 'ea-status-viewer-' . wp_generate_password( 8, false ), wp_generate_password( 30 ), 'ea-status-' . wp_generate_password( 8, false ) . '@example.test' );
+		$assert( ! is_wp_error( $use_ai_user ), 'Could not create disposable USE_AI-only actor.' );
+		if ( ! is_wp_error( $use_ai_user ) ) {
+			$user = new WP_User( $use_ai_user ); $user->add_cap( YoRo_Capabilities::USE_AI );
+			wp_set_current_user( $use_ai_user );
+			$assert( YoRo_REST_API::ai_status_permission_check(), 'Existing USE_AI status permission changed.' );
+			$get = YoRo_REST_API::get_ai_api_status()->get_data();
+			$post = YoRo_REST_API::test_ai_api_handshake(); $post = is_wp_error( $post ) ? [] : $post->get_data();
+			$assert( ! array_key_exists( 'early_access_onboarding', $get ) && ! array_key_exists( 'early_access_onboarding', $post ), 'USE_AI-only actor saw private enrollment interest.' );
+			wp_set_current_user( $admins[0] );
+			if ( ! function_exists( 'wp_delete_user' ) ) { require_once ABSPATH . 'wp-admin/includes/user.php'; }
+			wp_delete_user( $use_ai_user );
+		}
+		$cached = get_option( YoRo_AI_Settings::OPTION_AI_API_STATUS );
+		$cached['early_access_onboarding']['checked_at'] = gmdate( 'c', time() - 3600 );
+		update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $cached, false );
+		$assert( 'unknown' === ( YoRo_REST_API::get_ai_api_status()->get_data()['early_access_onboarding']['status'] ?? '' ), 'Cached stale intent survived REST readback.' );
+		$handshake_transform = static function ( $p ) { return new WP_Error( 'disposable_network_failure', 'Network unavailable' ); };
+		( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $plain_key );
+		$assert( 'unknown' === YoRo_AI_Settings::get_early_access_onboarding()['status'], 'Failed handshake retained pending intent.' );
+		$handshake_transform = null;
+		( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $plain_key );
+		$valid_status = YoRo_AI_Settings::get_ai_api_status();
+		$assert( 'available' === YoRo_AI_Settings::get_early_access_onboarding()['status'], 'Fresh reconnect did not restore API-owned status.' );
+		$encrypt = new ReflectionMethod( YoRo_AI_Settings::class, 'encrypt_ai_api_site_key' );
+		update_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $encrypt->invoke( null, 'different-test-credential' ), false );
+		$assert( 'unknown' === YoRo_AI_Settings::get_early_access_onboarding()['status'], 'Changed credential preserved stale intent.' );
+		update_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $stored_key, false );
+		$handshake_transform = static function ( $p ) { return new WP_Error( 'invalid_rotation', 'Invalid replacement' ); };
+		YoRo_AI_Settings::save_connected_ai_api_credentials( $api_url, 'invalid-replacement-key' );
+		$assert( 'unknown' === YoRo_AI_Settings::get_early_access_onboarding()['status'], 'Invalid credential rotation retained intent.' );
+		$assert( $plain_key === YoRo_AI_Settings::get_ai_api_site_key(), 'Invalid rotation changed the active connection credential.' );
+		$handshake_transform = null;
+		( new YoRo_AI_API_Client() )->handshake_with_credentials( $api_url, $plain_key );
+		wp_set_current_user( $previous_actor );
+	}
+
 	$disconnect_result = YoRo_AI_Settings::disconnect_ai_api();
 	$assert( true === $disconnect_result, 'Remote disconnect did not succeed.' );
+	$assert( 'unknown' === YoRo_AI_Settings::get_early_access_onboarding()['status'], 'Disconnect preserved pending intent.' );
 	$assert( '' === (string) get_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, '' ), 'Local credential was not cleared after remote revoke.' );
 
 	$disconnect_requests = array_values(

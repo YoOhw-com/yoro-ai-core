@@ -19,11 +19,16 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		$rotation = $this->rotate_site_credential();
 
 		if ( is_wp_error( $rotation ) || empty( $rotation['site_key'] ) ) {
+			YoRo_AI_Settings::invalidate_early_access_onboarding();
+			unset( $status['early_access_onboarding'] );
 			return $status;
 		}
 
 		$saved = YoRo_AI_Settings::save_connected_ai_api_credentials( $api_url, sanitize_text_field( $rotation['site_key'] ) );
 
+		if ( is_wp_error( $saved ) ) {
+			unset( $status['early_access_onboarding'] );
+		}
 		return is_wp_error( $saved ) ? $status : $saved;
 	}
 
@@ -102,7 +107,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			return new WP_Error( 'yoro_ai_api_invalid_handshake', $message );
 		}
 
-		$status = $this->normalize_handshake_response( $json );
+		$status = $this->normalize_handshake_response( $json, $api_url, $site_key );
 
 		if ( class_exists( 'YoRo_WordPress_Actor' ) ) {
 			YoRo_WordPress_Actor::record_access( $status['actor_access'] ?? [] );
@@ -1832,7 +1837,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		];
 	}
 
-	private function normalize_handshake_response( array $response ) {
+	private function normalize_handshake_response( array $response, $api_url = null, $site_key = null ) {
 		$site         = isset( $response['site'] ) && is_array( $response['site'] ) ? $response['site'] : [];
 		$client       = isset( $response['client'] ) && is_array( $response['client'] ) ? $response['client'] : [];
 		$organization = isset( $response['organization'] ) && is_array( $response['organization'] ) ? $response['organization'] : [];
@@ -1862,7 +1867,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			&& 'wordpress_connection' === sanitize_key( $credential['type'] ?? '' )
 			&& $connection_id === absint( $credential['site_connection_id'] ?? 0 );
 
-		return [
+		$normalized = [
 			'connected'    => $account_connected,
 			'service_available' => true,
 			'checked_at'   => current_time( 'mysql' ),
@@ -1943,6 +1948,9 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 			],
 			'connector_runtime' => $this->normalize_connector_runtime( $connector_runtime ),
 		];
+		$normalized['early_access_credential_fingerprint'] = hash( 'sha256', null === $site_key ? YoRo_AI_Settings::get_ai_api_site_key() : $site_key );
+		$normalized['early_access_onboarding'] = YoRo_AI_Settings::normalize_early_access_onboarding( $response['early_access_onboarding'] ?? null, $normalized, $api_url, $site_key );
+		return $normalized;
 	}
 
 	private function normalize_connector_runtime( array $runtime ) {
@@ -1999,6 +2007,9 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		$existing = YoRo_AI_Settings::get_ai_api_status();
 		$next = array_merge( $existing, $status );
 		unset( $next['actor_access'] );
+		if ( '' !== $failure_state ) {
+			unset( $next['early_access_onboarding'], $next['early_access_credential_fingerprint'] );
+		}
 
 		if ( 'degraded' === $failure_state ) {
 			$next['service_available'] = false;

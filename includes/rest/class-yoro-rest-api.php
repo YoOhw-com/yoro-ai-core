@@ -1267,7 +1267,7 @@ class YoRo_REST_API {
 		$api_url = YoRo_AI_Settings::get_ai_api_url();
 		$account_connection = YoRo_AI_Settings::get_ai_api_account_connection( $status );
 
-		return [
+		$response = [
 			'success'             => true,
 			'service'             => 'yoro-ai-api',
 			'provider_preference' => YoRo_AI_Settings::get_provider_preference(),
@@ -1302,6 +1302,10 @@ class YoRo_REST_API {
 				'email_inbox'    => YoRo_AI_Provider_Resolver::supports( 'email_inbox' ),
 			],
 		];
+		if ( current_user_can( YoRo_Capabilities::MANAGE_CONNECTION ) ) {
+			$response['early_access_onboarding'] = YoRo_AI_Settings::get_early_access_onboarding( $status );
+		}
+		return $response;
 	}
 
 }
