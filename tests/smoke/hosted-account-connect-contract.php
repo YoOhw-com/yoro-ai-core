@@ -117,6 +117,14 @@ foreach ( [ 'crypto', 'key_store', 'url_store', 'enabled_store', 'missing_key' ]
 		$assert( 0 === $probe_exit && true === ( $probe_result['success'] ?? false ), 'Isolated onboarding persistence failure did not invalidate status: ' . $probe_mode . ' ' . $probe_error );
 	}
 }
+$original_user_id = get_current_user_id();
+$actor_meta_before = [];
+foreach ( array_unique( array_merge( [ $original_user_id ], get_users( [ 'role' => 'administrator', 'fields' => 'ids' ] ) ) ) as $actor_id ) {
+	if ( $actor_id < 1 ) { continue; }
+	foreach ( [ YoRo_WordPress_Actor::ACCESS_META_KEY, YoRo_WordPress_Actor::SUBJECT_META_KEY ] as $meta_key ) {
+		$actor_meta_before[ $actor_id ][ $meta_key ] = get_user_meta( $actor_id, $meta_key, false );
+	}
+}
 $previous_http_host   = $_SERVER['HTTP_HOST'] ?? null;
 $_SERVER['HTTP_HOST'] = 'yoplay8.local';
 
@@ -149,7 +157,8 @@ $api_url       = 'https://yoro-account-connect.test/api/v1';
 $plain_key     = 'yoro_ai_sk_hosted_connect_smoke';
 
 $handshake_transform = null;
-$http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http, &$handshake_transform ) {
+$exact_handshake_body = null;
+$http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http, &$handshake_transform, &$exact_handshake_body ) {
 	$body = [];
 
 	if ( is_string( $args['body'] ?? null ) ) {
@@ -246,7 +255,7 @@ $http_filter = static function ( $preempt, $args, $url ) use ( &$captured_http, 
 
 	return [
 		'headers'  => [],
-		'body'     => wp_json_encode( $payload ),
+		'body'     => null !== $exact_handshake_body && false !== strpos( (string) $url, '/sites/handshake' ) ? $exact_handshake_body : wp_json_encode( $payload ),
 		'response' => [ 'code' => 200, 'message' => 'OK' ],
 		'cookies'  => [],
 		'filename' => null,
@@ -456,6 +465,88 @@ try {
 		wp_set_current_user( $previous_actor );
 	}
 
+	$pair_api_path = getenv( 'YORO_API_PAIR_PATH' );
+	if ( false !== $pair_api_path && '' !== $pair_api_path ) {
+		$pair_core_path = getenv( 'YORO_CORE_PAIR_PATH' );
+		$assert( is_string( $pair_core_path ) && realpath( $pair_core_path ) === realpath( $plugin_root ), 'Exact onboarding pair Core path mismatch.' );
+		$assert( is_file( $pair_api_path . '/vendor/autoload.php' ) && is_file( $pair_api_path . '/tests/Feature/McpEarlyAccessOnboardingTest.php' ), 'Exact onboarding pair producer/vendor missing.' );
+		$run_pair_process = static function ( array $command, $cwd, $environment = null ) {
+			$process = proc_open( $command, [ 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ], $pipes, $cwd, $environment );
+			if ( ! is_resource( $process ) ) { throw new RuntimeException( 'Exact onboarding process could not start.' ); }
+			$output = stream_get_contents( $pipes[1] ); fclose( $pipes[1] );
+			$error = stream_get_contents( $pipes[2] ); fclose( $pipes[2] );
+			$code = proc_close( $process );
+			if ( 0 !== $code ) { throw new RuntimeException( 'Exact onboarding process failed: ' . $output . $error ); }
+			return trim( $output );
+		};
+		$api_head = $run_pair_process( [ 'git', 'rev-parse', 'HEAD' ], $pair_api_path );
+		$core_head = $run_pair_process( [ 'git', 'rev-parse', 'HEAD' ], $pair_core_path );
+		$assert( preg_match( '/^[a-f0-9]{40}$/', $api_head ) && preg_match( '/^[a-f0-9]{40}$/', $core_head ), 'Exact onboarding pair heads invalid.' );
+		$api_expected = getenv( 'YORO_EXACT_API_SHA' ); $core_expected = getenv( 'YORO_EXACT_CORE_SHA' );
+		$assert( ( ! $api_expected || $api_head === $api_expected ) && ( ! $core_expected || $core_head === $core_expected ), 'Exact onboarding pair head mismatch.' );
+		$api_remote = $run_pair_process( [ 'git', 'remote', 'get-url', 'origin' ], $pair_api_path );
+		$core_remote = $run_pair_process( [ 'git', 'remote', 'get-url', 'origin' ], $pair_core_path );
+		$assert( preg_match( '#^https://github\.com/YoOhw-com/yoro-ai-api(?:\.git)?$#i', $api_remote ) && preg_match( '#^https://github\.com/YoOhw-com/yoro-ai-core(?:\.git)?$#i', $core_remote ), 'Exact onboarding pair repository mismatch.' );
+		if ( $failures ) { throw new RuntimeException( 'Exact onboarding pair context failed closed.' ); }
+		$fixture_path = tempnam( sys_get_temp_dir(), 'yoro-ea-exact-fixtures-' );
+		if ( false === $fixture_path ) { throw new RuntimeException( 'Exact onboarding fixture file unavailable.' ); }
+		$pair_admins = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ids' ] );
+		if ( empty( $pair_admins ) ) { throw new RuntimeException( 'Exact onboarding manager missing.' ); }
+		wp_set_current_user( $pair_admins[0] );
+		$pair_actor = YoRo_WordPress_Actor::current_payload();
+		$exact_key = 'yoro_ai_sk_exact_fixture_' . wp_generate_password( 30, false );
+		$fixture_env = [ 'PATH' => getenv( 'PATH' ), 'APP_ENV' => 'testing',
+			'APP_KEY' => 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+			'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => ':memory:', 'DB_URL' => '',
+			'CACHE_STORE' => 'array', 'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array',
+			'YORO_EA_TEST_HANDSHAKE_FIXTURE' => $fixture_path,
+			'YORO_EA_TEST_SITE_URL' => home_url(), 'YORO_EA_TEST_INSTALLATION_UUID' => YoRo_AI_Settings::get_installation_uuid(),
+			'YORO_EA_TEST_SITE_KEY' => $exact_key, 'YORO_EA_TEST_WORDPRESS_SUBJECT' => $pair_actor['subject'] ];
+		try {
+			$producer_output = $run_pair_process( [ PHP_BINARY, 'artisan', 'test', '--compact', 'tests/Feature/McpEarlyAccessOnboardingTest.php', '--filter=produces site bound' ], $pair_api_path, $fixture_env );
+			$fixture_bytes = file_get_contents( $fixture_path );
+			$fixtures = json_decode( $fixture_bytes, true );
+			$required_states = [ 'available', 'requested_pending', 'withdrawn', 'not_available', 'unknown' ];
+			if ( ! is_array( $fixtures ) || array_keys( $fixtures ) !== $required_states ) { throw new RuntimeException( 'Exact onboarding five-state producer output invalid.' ); }
+			update_option( YoRo_AI_Settings::OPTION_AI_API_URL, 'https://api.example.test/api/v1', false );
+			$encrypt = new ReflectionMethod( YoRo_AI_Settings::class, 'encrypt_ai_api_site_key' );
+			update_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $encrypt->invoke( null, $exact_key ), false );
+			update_option( YoRo_AI_Settings::OPTION_AI_API_ENABLED, 'yes', false );
+			$exact_admins = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ids' ] );
+			if ( empty( $exact_admins ) ) { throw new RuntimeException( 'Exact onboarding WordPress manager missing.' ); }
+			wp_set_current_user( $exact_admins[0] );
+			$passed_states = [];
+			foreach ( $fixtures as $state => $raw_payload ) {
+				if ( ! is_string( $raw_payload ) ) { throw new RuntimeException( 'Exact onboarding raw API response missing.' ); }
+				$exact_handshake_body = $raw_payload;
+				$handshake_transform = null;
+				$result = ( new YoRo_AI_API_Client() )->handshake_with_credentials( YoRo_AI_Settings::get_ai_api_url(), $exact_key );
+				$get = YoRo_REST_API::get_ai_api_status()->get_data();
+				$post = YoRo_REST_API::test_ai_api_handshake();
+				$post = is_wp_error( $post ) ? [] : $post->get_data();
+				if ( is_wp_error( $result ) || ( $result['early_access_onboarding']['status'] ?? '' ) !== $state
+					|| YoRo_AI_Settings::get_early_access_onboarding()['status'] !== $state
+					|| ( $get['early_access_onboarding']['status'] ?? '' ) !== $state || ( $post['early_access_onboarding']['status'] ?? '' ) !== $state
+					|| false !== ( $get['early_access_onboarding']['runtime_enabled'] ?? null ) ) {
+					throw new RuntimeException( 'Exact signed API to actual WordPress onboarding chain failed: ' . $state );
+				}
+				$passed_states[] = $state;
+			}
+			echo 'YORO_EA_EXACT_HANDSHAKE_CHAIN ' . wp_json_encode( [ 'status' => 'passed', 'api_head' => $api_head, 'core_head' => $core_head,
+				'fixture_sha256' => hash( 'sha256', $fixture_bytes ), 'states' => $passed_states,
+				'consumer' => 'actual_wordpress_client_settings_rest_get_post', 'raw_api_response_unchanged' => true ] ) . PHP_EOL;
+		} finally {
+			unlink( $fixture_path );
+			$exact_handshake_body = null;
+			$handshake_transform = null;
+			update_option( YoRo_AI_Settings::OPTION_AI_API_URL, $api_url, false );
+			update_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $stored_key, false );
+			wp_set_current_user( $original_user_id );
+		}
+	} else {
+		echo "YORO_EA_EXACT_HANDSHAKE_CHAIN not_available: ordinary Core smoke has no exact API pair context.\n";
+	}
+
 	$disconnect_result = YoRo_AI_Settings::disconnect_ai_api();
 	$assert( true === $disconnect_result, 'Remote disconnect did not succeed.' );
 	$assert( 'unknown' === YoRo_AI_Settings::get_early_access_onboarding()['status'], 'Disconnect preserved pending intent.' );
@@ -471,6 +562,14 @@ try {
 	$assert( $installation_uuid === ( $disconnect_requests[0]['body']['installation_uuid'] ?? '' ), 'Disconnect did not bind the installation UUID.' );
 } finally {
 	remove_filter( 'pre_http_request', $http_filter, 10 );
+	foreach ( $actor_meta_before as $actor_id => $actor_meta ) {
+		foreach ( $actor_meta as $meta_key => $values ) {
+			delete_user_meta( $actor_id, $meta_key );
+			foreach ( $values as $value ) { add_user_meta( $actor_id, $meta_key, $value ); }
+			$assert( get_user_meta( $actor_id, $meta_key, false ) === $values, 'Hosted smoke did not restore original actor metadata.' );
+		}
+	}
+	wp_set_current_user( $original_user_id );
 
 	foreach ( $old_options as $option_name => $old_value ) {
 		if ( null === $old_value ) {
