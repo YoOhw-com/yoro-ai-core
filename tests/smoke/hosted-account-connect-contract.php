@@ -6,6 +6,84 @@
  * wp eval-file wp-content/plugins/yoro-ai-core/tests/smoke/hosted-account-connect-contract.php
  */
 
+/** Isolated helper-stub fault injection; never runs in the parent WordPress process. */
+if ( PHP_SAPI === 'cli' && '--onboarding-persistence-probe' === ( $argv[1] ?? '' ) ) {
+	$probe_mode = $argv[2] ?? '';
+	define( 'ABSPATH', '/tmp/yoro-isolated-probe/' );
+	define( 'WP_DEBUG', true );
+	define( 'YORO_AI_CORE_VERSION', '0.2.5.1' );
+	$probe_root = dirname( __DIR__, 2 );
+	$probe_uuid = '11111111-1111-4111-8111-111111111111';
+	$probe_status = [
+		'connected' => true, 'service_available' => true,
+		'site' => [ 'id' => 1, 'url' => 'https://fixture-store.test' ], 'organization' => [ 'id' => 1 ],
+		'account_connection' => [ 'connected' => true, 'status' => 'active' ],
+		'connection' => [ 'id' => 1, 'installation_uuid' => $probe_uuid, 'status' => 'active', 'plugin_version' => '0.2.5.1' ],
+		'credential' => [ 'id' => 1, 'type' => 'wordpress_connection', 'site_connection_id' => 1, 'expires_at' => gmdate( 'c', time() + 86400 ) ],
+		'connector_runtime' => [ 'protocol_version' => 1, 'connector_version' => '0.2.5.1',
+			'capability_manifest' => [ 'current' => true, 'manifest_id' => 'fixture-manifest', 'revision' => 1, 'expires_at' => gmdate( 'c', time() + 3600 ) ] ],
+		'early_access_onboarding' => [ 'status' => 'requested_pending', 'source' => 'api_handshake', 'site_id' => 1,
+			'installation_uuid' => $probe_uuid, 'connection_healthy' => true, 'compatible' => true,
+			'checked_at' => gmdate( 'c' ), 'expires_at' => gmdate( 'c', time() + 300 ),
+			'future_endpoint' => 'https://fixture-api.test/mcp/early-access', 'runtime_enabled' => false ],
+		'early_access_credential_fingerprint' => hash( 'sha256', 'fixture-existing-key' ),
+	];
+	$probe_options = [ 'yoro_ai_installation_uuid' => $probe_uuid, 'yoro_ai_api_url' => 'https://fixture-api.test/api/v1',
+		'yoro_ai_api_site_key' => 'fixture-existing-key', 'yoro_ai_api_enabled' => 'yes', 'yoro_ai_api_status' => $probe_status ];
+	function get_option( $name, $default = false ) { global $probe_options; return $probe_options[ $name ] ?? $default; }
+	function update_option( $name, $value, $autoload = false ) {
+		global $probe_options, $probe_mode;
+		$failures = [ 'key_store' => 'yoro_ai_api_site_key', 'url_store' => 'yoro_ai_api_url', 'enabled_store' => 'yoro_ai_api_enabled' ];
+		if ( ( $failures[ $probe_mode ] ?? '' ) === $name ) { return false; }
+		$probe_options[ $name ] = $value; return true;
+	}
+	function sanitize_text_field( $value ) { return is_scalar( $value ) ? strip_tags( (string) $value ) : ''; }
+	function sanitize_textarea_field( $value ) { return sanitize_text_field( $value ); }
+	function sanitize_key( $value ) { return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $value ) ); }
+	function esc_url_raw( $value ) { return (string) $value; }
+	function absint( $value ) { return abs( (int) $value ); }
+	function untrailingslashit( $value ) { return rtrim( $value, '/' ); }
+	function wp_parse_url( $value ) { return parse_url( $value ); }
+	function home_url() { return 'https://fixture-store.test'; }
+	function wp_salt( $scheme ) { return 'fixture-only-salt-' . $scheme; }
+	function __( $value, $domain = '' ) { return $value; }
+	function random_bytes( $length ) {
+		global $probe_mode;
+		if ( 'crypto' === $probe_mode ) { throw new Exception( 'Isolated entropy failure' ); }
+		return str_repeat( 'x', $length );
+	}
+	class WP_Error {
+		public function __construct( private $code, private $message ) {}
+		public function get_error_code() { return $this->code; }
+	}
+	function is_wp_error( $value ) { return $value instanceof WP_Error; }
+	class YoRo_AI_API_Client {
+		public function handshake_with_credentials( $api_url, $site_key, $record_status = true ) {
+			global $probe_status;
+			$status = $probe_status;
+			$status['early_access_credential_fingerprint'] = hash( 'sha256', $site_key );
+			return $status;
+		}
+	}
+	require $probe_root . '/includes/ai/class-yoro-ai-settings.php';
+	$before = YoRo_AI_Settings::get_early_access_onboarding()['status'];
+	$old_key = YoRo_AI_Settings::get_ai_api_site_key();
+	$target_url = 'url_store' === $probe_mode ? 'https://replacement-api.test/api/v1' : 'https://fixture-api.test/api/v1';
+	if ( 'enabled_store' === $probe_mode ) { $probe_options['yoro_ai_api_enabled'] = 'no'; }
+	$result = YoRo_AI_Settings::save_connected_ai_api_credentials( $target_url, 'missing_key' === $probe_mode ? '' : 'fixture-replacement-key' );
+	$after = YoRo_AI_Settings::get_early_access_onboarding()['status'];
+	$preserved = hash_equals( $old_key, YoRo_AI_Settings::get_ai_api_site_key() );
+	$preservation_ok = ! in_array( $probe_mode, [ 'crypto', 'key_store', 'missing_key' ], true ) || $preserved;
+	$error_codes = [ 'crypto' => 'yoro_ai_api_encryption_failed', 'missing_key' => 'yoro_ai_api_missing_connect_credentials' ];
+	$expected_error = isset( $error_codes[ $probe_mode ] )
+		? is_wp_error( $result ) && $error_codes[ $probe_mode ] === $result->get_error_code() : ! is_wp_error( $result );
+	$returned_status = is_wp_error( $result ) ? 'error' : ( $result['early_access_onboarding']['status'] ?? 'unknown' );
+	$projection_withheld = ! in_array( $returned_status, [ 'available', 'requested_pending', 'withdrawn' ], true );
+	$success = 'requested_pending' === $before && 'unknown' === $after && $preservation_ok && $expected_error && $projection_withheld;
+	echo json_encode( [ 'success' => $success, 'mode' => $probe_mode, 'before' => $before, 'after' => $after, 'old_key_preserved' => $preserved, 'returned_status' => $returned_status ] ) . PHP_EOL;
+	exit( $success ? 0 : 1 );
+}
+
 if ( ! defined( 'ABSPATH' ) ) {
 	fwrite( STDERR, "Run this smoke contract through WordPress, for example with wp eval-file.\n" );
 	exit( 1 );
@@ -27,6 +105,18 @@ $assert   = static function ( $condition, $message ) use ( &$failures ) {
 		$failures[] = $message;
 	}
 };
+foreach ( [ 'crypto', 'key_store', 'url_store', 'enabled_store', 'missing_key' ] as $probe_mode ) {
+	$process = proc_open( [ PHP_BINARY, '-d', 'disable_functions=random_bytes', __FILE__, '--onboarding-persistence-probe', $probe_mode ],
+		[ 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ], $probe_pipes );
+	$assert( is_resource( $process ), 'Could not start isolated onboarding persistence probe.' );
+	if ( is_resource( $process ) ) {
+		$probe_output = stream_get_contents( $probe_pipes[1] ); fclose( $probe_pipes[1] );
+		$probe_error = stream_get_contents( $probe_pipes[2] ); fclose( $probe_pipes[2] );
+		$probe_exit = proc_close( $process );
+		$probe_result = json_decode( $probe_output, true );
+		$assert( 0 === $probe_exit && true === ( $probe_result['success'] ?? false ), 'Isolated onboarding persistence failure did not invalidate status: ' . $probe_mode . ' ' . $probe_error );
+	}
+}
 $previous_http_host   = $_SERVER['HTTP_HOST'] ?? null;
 $_SERVER['HTTP_HOST'] = 'yoplay8.local';
 

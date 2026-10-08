@@ -552,6 +552,7 @@ class YoRo_AI_Settings {
 		$target_site_key   = sanitize_text_field( (string) $site_key );
 
 		if ( '' === $target_ai_api_url || '' === $target_site_key ) {
+			self::invalidate_early_access_onboarding();
 			return new WP_Error(
 				'yoro_ai_api_missing_connect_credentials',
 				__( 'YoRo did not return a complete connection payload.', 'yoro-ai-core' )
@@ -572,11 +573,17 @@ class YoRo_AI_Settings {
 		$encrypted_site_key = self::encrypt_ai_api_site_key( $target_site_key );
 
 		if ( is_wp_error( $encrypted_site_key ) ) {
+			self::invalidate_early_access_onboarding();
 			return $encrypted_site_key;
 		}
 
 		update_option( self::OPTION_AI_API_SITE_KEY, $encrypted_site_key, false );
 		update_option( self::OPTION_AI_API_ENABLED, 'yes' );
+		if ( ! hash_equals( $target_site_key, (string) self::get_ai_api_site_key() )
+			|| $target_ai_api_url !== self::get_ai_api_url() || ! self::is_ai_api_enabled() ) {
+			unset( $connection_result['early_access_onboarding'], $connection_result['early_access_credential_fingerprint'] );
+			self::invalidate_early_access_onboarding();
+		}
 		self::update_ai_api_status( $connection_result );
 
 		return $connection_result;
