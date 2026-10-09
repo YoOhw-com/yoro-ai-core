@@ -36,6 +36,21 @@ class YoRo_Commerce_Discovery_Service {
 		if ( '' !== $sku ) {
 			$product_id = function_exists( 'wc_get_product_id_by_sku' ) ? absint( wc_get_product_id_by_sku( $sku ) ) : 0;
 			$products = $product_id > 0 ? [ wc_get_product( $product_id ) ] : [];
+			$products = array_filter(
+				$products,
+				static function ( $product ) use ( $args ) {
+					if ( ! $product instanceof WC_Product ) {
+						return false;
+					}
+					foreach ( [ 'status' => 'get_status', 'type' => 'get_type', 'stock_status' => 'get_stock_status' ] as $field => $getter ) {
+						if ( isset( $args[ $field ] ) && $product->$getter() !== $args[ $field ] ) {
+							return false;
+						}
+					}
+
+					return true;
+				}
+			);
 		} else {
 			$products = wc_get_products( $args );
 		}
