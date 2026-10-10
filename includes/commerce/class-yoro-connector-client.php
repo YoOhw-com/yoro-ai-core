@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Connector_Client {
 
-	const R2_ORIGIN = 'https://yoro-ai-production-r2-nonproduction-7sh7ol.laravel.cloud';
+	const R2_ORIGIN = 'https://r2-api.yorohq.com';
 
 	public function r2_request( $step, $envelope_id = '', array $payload = [], $claim_token = '', $generation = 0 ) {
 		if ( ! YoRo_Connector_Runtime::r2_read_allowed() || ! in_array( $step, [ 'claim', 'ack', 'lease', 'result' ], true )

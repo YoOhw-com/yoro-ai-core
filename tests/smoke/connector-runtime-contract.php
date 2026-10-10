@@ -50,6 +50,9 @@ foreach (
 	$assert( class_exists( $class_name ), sprintf( '%s is not loaded.', $class_name ) );
 }
 
+$assert( 'https://r2-api.yorohq.com' === YoRo_Connector_Client::R2_ORIGIN, 'The isolated R2 lane must pin the exact custom origin.' );
+$assert( ! YoRo_Connector_Runtime::r2_read_allowed(), 'The generic smoke must retain R2 default OFF.' );
+
 $runtime_schedules = YoRo_Connector_Runtime::register_cron_schedule( [] );
 $assert( 5 === YoRo_Connector_Runtime::MAX_DELIVERIES_PER_TICK && 45 === YoRo_Connector_Runtime::MAX_TICK_SECONDS, 'The runner must retain its five-delivery and 45-second caps.' );
 $assert(

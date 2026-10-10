@@ -6,6 +6,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 if ( ! class_exists( 'YoRo_Connector_Runtime' ) ) {
     YoRo_AI_Core::init();
 }
+if ( 'https://r2-api.yorohq.com' !== YoRo_Connector_Client::R2_ORIGIN ) {
+    throw new RuntimeException( 'R2 transport must pin the exact custom origin.' );
+}
 if ( YoRo_Connector_Runtime::r2_read_allowed() ) {
     throw new RuntimeException( 'The R2 source contract must begin default OFF.' );
 }
@@ -79,6 +82,10 @@ try {
         if ( 0 !== strpos( $url, YoRo_Connector_Client::R2_ORIGIN . '/api/v1/r2/product-reads/' ) ) {
             return $pre;
         }
+        if ( 'https://r2-api.yorohq.com' !== substr( $url, 0, strlen( 'https://r2-api.yorohq.com' ) )
+            || 0 !== $args['redirection'] || true !== $args['sslverify'] || 65536 !== $args['limit_response_size'] ) {
+            throw new RuntimeException( 'R2 outbound origin, TLS or redirect boundary widened.' );
+        }
         $requests[] = parse_url( $url, PHP_URL_PATH );
         $args['headers']['Host'] = parse_url( YoRo_Connector_Client::R2_ORIGIN, PHP_URL_HOST );
         $args['sslcertificates'] = $packet['tls_ca'];
@@ -112,6 +119,18 @@ try {
     }
     $validate = new ReflectionMethod( YoRo_Connector_Runtime::class, 'validate_r2_operation' );
     $runtime = new YoRo_Connector_Runtime();
+    if ( 'https://r2-api.yorohq.com/mcp/early-access' !== ( $observed_operation['extensions']['yoro.mcp_r2_product_read']['resource'] ?? null ) ) {
+        throw new RuntimeException( 'The source-loaded API operation must bind the exact custom resource.' );
+    }
+    foreach ( [ 'https://yoro-ai-production-r2-nonproduction-7sh7ol.laravel.cloud/mcp/early-access',
+        'https://api.yorohq.com/mcp/early-access', 'http://r2-api.yorohq.com/mcp/early-access',
+        'https://r2-api.yorohq.com:8443/mcp/early-access', 'https://r2-api.yorohq.com/mcp' ] as $resource ) {
+        $bad = $observed_operation;
+        $bad['extensions']['yoro.mcp_r2_product_read']['resource'] = $resource;
+        if ( ! is_wp_error( $validate->invoke( $runtime, $bad ) ) ) {
+            throw new RuntimeException( 'A legacy or foreign R2 operation resource must fail closed.' );
+        }
+    }
     foreach ( [ [ 'sku', 'OTHER' ], [ 'type', 'variation' ], [ 'status', 'draft' ], [ 'limit', 2 ] ] as $change ) {
         $bad = $observed_operation;
         $bad['params'][ $change[0] ] = $change[1];
