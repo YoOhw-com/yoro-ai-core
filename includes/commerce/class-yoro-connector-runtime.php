@@ -463,7 +463,7 @@ class YoRo_Connector_Runtime {
 			|| ! is_array( $params ) || 4 !== count( $params ) || array_diff( array_keys( $params ), [ 'sku', 'status', 'type', 'limit' ] )
 			|| ! is_string( $params['sku'] ?? null ) || ! preg_match( '/\A[A-Za-z0-9._-]{1,128}\z/D', $params['sku'] )
 			|| 'publish' !== ( $params['status'] ?? null ) || 'simple' !== ( $params['type'] ?? null ) || 1 !== ( $params['limit'] ?? null )
-			|| ! is_array( $facts ) || 'https://yoro-ai-production-r2-nonproduction-7sh7ol.laravel.cloud/mcp/early-access' !== ( $facts['resource'] ?? null )
+			|| ! is_array( $facts ) || 'https://r2-api.yorohq.com/mcp/early-access' !== ( $facts['resource'] ?? null )
 			|| YORO_R2_INSTALLATION_UUID !== ( $facts['installation_uuid'] ?? null )
 			|| ( $status['site']['id'] ?? null ) !== ( $facts['site_id'] ?? null )
 			|| ( $status['credential']['id'] ?? null ) !== ( $facts['site_key_id'] ?? null )
