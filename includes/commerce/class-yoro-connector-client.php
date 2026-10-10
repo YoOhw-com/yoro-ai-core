@@ -6,6 +6,41 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Connector_Client {
 
+	const R2_ORIGIN = 'https://yoro-ai-production-r2-nonproduction-7sh7ol.laravel.cloud';
+
+	public function r2_request( $step, $envelope_id = '', array $payload = [], $claim_token = '', $generation = 0 ) {
+		if ( ! YoRo_Connector_Runtime::r2_read_allowed() || ! in_array( $step, [ 'claim', 'ack', 'lease', 'result' ], true )
+			|| ( 'claim' !== $step && ! preg_match( '/\Aenvelope_[a-f0-9]{64}\z/D', $envelope_id ) ) ) {
+			return new WP_Error( 'yoro_r2_unavailable', 'R2 read transport is unavailable.' );
+		}
+		$path = '/api/v1/r2/product-reads/' . ( 'claim' === $step ? 'claim' : rawurlencode( $envelope_id ) . '/' . $step );
+		$body = wp_json_encode( empty( $payload ) ? (object) [] : $payload );
+		if ( ! is_string( $body ) || strlen( $body ) > 65536 ) {
+			return new WP_Error( 'yoro_r2_invalid_result', 'The R2 payload is outside its safe boundary.' );
+		}
+		$response = wp_remote_request( self::R2_ORIGIN . $path, [
+			'method' => 'POST', 'timeout' => 20, 'redirection' => 0, 'sslverify' => true,
+			'limit_response_size' => 65536,
+			'headers' => array_merge( [ 'Authorization' => 'Bearer ' . YORO_R2_PRODUCT_READ_KEY,
+				'Accept' => 'application/json', 'Content-Type' => 'application/json' ],
+				'claim' === $step ? [] : $this->lease_headers( $claim_token, $generation ) ),
+			'body' => $body,
+		] );
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		$status = (int) wp_remote_retrieve_response_code( $response );
+		if ( 204 === $status && 'claim' === $step ) {
+			return [ 'success' => true, 'empty' => true ];
+		}
+		$json = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( $status < 200 || $status >= 300 || ! is_array( $json ) || true !== ( $json['success'] ?? null ) ) {
+			return new WP_Error( 'yoro_r2_http_error', 'R2 read transport was denied.', [ 'status' => $status ] );
+		}
+
+		return $json;
+	}
+
 	public function publish_capability_manifest( array $payload ) {
 		return $this->request( 'POST', '/connectors/capability-manifests', $payload );
 	}

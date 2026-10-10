@@ -11,6 +11,11 @@ class YoRo_Connector_Execution_Journal {
 	public static function begin( array $operation ) {
 		$key = self::key( $operation );
 		$existing = get_option( $key, [] );
+		$r2_hash = isset( $operation['extensions']['yoro.mcp_r2_product_read'] ) ? hash( 'sha256', wp_json_encode( $operation ) ) : null;
+		if ( null !== $r2_hash && is_array( $existing ) && ! empty( $existing )
+			&& ( $existing['r2_envelope_hash'] ?? null ) !== $r2_hash ) {
+			return [ 'state' => 'conflict' ];
+		}
 
 		if ( is_array( $existing )
 			&& absint( $existing['expires_at'] ?? 0 ) > time()
@@ -24,6 +29,9 @@ class YoRo_Connector_Execution_Journal {
 			'begun_at'    => gmdate( 'c' ),
 			'expires_at'  => time() + self::TTL,
 		];
+		if ( null !== $r2_hash ) {
+			$entry['r2_envelope_hash'] = $r2_hash;
+		}
 		if ( ! add_option( $key, $entry, '', false ) ) {
 			update_option( $key, $entry, false );
 		}
@@ -39,6 +47,9 @@ class YoRo_Connector_Execution_Journal {
 			'completed_at' => gmdate( 'c' ),
 			'expires_at'  => time() + self::TTL,
 		];
+		if ( isset( $operation['extensions']['yoro.mcp_r2_product_read'] ) ) {
+			$entry['r2_envelope_hash'] = hash( 'sha256', wp_json_encode( $operation ) );
+		}
 		update_option( self::key( $operation ), $entry, false );
 
 		return $entry;
