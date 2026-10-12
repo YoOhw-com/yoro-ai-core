@@ -127,6 +127,9 @@ class YoRo_Connector_Smoke_Client extends YoRo_Connector_Client {
 	public $events = [];
 	public $renewals = [];
 	public $results = [];
+	public $event_error = null;
+	public $renewal_error = null;
+	public $result_error = null;
 
 	public function publish_capability_manifest( array $payload ) {
 		$this->manifest = $payload;
@@ -158,18 +161,21 @@ class YoRo_Connector_Smoke_Client extends YoRo_Connector_Client {
 
 	public function renew_lease( $delivery_id, $claim_token, $lease_generation ) {
 		$this->renewals[] = compact( 'delivery_id', 'claim_token', 'lease_generation' );
+		if ( is_wp_error( $this->renewal_error ) ) { return $this->renewal_error; }
 
 		return [ 'success' => true ];
 	}
 
 	public function publish_event( array $payload, $claim_token = '', $lease_generation = 0 ) {
 		$this->events[] = compact( 'payload', 'claim_token', 'lease_generation' );
+		if ( is_wp_error( $this->event_error ) ) { return $this->event_error; }
 
 		return [ 'success' => true ];
 	}
 
 	public function publish_result( array $payload, $claim_token, $lease_generation ) {
 		$this->results[] = compact( 'payload', 'claim_token', 'lease_generation' );
+		if ( is_wp_error( $this->result_error ) ) { return $this->result_error; }
 
 		return [ 'success' => true, 'result' => $payload ];
 	}
@@ -712,6 +718,7 @@ try {
 	}
 
 	$batch_client->claims[] = [ 'success' => true, 'empty' => true ];
+	$all_batch_claims = $batch_client->claims;
 	$batch_result = ( new YoRo_Connector_Runtime( $batch_client ) )->run_batch( 3, 45 );
 	$assert( ! is_wp_error( $batch_result ) && ! empty( $batch_result['success'] ), 'Bounded runtime drain must complete safely.' );
 	$assert( 3 === ( $batch_result['processed'] ?? 0 ), 'Bounded runtime drain must process the requested delivery limit.' );
@@ -734,17 +741,23 @@ try {
 	];
 	$poll_client->claim = [ 'success' => true, 'empty' => true, 'retry_after' => 5 ];
 	$poll_result = ( new YoRo_Connector_Runtime( $poll_client, $clock, $sleeper ) )->run_batch( 5, 12 );
-	$assert( 1 === ( $poll_result['processed'] ?? 0 ) && 1 === count( $poll_client->results ), 'A delivery appearing after an initial 204 must complete in the same batch.' );
-	$assert( [ 5, 5 ] === $slept && 4 === $poll_client->claim_calls && 10.0 === $fake_time, 'Empty claims must honor bounded Retry-After without spinning or sleeping past the deadline.' );
-	$assert( ! empty( $poll_result['drained'] ), 'A final empty claim reports a drained queue.' );
+	$assert( 0 === ( $poll_result['processed'] ?? -1 ) && [] === $poll_result['deliveries'] && [] === $poll_client->results, 'An initial empty claim must leave later deliveries for the next tick.' );
+	$assert( [] === $slept && 1 === $poll_client->claim_calls && 0.0 === $fake_time && 2 === count( $poll_client->claims ), 'An empty claim must exit immediately without sleeping or repolling.' );
+	$assert( ! empty( $poll_result['drained'] ), 'A successful initial empty claim reports a drained queue.' );
+	$next_tick_result = ( new YoRo_Connector_Runtime( $poll_client, $clock, $sleeper ) )->run_batch();
+	$assert( 1 === $next_tick_result['processed'] && 1 === count( $next_tick_result['deliveries'] ) && 1 === count( $poll_client->results ), 'The next tick must process the deferred delivery exactly once.' );
+	$assert( ! empty( $next_tick_result['drained'] ) && 3 === $poll_client->claim_calls && [] === $slept, 'An empty claim after a delivery must preserve that delivery and stop without another poll.' );
+	$assert( $batch_client->claims[0]['delivery']['delivery_id'] === ( $next_tick_result['deliveries'][0]['delivery_id'] ?? '' ), 'The returned batch must retain the processed delivery identity.' );
 
 	foreach ( [
-		[ null, 11, [ 5, 5 ], 3 ],
-		[ 0, 11, [ 5, 5 ], 3 ],
-		[ 'malformed', 11, [ 5, 5 ], 3 ],
-		[ 999, 11, [ 5, 5 ], 3 ],
-		[ 2, 5, [ 2, 2 ], 3 ],
-		[ 0.2, 3, [ 1, 1 ], 3 ],
+		[ null, 45 ],
+		[ 0, 45 ],
+		[ -1, 45 ],
+		[ 'malformed', 45 ],
+		[ 999, 45 ],
+		[ 2, 5 ],
+		[ 0.2, 3 ],
+		[ INF, 45 ],
 	] as $case ) {
 		$fake_time = 0.0;
 		$slept = [];
@@ -753,7 +766,49 @@ try {
 		if ( null !== $case[0] ) { $empty_client->claim['retry_after'] = $case[0]; }
 		$empty_result = ( new YoRo_Connector_Runtime( $empty_client, $clock, $sleeper ) )->run_batch( 5, $case[1] );
 		$assert( 0 === ( $empty_result['processed'] ?? -1 ) && ! empty( $empty_result['drained'] ), 'A permanently empty queue must terminate normally.' );
-		$assert( $case[2] === $slept && $case[3] === $empty_client->claim_calls, 'Missing, zero, malformed, excessive and fractional retry hints must normalize to bounded waits.' );
+		$assert( [] === $slept && 1 === $empty_client->claim_calls && 0.0 === $fake_time, 'A successful empty claim must ignore every retry hint and remaining budget without sleeping or repolling.' );
+	}
+
+	$busy_client = new YoRo_Connector_Smoke_Client();
+	$busy_client->claims = array_slice( $all_batch_claims, 0, 6 );
+	$busy_result = ( new YoRo_Connector_Runtime( $busy_client, $clock, $sleeper ) )->run_batch( 99, 99 );
+	$assert( 5 === $busy_result['processed'] && 5 === count( $busy_result['deliveries'] ) && 5 === $busy_client->claim_calls && 5 === count( $busy_client->results ), 'A busy queue must retain the hard five-delivery cap even when a larger limit is requested.' );
+	$assert( empty( $busy_result['drained'] ) && 1 === count( $busy_client->claims ) && [] === $slept, 'The delivery cap must defer unclaimed work without sleeping or declaring the queue drained.' );
+	$assert( array_column( array_column( array_slice( $all_batch_claims, 0, 5 ), 'delivery' ), 'delivery_id' ) === array_column( $busy_result['deliveries'], 'delivery_id' ), 'The busy batch must return every claimed delivery in order without loss or duplication.' );
+
+	$fake_time = 0.0;
+	$timed_client = new YoRo_Connector_Smoke_Client();
+	$timed_client->claim_callback = static function() use ( &$fake_time, $batch_client ) {
+		$fake_time += 23;
+		return $batch_client->claims[0];
+	};
+	$timed_result = ( new YoRo_Connector_Runtime( $timed_client, $clock, $sleeper ) )->run_batch( 5, 99 );
+	$assert( 2 === $timed_result['processed'] && 2 === $timed_client->claim_calls && 46.0 === $fake_time && [] === $slept, 'The busy queue must not start another delivery after the hard 45-second budget expires.' );
+	$assert( empty( $timed_result['drained'] ), 'A time-capped busy queue must not be reported as drained.' );
+
+	foreach ( [ 'event_error', 'renewal_error', 'result_error' ] as $error_stage ) {
+		$fake_time = 0.0;
+		YoRo_Connector_Execution_Journal::clear( $batch_operations[5] );
+		$stage_client = new YoRo_Connector_Smoke_Client();
+		$stage_client->claims = [ $all_batch_claims[5], $all_batch_claims[0] ];
+		$stage_client->$error_stage = new WP_Error( 'simulated_' . $error_stage, 'Transport failed.' );
+		$stage_executor_calls = 0;
+		$stage_probe = static function() use ( &$stage_executor_calls ) { $stage_executor_calls++; };
+		add_action( 'yoro_before_action_execute', $stage_probe );
+		try {
+			$stage_result = ( new YoRo_Connector_Runtime( $stage_client, $clock, $sleeper ) )->run_batch();
+			$assert( is_wp_error( $stage_result ) && 'simulated_' . $error_stage === $stage_result->get_error_code() && 1 === $stage_client->claim_calls && [] === $slept, 'Acknowledgement, lease and result errors must stop the batch without repolling.' );
+			$assert( ( 'result_error' === $error_stage ? 1 : 0 ) === $stage_executor_calls, 'Acknowledgement and lease failures must prevent execution; result failures must not lose the execution receipt.' );
+			if ( 'result_error' === $error_stage ) {
+				$failed_payload = $stage_client->results[0]['payload'];
+				$stage_client->result_error = null;
+				$stage_client->claims = [ $all_batch_claims[5], [ 'success' => true, 'empty' => true ] ];
+				$replay_result = ( new YoRo_Connector_Runtime( $stage_client, $clock, $sleeper ) )->run_batch();
+				$assert( ! is_wp_error( $replay_result ) && 1 === $replay_result['processed'] && ! empty( $replay_result['drained'] ) && 1 === $stage_executor_calls && $failed_payload === $stage_client->results[1]['payload'], 'A failed result publication must replay the journaled result without executing the business action again.' );
+			}
+		} finally {
+			remove_action( 'yoro_before_action_execute', $stage_probe );
+		}
 	}
 
 	$fake_time = 0.0;
@@ -771,6 +826,7 @@ try {
 	$deadline_result = ( new YoRo_Connector_Runtime( $deadline_client, $clock, $sleeper ) )->run_batch();
 	$assert( 0 === $deadline_result['processed'] && 1 === $deadline_client->claim_calls && [] === $slept, 'An in-flight claim exhausting the 45-second window must not sleep or repoll.' );
 
+	$fake_time = 0.0;
 	$failure_client = new YoRo_Connector_Smoke_Client();
 	$failure_client->claim = new WP_Error( 'simulated_claim_failure', 'Claim failed.' );
 	$failure_result = ( new YoRo_Connector_Runtime( $failure_client, $clock, $sleeper ) )->run_batch();
@@ -779,7 +835,7 @@ try {
 	$invalid_empty_client = new YoRo_Connector_Smoke_Client();
 	$invalid_empty_client->claim = [ 'success' => false, 'empty' => true, 'retry_after' => 1 ];
 	$invalid_empty_result = ( new YoRo_Connector_Runtime( $invalid_empty_client, $clock, $sleeper ) )->run_batch();
-	$assert( 0 === $invalid_empty_result['processed'] && 1 === $invalid_empty_client->claim_calls && [] === $slept, 'Only a successful empty claim may be polled again.' );
+	$assert( 0 === $invalid_empty_result['processed'] && empty( $invalid_empty_result['drained'] ) && 1 === $invalid_empty_client->claim_calls && [] === $slept && [] === $invalid_empty_client->results, 'An unsuccessful empty claim must stop without declaring the queue drained or executing work.' );
 	$cutover_status = YoRo_AI_Settings::get_ai_api_status();
 	try {
 		$disabled_status = $cutover_status;
