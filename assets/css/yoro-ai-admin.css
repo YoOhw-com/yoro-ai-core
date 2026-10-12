@@ -6551,3 +6551,34 @@ body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant :is(
 .yoro-early-access-onboarding { max-width: 100%; padding: 12px; border: 1px solid #dcdcde; border-radius: 6px; }
 .yoro-early-access-onboarding code { overflow-wrap: anywhere; word-break: break-word; }
 .yoro-early-access-onboarding h4 { margin: 0 0 8px; }
+
+/* Account onboarding stays independent of the retained native chat surface. */
+.yoro-onboarding { max-width: 850px; margin: 32px auto; padding: 24px; color: #30362d; font-family: system-ui, sans-serif; }
+.yoro-onboarding *, .yoro-onboarding *::before, .yoro-onboarding *::after { box-sizing: border-box; }
+.yoro-onboarding [hidden] { display: none !important; }
+.yoro-onboarding-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.yoro-wordmark { font-size: 30px; letter-spacing: -1px; }
+.yoro-onboarding-intro { text-align: center; margin: 54px 0 28px; }
+.yoro-onboarding-intro h1 { font-size: clamp(28px, 4vw, 42px); line-height: 1.15; color: #30362d; }
+.yoro-eyebrow { font-size: 11px; letter-spacing: 2px; color: #69725b; }
+.yoro-capsule { display: flex; width: fit-content; margin: 0 auto 32px; padding: 5px; border: 1px solid #dedfd5; border-radius: 40px; background: #f2f2e9; }
+.yoro-capsule button { border: 0; border-radius: 30px; padding: 12px 22px; background: transparent; color: #5b6550; cursor: pointer; font: inherit; }
+.yoro-capsule button[aria-selected="true"] { background: #586447; color: white; }
+.yoro-onboarding button:focus-visible, .yoro-onboarding a:focus-visible, .yoro-onboarding input:focus-visible { outline: 3px solid #788c57; outline-offset: 3px; }
+.yoro-onboarding-card { padding: 30px; border: 1px solid #e0e1d7; border-radius: 24px; background: #fbfbf5; box-shadow: 0 8px 32px #30362d08; }
+.yoro-card-heading { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+.yoro-card-heading h2 { margin: 0; }
+.yoro-pill { padding: 6px 12px; border-radius: 20px; background: #e9eddc; color: #52613d; font-size: 12px; }
+.yoro-connection-steps { margin: 24px 0 0; padding: 0; list-style: none; counter-reset: connection; }
+.yoro-connection-steps li { display: flex; gap: 20px; padding: 24px 0; border-top: 1px solid #e5e6dc; counter-increment: connection; }
+.yoro-connection-steps li::before { content: counter(connection); display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; background: #e7ecda; color: #52613d; }
+.yoro-connection-steps li > div { min-width: 0; flex: 1; }
+.yoro-connection-steps h3 { margin: 4px 0; font-size: 16px; }
+.yoro-onboarding p { color: #69725b; line-height: 1.7; }
+.yoro-onboarding .button { border-radius: 18px; padding: 3px 16px; margin: 4px 0; }
+.yoro-onboarding .button-primary { background: #586447; border-color: #586447; }
+.yoro-server-url { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.yoro-server-url input { flex: 1; min-width: 160px; max-width: 100%; }
+.yoro-coming-soon { text-align: center; padding: 60px 30px; }
+.yoro-onboarding footer { text-align: center; margin: 24px; color: #69725b; font-size: 12px; }
+@media (max-width: 600px) { .yoro-onboarding { margin: 16px auto; padding: 12px; } .yoro-onboarding-card { padding: 20px; } .yoro-card-heading { align-items: flex-start; flex-direction: column; } .yoro-capsule button { padding: 10px 16px; } .yoro-connection-steps li { gap: 12px; } }

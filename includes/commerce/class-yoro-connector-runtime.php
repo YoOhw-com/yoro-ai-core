@@ -80,6 +80,10 @@ class YoRo_Connector_Runtime {
 			$publisher = new YoRo_Connector_Snapshot_Publisher( $client );
 			$publisher->publish_if_due();
 
+			if ( self::early_access_read_allowed() ) {
+                ( new self( $client ) )->run_early_access_once();
+            }
+
 			if ( self::live_cutover_allowed() ) {
 				( new self( $client ) )->run_batch();
 			}
@@ -334,6 +338,18 @@ class YoRo_Connector_Runtime {
 			&& 'pull_v1' === sanitize_key( $runtime['delivery_protocol'] ?? '' );
 	}
 
+    public static function early_access_read_allowed() {
+        $status = YoRo_AI_Settings::get_ai_api_status();
+        $projection = YoRo_AI_Settings::get_early_access_onboarding( $status );
+        return true === ( $projection['runtime_enabled'] ?? false )
+            && '' !== ( $projection['server_url'] ?? '' )
+            && YoRo_AI_Settings::is_ai_api_account_connected( $status ) && class_exists( 'WooCommerce' );
+    }
+
+    public function run_early_access_once() {
+        return $this->run_r2_once( true );
+    }
+
 	/** Explicit operator action only: this lane is never scheduled by the generic cron. */
 	public static function r2_read_allowed() {
 		$status = YoRo_AI_Settings::get_ai_api_status();
@@ -365,11 +381,16 @@ class YoRo_Connector_Runtime {
 		}
 	}
 
-	public function run_r2_once() {
-		if ( ! self::r2_read_allowed() || null === self::$held_lock || ! self::runner_lock_valid() ) {
+	public function run_r2_once( $ordinary = false ) {
+        $allowed = static function() use ( $ordinary ) { return $ordinary ? self::early_access_read_allowed() : self::r2_read_allowed(); };
+        $validate = function( $operation ) use ( $ordinary ) { return $ordinary ? $this->validate_early_access_operation( $operation ) : $this->validate_r2_operation( $operation ); };
+        $request = function( $step, $id = '', $payload = [], $token = '', $generation = 0 ) use ( $ordinary ) {
+            return $ordinary ? $this->client->early_access_request( $step, $id, $payload, $token, $generation ) : $this->client->r2_request( $step, $id, $payload, $token, $generation );
+        };
+		if ( ! $allowed() || null === self::$held_lock || ! self::runner_lock_valid() ) {
 			return new WP_Error( 'yoro_r2_unavailable', 'A locked R2 operator runner is required.' );
 		}
-		$claim = $this->client->r2_request( 'claim' );
+		$claim = $request( 'claim' );
 		if ( is_wp_error( $claim ) || ! empty( $claim['empty'] ) ) {
 			return $claim;
 		}
@@ -378,20 +399,20 @@ class YoRo_Connector_Runtime {
 			return new WP_Error( 'yoro_r2_invalid_delivery', 'Exactly one R2 operation is required.' );
 		}
 		$operation = $authority['operations'][0];
-		$valid = $this->validate_r2_operation( $operation );
+		$valid = $validate( $operation );
 		if ( is_wp_error( $valid ) ) {
 			return $valid;
 		}
 		foreach ( [ 'ack', 'lease' ] as $step ) {
-			if ( ! self::runner_lock_valid() || ! self::r2_read_allowed() ) {
+			if ( ! self::runner_lock_valid() || ! $allowed() ) {
 				return self::lock_lost_error();
 			}
-			$response = $this->client->r2_request( $step, $operation['envelope_id'], [], $authority['claim_token'], $authority['lease_generation'] );
+			$response = $request( $step, $operation['envelope_id'], [], $authority['claim_token'], $authority['lease_generation'] );
 			if ( is_wp_error( $response ) ) {
 				return $response;
 			}
 		}
-		$valid = $this->validate_r2_operation( $operation );
+		$valid = $validate( $operation );
 		if ( is_wp_error( $valid ) ) {
 			return $valid;
 		}
@@ -401,9 +422,16 @@ class YoRo_Connector_Runtime {
 		}
 		if ( 'completed' === ( $journal['state'] ?? '' ) ) {
 			$result = $journal['result'] ?? [];
+            if ( $ordinary ) {
+                if ( ! $this->early_access_journal_matches( $operation, $result ) ) {
+                    return new WP_Error( 'yoro_early_access_journal_conflict', 'The journal is bound to another operation envelope.' );
+                }
+                unset( $result['extensions']['yoro.local_early_access_journal'] );
+                if ( empty( $result['extensions'] ) ) { unset( $result['extensions'] ); }
+            }
 		} elseif ( 'executing' === ( $journal['state'] ?? '' ) ) {
 			$result = $this->failed_result( $operation, 'local_execution_outcome_unknown', 'The prior R2 read stopped before its result was journaled.' );
-			YoRo_Connector_Execution_Journal::complete( $operation, $result );
+			$this->complete_read_journal( $operation, $result, $ordinary );
 		} else {
 			$original = get_current_user_id();
 			wp_set_current_user( $valid['user_id'] );
@@ -427,13 +455,13 @@ class YoRo_Connector_Runtime {
 			} finally {
 				wp_set_current_user( $original );
 			}
-			YoRo_Connector_Execution_Journal::complete( $operation, $result );
+			$this->complete_read_journal( $operation, $result, $ordinary );
 		}
-		if ( ! self::runner_lock_valid() || is_wp_error( $this->validate_r2_operation( $operation ) ) ) {
+		if ( ! self::runner_lock_valid() || is_wp_error( $validate( $operation ) ) ) {
 			return self::lock_lost_error();
 		}
 
-		return $this->client->r2_request( 'result', $operation['envelope_id'], $result, $authority['claim_token'], $authority['lease_generation'] );
+		return $request( 'result', $operation['envelope_id'], $result, $authority['claim_token'], $authority['lease_generation'] );
 	}
 
 	private function validate_r2_operation( array $operation ) {
@@ -454,6 +482,45 @@ class YoRo_Connector_Runtime {
 			|| ( $status['credential']['id'] ?? null ) !== ( $facts['site_key_id'] ?? null )
 			|| hash( 'sha256', $params['sku'] ) !== ( $facts['sku_hash'] ?? null ) ) {
 			return new WP_Error( 'yoro_r2_invalid_operation', 'The R2 read authority is invalid.' );
+		}
+
+		return $this->validate_operation( $operation );
+	}
+
+    /** The existing completed result carries a local binding, stripped before delivery. */
+    private function complete_read_journal( array $operation, array $result, $ordinary ) {
+        if ( $ordinary ) {
+            $result['extensions']['yoro.local_early_access_journal'] = [
+                'operation_hash' => hash( 'sha256', wp_json_encode( $operation ) ),
+            ];
+        }
+        return YoRo_Connector_Execution_Journal::complete( $operation, $result );
+    }
+
+    private function early_access_journal_matches( array $operation, array $result ) {
+        $hash = $result['extensions']['yoro.local_early_access_journal']['operation_hash'] ?? null;
+        return is_string( $hash ) && hash_equals( $hash, hash( 'sha256', wp_json_encode( $operation ) ) );
+    }
+
+	private function validate_early_access_operation( array $operation ) {
+		$params = $operation['params'] ?? [];
+		$facts = $operation['extensions']['yoro.mcp_early_access_product_read'] ?? [];
+		$manifest = YoRo_Connector_Snapshot_Publisher::current_manifest_state();
+		$manifest_expiry = strtotime( $manifest['expires_at'] ?? '' );
+		$status = YoRo_AI_Settings::get_ai_api_status();
+		if ( ! self::early_access_read_allowed() || 'products.search' !== ( $operation['action'] ?? null )
+			|| false === $manifest_expiry || $manifest_expiry <= time()
+			|| [ 'yoro_view_store_data' ] !== ( $operation['actor']['permissions'] ?? null )
+			|| ! is_array( $params ) || 4 !== count( $params ) || array_diff( array_keys( $params ), [ 'sku', 'status', 'type', 'limit' ] )
+			|| ! is_string( $params['sku'] ?? null ) || ! preg_match( '/\A[A-Za-z0-9._-]{1,128}\z/D', $params['sku'] )
+			|| 'publish' !== ( $params['status'] ?? null ) || 'simple' !== ( $params['type'] ?? null ) || 1 !== ( $params['limit'] ?? null )
+			|| ! is_array( $facts ) || ( $status['early_access_onboarding']['server_url'] ?? '' ) !== ( $facts['resource'] ?? null )
+            || 2 !== ( $facts['binding_version'] ?? null ) || 'early_access' !== ( $facts['profile'] ?? null )
+			|| YoRo_AI_Settings::get_installation_uuid() !== ( $facts['installation_uuid'] ?? null )
+			|| ( $status['site']['id'] ?? null ) !== ( $facts['site_id'] ?? null )
+			|| ( $status['credential']['id'] ?? null ) !== ( $facts['site_key_id'] ?? null )
+			|| hash( 'sha256', $params['sku'] ) !== ( $facts['sku_hash'] ?? null ) ) {
+			return new WP_Error( 'yoro_early_access_invalid_operation', 'The Early Access read authority is invalid.' );
 		}
 
 		return $this->validate_operation( $operation );

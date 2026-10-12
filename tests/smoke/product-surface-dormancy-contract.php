@@ -44,8 +44,8 @@ $composer_source     = $read_source( 'includes/ai/class-yoro-ai-email-composer.p
 $email_ui_source     = $read_source( 'assets/js/yoro-ai-email-ui.js' );
 
 $assert(
-	1 === preg_match( '/^ \* Plugin Name: YoRo AI$/m', $plugin_source ),
-	'The main plugin header must expose the public product name YoRo AI.'
+	1 === preg_match( '/^ \* Plugin Name: YoRo$/m', $plugin_source ),
+	'The main plugin header must expose the public product name YoRo.'
 );
 $assert(
 	1 === preg_match( '/^ \* Version: (0\.2\.5\.1)$/m', $plugin_source, $plugin_version ),
@@ -234,8 +234,8 @@ if ( defined( 'ABSPATH' ) && function_exists( 'get_users' ) ) {
 
 		foreach ( $rendered_preserved_markers as $rendered_preserved_marker ) {
 			$assert(
-				false !== strpos( $rendered_admin, $rendered_preserved_marker ),
-				"Rendered chat/workflow/customer-email surface is missing: {$rendered_preserved_marker}"
+				false === strpos( $rendered_admin, $rendered_preserved_marker ),
+				"Native chat/workflow/customer-email surface must stay hidden: {$rendered_preserved_marker}"
 			);
 		}
 	}
