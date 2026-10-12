@@ -224,6 +224,7 @@ class YoRo_AI_Settings {
                 || ! is_string( $input['server_url'] ?? null ) || '' === $input['server_url'] || $input['server_url'] !== $input['future_endpoint'] ) )
             || ( isset( $input['server_url'] ) && ( ! is_string( $input['server_url'] ) || ( false === $input['runtime_enabled'] && '' !== $input['server_url'] ) ) )
             || ( isset( $input['grant_status'] ) && ! in_array( $input['grant_status'], [ 'unknown', 'not_granted', 'granted', 'revoked' ], true ) )
+            || ( false === $input['runtime_enabled'] && 'granted' === ( $input['grant_status'] ?? 'unknown' ) )
 			|| ! is_bool( $input['connection_healthy'] ) || ! is_bool( $input['compatible'] )
 			|| ! is_int( $input['site_id'] ) || $input['site_id'] <= 0 || $input['site_id'] !== ( $site['id'] ?? null )
 			|| ! is_string( $input['installation_uuid'] ) || ! hash_equals( self::get_installation_uuid(), $input['installation_uuid'] )
