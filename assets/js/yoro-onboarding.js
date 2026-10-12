@@ -20,11 +20,19 @@
             tabs[next].focus();
         });
     });
+    const clearVerification = () => {
+        const box = root.querySelector('[data-yoro-server-url]');
+        if (box) { box.querySelector('input').value = ''; box.querySelector('button').disabled = true; }
+        const grant = root.querySelector('[data-yoro-grant-status]');
+        if (grant) grant.textContent = grant.dataset.unverifiedLabel || 'ChatGPT site grant: Not yet verified';
+    };
     const invalidate = () => {
         const box = root.querySelector('[data-yoro-server-url]');
-        if (box && (!Number.isFinite(Date.parse(box.dataset.expires)) || Date.parse(box.dataset.expires) <= Date.now())) {
-            box.querySelector('input').value = '';
-            box.querySelector('button').disabled = true;
+        const grant = root.querySelector('[data-yoro-grant-status]');
+        const stale = [box, grant?.dataset.expires ? grant : null].filter(Boolean).some(element =>
+            !Number.isFinite(Date.parse(element.dataset.expires)) || Date.parse(element.dataset.expires) <= Date.now());
+        if (stale) {
+            clearVerification();
             feedback.textContent = 'Connection status expired. Refresh before copying the Server URL.';
         }
     };
@@ -50,8 +58,7 @@
             if (!response.ok) throw new Error('Connection could not be verified.');
             window.location.reload();
         } catch (_) {
-            const box = root.querySelector('[data-yoro-server-url]');
-            if (box) { box.querySelector('input').value = ''; box.querySelector('button').disabled = true; }
+            clearVerification();
             feedback.textContent = 'Connection could not be verified. Try refreshing again.';
             button.disabled = false;
         }

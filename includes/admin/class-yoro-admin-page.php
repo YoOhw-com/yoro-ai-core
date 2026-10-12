@@ -192,7 +192,7 @@ class YoRo_Admin_Page {
                             <?php if ( $can_manage ) : ?><button type="button" class="button" data-yoro-refresh><?php esc_html_e( 'Refresh connection', 'yoro-ai-core' ); ?></button><?php endif; ?>
                         </div></li>
                         <li><div><h3><?php esc_html_e( 'Authorize your site in ChatGPT', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'Complete OAuth with your YoRo account, then select this site and explicitly grant product read access in your account. Connecting WordPress alone does not grant ChatGPT access.', 'yoro-ai-core' ); ?></p>
-                            <p class="yoro-connection-status"><?php echo esc_html( sprintf( __( 'ChatGPT site grant: %s', 'yoro-ai-core' ), $grant_label ) ); ?></p>
+                            <p class="yoro-connection-status" data-yoro-grant-status data-unverified-label="<?php echo esc_attr__( 'ChatGPT site grant: Not yet verified', 'yoro-ai-core' ); ?>" data-expires="<?php echo esc_attr( $onboarding['expires_at'] ?? '' ); ?>"><?php echo esc_html( sprintf( __( 'ChatGPT site grant: %s', 'yoro-ai-core' ), $grant_label ) ); ?></p>
                             <?php if ( $can_manage ) : ?><a class="button" href="<?php echo esc_url( YoRo_AI_Settings::get_ai_api_account_url() ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Manage site grants', 'yoro-ai-core' ); ?></a><?php endif; ?>
                             <p><?php esc_html_e( 'Revoke ChatGPT access in YoRo without disconnecting WordPress. Disconnecting WordPress also stops ChatGPT reads.', 'yoro-ai-core' ); ?></p>
                         </div></li>
