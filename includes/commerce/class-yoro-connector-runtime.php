@@ -213,22 +213,7 @@ class YoRo_Connector_Runtime {
 				}
 
 				$drained = true;
-				$delay = self::retry_delay( $result['retry_after'] ?? null );
-				$before_sleep = ( $this->clock )();
-				$remaining = $deadline - $before_sleep;
-
-				if ( $remaining <= 0 || $delay >= $remaining ) {
-					break;
-				}
-
-				( $this->sleeper )( $delay );
-
-				// A broken sleeper or clock must never turn an empty queue into a spin.
-				if ( ( $this->clock )() <= $before_sleep ) {
-					break;
-				}
-
-				continue;
+				break;
 			}
 
 			$drained = false;
