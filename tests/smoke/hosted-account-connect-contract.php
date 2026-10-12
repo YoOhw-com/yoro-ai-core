@@ -362,15 +362,15 @@ try {
 		ob_start();
 		YoRo_Admin_Page::render_page();
 		$active_board = (string) ob_get_clean();
-		$assert( false !== strpos( $active_board, 'yoro-account-gate is-hidden' ), 'The account gate did not hide for an active connection.' );
+		$assert( false !== strpos( $active_board, 'YoRo connected' ) && false === strpos( $active_board, 'yoro-chat-thread' ), 'The account gate did not hide for an active connection.' );
 
 		update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $legacy_status, false );
 		$assert( is_wp_error( YoRo_REST_API::account_connection_permission_check() ), 'The REST gate accepted a legacy account state.' );
 		ob_start();
 		YoRo_Admin_Page::render_page();
 		$locked_board = (string) ob_get_clean();
-		$assert( false !== strpos( $locked_board, 'class="yoro-account-gate"' ), 'The onboarding gate was not visible for a legacy connection.' );
-		$assert( false !== strpos( $locked_board, 'Connect YoRo Account' ), 'The locked board is missing its Connect YoRo Account action.' );
+		$assert( false !== strpos( $locked_board, 'data-yoro-onboarding' ) && false !== strpos( $locked_board, 'yoro_ai_api_connect' ), 'The onboarding gate was not visible for a legacy connection.' );
+		$assert( false !== strpos( $locked_board, 'Connect YoRo account' ), 'The locked board is missing its Connect YoRo Account action.' );
 
 		update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $active_status, false );
 		wp_set_current_user( $previous_user_id );

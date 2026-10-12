@@ -26,8 +26,8 @@ class YoRo_Admin_Page {
 		self::$admin_screen_ids = [];
 
 		self::$admin_screen_ids[] = add_menu_page(
-			__( 'YoRo AI', 'yoro-ai-core' ),
-			__( 'YoRo AI', 'yoro-ai-core' ),
+			__( 'YoRo', 'yoro-ai-core' ),
+			__( 'YoRo', 'yoro-ai-core' ),
 			YoRo_Capabilities::USE_AI,
 			self::MENU_SLUG,
 			[ __CLASS__, 'render_page' ],
@@ -129,6 +129,84 @@ class YoRo_Admin_Page {
 	}
 
 	public static function enqueue_assets( $hook ) {
+		if ( ! in_array( $hook, self::get_admin_screen_ids(), true ) ) {
+			return;
+		}
+
+		wp_enqueue_style(
+			'yoro-ai-admin',
+			YORO_AI_CORE_URL . 'assets/css/yoro-ai-admin.css',
+			[],
+			self::asset_version( 'assets/css/yoro-ai-admin.css' )
+		);
+
+        wp_enqueue_script( 'yoro-onboarding', YORO_AI_CORE_URL . 'assets/js/yoro-onboarding.js', [], self::asset_version( 'assets/js/yoro-onboarding.js' ), true );
+        wp_localize_script( 'yoro-onboarding', 'YoRoOnboarding', [
+            'handshakeUrl' => esc_url_raw( rest_url( 'yoro-ai-core/v1/ai-api/handshake' ) ),
+            'nonce' => wp_create_nonce( 'wp_rest' ),
+        ] );
+    }
+
+    public static function render_page() {
+        $status = YoRo_AI_Settings::get_ai_api_status();
+        $account = YoRo_AI_Settings::get_ai_api_account_connection( $status );
+        $onboarding = YoRo_AI_Settings::get_early_access_onboarding( $status );
+        $can_manage = current_user_can( YoRo_Capabilities::MANAGE_CONNECTION );
+        $url = $can_manage && true === ( $onboarding['runtime_enabled'] ?? false ) ? ( $onboarding['server_url'] ?? '' ) : '';
+        $user = wp_get_current_user();
+        $grant_labels = [ 'not_granted' => __( 'Not authorized', 'yoro-ai-core' ), 'granted' => __( 'Authorized', 'yoro-ai-core' ), 'revoked' => __( 'Access revoked', 'yoro-ai-core' ), 'unknown' => __( 'Not yet verified', 'yoro-ai-core' ) ];
+        $grant_label = $grant_labels[ $onboarding['grant_status'] ?? 'unknown' ] ?? $grant_labels['unknown'];
+        ?>
+        <main class="yoro-onboarding" data-yoro-onboarding>
+            <header class="yoro-onboarding-header"><strong class="yoro-wordmark">YoRo</strong><span><?php echo esc_html( $user instanceof WP_User ? $user->display_name : '' ); ?></span></header>
+            <div class="yoro-onboarding-intro"><p class="yoro-eyebrow">WORDPRESS × CHATGPT</p><h1><?php esc_html_e( 'Your store. Your AI workspace.', 'yoro-ai-core' ); ?></h1><p><?php esc_html_e( 'Connect your store to YoRo, then bring it into ChatGPT with Early Access.', 'yoro-ai-core' ); ?></p></div>
+            <nav class="yoro-capsule" role="tablist" aria-label="YoRo connection">
+                <button type="button" id="yoro-tab-chatgpt" role="tab" aria-selected="false" aria-controls="yoro-panel-chatgpt" tabindex="-1" data-yoro-tab="chatgpt">Kết nối ChatGPT</button>
+                <button type="button" id="yoro-tab-early-access" role="tab" aria-selected="true" aria-controls="yoro-panel-early-access" data-yoro-tab="early-access">Early Access</button>
+            </nav>
+            <section id="yoro-panel-chatgpt" role="tabpanel" aria-labelledby="yoro-tab-chatgpt" hidden><div class="yoro-onboarding-card yoro-coming-soon"><span class="yoro-pill">Coming soon</span><h2><?php esc_html_e( 'YoRo in ChatGPT', 'yoro-ai-core' ); ?></h2><p><?php esc_html_e( 'The standard ChatGPT connection is coming soon. Get started with the Early Access tab.', 'yoro-ai-core' ); ?></p></div></section>
+            <section id="yoro-panel-early-access" role="tabpanel" aria-labelledby="yoro-tab-early-access">
+                <?php self::render_ai_api_connect_notice(); ?>
+                <div class="yoro-onboarding-card">
+                    <div class="yoro-card-heading"><h2>Early Access</h2><span class="yoro-pill"><?php echo esc_html( ! empty( $account['connected'] ) ? __( 'YoRo connected', 'yoro-ai-core' ) : __( 'Connect your account', 'yoro-ai-core' ) ); ?></span></div>
+                    <p><?php esc_html_e( 'Use your existing YoRo account. Early Access connects your store to ChatGPT in three steps.', 'yoro-ai-core' ); ?></p>
+                    <ol class="yoro-connection-steps">
+                        <li><div><h3><?php esc_html_e( 'Connect your YoRo account', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'Link this WordPress site securely to your YoRo account.', 'yoro-ai-core' ); ?></p>
+                            <?php if ( $can_manage && ! YoRo_AI_Settings::is_ai_api_site_key_locked() ) : ?>
+                            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>">
+                                <input type="hidden" name="page" value="<?php echo esc_attr( self::MENU_SLUG ); ?>" /><input type="hidden" name="yoro_admin_panel" value="early-access" />
+                                <?php if ( '' === YoRo_AI_Settings::get_ai_api_url() && ! YoRo_AI_Settings::is_ai_api_url_locked() && defined( 'WP_DEBUG' ) && WP_DEBUG ) : ?>
+                                    <label for="yoro-account-api-url"><?php esc_html_e( 'YoRo API URL', 'yoro-ai-core' ); ?></label>
+                                    <input id="yoro-account-api-url" type="url" name="yoro_ai_api_url" required aria-describedby="yoro-account-api-help" />
+                                    <p id="yoro-account-api-help"><?php esc_html_e( 'Use the API address provided for your hosted YoRo account.', 'yoro-ai-core' ); ?></p>
+                                <?php else : ?><input type="hidden" name="yoro_ai_api_url" value="<?php echo esc_attr( YoRo_AI_Settings::get_ai_api_url() ); ?>" /><?php endif; ?>
+                                <?php if ( '' === YoRo_AI_Settings::get_ai_api_url() && ! ( defined( 'WP_DEBUG' ) && WP_DEBUG && ! YoRo_AI_Settings::is_ai_api_url_locked() ) ) : ?><p><?php esc_html_e( 'YoRo connection is not configured. Ask your administrator to configure the hosted account connection.', 'yoro-ai-core' ); ?></p><?php endif; ?>
+                                <?php wp_nonce_field( 'yoro_ai_save_settings', 'yoro_ai_settings_nonce' ); ?>
+                                <button type="submit" class="button button-primary" name="<?php echo ! empty( $account['connected'] ) ? 'yoro_ai_api_disconnect' : 'yoro_ai_api_connect'; ?>" value="1" <?php disabled( '' === YoRo_AI_Settings::get_ai_api_url() && ! ( defined( 'WP_DEBUG' ) && WP_DEBUG && ! YoRo_AI_Settings::is_ai_api_url_locked() ) ); ?>><?php echo esc_html( ! empty( $account['connected'] ) ? __( 'Disconnect YoRo', 'yoro-ai-core' ) : __( 'Connect YoRo account', 'yoro-ai-core' ) ); ?></button>
+                            </form>
+                            <?php else : ?><p><?php esc_html_e( 'Ask your WordPress administrator to manage this connection.', 'yoro-ai-core' ); ?></p><?php endif; ?>
+                        </div></li>
+                        <li><div><h3><?php esc_html_e( 'Copy the MCP Server URL', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'In ChatGPT, add a custom MCP connection and paste this Server URL.', 'yoro-ai-core' ); ?></p>
+                            <?php if ( '' !== $url ) : ?><div class="yoro-server-url" data-yoro-server-url data-expires="<?php echo esc_attr( $onboarding['expires_at'] ); ?>"><input id="yoro-server-url" aria-label="MCP Server URL" readonly value="<?php echo esc_attr( $url ); ?>" /><button type="button" class="button" data-yoro-copy-url><?php esc_html_e( 'Copy URL', 'yoro-ai-core' ); ?></button></div>
+                            <?php else : ?><p class="yoro-connection-status"><?php esc_html_e( 'The Server URL will appear when YoRo verifies this site and Early Access is available. It is currently unavailable.', 'yoro-ai-core' ); ?></p><?php endif; ?>
+                            <?php if ( $can_manage ) : ?><button type="button" class="button" data-yoro-refresh><?php esc_html_e( 'Refresh connection', 'yoro-ai-core' ); ?></button><?php endif; ?>
+                        </div></li>
+                        <li><div><h3><?php esc_html_e( 'Authorize your site in ChatGPT', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'Complete OAuth with your YoRo account, then select this site and explicitly grant product read access in your account. Connecting WordPress alone does not grant ChatGPT access.', 'yoro-ai-core' ); ?></p>
+                            <p class="yoro-connection-status" data-yoro-grant-status data-unverified-label="<?php echo esc_attr__( 'ChatGPT site grant: Not yet verified', 'yoro-ai-core' ); ?>" data-expires="<?php echo esc_attr( $onboarding['expires_at'] ?? '' ); ?>"><?php echo esc_html( sprintf( __( 'ChatGPT site grant: %s', 'yoro-ai-core' ), $grant_label ) ); ?></p>
+                            <?php if ( $can_manage ) : ?><a class="button" href="<?php echo esc_url( YoRo_AI_Settings::get_ai_api_account_url() ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Manage site grants', 'yoro-ai-core' ); ?></a><?php endif; ?>
+                            <p><?php esc_html_e( 'Revoke ChatGPT access in YoRo without disconnecting WordPress. Disconnecting WordPress also stops ChatGPT reads.', 'yoro-ai-core' ); ?></p>
+                        </div></li>
+                    </ol>
+                </div>
+                <p class="yoro-onboarding-feedback" data-yoro-feedback role="status" aria-live="polite"></p>
+            </section>
+            <footer><?php esc_html_e( 'A secure connection. You choose the site and the access.', 'yoro-ai-core' ); ?></footer>
+        </main>
+        <?php
+    }
+
+	/** Retained native UI code is dormant on the account connection page. */
+	private static function enqueue_native_chat_assets( $hook ) {
 		if ( ! in_array( $hook, self::get_admin_screen_ids(), true ) ) {
 			return;
 		}
@@ -275,7 +353,7 @@ class YoRo_Admin_Page {
 		);
 	}
 
-	public static function render_page() {
+	private static function render_native_chat_page() {
 		$current_user = wp_get_current_user();
 		$user_name    = $current_user instanceof WP_User ? sanitize_text_field( $current_user->display_name ) : '';
 		$intro_text   = sprintf(
@@ -1604,7 +1682,7 @@ class YoRo_Admin_Page {
 			return;
 		}
 
-		echo '<div class="notice notice-' . esc_attr( $type ) . ' is-dismissible" data-yoro-admin-notice-panel="settings"><p>' . esc_html( $message ) . '</p></div>';
+		echo '<div class="notice notice-' . esc_attr( $type ) . ' is-dismissible" data-yoro-admin-notice-panel="early-access"><p>' . esc_html( $message ) . '</p></div>';
 	}
 
 	private static function redirect_to_settings_with_connect_notice( $type, $message ) {
@@ -1626,7 +1704,7 @@ class YoRo_Admin_Page {
 			array_merge(
 				[
 					'page'             => self::MENU_SLUG,
-					'yoro_admin_panel' => 'settings',
+					'yoro_admin_panel' => 'early-access',
 				],
 				$args
 			),
