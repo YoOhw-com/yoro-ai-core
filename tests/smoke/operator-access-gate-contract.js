@@ -47,9 +47,29 @@ const renderOnboarding = new Function('onboarding', 'YoRoAIAdmin', 'escapeHtml',
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 for (const status of ['unknown', 'available', 'not_available', 'requested_pending', 'withdrawn']) {
 	const html = renderOnboarding({ status, runtime_enabled: false, future_endpoint: 'https://api.example/mcp/early-access' }, { aiApiUrl: 'https://api.example/api/v1' }, escapeHtml);
-	assert(html.includes('not currently connectable'), `Missing dormant notice: ${status}`);
-	assert(html.includes('https://api.example/mcp/early-access'), `Missing informational endpoint: ${status}`);
+	assert(html.includes('currently unavailable'), `Missing unavailable notice: ${status}`);
+	assert(!html.includes('https://api.example/mcp/early-access'), `Disabled runtime must not show a usable URL: ${status}`);
 	assert(!html.includes('href='), 'Future endpoint must not become a connect link.');
+}
+const readyProjection = { status: 'available', runtime_enabled: true, connection_healthy: true, compatible: true,
+    expires_at: new Date(Date.now() + 300000).toISOString(),
+    server_url: 'https://api.example/mcp/early-access', future_endpoint: 'https://api.example/mcp/early-access' };
+for (const status of ['available', 'requested_pending', 'withdrawn']) {
+    const html = renderOnboarding({ ...readyProjection, status }, { aiApiUrl: 'https://api.example/api/v1' }, escapeHtml);
+    assert(html.includes('MCP Server URL:') && html.includes(readyProjection.server_url), `Ready URL missing: ${status}`);
+    assert(html.includes('No separate Early Access registration or approval is required.'), 'Registration exemption is missing.');
+    assert(!html.includes('Request pending') && !html.includes('Runtime disabled'), 'Legacy enrollment copy contradicts live runtime.');
+}
+for (const drift of [
+    { server_url: 'https://evil.test/mcp/early-access' },
+    { server_url: 'https://api.example/mcp' },
+    { server_url: 'https://api.example/mcp/early-access?token=secret' },
+    { future_endpoint: 'https://evil.test/mcp/early-access' },
+    { expires_at: new Date(Date.now() - 1000).toISOString() },
+    { runtime_enabled: 'true' }, { connection_healthy: false }, { compatible: false }, { status: 'forged' },
+]) {
+    const html = renderOnboarding({ ...readyProjection, ...drift }, { aiApiUrl: 'https://api.example/api/v1' }, escapeHtml);
+    assert(!html.includes('MCP Server URL:'), 'Unsafe, stale or unready projection reached the UI.');
 }
 for (const future_endpoint of ['javascript:alert(1)', 'https://evil.test/mcp/early-access', 'https://api.example/mcp/early-access?token=secret', '<img src=x onerror=alert(1)>']) {
 	const html = renderOnboarding({ status: 'requested_pending', runtime_enabled: false, future_endpoint }, { aiApiUrl: 'https://api.example/api/v1' }, escapeHtml);

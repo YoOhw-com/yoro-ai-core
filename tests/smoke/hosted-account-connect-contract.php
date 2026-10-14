@@ -518,15 +518,20 @@ try {
 			$passed_states = [];
 			foreach ( $fixtures as $state => $raw_payload ) {
 				if ( ! is_string( $raw_payload ) ) { throw new RuntimeException( 'Exact onboarding raw API response missing.' ); }
+				$expected_state = $state;
+				$raw_state = json_decode( $raw_payload, true )['early_access_onboarding']['status'] ?? '';
+				if ( in_array( $state, [ 'requested_pending', 'withdrawn' ], true ) && 'available' === $raw_state ) {
+					$expected_state = 'available';
+				}
 				$exact_handshake_body = $raw_payload;
 				$handshake_transform = null;
 				$result = ( new YoRo_AI_API_Client() )->handshake_with_credentials( YoRo_AI_Settings::get_ai_api_url(), $exact_key );
 				$get = YoRo_REST_API::get_ai_api_status()->get_data();
 				$post = YoRo_REST_API::test_ai_api_handshake();
 				$post = is_wp_error( $post ) ? [] : $post->get_data();
-				if ( is_wp_error( $result ) || ( $result['early_access_onboarding']['status'] ?? '' ) !== $state
-					|| YoRo_AI_Settings::get_early_access_onboarding()['status'] !== $state
-					|| ( $get['early_access_onboarding']['status'] ?? '' ) !== $state || ( $post['early_access_onboarding']['status'] ?? '' ) !== $state
+				if ( is_wp_error( $result ) || ( $result['early_access_onboarding']['status'] ?? '' ) !== $expected_state
+					|| YoRo_AI_Settings::get_early_access_onboarding()['status'] !== $expected_state
+					|| ( $get['early_access_onboarding']['status'] ?? '' ) !== $expected_state || ( $post['early_access_onboarding']['status'] ?? '' ) !== $expected_state
 					|| false !== ( $get['early_access_onboarding']['runtime_enabled'] ?? null ) ) {
 					throw new RuntimeException( 'Exact signed API to actual WordPress onboarding chain failed: ' . $state );
 				}

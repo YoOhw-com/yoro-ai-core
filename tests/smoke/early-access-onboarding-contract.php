@@ -32,6 +32,11 @@ try {
     $assert( false !== strpos( $html, 'id="yoro-tab-early-access" role="tab" aria-selected="true"' ), 'Early Access must be default.' );
     $assert( false === strpos( $html, 'yoro-chat-thread' ) && false === strpos( $html, 'yoro-ai-command' ), 'The connection page must not render native chat.' );
     $assert( false !== strpos( $html, 'value="https://fixture-api.test/mcp/early-access"' ) && false !== strpos( $html, 'Not authorized' ) && false === strpos( $html, 'not_granted' ), 'URL availability must be separate from OAuth site consent.' );
+    $assert( false !== strpos( $html, 'No separate Early Access registration or approval is required.' ), 'Open Early Access must explain that enrollment is unnecessary.' );
+    $assert( false !== strpos( $html, 'awaiting OpenAI review' ), 'The reviewed plugin surface must remain distinct from the custom Early Access connection.' );
+    $assert( false === strpos( $html, 'Request pending activation' ) && false === strpos( $html, 'Manage request' ), 'The connection page must not require enrollment.' );
+    ob_start(); YoRo_Admin_Page::render_settings_page(); $settings_html = ob_get_clean();
+    $assert( false !== strpos( $settings_html, 'MCP Server URL:' ) && false === strpos( $settings_html, 'Runtime disabled.' ) && false === strpos( $settings_html, 'Manage request' ), 'Settings must reflect live connectability without legacy enrollment copy.' );
     $assert( false === strpos( $html, $key ), 'The connection page must not disclose the WordPress key.' );
     $granted = $projection; $granted['grant_status'] = 'granted';
     $status['early_access_onboarding'] = $granted; update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
