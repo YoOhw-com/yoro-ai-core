@@ -24,7 +24,7 @@
         const box = root.querySelector('[data-yoro-server-url]');
         if (box) { box.querySelector('input').value = ''; box.querySelector('button').disabled = true; }
         const grant = root.querySelector('[data-yoro-grant-status]');
-        if (grant) grant.textContent = grant.dataset.unverifiedLabel || 'ChatGPT site grant: Not yet verified';
+        if (grant) grant.textContent = grant.dataset.unverifiedLabel || 'ChatGPT connection: Not yet verified';
     };
     const invalidate = () => {
         const box = root.querySelector('[data-yoro-server-url]');

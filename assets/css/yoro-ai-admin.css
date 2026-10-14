@@ -6557,7 +6557,8 @@ body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant :is(
 .yoro-onboarding *, .yoro-onboarding *::before, .yoro-onboarding *::after { box-sizing: border-box; }
 .yoro-onboarding [hidden] { display: none !important; }
 .yoro-onboarding-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
-.yoro-wordmark { font-size: 30px; letter-spacing: -1px; }
+.yoro-wordmark { display: inline-flex; align-items: center; gap: 10px; font-size: 30px; letter-spacing: -1px; }
+.yoro-brand-icon { display: block; flex: 0 0 36px; width: 36px; height: 36px; object-fit: contain; }
 .yoro-onboarding-intro { text-align: center; margin: 54px 0 28px; }
 .yoro-onboarding-intro h1 { font-size: clamp(28px, 4vw, 42px); line-height: 1.15; color: #30362d; }
 .yoro-eyebrow { font-size: 11px; letter-spacing: 2px; color: #69725b; }
