@@ -35,12 +35,19 @@
     };
     invalidate();
     window.setInterval(invalidate, 1000);
-    root.querySelector('[data-yoro-copy-url]')?.addEventListener('click', async () => {
+    const copyButton = root.querySelector('[data-yoro-copy-url]');
+    const copyLabel = copyButton?.textContent;
+    let copyResetTimer;
+    copyButton?.addEventListener('click', async () => {
+        window.clearTimeout(copyResetTimer);
+        copyButton.textContent = copyLabel;
         invalidate();
         const input = root.querySelector('#yoro-server-url');
         if (!input?.value) return;
         try {
             await navigator.clipboard.writeText(input.value);
+            copyButton.textContent = 'Copied!';
+            copyResetTimer = window.setTimeout(() => { copyButton.textContent = copyLabel; }, 2000);
             feedback.textContent = 'Server URL copied.';
         } catch (_) {
             input.focus(); input.select();

@@ -160,7 +160,7 @@ class YoRo_Admin_Page {
                 <button type="button" id="yoro-tab-chatgpt" role="tab" aria-selected="false" aria-controls="yoro-panel-chatgpt" tabindex="-1" data-yoro-tab="chatgpt"><?php esc_html_e( 'ChatGPT Plugin', 'yoro-ai-core' ); ?></button>
                 <button type="button" id="yoro-tab-early-access" role="tab" aria-selected="true" aria-controls="yoro-panel-early-access" data-yoro-tab="early-access">Early Access</button>
             </nav>
-            <section id="yoro-panel-chatgpt" role="tabpanel" aria-labelledby="yoro-tab-chatgpt" hidden><div class="yoro-onboarding-card yoro-coming-soon"><span class="yoro-pill">Coming soon</span><h2><?php esc_html_e( 'YoRo in ChatGPT', 'yoro-ai-core' ); ?></h2><p><?php esc_html_e( 'The YoRo ChatGPT plugin is awaiting OpenAI review. You can connect now using the Early Access Server URL.', 'yoro-ai-core' ); ?></p></div></section>
+            <section id="yoro-panel-chatgpt" role="tabpanel" aria-labelledby="yoro-tab-chatgpt" hidden><div class="yoro-onboarding-card yoro-coming-soon"><span class="yoro-pill">Coming soon</span><h2><?php esc_html_e( 'YoRo in ChatGPT', 'yoro-ai-core' ); ?></h2><p><?php esc_html_e( 'The YoRo ChatGPT plugin is coming soon. In the meantime, connect your store using Early Access.', 'yoro-ai-core' ); ?></p></div></section>
             <section id="yoro-panel-early-access" role="tabpanel" aria-labelledby="yoro-tab-early-access">
                 <?php self::render_ai_api_connect_notice(); ?>
                 <div class="yoro-onboarding-card">
