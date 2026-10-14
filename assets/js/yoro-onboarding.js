@@ -21,19 +21,16 @@
         });
     });
     const clearVerification = () => {
-        const box = root.querySelector('[data-yoro-server-url]');
-        if (box) { box.querySelector('input').value = ''; box.querySelector('button').disabled = true; }
         const grant = root.querySelector('[data-yoro-grant-status]');
         if (grant) grant.textContent = grant.dataset.unverifiedLabel || 'ChatGPT connection: Not yet verified';
     };
     const invalidate = () => {
-        const box = root.querySelector('[data-yoro-server-url]');
         const grant = root.querySelector('[data-yoro-grant-status]');
-        const stale = [box, grant?.dataset.expires ? grant : null].filter(Boolean).some(element =>
-            !Number.isFinite(Date.parse(element.dataset.expires)) || Date.parse(element.dataset.expires) <= Date.now());
+        const stale = grant?.dataset.expires &&
+            (!Number.isFinite(Date.parse(grant.dataset.expires)) || Date.parse(grant.dataset.expires) <= Date.now());
         if (stale) {
             clearVerification();
-            feedback.textContent = 'Connection status expired. Refresh before copying the Server URL.';
+            feedback.textContent = 'Connection status expired. Sign in from ChatGPT to verify access.';
         }
     };
     invalidate();
@@ -48,19 +45,6 @@
         } catch (_) {
             input.focus(); input.select();
             feedback.textContent = 'Select and copy the Server URL.';
-        }
-    });
-    root.querySelector('[data-yoro-refresh]')?.addEventListener('click', async (event) => {
-        const button = event.currentTarget;
-        button.disabled = true;
-        try {
-            const response = await fetch(YoRoOnboarding.handshakeUrl, { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': YoRoOnboarding.nonce, Accept: 'application/json' } });
-            if (!response.ok) throw new Error('Connection could not be verified.');
-            window.location.reload();
-        } catch (_) {
-            clearVerification();
-            feedback.textContent = 'Connection could not be verified. Try refreshing again.';
-            button.disabled = false;
         }
     });
 })();

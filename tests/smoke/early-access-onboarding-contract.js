@@ -13,18 +13,16 @@ class Element {
     select() { this.selected = true; }
 }
 (async () => {
-    let boxVisible = true; let now = Date.now(); let copied = ''; let reloaded = false; let timer;
+    let now = Date.now(); let copied = ''; let timer; let clipboardAvailable = true;
     const tabs = ['chatgpt', 'early-access'].map(name => new Element({ 'aria-controls': `panel-${name}` }));
     const panels = Object.fromEntries(tabs.map(tab => [`#${tab.getAttribute('aria-controls')}`, new Element()]));
     const grant = new Element(); grant.textContent = 'ChatGPT connection: Connected'; grant.dataset = { expires: new Date(now + 1000).toISOString() };
-    const feedback = new Element(); const copy = new Element(); const refresh = new Element();
+    const feedback = new Element(); const copy = new Element();
     const input = new Element(); input.value = 'https://fixture-api.test/mcp/early-access';
-    const box = { dataset: { expires: new Date(now + 1000).toISOString() }, querySelector: selector => selector === 'input' ? input : copy };
-    const root = { querySelectorAll: () => tabs, querySelector: selector => ({ ...panels, '[data-yoro-feedback]': feedback, '[data-yoro-copy-url]': copy, '[data-yoro-refresh]': refresh, '#yoro-server-url': input, '[data-yoro-server-url]': boxVisible ? box : null, '[data-yoro-grant-status]': grant })[selector] };
-    const context = { document: { querySelector: () => root }, navigator: { clipboard: { writeText: async value => { copied = value; } } },
-        window: { setInterval: callback => { timer = callback; }, location: { reload: () => { reloaded = true; } } },
-        YoRoOnboarding: { handshakeUrl: '/fixture/handshake', nonce: 'fixture-nonce' },
-        fetch: async (_url, args) => { assert.equal(args.headers['X-WP-Nonce'], 'fixture-nonce'); return { ok: false }; },
+    const root = { querySelectorAll: () => tabs, querySelector: selector => ({ ...panels, '[data-yoro-feedback]': feedback, '[data-yoro-copy-url]': copy, '#yoro-server-url': input, '[data-yoro-grant-status]': grant })[selector] };
+    const context = { document: { querySelector: () => root }, navigator: { clipboard: { writeText: async value => { if (!clipboardAvailable) throw new Error('Clipboard unavailable'); copied = value; } } },
+        window: { setInterval: callback => { timer = callback; } },
+        fetch: async () => { throw new Error('The public URL UI must not require a network refresh.'); },
         Date: class extends Date { static now() { return now; } }, Number };
     vm.runInNewContext(source, context);
     let prevented = false;
@@ -33,13 +31,12 @@ class Element {
     tabs[0].events.keydown({ key: 'End', preventDefault() {} });
     assert.equal(tabs[1].attrs['aria-selected'], 'true'); assert.equal(tabs[0].tabIndex, -1);
     await copy.events.click(); assert.equal(copied, input.value);
-    await refresh.events.click({ currentTarget: refresh }); assert.equal(input.value, ''); assert.equal(copy.disabled, true); assert.equal(refresh.disabled, false); assert.equal(reloaded, false); assert.equal(grant.textContent, 'ChatGPT connection: Not yet verified');
-    input.value = 'https://fixture-api.test/mcp/early-access'; copy.disabled = false;
-    grant.textContent = 'ChatGPT connection: Connected';
-    now += 2000; timer(); assert.equal(input.value, ''); assert.equal(copy.disabled, true); assert.equal(grant.textContent, 'ChatGPT connection: Not yet verified');
-    copied = ''; await copy.events.click(); assert.equal(copied, '');
-    input.value = 'forged'; box.dataset.expires = 'malformed'; timer(); assert.equal(input.value, '');
-    boxVisible = false; grant.textContent = 'ChatGPT connection: Connected'; timer();
+    now += 2000; timer(); assert.equal(input.value, 'https://fixture-api.test/mcp/early-access'); assert.equal(copy.disabled, false); assert.equal(grant.textContent, 'ChatGPT connection: Not yet verified');
+    copied = ''; await copy.events.click(); assert.equal(copied, input.value);
+    grant.dataset.expires = 'malformed'; grant.textContent = 'ChatGPT connection: Connected'; timer();
     assert.equal(grant.textContent, 'ChatGPT connection: Not yet verified');
-    console.log('YoRo Early Access keyboard/copy/expiry/refresh JS contract passed.');
+    assert.equal(input.value, copied);
+    clipboardAvailable = false; await copy.events.click(); assert.equal(input.focused, true); assert.equal(input.selected, true);
+    input.value = ''; copied = ''; await copy.events.click(); assert.equal(copied, '');
+    console.log('YoRo Early Access keyboard/public URL copy/status expiry JS contract passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

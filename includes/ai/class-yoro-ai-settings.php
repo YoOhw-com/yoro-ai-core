@@ -197,6 +197,18 @@ class YoRo_AI_Settings {
 		return self::normalize_early_access_onboarding( $status['early_access_onboarding'] ?? null, $status );
 	}
 
+	/** Public connection address only; availability and site authority are verified by the API. */
+	public static function get_early_access_server_url() {
+		$base = self::get_ai_api_base_url();
+		$parts = wp_parse_url( $base );
+		if ( ! is_array( $parts ) || 'https' !== ( $parts['scheme'] ?? '' ) || empty( $parts['host'] )
+			|| isset( $parts['user'] ) || isset( $parts['pass'] ) || isset( $parts['query'] ) || isset( $parts['fragment'] )
+			|| ! in_array( $parts['path'] ?? '', [ '', '/' ], true ) ) {
+			return '';
+		}
+		return $base . '/mcp/early-access';
+	}
+
 	/** Validate a read-only API projection; this never grants runtime access. */
 	public static function normalize_early_access_onboarding( $input, array $context, $api_url = null, $site_key = null ) {
 		$unknown = [ 'status' => 'unknown', 'source' => 'api_handshake', 'connection_healthy' => false,
