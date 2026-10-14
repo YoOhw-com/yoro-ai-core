@@ -38,7 +38,9 @@
     const copyButton = root.querySelector('[data-yoro-copy-url]');
     const copyLabel = copyButton?.textContent;
     let copyResetTimer;
+    let copyAttempt = 0;
     copyButton?.addEventListener('click', async () => {
+        const attempt = ++copyAttempt;
         window.clearTimeout(copyResetTimer);
         copyButton.textContent = copyLabel;
         invalidate();
@@ -46,10 +48,12 @@
         if (!input?.value) return;
         try {
             await navigator.clipboard.writeText(input.value);
+            if (attempt !== copyAttempt) return;
             copyButton.textContent = 'Copied!';
             copyResetTimer = window.setTimeout(() => { copyButton.textContent = copyLabel; }, 2000);
             feedback.textContent = 'Server URL copied.';
         } catch (_) {
+            if (attempt !== copyAttempt) return;
             input.focus(); input.select();
             feedback.textContent = 'Select and copy the Server URL.';
         }

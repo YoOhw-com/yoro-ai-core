@@ -13,7 +13,7 @@ class Element {
     select() { this.selected = true; }
 }
 (async () => {
-    let now = Date.now(); let copied = ''; let timer; let clipboardAvailable = true; let copyReset;
+    let now = Date.now(); let copied = ''; let timer; let clipboardAvailable = true; let copyReset; let pendingWrites;
     const tabs = ['chatgpt', 'early-access'].map(name => new Element({ 'aria-controls': `panel-${name}` }));
     const panels = Object.fromEntries(tabs.map(tab => [`#${tab.getAttribute('aria-controls')}`, new Element()]));
     const grant = new Element(); grant.textContent = 'ChatGPT connection: Connected'; grant.dataset = { expires: new Date(now + 1000).toISOString() };
@@ -21,7 +21,11 @@ class Element {
     copy.textContent = 'Copy URL';
     const input = new Element(); input.value = 'https://fixture-api.test/mcp/early-access';
     const root = { querySelectorAll: () => tabs, querySelector: selector => ({ ...panels, '[data-yoro-feedback]': feedback, '[data-yoro-copy-url]': copy, '#yoro-server-url': input, '[data-yoro-grant-status]': grant })[selector] };
-    const context = { document: { querySelector: () => root }, navigator: { clipboard: { writeText: async value => { if (!clipboardAvailable) throw new Error('Clipboard unavailable'); copied = value; } } },
+    const context = { document: { querySelector: () => root }, navigator: { clipboard: { writeText: async value => {
+        if (!clipboardAvailable) throw new Error('Clipboard unavailable');
+        if (pendingWrites) await new Promise((resolve, reject) => { pendingWrites.push({ resolve, reject }); });
+        copied = value;
+    } } },
         window: { setInterval: callback => { timer = callback; }, setTimeout: (callback, delay) => { assert.equal(delay, 2000); copyReset = callback; return 1; }, clearTimeout: () => { copyReset = undefined; } },
         fetch: async () => { throw new Error('The public URL UI must not require a network refresh.'); },
         Date: class extends Date { static now() { return now; } }, Number };
@@ -39,6 +43,17 @@ class Element {
     assert.equal(grant.textContent, 'ChatGPT connection: Not yet verified');
     assert.equal(input.value, copied);
     clipboardAvailable = false; await copy.events.click(); assert.equal(input.focused, true); assert.equal(input.selected, true);
+    assert.equal(copy.textContent, 'Copy URL'); assert.equal(copyReset, undefined);
+    clipboardAvailable = true; pendingWrites = [];
+    const firstClick = copy.events.click(); const secondClick = copy.events.click();
+    pendingWrites[0].resolve(); await firstClick;
+    assert.equal(copy.textContent, 'Copy URL'); assert.equal(copyReset, undefined);
+    pendingWrites[1].resolve(); await secondClick;
+    assert.equal(copy.textContent, 'Copied!'); copyReset(); assert.equal(copy.textContent, 'Copy URL');
+    pendingWrites = [];
+    const staleClick = copy.events.click(); const failedClick = copy.events.click();
+    pendingWrites[1].reject(new Error('Clipboard unavailable')); await failedClick;
+    pendingWrites[0].resolve(); await staleClick;
     assert.equal(copy.textContent, 'Copy URL'); assert.equal(copyReset, undefined);
     input.value = ''; copied = ''; await copy.events.click(); assert.equal(copied, '');
     console.log('YoRo Early Access keyboard/public URL copy/status expiry JS contract passed.');
