@@ -1475,7 +1475,7 @@
 			    && onboarding.compatible === true && ['available', 'requested_pending', 'withdrawn'].includes(onboarding.status)
 			    && Date.parse(onboarding.expires_at) > Date.now();
 			let html = '<section class="yoro-early-access-onboarding" aria-label="Early Access onboarding"><h4>Early Access</h4>';
-			html += '<p>No separate Early Access registration or approval is required. Sign in to YoRo and explicitly authorize your site in ChatGPT.</p>';
+			html += '<p>No separate Early Access registration or approval is required. Sign in to YoRo from ChatGPT. Access follows your current account and WordPress permissions; no separate site grant is required.</p>';
 			let endpoint = '';
 			try {
 			    const url = new URL(String(onboarding.server_url || ''));

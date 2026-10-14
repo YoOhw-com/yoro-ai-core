@@ -154,14 +154,14 @@ class YoRo_Admin_Page {
         $can_manage = current_user_can( YoRo_Capabilities::MANAGE_CONNECTION );
         $url = $can_manage && true === ( $onboarding['runtime_enabled'] ?? false ) ? ( $onboarding['server_url'] ?? '' ) : '';
         $user = wp_get_current_user();
-        $grant_labels = [ 'not_granted' => __( 'Not authorized', 'yoro-ai-core' ), 'granted' => __( 'Authorized', 'yoro-ai-core' ), 'revoked' => __( 'Access revoked', 'yoro-ai-core' ), 'unknown' => __( 'Not yet verified', 'yoro-ai-core' ) ];
+        $grant_labels = [ 'not_granted' => __( 'Sign in from ChatGPT', 'yoro-ai-core' ), 'granted' => __( 'Connected', 'yoro-ai-core' ), 'revoked' => __( 'Disconnected', 'yoro-ai-core' ), 'unknown' => __( 'Not yet verified', 'yoro-ai-core' ) ];
         $grant_label = $grant_labels[ $onboarding['grant_status'] ?? 'unknown' ] ?? $grant_labels['unknown'];
         ?>
         <main class="yoro-onboarding" data-yoro-onboarding>
-            <header class="yoro-onboarding-header"><strong class="yoro-wordmark">YoRo</strong><span><?php echo esc_html( $user instanceof WP_User ? $user->display_name : '' ); ?></span></header>
+            <header class="yoro-onboarding-header"><strong class="yoro-wordmark"><img class="yoro-brand-icon" src="<?php echo esc_url( YORO_AI_CORE_URL . 'assets/images/yoro-menu-icon.svg' ); ?>" width="36" height="36" alt="" aria-hidden="true" />YoRo</strong><span><?php echo esc_html( $user instanceof WP_User ? $user->display_name : '' ); ?></span></header>
             <div class="yoro-onboarding-intro"><p class="yoro-eyebrow">WORDPRESS × CHATGPT</p><h1><?php esc_html_e( 'Your store. Your AI workspace.', 'yoro-ai-core' ); ?></h1><p><?php esc_html_e( 'Connect your store to YoRo, then bring it into ChatGPT with Early Access.', 'yoro-ai-core' ); ?></p></div>
             <nav class="yoro-capsule" role="tablist" aria-label="YoRo connection">
-                <button type="button" id="yoro-tab-chatgpt" role="tab" aria-selected="false" aria-controls="yoro-panel-chatgpt" tabindex="-1" data-yoro-tab="chatgpt">Kết nối ChatGPT</button>
+                <button type="button" id="yoro-tab-chatgpt" role="tab" aria-selected="false" aria-controls="yoro-panel-chatgpt" tabindex="-1" data-yoro-tab="chatgpt"><?php esc_html_e( 'ChatGPT Plugin', 'yoro-ai-core' ); ?></button>
                 <button type="button" id="yoro-tab-early-access" role="tab" aria-selected="true" aria-controls="yoro-panel-early-access" data-yoro-tab="early-access">Early Access</button>
             </nav>
             <section id="yoro-panel-chatgpt" role="tabpanel" aria-labelledby="yoro-tab-chatgpt" hidden><div class="yoro-onboarding-card yoro-coming-soon"><span class="yoro-pill">Coming soon</span><h2><?php esc_html_e( 'YoRo in ChatGPT', 'yoro-ai-core' ); ?></h2><p><?php esc_html_e( 'The YoRo ChatGPT plugin is awaiting OpenAI review. You can connect now using the Early Access Server URL.', 'yoro-ai-core' ); ?></p></div></section>
@@ -169,7 +169,7 @@ class YoRo_Admin_Page {
                 <?php self::render_ai_api_connect_notice(); ?>
                 <div class="yoro-onboarding-card">
                     <div class="yoro-card-heading"><h2>Early Access</h2><span class="yoro-pill"><?php echo esc_html( ! empty( $account['connected'] ) ? __( 'YoRo connected', 'yoro-ai-core' ) : __( 'Connect your account', 'yoro-ai-core' ) ); ?></span></div>
-                    <p><?php esc_html_e( 'Early Access is open to all YoRo users. No separate Early Access registration or approval is required. Connect your account and explicitly authorize your site in three steps.', 'yoro-ai-core' ); ?></p>
+                    <p><?php esc_html_e( 'Early Access is open to all YoRo users. No separate Early Access registration or approval is required. Connect your account and sign in from ChatGPT. No separate site grant is required.', 'yoro-ai-core' ); ?></p>
                     <ol class="yoro-connection-steps">
                         <li><div><h3><?php esc_html_e( 'Connect your YoRo account', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'Link this WordPress site securely to your YoRo account.', 'yoro-ai-core' ); ?></p>
                             <?php if ( $can_manage && ! YoRo_AI_Settings::is_ai_api_site_key_locked() ) : ?>
@@ -186,21 +186,21 @@ class YoRo_Admin_Page {
                             </form>
                             <?php else : ?><p><?php esc_html_e( 'Ask your WordPress administrator to manage this connection.', 'yoro-ai-core' ); ?></p><?php endif; ?>
                         </div></li>
-                        <li><div><h3><?php esc_html_e( 'Copy the MCP Server URL', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'In ChatGPT, add a custom MCP connection and paste this Server URL.', 'yoro-ai-core' ); ?></p>
+                        <li><div><h3><?php esc_html_e( 'Copy the Early Access Server URL', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'In ChatGPT, add a custom MCP connection and paste this Server URL.', 'yoro-ai-core' ); ?></p>
                             <?php if ( '' !== $url ) : ?><div class="yoro-server-url" data-yoro-server-url data-expires="<?php echo esc_attr( $onboarding['expires_at'] ); ?>"><input id="yoro-server-url" aria-label="MCP Server URL" readonly value="<?php echo esc_attr( $url ); ?>" /><button type="button" class="button" data-yoro-copy-url><?php esc_html_e( 'Copy URL', 'yoro-ai-core' ); ?></button></div>
                             <?php else : ?><p class="yoro-connection-status"><?php esc_html_e( 'The Server URL will appear when YoRo verifies this site and Early Access is available. It is currently unavailable.', 'yoro-ai-core' ); ?></p><?php endif; ?>
                             <?php if ( $can_manage ) : ?><button type="button" class="button" data-yoro-refresh><?php esc_html_e( 'Refresh connection', 'yoro-ai-core' ); ?></button><?php endif; ?>
                         </div></li>
-                        <li><div><h3><?php esc_html_e( 'Authorize your site in ChatGPT', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'Complete OAuth with your YoRo account, then select this site and explicitly grant product read access in your account. Connecting WordPress alone does not grant ChatGPT access.', 'yoro-ai-core' ); ?></p>
-                            <p class="yoro-connection-status" data-yoro-grant-status data-unverified-label="<?php echo esc_attr__( 'ChatGPT site grant: Not yet verified', 'yoro-ai-core' ); ?>" data-expires="<?php echo esc_attr( $onboarding['expires_at'] ?? '' ); ?>"><?php echo esc_html( sprintf( __( 'ChatGPT site grant: %s', 'yoro-ai-core' ), $grant_label ) ); ?></p>
-                            <?php if ( $can_manage ) : ?><a class="button" href="<?php echo esc_url( YoRo_AI_Settings::get_ai_api_account_url() ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Manage site grants', 'yoro-ai-core' ); ?></a><?php endif; ?>
-                            <p><?php esc_html_e( 'Revoke ChatGPT access in YoRo without disconnecting WordPress. Disconnecting WordPress also stops ChatGPT reads.', 'yoro-ai-core' ); ?></p>
+                        <li><div><h3><?php esc_html_e( 'Sign in from ChatGPT', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'Sign in to your YoRo account when ChatGPT opens the connection. YoRo automatically enables read access to eligible connected stores according to your account and WordPress permissions. No separate site grant is required.', 'yoro-ai-core' ); ?></p>
+                            <p class="yoro-connection-status" data-yoro-grant-status data-unverified-label="<?php echo esc_attr__( 'ChatGPT connection: Not yet verified', 'yoro-ai-core' ); ?>" data-expires="<?php echo esc_attr( $onboarding['expires_at'] ?? '' ); ?>"><?php echo esc_html( sprintf( __( 'ChatGPT connection: %s', 'yoro-ai-core' ), $grant_label ) ); ?></p>
+                            <?php if ( $can_manage ) : ?><a class="button" href="<?php echo esc_url( YoRo_AI_Settings::get_ai_api_account_url() ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Open YoRo account', 'yoro-ai-core' ); ?></a><?php endif; ?>
+                            <p><?php esc_html_e( 'Disconnect ChatGPT access in YoRo without disconnecting WordPress. Disconnecting WordPress also stops ChatGPT reads.', 'yoro-ai-core' ); ?></p>
                         </div></li>
                     </ol>
                 </div>
                 <p class="yoro-onboarding-feedback" data-yoro-feedback role="status" aria-live="polite"></p>
             </section>
-            <footer><?php esc_html_e( 'A secure connection. You choose the site and the access.', 'yoro-ai-core' ); ?></footer>
+            <footer><?php esc_html_e( 'A secure connection. Your account permissions stay in control.', 'yoro-ai-core' ); ?></footer>
         </main>
         <?php
     }
@@ -1152,13 +1152,13 @@ class YoRo_Admin_Page {
 							<?php $early_access = YoRo_AI_Settings::get_early_access_onboarding(); ?>
 							<tr><th scope="row"><?php esc_html_e( 'Early Access', 'yoro-ai-core' ); ?></th><td class="yoro-early-access-onboarding">
 								<?php $server_url = true === ( $early_access['runtime_enabled'] ?? false ) ? ( $early_access['server_url'] ?? '' ) : ''; ?>
-								<p><?php esc_html_e( 'No separate Early Access registration or approval is required. Sign in to YoRo and explicitly authorize your site in ChatGPT.', 'yoro-ai-core' ); ?></p>
+								<p><?php esc_html_e( 'No separate Early Access registration or approval is required. Sign in to YoRo from ChatGPT. Access follows your current account and WordPress permissions; no separate site grant is required.', 'yoro-ai-core' ); ?></p>
 								<?php if ( '' !== $server_url ) : ?>
 								    <p><?php esc_html_e( 'MCP Server URL:', 'yoro-ai-core' ); ?> <code><?php echo esc_html( $server_url ); ?></code></p>
 								<?php else : ?>
 								    <p><?php esc_html_e( 'Early Access is currently unavailable. Refresh the connection to verify this site.', 'yoro-ai-core' ); ?></p>
 								<?php endif; ?>
-								<a class="button" href="<?php echo esc_url( YoRo_AI_Settings::get_ai_api_account_url() ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Manage site grants', 'yoro-ai-core' ); ?></a>
+								<a class="button" href="<?php echo esc_url( YoRo_AI_Settings::get_ai_api_account_url() ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Open YoRo account', 'yoro-ai-core' ); ?></a>
 							</td></tr>
 						<?php endif; ?>
 
