@@ -164,12 +164,12 @@ class YoRo_Admin_Page {
                 <button type="button" id="yoro-tab-chatgpt" role="tab" aria-selected="false" aria-controls="yoro-panel-chatgpt" tabindex="-1" data-yoro-tab="chatgpt">Kết nối ChatGPT</button>
                 <button type="button" id="yoro-tab-early-access" role="tab" aria-selected="true" aria-controls="yoro-panel-early-access" data-yoro-tab="early-access">Early Access</button>
             </nav>
-            <section id="yoro-panel-chatgpt" role="tabpanel" aria-labelledby="yoro-tab-chatgpt" hidden><div class="yoro-onboarding-card yoro-coming-soon"><span class="yoro-pill">Coming soon</span><h2><?php esc_html_e( 'YoRo in ChatGPT', 'yoro-ai-core' ); ?></h2><p><?php esc_html_e( 'The standard ChatGPT connection is coming soon. Get started with the Early Access tab.', 'yoro-ai-core' ); ?></p></div></section>
+            <section id="yoro-panel-chatgpt" role="tabpanel" aria-labelledby="yoro-tab-chatgpt" hidden><div class="yoro-onboarding-card yoro-coming-soon"><span class="yoro-pill">Coming soon</span><h2><?php esc_html_e( 'YoRo in ChatGPT', 'yoro-ai-core' ); ?></h2><p><?php esc_html_e( 'The YoRo ChatGPT plugin is awaiting OpenAI review. You can connect now using the Early Access Server URL.', 'yoro-ai-core' ); ?></p></div></section>
             <section id="yoro-panel-early-access" role="tabpanel" aria-labelledby="yoro-tab-early-access">
                 <?php self::render_ai_api_connect_notice(); ?>
                 <div class="yoro-onboarding-card">
                     <div class="yoro-card-heading"><h2>Early Access</h2><span class="yoro-pill"><?php echo esc_html( ! empty( $account['connected'] ) ? __( 'YoRo connected', 'yoro-ai-core' ) : __( 'Connect your account', 'yoro-ai-core' ) ); ?></span></div>
-                    <p><?php esc_html_e( 'Use your existing YoRo account. Early Access connects your store to ChatGPT in three steps.', 'yoro-ai-core' ); ?></p>
+                    <p><?php esc_html_e( 'Early Access is open to all YoRo users. No separate Early Access registration or approval is required. Connect your account and explicitly authorize your site in three steps.', 'yoro-ai-core' ); ?></p>
                     <ol class="yoro-connection-steps">
                         <li><div><h3><?php esc_html_e( 'Connect your YoRo account', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'Link this WordPress site securely to your YoRo account.', 'yoro-ai-core' ); ?></p>
                             <?php if ( $can_manage && ! YoRo_AI_Settings::is_ai_api_site_key_locked() ) : ?>
@@ -1151,11 +1151,14 @@ class YoRo_Admin_Page {
 						<?php if ( current_user_can( YoRo_Capabilities::MANAGE_CONNECTION ) ) : ?>
 							<?php $early_access = YoRo_AI_Settings::get_early_access_onboarding(); ?>
 							<tr><th scope="row"><?php esc_html_e( 'Early Access', 'yoro-ai-core' ); ?></th><td class="yoro-early-access-onboarding">
-								<p><?php echo esc_html( [ 'unknown' => __( 'Unknown — refresh connection', 'yoro-ai-core' ), 'available' => __( 'Available to request', 'yoro-ai-core' ), 'not_available' => __( 'Not available', 'yoro-ai-core' ), 'requested_pending' => __( 'Request pending activation', 'yoro-ai-core' ), 'withdrawn' => __( 'Request withdrawn', 'yoro-ai-core' ) ][ $early_access['status'] ] ?? __( 'Unknown', 'yoro-ai-core' ) ); ?></p>
-								<p><?php esc_html_e( 'Runtime disabled. This endpoint is not currently connectable. A request records interest only.', 'yoro-ai-core' ); ?></p>
-								<?php if ( ! empty( $early_access['future_endpoint'] ) ) : ?><p><?php esc_html_e( 'Future Custom MCP endpoint:', 'yoro-ai-core' ); ?> <code><?php echo esc_html( $early_access['future_endpoint'] ); ?></code></p><?php endif; ?>
-								<p><?php esc_html_e( 'After separately approved activation, complete ChatGPT Custom MCP or Personal Plugin setup through the YoRo account.', 'yoro-ai-core' ); ?></p>
-								<?php if ( ! empty( $early_access['future_endpoint'] ) ) : ?><a class="button" href="<?php echo esc_url( preg_replace( '#/mcp/early-access$#', '/app/stores', $early_access['future_endpoint'] ) ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Manage request in YoRo account', 'yoro-ai-core' ); ?></a><?php endif; ?>
+								<?php $server_url = true === ( $early_access['runtime_enabled'] ?? false ) ? ( $early_access['server_url'] ?? '' ) : ''; ?>
+								<p><?php esc_html_e( 'No separate Early Access registration or approval is required. Sign in to YoRo and explicitly authorize your site in ChatGPT.', 'yoro-ai-core' ); ?></p>
+								<?php if ( '' !== $server_url ) : ?>
+								    <p><?php esc_html_e( 'MCP Server URL:', 'yoro-ai-core' ); ?> <code><?php echo esc_html( $server_url ); ?></code></p>
+								<?php else : ?>
+								    <p><?php esc_html_e( 'Early Access is currently unavailable. Refresh the connection to verify this site.', 'yoro-ai-core' ); ?></p>
+								<?php endif; ?>
+								<a class="button" href="<?php echo esc_url( YoRo_AI_Settings::get_ai_api_account_url() ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Manage site grants', 'yoro-ai-core' ); ?></a>
 							</td></tr>
 						<?php endif; ?>
 

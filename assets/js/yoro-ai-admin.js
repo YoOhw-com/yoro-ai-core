@@ -1470,20 +1470,24 @@
 			if (!onboarding || typeof onboarding !== 'object') {
 				return '';
 			}
-			const labels = { unknown: 'Unknown — refresh connection', available: 'Available to request', not_available: 'Not available', requested_pending: 'Request pending activation', withdrawn: 'Request withdrawn' };
-			const valid = onboarding.runtime_enabled === false && Object.prototype.hasOwnProperty.call(labels, onboarding.status);
-			const label = valid ? labels[onboarding.status] : labels.unknown;
-			let html = '<section class="yoro-early-access-onboarding" aria-label="Early Access onboarding"><h4>Early Access</h4><p>' + escapeHtml(label) + '</p>';
-			html += '<p>Runtime disabled. This endpoint is not currently connectable. A request records interest only.</p>';
-			const endpoint = String(onboarding.future_endpoint || '');
+			const states = ['unknown', 'available', 'not_available', 'requested_pending', 'withdrawn'];
+			const ready = onboarding.runtime_enabled === true && onboarding.connection_healthy === true
+			    && onboarding.compatible === true && ['available', 'requested_pending', 'withdrawn'].includes(onboarding.status)
+			    && Date.parse(onboarding.expires_at) > Date.now();
+			let html = '<section class="yoro-early-access-onboarding" aria-label="Early Access onboarding"><h4>Early Access</h4>';
+			html += '<p>No separate Early Access registration or approval is required. Sign in to YoRo and explicitly authorize your site in ChatGPT.</p>';
+			let endpoint = '';
 			try {
-				const url = new URL(endpoint);
-				const api = new URL(YoRoAIAdmin.aiApiUrl || '');
-				if (valid && url.protocol === 'https:' && url.origin === api.origin && url.pathname === '/mcp/early-access' && !url.username && !url.password && !url.search && !url.hash) {
-					html += '<p>Future Custom MCP endpoint: <code>' + escapeHtml(endpoint) + '</code></p>';
-				}
+			    const url = new URL(String(onboarding.server_url || ''));
+			    const api = new URL(YoRoAIAdmin.aiApiUrl || '');
+			    if (ready && url.protocol === 'https:' && url.origin === api.origin && url.pathname === '/mcp/early-access'
+			        && !url.username && !url.password && !url.search && !url.hash && url.href === onboarding.future_endpoint) {
+			        endpoint = url.href;
+			    }
 			} catch (error) {}
-			html += '<p>After separately approved activation, complete ChatGPT Custom MCP or Personal Plugin setup through the YoRo account.</p></section>';
+			html += endpoint ? '<p>MCP Server URL: <code>' + escapeHtml(endpoint) + '</code></p>'
+			    : '<p>' + (states.includes(onboarding.status) ? 'Early Access is currently unavailable. Refresh the connection to verify this site.' : 'Unknown — refresh connection') + '</p>';
+			html += '</section>';
 			return html;
 		}
 
