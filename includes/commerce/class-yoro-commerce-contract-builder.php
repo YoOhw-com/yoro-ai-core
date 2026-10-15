@@ -58,6 +58,7 @@ class YoRo_Commerce_Contract_Builder {
 		];
 		if ( yoro_ai_core_has_woocommerce() ) {
 			$extensions['yoro.early_access_commerce_writes'] = YoRo_Early_Access_Commerce_Write::manifest();
+            $extensions['yoro.early_access_customer_service'] = YoRo_Early_Access_Customer_Service_Read::manifest();
             $extensions['yoro.early_access_order_reads'] = [ 'version' => 1, 'actions' => YoRo_Early_Access_Order_Read::ACTIONS, 'max_items' => 20,
                 'customer_data' => 'redacted', 'pagination' => 'page_v1', 'timeline' => 'milestones_only' ];
 			$extensions['yoro.early_access_order_queues'] = [ 'version' => 1, 'actions' => YoRo_Early_Access_Order_Queue_Read::ACTIONS, 'max_items' => 20,
