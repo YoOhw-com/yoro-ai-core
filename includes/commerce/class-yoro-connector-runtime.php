@@ -438,9 +438,8 @@ class YoRo_Connector_Runtime {
 			try {
                 if ( $ordinary && 1 === ( $operation['extensions']['yoro.mcp_early_access_product_read']['read_contract_version'] ?? null ) ) {
                     try {
-                        $execution = 'order_queues' === ( $operation['extensions']['yoro.mcp_early_access_product_read']['read_family'] ?? null )
-                            ? YoRo_Early_Access_Order_Queue_Read::execute( $operation ) : ( 'orders' === ( $operation['extensions']['yoro.mcp_early_access_product_read']['read_family'] ?? null )
-                            ? YoRo_Early_Access_Order_Read::execute( $operation ) : YoRo_Early_Access_Product_Read::execute( $operation ) );
+                        $class = self::expanded_read_executor( $operation['extensions']['yoro.mcp_early_access_product_read']['read_family'] ?? null );
+                        $execution = $class ? $class::execute( $operation ) : new WP_Error( 'read_unavailable', 'Read did not complete.' );
                     } catch ( Throwable $error ) {
                         $execution = new WP_Error( 'product_read_unavailable', 'Product read did not complete.' );
                     }
@@ -515,6 +514,13 @@ class YoRo_Connector_Runtime {
         return is_string( $hash ) && hash_equals( $hash, hash( 'sha256', wp_json_encode( $operation ) ) );
     }
 
+    private static function expanded_read_executor( $family ) {
+        if ( null === $family ) { return YoRo_Early_Access_Product_Read::class; }
+        $classes = [ 'order_tracking' => YoRo_Early_Access_Order_Tracking_Read::class,
+            'order_queues' => YoRo_Early_Access_Order_Queue_Read::class, 'orders' => YoRo_Early_Access_Order_Read::class ];
+        return is_string( $family ) ? ( $classes[ $family ] ?? null ) : null;
+    }
+
 	private function validate_early_access_operation( array $operation ) {
 		$params = $operation['params'] ?? [];
 		$facts = $operation['extensions']['yoro.mcp_early_access_product_read'] ?? [];
@@ -522,11 +528,11 @@ class YoRo_Connector_Runtime {
 		$manifest_expiry = strtotime( $manifest['expires_at'] ?? '' );
 		$status = YoRo_AI_Settings::get_ai_api_status();
         $expanded = 1 === ( $facts['read_contract_version'] ?? null );
+        $class = self::expanded_read_executor( $facts['read_family'] ?? null );
         $valid_selectors = $expanded
-            ? ( 'order_queues' === ( $facts['read_family'] ?? null )
-                ? YoRo_Early_Access_Order_Queue_Read::valid_params( $operation['action'] ?? '', $params ) : ( 'orders' === ( $facts['read_family'] ?? null )
-                ? YoRo_Early_Access_Order_Read::valid_params( $operation['action'] ?? '', $params, $facts )
-                : ! isset( $facts['read_family'] ) && YoRo_Early_Access_Product_Read::valid_params( $operation['action'] ?? '', $params ) ) )
+            ? ( $class && ( 'orders' === ( $facts['read_family'] ?? null )
+                ? $class::valid_params( $operation['action'] ?? '', $params, $facts )
+                : $class::valid_params( $operation['action'] ?? '', $params ) ) )
                 && ( $facts['action'] ?? null ) === ( $operation['action'] ?? null )
                 && YoRo_Early_Access_Product_Read::params_hash( $params ) === ( $facts['params_hash'] ?? null )
             : 'products.search' === ( $operation['action'] ?? null ) && is_array( $params ) && 4 === count( $params )
