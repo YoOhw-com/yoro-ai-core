@@ -8,6 +8,7 @@ $assert = static function( $ok, $why ) { if ( ! $ok ) { throw new RuntimeExcepti
 $original = get_current_user_id();
 $admins = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ] );
 $block = static function() { throw new RuntimeException( 'The disposable write runner must not make a network request.' ); };
+add_filter( 'pre_wp_mail', '__return_true' );
 $client = new class extends YoRo_Connector_Client {
     public $operation; public $results = []; public $steps = []; public $after_lease = null;
     public function early_access_write_request( $step, $id = '', $payload = [], $token = '', $generation = 0 ) {
@@ -74,6 +75,32 @@ try {
         $assert( 'executed' === end( $client->results )['status'] && 7 === wc_get_product( $product->get_id() )->get_stock_quantity(), 'A completed journal replays without another mutation or stale-version failure.' );
     }
     $assert( [ 'claim', 'ack', 'lease', 'result', 'claim', 'ack', 'lease', 'result' ] === $client->steps, 'Both attempts use only the bounded fenced lane.' );
+    $product_operation = $client->operation;
+    $order = new WC_Order(); $order->set_status( 'on-hold' ); $order->set_total( 0 ); $order->save();
+    $order_version = YoRo_Order_Presenter::order_version( wc_get_order( $order->get_id() ) );
+    $order_identity = hash( 'sha256', $identity . '|order-status' );
+    $client->operation['envelope_id'] = 'envelope_' . $order_identity; $client->operation['idempotency_key'] = 'operation_' . $order_identity;
+    $client->operation['action'] = 'orders.update_status';
+    $client->operation['params'] = [ 'order_ids' => [ $order->get_id() ], 'status' => 'pending',
+        'expected_versions' => [ [ 'order_id' => $order->get_id(), 'expected_version' => $order_version ] ] ];
+    $client->operation['extensions']['yoro.mcp_early_access_commerce_write']['action'] = 'orders.update_status';
+    $client->operation['extensions']['yoro.mcp_early_access_commerce_write']['expected_version'] = $order_version;
+    // Independent API wire witness: object keys sort recursively; list order stays intact.
+    $canonical_params = [ 'expected_versions' => [ [ 'expected_version' => $order_version, 'order_id' => $order->get_id() ] ],
+        'order_ids' => [ $order->get_id() ], 'status' => 'pending' ];
+    $client->operation['extensions']['yoro.mcp_early_access_commerce_write']['params_hash'] = hash( 'sha256', wp_json_encode( $canonical_params, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION ) );
+    $tampered_order = $client->operation; $client->operation['params']['status'] = 'completed';
+    $steps_before = count( $client->steps );
+    $r = $runtime->run_early_access_write_once();
+    $assert( is_wp_error( $r ) && 'confirmed_commerce_authority_invalid' === $r->get_error_code()
+        && count( $client->steps ) === $steps_before + 1 && 'on-hold' === wc_get_order( $order->get_id() )->get_status(), 'A changed status fails the wire hash before acknowledgement or mutation.' );
+    $client->operation = $tampered_order;
+    for ( $attempt = 0; $attempt < 2; $attempt++ ) {
+        $r = $runtime->run_early_access_write_once();
+        $assert( ! is_wp_error( $r ) && 'executed' === end( $client->results )['status']
+            && 'pending' === wc_get_order( $order->get_id() )->get_status(), 'The actual runner accepts the API nested-object hash and replays its completed journal.' );
+    }
+    $client->operation = $product_operation;
     $crash_id = hash( 'sha256', $identity . '|crash' );
     $client->operation['envelope_id'] = 'envelope_' . $crash_id; $client->operation['idempotency_key'] = 'operation_' . $crash_id;
     $client->operation['params']['expected_version'] = YoRo_Commerce_Discovery_Service::product_version( wc_get_product( $product->get_id() ) );
@@ -140,6 +167,7 @@ try {
     echo "YoRo confirmed commerce runner fencing, journal replay, unknown outcome and runtime revocation passed.\n";
 } finally {
     remove_filter( 'pre_http_request', $block );
+    remove_filter( 'pre_wp_mail', '__return_true' );
     if ( null !== $lock ) { $release->invoke( null, $lock ); }
     $wpdb->query( 'ROLLBACK' ); wp_cache_flush(); wp_set_current_user( $original );
 }

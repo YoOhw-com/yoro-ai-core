@@ -40,8 +40,14 @@ class YoRo_Early_Access_Product_Read {
 	}
 
 	public static function params_hash( array $params ) {
-		ksort( $params, SORT_STRING );
-		return hash( 'sha256', wp_json_encode( $params, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION ) );
+		return hash( 'sha256', wp_json_encode( self::canonical_params( $params ), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION ) );
+	}
+
+	private static function canonical_params( $value ) {
+		if ( ! is_array( $value ) ) { return $value; }
+		if ( ! array_is_list( $value ) ) { ksort( $value, SORT_STRING ); }
+		foreach ( $value as $key => $item ) { $value[ $key ] = self::canonical_params( $item ); }
+		return $value;
 	}
 
 	public static function execute( array $operation ) {
