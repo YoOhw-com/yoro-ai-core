@@ -500,6 +500,7 @@ try {
 			'DB_CONNECTION' => 'sqlite', 'DB_DATABASE' => ':memory:', 'DB_URL' => '',
 			'CACHE_STORE' => 'array', 'SESSION_DRIVER' => 'array', 'QUEUE_CONNECTION' => 'sync', 'MAIL_MAILER' => 'array',
 			'YORO_EA_TEST_HANDSHAKE_FIXTURE' => $fixture_path,
+			'YORO_EA_TEST_PLUGIN_VERSION' => YORO_AI_CORE_VERSION,
 			'YORO_EA_TEST_SITE_URL' => home_url(), 'YORO_EA_TEST_INSTALLATION_UUID' => YoRo_AI_Settings::get_installation_uuid(),
 			'YORO_EA_TEST_SITE_KEY' => $exact_key, 'YORO_EA_TEST_WORDPRESS_SUBJECT' => $pair_actor['subject'] ];
 		try {
