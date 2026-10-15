@@ -4,7 +4,7 @@ Tags: wordpress, ai, content, site-management, woocommerce
 Requires at least: 6.4
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.2.5.1
+Stable tag: 0.2.5.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -101,6 +101,10 @@ No. The connector does not expose arbitrary PHP, SQL, WP-CLI, file editing, or u
 Yes. The repository includes `.distignore` rules for omitting development docs, generated archives, and debug test fixtures from release packages.
 
 == Changelog ==
+
+= 0.2.5.2 =
+* Add bounded Early Access product search, product and variation details, and inventory attention reads.
+* Refresh the YoRo connection page, branding, copy feedback, and notices.
 
 = 0.2.5.1 =
 * Reviewer-only backport of bounded connector polling and fenced runner coordination.

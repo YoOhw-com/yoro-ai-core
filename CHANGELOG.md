@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.5.2 - 2026-10-15
+
+### Added
+- Bounded Early Access product search, product and variation details, and inventory attention reads.
+
+### Changed
+- Updated the YoRo connection page, branding, copy feedback, and notices.
+
 ## 0.2.4 - 2026-07-30
 
 ### Fixed

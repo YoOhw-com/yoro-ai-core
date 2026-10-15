@@ -11,16 +11,16 @@ if ( PHP_SAPI === 'cli' && '--onboarding-persistence-probe' === ( $argv[1] ?? ''
 	$probe_mode = $argv[2] ?? '';
 	define( 'ABSPATH', '/tmp/yoro-isolated-probe/' );
 	define( 'WP_DEBUG', true );
-	define( 'YORO_AI_CORE_VERSION', '0.2.5.1' );
+	define( 'YORO_AI_CORE_VERSION', '0.2.5.2' );
 	$probe_root = dirname( __DIR__, 2 );
 	$probe_uuid = '11111111-1111-4111-8111-111111111111';
 	$probe_status = [
 		'connected' => true, 'service_available' => true,
 		'site' => [ 'id' => 1, 'url' => 'https://fixture-store.test' ], 'organization' => [ 'id' => 1 ],
 		'account_connection' => [ 'connected' => true, 'status' => 'active' ],
-		'connection' => [ 'id' => 1, 'installation_uuid' => $probe_uuid, 'status' => 'active', 'plugin_version' => '0.2.5.1' ],
+		'connection' => [ 'id' => 1, 'installation_uuid' => $probe_uuid, 'status' => 'active', 'plugin_version' => '0.2.5.2' ],
 		'credential' => [ 'id' => 1, 'type' => 'wordpress_connection', 'site_connection_id' => 1, 'expires_at' => gmdate( 'c', time() + 86400 ) ],
-		'connector_runtime' => [ 'protocol_version' => 1, 'connector_version' => '0.2.5.1',
+		'connector_runtime' => [ 'protocol_version' => 1, 'connector_version' => '0.2.5.2',
 			'capability_manifest' => [ 'current' => true, 'manifest_id' => 'fixture-manifest', 'revision' => 1, 'expires_at' => gmdate( 'c', time() + 3600 ) ] ],
 		'early_access_onboarding' => [ 'status' => 'requested_pending', 'source' => 'api_handshake', 'site_id' => 1,
 			'installation_uuid' => $probe_uuid, 'connection_healthy' => true, 'compatible' => true,
