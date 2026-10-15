@@ -438,8 +438,9 @@ class YoRo_Connector_Runtime {
 			try {
                 if ( $ordinary && 1 === ( $operation['extensions']['yoro.mcp_early_access_product_read']['read_contract_version'] ?? null ) ) {
                     try {
-                        $execution = 'orders' === ( $operation['extensions']['yoro.mcp_early_access_product_read']['read_family'] ?? null )
-                            ? YoRo_Early_Access_Order_Read::execute( $operation ) : YoRo_Early_Access_Product_Read::execute( $operation );
+                        $execution = 'order_queues' === ( $operation['extensions']['yoro.mcp_early_access_product_read']['read_family'] ?? null )
+                            ? YoRo_Early_Access_Order_Queue_Read::execute( $operation ) : ( 'orders' === ( $operation['extensions']['yoro.mcp_early_access_product_read']['read_family'] ?? null )
+                            ? YoRo_Early_Access_Order_Read::execute( $operation ) : YoRo_Early_Access_Product_Read::execute( $operation ) );
                     } catch ( Throwable $error ) {
                         $execution = new WP_Error( 'product_read_unavailable', 'Product read did not complete.' );
                     }
@@ -522,9 +523,10 @@ class YoRo_Connector_Runtime {
 		$status = YoRo_AI_Settings::get_ai_api_status();
         $expanded = 1 === ( $facts['read_contract_version'] ?? null );
         $valid_selectors = $expanded
-            ? ( 'orders' === ( $facts['read_family'] ?? null )
+            ? ( 'order_queues' === ( $facts['read_family'] ?? null )
+                ? YoRo_Early_Access_Order_Queue_Read::valid_params( $operation['action'] ?? '', $params ) : ( 'orders' === ( $facts['read_family'] ?? null )
                 ? YoRo_Early_Access_Order_Read::valid_params( $operation['action'] ?? '', $params, $facts )
-                : ! isset( $facts['read_family'] ) && YoRo_Early_Access_Product_Read::valid_params( $operation['action'] ?? '', $params ) )
+                : ! isset( $facts['read_family'] ) && YoRo_Early_Access_Product_Read::valid_params( $operation['action'] ?? '', $params ) ) )
                 && ( $facts['action'] ?? null ) === ( $operation['action'] ?? null )
                 && YoRo_Early_Access_Product_Read::params_hash( $params ) === ( $facts['params_hash'] ?? null )
             : 'products.search' === ( $operation['action'] ?? null ) && is_array( $params ) && 4 === count( $params )
