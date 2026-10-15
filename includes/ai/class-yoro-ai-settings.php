@@ -213,8 +213,8 @@ class YoRo_AI_Settings {
 	public static function normalize_early_access_onboarding( $input, array $context, $api_url = null, $site_key = null ) {
 		$unknown = [ 'status' => 'unknown', 'source' => 'api_handshake', 'connection_healthy' => false,
 			'compatible' => false, 'checked_at' => '', 'expires_at' => '', 'future_endpoint' => '', 'runtime_enabled' => false ];
-		$keys = [ 'status', 'source', 'site_id', 'installation_uuid', 'connection_healthy', 'compatible', 'checked_at', 'expires_at', 'future_endpoint', 'runtime_enabled', 'server_url', 'grant_status' ];
-		if ( ! is_array( $input ) || array_diff( array_keys( $input ), $keys ) || array_diff( array_diff( $keys, [ 'server_url', 'grant_status' ] ), array_keys( $input ) ) ) {
+		$keys = [ 'status', 'source', 'site_id', 'installation_uuid', 'connection_healthy', 'compatible', 'checked_at', 'expires_at', 'future_endpoint', 'runtime_enabled', 'server_url', 'grant_status', 'confirmed_commerce_writes_enabled' ];
+		if ( ! is_array( $input ) || array_diff( array_keys( $input ), $keys ) || array_diff( array_diff( $keys, [ 'server_url', 'grant_status', 'confirmed_commerce_writes_enabled' ] ), array_keys( $input ) ) ) {
 			return $unknown;
 		}
 		$api_url = null === $api_url ? self::get_ai_api_url() : $api_url;
@@ -232,6 +232,7 @@ class YoRo_AI_Settings {
 			&& $input['future_endpoint'] === $base . '/mcp/early-access' );
 		if ( ! in_array( $input['status'], [ 'unknown', 'available', 'not_available', 'requested_pending', 'withdrawn' ], true )
 			|| 'api_handshake' !== $input['source'] || ! is_bool( $input['runtime_enabled'] )
+            || ( array_key_exists( 'confirmed_commerce_writes_enabled', $input ) && ( ! is_bool( $input['confirmed_commerce_writes_enabled'] ) || ( $input['confirmed_commerce_writes_enabled'] && ! $input['runtime_enabled'] ) ) )
             || ( true === $input['runtime_enabled'] && ( ! in_array( $input['status'], [ 'available', 'requested_pending', 'withdrawn' ], true )
                 || ! is_string( $input['server_url'] ?? null ) || '' === $input['server_url'] || $input['server_url'] !== $input['future_endpoint'] ) )
             || ( isset( $input['server_url'] ) && ( ! is_string( $input['server_url'] ) || ( false === $input['runtime_enabled'] && '' !== $input['server_url'] ) ) )

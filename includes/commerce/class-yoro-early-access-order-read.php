@@ -122,7 +122,7 @@ class YoRo_Early_Access_Order_Read {
                     'quantity' => (int) $item->get_quantity(), 'sku' => $product ? mb_strcut( sanitize_text_field( $product->get_sku() ), 0, 128, 'UTF-8' ) : '', 'total' => (string) $item->get_total() ];
             }
         }
-        $row['version'] = hash( 'sha256', wp_json_encode( $row ) );
+        $row['version'] = YoRo_Order_Presenter::order_version( $order );
         return $row;
     }
 }
