@@ -436,6 +436,16 @@ class YoRo_Connector_Runtime {
 			$original = get_current_user_id();
 			wp_set_current_user( $valid['user_id'] );
 			try {
+                if ( $ordinary && 1 === ( $operation['extensions']['yoro.mcp_early_access_product_read']['read_contract_version'] ?? null ) ) {
+                    try {
+                        $execution = YoRo_Early_Access_Product_Read::execute( $operation );
+                    } catch ( Throwable $error ) {
+                        $execution = new WP_Error( 'product_read_unavailable', 'Product read did not complete.' );
+                    }
+                    $result = is_wp_error( $execution )
+                        ? $this->failed_result( $operation, 'product_read_unavailable', 'Product read did not complete.' )
+                        : array_merge( $this->result_identity( $operation ), [ 'status' => 'executed', 'summary' => 'Product read completed.', 'result' => $execution, 'occurred_at' => gmdate( 'c' ) ] );
+                } else {
 				$products = [];
 				$id = wc_get_product_id_by_sku( $operation['params']['sku'] );
 				$product = $id ? wc_get_product( $id ) : false;
@@ -452,6 +462,7 @@ class YoRo_Connector_Runtime {
 						'data' => [ 'products' => $products, 'count' => count( $products ), 'page_info' => [ 'has_next_page' => false, 'next_cursor' => null ] ],
 						'read_only' => true, 'undoable' => false, 'result_type' => 'products', 'display_type' => 'products_list',
 						'assistant_summary' => $message, 'extensions' => (object) [] ], 'occurred_at' => gmdate( 'c' ) ] );
+                }
 			} finally {
 				wp_set_current_user( $original );
 			}
@@ -508,18 +519,24 @@ class YoRo_Connector_Runtime {
 		$manifest = YoRo_Connector_Snapshot_Publisher::current_manifest_state();
 		$manifest_expiry = strtotime( $manifest['expires_at'] ?? '' );
 		$status = YoRo_AI_Settings::get_ai_api_status();
-		if ( ! self::early_access_read_allowed() || 'products.search' !== ( $operation['action'] ?? null )
+        $expanded = 1 === ( $facts['read_contract_version'] ?? null );
+        $valid_selectors = $expanded
+            ? YoRo_Early_Access_Product_Read::valid_params( $operation['action'] ?? '', $params )
+                && ( $facts['action'] ?? null ) === ( $operation['action'] ?? null )
+                && YoRo_Early_Access_Product_Read::params_hash( $params ) === ( $facts['params_hash'] ?? null )
+            : 'products.search' === ( $operation['action'] ?? null ) && is_array( $params ) && 4 === count( $params )
+                && ! array_diff( array_keys( $params ), [ 'sku', 'status', 'type', 'limit' ] )
+                && is_string( $params['sku'] ?? null ) && preg_match( '/\A[A-Za-z0-9._-]{1,128}\z/D', $params['sku'] )
+                && 'publish' === ( $params['status'] ?? null ) && 'simple' === ( $params['type'] ?? null ) && 1 === ( $params['limit'] ?? null )
+                && hash( 'sha256', $params['sku'] ) === ( $facts['sku_hash'] ?? null );
+		if ( ! self::early_access_read_allowed() || ! $valid_selectors
 			|| false === $manifest_expiry || $manifest_expiry <= time()
 			|| [ 'yoro_view_store_data' ] !== ( $operation['actor']['permissions'] ?? null )
-			|| ! is_array( $params ) || 4 !== count( $params ) || array_diff( array_keys( $params ), [ 'sku', 'status', 'type', 'limit' ] )
-			|| ! is_string( $params['sku'] ?? null ) || ! preg_match( '/\A[A-Za-z0-9._-]{1,128}\z/D', $params['sku'] )
-			|| 'publish' !== ( $params['status'] ?? null ) || 'simple' !== ( $params['type'] ?? null ) || 1 !== ( $params['limit'] ?? null )
 			|| ! is_array( $facts ) || ( $status['early_access_onboarding']['server_url'] ?? '' ) !== ( $facts['resource'] ?? null )
             || 2 !== ( $facts['binding_version'] ?? null ) || 'early_access' !== ( $facts['profile'] ?? null )
 			|| YoRo_AI_Settings::get_installation_uuid() !== ( $facts['installation_uuid'] ?? null )
 			|| ( $status['site']['id'] ?? null ) !== ( $facts['site_id'] ?? null )
-			|| ( $status['credential']['id'] ?? null ) !== ( $facts['site_key_id'] ?? null )
-			|| hash( 'sha256', $params['sku'] ) !== ( $facts['sku_hash'] ?? null ) ) {
+			|| ( $status['credential']['id'] ?? null ) !== ( $facts['site_key_id'] ?? null ) ) {
 			return new WP_Error( 'yoro_early_access_invalid_operation', 'The Early Access read authority is invalid.' );
 		}
 

@@ -57,7 +57,10 @@ class YoRo_Commerce_Contract_Builder {
 			],
 		];
 		if ( yoro_ai_core_has_woocommerce() ) {
-			$extensions['woocommerce.runtime'] = [
+			$extensions['yoro.early_access_product_reads'] = [
+                'version' => 1, 'actions' => YoRo_Early_Access_Product_Read::ACTIONS, 'max_items' => 50,
+            ];
+            $extensions['woocommerce.runtime'] = [
 				'active' => true,
 			];
 		}
