@@ -102,8 +102,8 @@ class YoRo_Early_Access_Order_Read {
 
     private static function order( WC_Order $order, $details ) {
         $status = $order->get_status();
-        $number = (string) $order->get_order_number();
-        if ( ! preg_match( '/\A[A-Za-z0-9#._-]{1,64}\z/D', $number ) ) { $number = (string) $order->get_id(); }
+        // Third-party order-number filters can expose contact data. This read supports standard IDs only.
+        $number = (string) $order->get_id();
         $row = [ 'id' => (int) $order->get_id(), 'number' => $number, 'status' => $status, 'status_label' => ucwords( str_replace( '-', ' ', $status ) ),
             'total' => (string) $order->get_total(), 'currency' => $order->get_currency(), 'created_at' => $order->get_date_created()->date( 'c' ),
             'payment' => [ 'status' => 'refunded' === $status ? 'refunded' : ( $order->get_date_paid() ? 'paid' : ( 'failed' === $status ? 'failed' : 'unpaid' ) ),

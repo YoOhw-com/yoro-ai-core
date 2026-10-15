@@ -35,7 +35,11 @@ try {
     $assert( 0 === $mismatch['data']['count'], 'Exact ID must not bypass status filtering.' );
     $outside = $read( 'orders.search', [ 'order_id' => $ids[0], 'date_from' => '2026-10-15', 'limit' => 10 ] );
     $assert( 0 === $outside['data']['count'], 'Exact ID must not bypass date filtering.' );
+    $unsafe_number = static function() { return '12025550123'; };
+    add_filter( 'woocommerce_order_number', $unsafe_number );
     $detail = $read( 'orders.get_details', [ 'order_ids' => $ids ] );
+    remove_filter( 'woocommerce_order_number', $unsafe_number );
+    $assert( (string) $ids[0] === $detail['data']['orders'][0]['number'], 'Third-party display numbers cannot disclose contact data.' );
     $assert( 3 === $detail['data']['count'] && '***' === $detail['data']['orders'][0]['customer']['email'], 'Details must redact contact data before journaling.' );
     $wire = wp_json_encode( $detail );
     foreach ( [ 'PRIVATE-', 'private-order@example.com', '+12025550123' ] as $private ) { $assert( false === strpos( $wire, $private ), 'Private customer data must never enter the read projection.' ); }
