@@ -20,6 +20,18 @@ class YoRo_Admin_Page {
 		add_action( 'admin_init', [ __CLASS__, 'handle_settings_save' ] );
 		add_action( 'admin_post_' . self::SUPPORT_DIAGNOSTICS_ACTION, [ __CLASS__, 'handle_support_diagnostics_download' ] );
 		add_action( 'admin_head', [ __CLASS__, 'print_menu_icon_styles' ] );
+		add_action( 'in_admin_header', [ __CLASS__, 'isolate_admin_notices' ], PHP_INT_MAX );
+	}
+
+	public static function isolate_admin_notices() {
+		$screen = get_current_screen();
+		if ( ! $screen || ! in_array( $screen->id, self::get_admin_screen_ids(), true ) ) {
+			return;
+		}
+
+		foreach ( [ 'admin_notices', 'all_admin_notices', 'network_admin_notices', 'user_admin_notices' ] as $hook ) {
+			remove_all_actions( $hook );
+		}
 	}
 
 	public static function add_menu_page() {
@@ -189,12 +201,12 @@ class YoRo_Admin_Page {
                         </div></li>
                         <li><div><h3><?php esc_html_e( 'Sign in from ChatGPT', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'Sign in to your YoRo account when ChatGPT opens the connection. YoRo automatically enables read access to eligible connected stores according to your account and WordPress permissions. No separate site grant is required.', 'yoro-ai-core' ); ?></p>
                             <p class="yoro-connection-status" data-yoro-grant-status data-unverified-label="<?php echo esc_attr__( 'ChatGPT connection: Not yet verified', 'yoro-ai-core' ); ?>" data-expires="<?php echo esc_attr( $onboarding['expires_at'] ?? '' ); ?>"><?php echo esc_html( sprintf( __( 'ChatGPT connection: %s', 'yoro-ai-core' ), $grant_label ) ); ?></p>
+                            <div class="yoro-notice yoro-notice-warning" data-yoro-feedback role="status" aria-live="polite" hidden></div>
                             <?php if ( $can_manage ) : ?><a class="button" href="<?php echo esc_url( YoRo_AI_Settings::get_ai_api_account_url() ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Open YoRo account', 'yoro-ai-core' ); ?></a><?php endif; ?>
                             <p><?php esc_html_e( 'Disconnect ChatGPT access in YoRo without disconnecting WordPress. Disconnecting WordPress also stops ChatGPT reads.', 'yoro-ai-core' ); ?></p>
                         </div></li>
                     </ol>
                 </div>
-                <p class="yoro-onboarding-feedback" data-yoro-feedback role="status" aria-live="polite"></p>
             </section>
             <footer><?php esc_html_e( 'A secure connection. Your account permissions stay in control.', 'yoro-ai-core' ); ?></footer>
         </main>
@@ -1681,7 +1693,14 @@ class YoRo_Admin_Page {
 			return;
 		}
 
-		echo '<div class="notice notice-' . esc_attr( $type ) . ' is-dismissible" data-yoro-admin-notice-panel="early-access"><p>' . esc_html( $message ) . '</p></div>';
+		$title = 'success' === $type ? __( 'Connection updated', 'yoro-ai-core' ) : __( 'Connection needs attention', 'yoro-ai-core' );
+		?>
+		<div class="yoro-notice yoro-notice-<?php echo esc_attr( $type ); ?>" role="<?php echo 'error' === $type ? 'alert' : 'status'; ?>" data-yoro-notice data-yoro-admin-notice-panel="early-access">
+			<span class="yoro-notice-icon" aria-hidden="true"><?php echo 'success' === $type ? '&#10003;' : '!'; ?></span>
+			<div class="yoro-notice-content"><strong><?php echo esc_html( $title ); ?></strong><p><?php echo esc_html( $message ); ?></p></div>
+			<button type="button" class="yoro-notice-dismiss" data-yoro-notice-dismiss aria-label="<?php esc_attr_e( 'Dismiss notification', 'yoro-ai-core' ); ?>" hidden><svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false"><path d="m5 5 10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" /></svg></button>
+		</div>
+		<?php
 	}
 
 	private static function redirect_to_settings_with_connect_notice( $type, $message ) {
