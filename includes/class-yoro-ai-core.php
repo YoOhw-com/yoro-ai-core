@@ -115,6 +115,7 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-snapshot-publisher.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-execution-journal.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-early-access-product-read.php';
+		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-early-access-order-read.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-runtime.php';
 	}
 
