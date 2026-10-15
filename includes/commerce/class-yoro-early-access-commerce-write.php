@@ -39,7 +39,7 @@ final class YoRo_Early_Access_Commerce_Write {
             && ( $params['expected_versions'] ?? null ) === [ [ 'order_id' => $params['order_ids'][0], 'expected_version' => $facts['expected_version'] ] ];
     }
 
-    public static function execute( array $operation ) {
+    public static function execute( array $operation, ?Closure $fence = null ) {
         $action = $operation['action'] ?? '';
         $params = $operation['params'] ?? [];
         $facts = $operation['extensions']['yoro.mcp_early_access_commerce_write'] ?? [];
@@ -55,7 +55,7 @@ final class YoRo_Early_Access_Commerce_Write {
         if ( str_starts_with( $action, 'products.' ) ) {
             $target = wc_get_product( $params['product_id'] );
             if ( ! $target || 'publish' !== $target->get_status() || ! in_array( $target->get_type(), [ 'simple', 'variation' ], true )
-                || ( 'products.update_stock' === $action && ! $target->get_manage_stock() )
+                || ( 'products.update_stock' === $action && true !== $target->get_manage_stock( 'edit' ) )
                 || ( 'products.update_stock_status' === $action && $target->get_manage_stock() ) ) {
                 return new WP_Error( 'confirmed_product_unavailable', 'This product does not support the selected stock change.' );
             }
@@ -67,6 +67,9 @@ final class YoRo_Early_Access_Commerce_Write {
         }
         if ( ! hash_equals( $version, $facts['expected_version'] ) ) {
             return new WP_Error( 'confirmed_target_version_conflict', 'The target changed after its preview. Read it again before planning a new change.' );
+        }
+        if ( null !== $fence && ! $fence() ) {
+            return new WP_Error( 'yoro_connector_runner_lock_lost', 'The connector runner lock was lost.' );
         }
         $execution = YoRo_Action_Executor::execute( $action, $params, true, false, [ 'connector_remote_agent' => true,
             'workflow_id' => $operation['workflow_id'] ?? '', 'operation_id' => $operation['operation_id'] ?? '' ] );

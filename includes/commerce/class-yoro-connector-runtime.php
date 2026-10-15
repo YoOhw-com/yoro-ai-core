@@ -394,13 +394,14 @@ class YoRo_Connector_Runtime {
 	}
 
 	public function run_r2_once( $ordinary = false, $commerce_write = false ) {
+        $owns_lock = static function() { return null !== self::$held_lock && self::runner_lock_valid(); };
         $allowed = static function() use ( $ordinary, $commerce_write ) { return $commerce_write ? ( $ordinary && self::early_access_write_allowed() ) : ( $ordinary ? self::early_access_read_allowed() : self::r2_read_allowed() ); };
         $validate = function( $operation ) use ( $ordinary, $commerce_write ) { return $commerce_write ? $this->validate_early_access_write_operation( $operation ) : ( $ordinary ? $this->validate_early_access_operation( $operation ) : $this->validate_r2_operation( $operation ) ); };
         $request = function( $step, $id = '', $payload = [], $token = '', $generation = 0 ) use ( $ordinary, $commerce_write ) {
             if ( $commerce_write ) { return $this->client->early_access_write_request( $step, $id, $payload, $token, $generation ); }
             return $ordinary ? $this->client->early_access_request( $step, $id, $payload, $token, $generation ) : $this->client->r2_request( $step, $id, $payload, $token, $generation );
         };
-		if ( ! $allowed() || null === self::$held_lock || ! self::runner_lock_valid() ) {
+		if ( ! $allowed() || ! $owns_lock() ) {
 			return new WP_Error( 'yoro_r2_unavailable', 'A locked R2 operator runner is required.' );
 		}
 		$claim = $request( 'claim' );
@@ -417,7 +418,7 @@ class YoRo_Connector_Runtime {
 			return $valid;
 		}
 		foreach ( [ 'ack', 'lease' ] as $step ) {
-			if ( ! self::runner_lock_valid() || ! $allowed() ) {
+			if ( ! $owns_lock() || ! $allowed() ) {
 				return self::lock_lost_error();
 			}
 			$response = $request( $step, $operation['envelope_id'], [], $authority['claim_token'], $authority['lease_generation'] );
@@ -429,7 +430,11 @@ class YoRo_Connector_Runtime {
 		if ( is_wp_error( $valid ) ) {
 			return $valid;
 		}
+        if ( ! $owns_lock() || ! $allowed() ) { return self::lock_lost_error(); }
 		$journal = YoRo_Connector_Execution_Journal::begin( $operation );
+        if ( ! in_array( $journal['state'] ?? '', [ 'new', 'executing', 'completed', 'conflict' ], true ) ) {
+            return new WP_Error( 'yoro_connector_journal_unavailable', 'A durable execution journal is required.' );
+        }
 		if ( 'conflict' === ( $journal['state'] ?? '' ) ) {
 			return new WP_Error( 'yoro_r2_journal_conflict', 'The journal is bound to another operation envelope.' );
 		}
@@ -444,13 +449,17 @@ class YoRo_Connector_Runtime {
             }
 		} elseif ( 'executing' === ( $journal['state'] ?? '' ) ) {
 			$result = $this->failed_result( $operation, 'local_execution_outcome_unknown', 'The prior R2 read stopped before its result was journaled.' );
-			$this->complete_read_journal( $operation, $result, $ordinary );
+            $completed = $this->complete_read_journal( $operation, $result, $ordinary );
+            if ( $commerce_write && 'completed' !== ( $completed['state'] ?? '' ) ) {
+                return new WP_Error( 'yoro_connector_journal_unavailable', 'The outcome could not be durably journaled. Do not repeat this change.' );
+            }
 		} else {
+            if ( ! $owns_lock() || ! $allowed() ) { return self::lock_lost_error(); }
 			$original = get_current_user_id();
 			wp_set_current_user( $valid['user_id'] );
 			try {
                 if ( $commerce_write ) {
-                    try { $execution = YoRo_Early_Access_Commerce_Write::execute( $operation ); }
+                    try { $execution = YoRo_Early_Access_Commerce_Write::execute( $operation, static function() use ( $allowed, $owns_lock ) { return $allowed() && $owns_lock(); } ); }
                     catch ( Throwable $error ) { $execution = new WP_Error( 'local_execution_outcome_unknown', 'Read the target again; do not repeat this change.' ); }
                     $result = is_wp_error( $execution )
                         ? $this->failed_result( $operation, $execution->get_error_code(), 'The confirmed change did not complete.' )
@@ -486,9 +495,12 @@ class YoRo_Connector_Runtime {
 			} finally {
 				wp_set_current_user( $original );
 			}
-			$this->complete_read_journal( $operation, $result, $ordinary );
+            $completed = $this->complete_read_journal( $operation, $result, $ordinary );
+            if ( $commerce_write && 'completed' !== ( $completed['state'] ?? '' ) ) {
+                return new WP_Error( 'yoro_connector_journal_unavailable', 'The outcome could not be durably journaled. Do not repeat this change.' );
+            }
 		}
-		if ( ! self::runner_lock_valid() || is_wp_error( $validate( $operation ) ) ) {
+		if ( ! $owns_lock() || is_wp_error( $validate( $operation ) ) ) {
 			return self::lock_lost_error();
 		}
 

@@ -9,11 +9,12 @@ $original = get_current_user_id();
 $admins = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ] );
 $block = static function() { throw new RuntimeException( 'The disposable write runner must not make a network request.' ); };
 $client = new class extends YoRo_Connector_Client {
-    public $operation; public $results = []; public $steps = [];
+    public $operation; public $results = []; public $steps = []; public $after_lease = null;
     public function early_access_write_request( $step, $id = '', $payload = [], $token = '', $generation = 0 ) {
         $this->steps[] = $step;
         if ( 'claim' === $step ) { return [ 'success' => true, 'delivery' => [ 'delivery_id' => 'fixture-delivery', 'claim_token' => str_repeat( 'a', 80 ), 'lease_generation' => 1, 'operations' => [ $this->operation ] ] ]; }
         if ( str_repeat( 'a', 80 ) !== $token || 1 !== $generation || $id !== $this->operation['envelope_id'] ) { throw new RuntimeException( 'The fenced lease was lost.' ); }
+        if ( 'lease' === $step && null !== $this->after_lease ) { ( $this->after_lease )(); }
         if ( 'result' === $step ) { $this->results[] = $payload; }
         return [ 'success' => true ];
     }
@@ -85,6 +86,54 @@ try {
     $r = $runtime->run_early_access_write_once();
     $last = end( $client->results );
     $assert( ! is_wp_error( $r ) && 'local_execution_outcome_unknown' === ( $last['error']['code'] ?? '' ) && 9 === wc_get_product( $product->get_id() )->get_stock_quantity(), 'Interrupted journal authority produces unknown without replaying the write callback.' );
+    $base_operation = $client->operation;
+    $fresh = static function( $suffix ) use ( $base_operation, $product ) {
+        $op = $base_operation; $id = hash( 'sha256', $base_operation['envelope_id'] . $suffix );
+        $op['envelope_id'] = 'envelope_' . $id; $op['idempotency_key'] = 'operation_' . $id;
+        $op['params']['stock_quantity'] = 12;
+        $op['params']['expected_version'] = YoRo_Commerce_Discovery_Service::product_version( wc_get_product( $product->get_id() ) );
+        $op['extensions']['yoro.mcp_early_access_commerce_write']['expected_version'] = $op['params']['expected_version'];
+        $op['extensions']['yoro.mcp_early_access_commerce_write']['params_hash'] = YoRo_Early_Access_Product_Read::params_hash( $op['params'] );
+        return $op;
+    };
+    foreach ( [ false, true ] as $cache_only ) {
+        $client->operation = $fresh( 'journal-failure-' . (int) $cache_only );
+        // First simulate an unsuccessful INSERT, then a false-positive option-cache write.
+        $fault = static function( $sql ) use ( $cache_only ) {
+            if ( str_starts_with( $sql, 'INSERT INTO' ) && str_contains( $sql, 'yoro_connector_journal_' ) ) {
+                return $cache_only ? 'SELECT 1' : 'SELECT 1 WHERE 1 = 0';
+            }
+            return $sql;
+        };
+        add_filter( 'query', $fault );
+        try { $r = $runtime->run_early_access_write_once(); } finally { remove_filter( 'query', $fault ); }
+        $assert( is_wp_error( $r ) && 'yoro_connector_journal_unavailable' === $r->get_error_code() && 9 === wc_get_product( $product->get_id() )->get_stock_quantity(), 'A failed or cache-only journal write never reaches the mutator.' );
+    }
+    $client->operation = $fresh( 'journal-completion-failure' );
+    $fail_completion = static function( $sql ) {
+        return str_starts_with( $sql, 'UPDATE' ) && str_contains( $sql, 'yoro_connector_journal_' ) ? 'SELECT 1 WHERE 1 = 0' : $sql;
+    };
+    add_filter( 'query', $fail_completion );
+    try { $r = $runtime->run_early_access_write_once(); } finally { remove_filter( 'query', $fail_completion ); }
+    $assert( is_wp_error( $r ) && 'yoro_connector_journal_unavailable' === $r->get_error_code() && 12 === wc_get_product( $product->get_id() )->get_stock_quantity(), 'A completion persistence failure cannot publish a successful outcome.' );
+    $journal_key = new ReflectionMethod( YoRo_Connector_Execution_Journal::class, 'key' );
+    $key_name = $journal_key->invoke( null, $client->operation );
+    $entry = get_option( $key_name ); $entry['expires_at'] = time() - 1; update_option( $key_name, $entry, false );
+    $assert( 'executing' === YoRo_Connector_Execution_Journal::begin( $client->operation )['state'], 'Expiry never resets a prior write marker.' );
+    $tampered = $client->operation; $tampered['params']['stock_quantity'] = 15;
+    $assert( 'conflict' === YoRo_Connector_Execution_Journal::begin( $tampered )['state'], 'The marker binds the entire exact write envelope.' );
+    $r = $runtime->run_early_access_write_once();
+    $assert( ! is_wp_error( $r ) && 'local_execution_outcome_unknown' === ( end( $client->results )['error']['code'] ?? '' ) && 12 === wc_get_product( $product->get_id() )->get_stock_quantity(), 'Completion failure recovers as unknown, without repeating the callback.' );
+    $client->operation = $fresh( 'lost-lock-after-lease' );
+    $client->after_lease = static function() use ( $lock ) {
+        global $wpdb;
+        $name = new ReflectionProperty( YoRo_Connector_Runtime::class, 'held_lock_name' );
+        $wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $name->getValue() ) );
+    };
+    $r = $runtime->run_early_access_write_once();
+    $client->after_lease = null;
+    $assert( is_wp_error( $r ) && 'yoro_connector_runner_lock_lost' === $r->get_error_code() && 12 === wc_get_product( $product->get_id() )->get_stock_quantity(), 'Losing GET_LOCK in the lease response never reaches the write callback.' );
+    $release->invoke( null, $lock ); $lock = $acquire->invoke( null );
     $status['early_access_onboarding']['confirmed_commerce_writes_enabled'] = false;
     YoRo_AI_Settings::update_ai_api_status( $status );
     $assert( is_wp_error( $runtime->run_early_access_write_once() ), 'Runtime revocation stops the writer while the read lane remains available.' );

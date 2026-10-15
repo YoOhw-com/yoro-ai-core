@@ -21,9 +21,17 @@ try {
     };
     $version = YoRo_Commerce_Discovery_Service::product_version( $product );
     $operation = $make( 'products.update_stock', [ 'product_id' => $product->get_id(), 'stock_quantity' => 7, 'expected_version' => $version ], $version );
+    $fenced = YoRo_Early_Access_Commerce_Write::execute( $operation, static function() { return false; } );
+    $assert( is_wp_error( $fenced ) && 'yoro_connector_runner_lock_lost' === $fenced->get_error_code() && 5 === wc_get_product( $product->get_id() )->get_stock_quantity(), 'The final fence runs after target/version reads and before the canonical mutator.' );
     $r = YoRo_Early_Access_Commerce_Write::execute( $operation );
     $assert( ! is_wp_error( $r ) && 7 === wc_get_product( $product->get_id() )->get_stock_quantity(), 'One confirmed stock mutation executes through the canonical executor: ' . ( is_wp_error( $r ) ? $r->get_error_code() . ': ' . $r->get_error_message() : wp_json_encode( $r ) ) );
     $assert( is_wp_error( YoRo_Early_Access_Commerce_Write::execute( $operation ) ), 'A stale target version cannot execute twice.' );
+    $parent = new WC_Product_Variable(); $parent->set_name( 'Disposable parent-stock fixture' ); $parent->set_status( 'publish' ); $parent->set_manage_stock( true ); $parent->set_stock_quantity( 20 ); $parent->save();
+    $variation = new WC_Product_Variation(); $variation->set_parent_id( $parent->get_id() ); $variation->set_status( 'publish' ); $variation->set_manage_stock( false ); $variation->save(); $variation = wc_get_product( $variation->get_id() );
+    $assert( 'parent' === $variation->get_manage_stock() && false === $variation->get_manage_stock( 'edit' ), 'The fixture really inherits parent stock.' );
+    $inherited_version = YoRo_Commerce_Discovery_Service::product_version( $variation );
+    $inherited = $make( 'products.update_stock', [ 'product_id' => $variation->get_id(), 'stock_quantity' => 7, 'expected_version' => $inherited_version ], $inherited_version );
+    $assert( is_wp_error( YoRo_Early_Access_Commerce_Write::execute( $inherited ) ) && false === wc_get_product( $variation->get_id() )->get_manage_stock( 'edit' ) && 20 === wc_get_product( $parent->get_id() )->get_stock_quantity(), 'Inherited variation stock cannot silently become own stock or change its parent.' );
     $product->set_manage_stock( false ); $product->save(); $product = wc_get_product( $product->get_id() );
     $version = YoRo_Commerce_Discovery_Service::product_version( $product );
     $operation = $make( 'products.update_stock_status', [ 'product_id' => $product->get_id(), 'stock_status' => 'outofstock', 'expected_version' => $version ], $version );
