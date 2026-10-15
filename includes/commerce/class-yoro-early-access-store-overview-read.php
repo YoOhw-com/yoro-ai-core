@@ -67,7 +67,7 @@ class YoRo_Early_Access_Store_Overview_Read {
 
     private static function period( array $window, $currency, $generated ) {
         $raw = wc_get_orders( [ 'type' => 'shop_order', 'status' => YoRo_Early_Access_Order_Read::STATUSES, 'limit' => 101, 'page' => 1,
-            'date_created' => strtotime( $window['start'] ) . '...' . strtotime( $window['end'] ), 'orderby' => 'ID', 'order' => 'DESC' ] );
+            'date_created' => strtotime( $window['start'] ) . '...' . strtotime( $window['end'] ), 'orderby' => 'date ID', 'order' => 'DESC' ] );
         $has_more = count( $raw ) > 100; $raw = array_slice( $raw, 0, 100 );
         $statuses = array_fill_keys( YoRo_Early_Access_Order_Read::STATUSES, 0 );
         $invalid = 0; $other = 0; $total = 0; $eligible = 0; $counts = [ 'attention' => 0, 'fulfillment' => 0 ];

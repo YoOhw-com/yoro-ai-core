@@ -49,9 +49,12 @@ try {
     $assert( 'not_found' === $read( 'coupons.lookup', [ 'coupon_code' => 'yr0178missing' ] )['data']['availability'], 'Missing exact coupon is an explicit empty result.' );
     update_option( 'woocommerce_enable_coupons', 'no' );
     $assert( 'disabled' === $read( 'coupons.lookup', [ 'coupon_code' => 'yr0178save10' ] )['data']['availability'], 'Disabled coupons do not report redeemability.' );
-    for ( $i = 0; $i < 101; $i++ ) { $make( '1', 'USD', 'pending' ); }
+    $newest = $make( '1000', 'USD', 'processing', time() - 1 );
+    for ( $i = 0; $i < 101; $i++ ) { $backdated = $make( '1', 'USD', 'pending', time() - 60 ); }
+    $assert( $newest->get_id() < $backdated->get_id(), 'Imported older orders have newer IDs at the sample cutoff.' );
     $r = $read( 'store.get_insights', [ 'window' => 'today' ] );
     $assert( 100 === $r['extensions']['yoro.store_overview']['current']['scanned'] && true === $r['extensions']['yoro.store_overview']['current']['has_more'] && false === $r['data']['metrics']['is_complete'], 'Only 100 newest orders per period are aggregated, with a sentinel for more.' );
+    $assert( 3 === $r['data']['metrics']['order_count'] && '1030.000000' === $r['data']['metrics']['gross_sales'], 'Creation date, rather than ID, determines which orders survive the sample cutoff.' );
     foreach ( [ [ 'orders.update_status', [ 'window' => 'today' ] ], [ 'operations.get_summary', [ 'window' => 'all_time' ] ], [ 'store.get_insights', [ 'window' => 'today', 'include_pii' => true ] ],
         [ 'coupons.lookup', [ 'coupon_code' => 'SAVE10' ] ], [ 'coupons.lookup', [ 'coupon_code' => 'private@example.com' ] ] ] as $bad ) {
         $assert( ! YoRo_Early_Access_Store_Overview_Read::valid_params( $bad[0], $bad[1] ), 'Only exact normalized read selectors are admitted.' );
