@@ -40,6 +40,16 @@ try {
     $assert( [] === $r['data']['orders'], 'A guest reference without contact cannot turn into an unqualified all-customer scan.' );
     $r = $run( 'orders.find_by_identity', [ 'order_id' => (int) $one->get_id() ] ); $ids = array_column( $r['data']['orders'], 'id' );
     $assert( ! in_array( $one->get_id(), $ids, true ) && in_array( $two->get_id(), $ids, true ) && in_array( $other->get_id(), $ids, true ), 'Correlation excludes its seed and may find shared IP/device signals without asserting the same customer.' );
+    foreach ( [ [ 'malformed' ], (object) [ 'malformed' => true ], str_repeat( 'x', 256 ), '   ', "invalid\nvalue" ] as $invalid_device ) {
+        foreach ( [ $one, $other ] as $candidate ) {
+            $candidate->set_customer_ip_address( 'invalid-ip' ); $candidate->update_meta_data( '_yoro_device_id', $invalid_device ); $candidate->save();
+        }
+        $invalid = $run( 'orders.find_by_identity', [ 'order_id' => (int) $one->get_id() ] );
+        $assert( ! in_array( $other->get_id(), array_column( $invalid['data']['orders'], 'id' ), true ), 'Malformed IP/device metadata cannot become a shared identity signal.' );
+    }
+    foreach ( [ $one, $other ] as $candidate ) {
+        $candidate->set_customer_ip_address( '192.0.2.17' ); $candidate->update_meta_data( '_yoro_device_id', 'PRIVATE-DEVICE' ); $candidate->save();
+    }
     $r = $run( 'customers.get_service_queue', [] );
     $assert( ! is_wp_error( $r ) && $r['extensions']['yoro.customer_service']['scanned'] <= 100 && count( $r['data']['orders'] ) <= 20, 'The queue stays bounded and read-only.' );
     foreach ( [ $r, $profile, $run( 'orders.find_by_identity', [ 'order_id' => (int) $one->get_id() ] ) ] as $result ) {

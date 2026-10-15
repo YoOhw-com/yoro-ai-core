@@ -88,8 +88,13 @@ final class YoRo_Early_Access_Customer_Service_Read {
 
     private static function identity_reasons( WC_Order $seed, WC_Order $order ) {
         if ( $seed->get_id() === $order->get_id() ) { return []; }
-        $values = static function( WC_Order $o ) { return [ 'email' => strtolower( $o->get_billing_email() ), 'phone' => self::phone( $o->get_billing_phone() ),
-            'ip' => (string) $o->get_customer_ip_address(), 'device' => (string) $o->get_meta( '_yoro_device_id', true ) ]; };
+        $values = static function( WC_Order $o ) {
+            $ip = $o->get_customer_ip_address(); $device = $o->get_meta( '_yoro_device_id', true );
+            return [ 'email' => strtolower( $o->get_billing_email() ), 'phone' => self::phone( $o->get_billing_phone() ),
+                'ip' => is_string( $ip ) && filter_var( $ip, FILTER_VALIDATE_IP ) ? $ip : '',
+                'device' => is_string( $device ) && '' !== trim( $device ) && strlen( $device ) <= 255
+                    && ! preg_match( '/[\x00-\x1f\x7f]/', $device ) && 1 === preg_match( '//u', $device ) ? $device : '' ];
+        };
         $left = $values( $seed ); $right = $values( $order ); $why = [];
         foreach ( $left as $key => $value ) { if ( '' !== $value && $value === $right[$key] ) { $why[] = $key; } }
         return $why;
