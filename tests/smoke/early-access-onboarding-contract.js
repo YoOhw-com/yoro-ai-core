@@ -11,16 +11,22 @@ class Element {
     addEventListener(name, callback) { this.events[name] = callback; }
     focus() { this.focused = true; }
     select() { this.selected = true; }
+    closest() { return this.notice; }
+    remove() { this.removed = true; }
 }
 (async () => {
     let now = Date.now(); let copied = ''; let timer; let clipboardAvailable = true; let copyReset; let pendingWrites;
     const tabs = ['chatgpt', 'early-access'].map(name => new Element({ 'aria-controls': `panel-${name}` }));
     const panels = Object.fromEntries(tabs.map(tab => [`#${tab.getAttribute('aria-controls')}`, new Element()]));
     const grant = new Element(); grant.textContent = 'ChatGPT connection: Connected'; grant.dataset = { expires: new Date(now + 1000).toISOString() };
-    const feedback = new Element(); const copy = new Element();
+    const feedback = new Element(); feedback.hidden = true; const copy = new Element();
+    const notice = new Element(); const dismiss = new Element(); dismiss.hidden = true; dismiss.notice = notice;
     copy.textContent = 'Copy URL';
     const input = new Element(); input.value = 'https://fixture-api.test/mcp/early-access';
-    const root = { querySelectorAll: () => tabs, querySelector: selector => ({ ...panels, '[data-yoro-feedback]': feedback, '[data-yoro-copy-url]': copy, '#yoro-server-url': input, '[data-yoro-grant-status]': grant })[selector] };
+    const root = {
+        querySelectorAll: selector => ({ '[data-yoro-tab]': tabs, '[data-yoro-notice-dismiss]': [dismiss] })[selector] || [],
+        querySelector: selector => selector === '[data-yoro-tab][aria-selected="true"]' ? tabs.find(tab => tab.attrs['aria-selected'] === 'true') : ({ ...panels, '[data-yoro-feedback]': feedback, '[data-yoro-copy-url]': copy, '#yoro-server-url': input, '[data-yoro-grant-status]': grant })[selector]
+    };
     const context = { document: { querySelector: () => root }, navigator: { clipboard: { writeText: async value => {
         if (!clipboardAvailable) throw new Error('Clipboard unavailable');
         if (pendingWrites) await new Promise((resolve, reject) => { pendingWrites.push({ resolve, reject }); });
@@ -35,15 +41,20 @@ class Element {
     assert.equal(prevented, true); assert.equal(tabs[0].attrs['aria-selected'], 'true'); assert.equal(tabs[0].focused, true); assert.equal(panels['#panel-early-access'].hidden, true);
     tabs[0].events.keydown({ key: 'End', preventDefault() {} });
     assert.equal(tabs[1].attrs['aria-selected'], 'true'); assert.equal(tabs[0].tabIndex, -1);
+    assert.equal(dismiss.hidden, false); dismiss.events.click(); assert.equal(notice.removed, true); assert.equal(tabs[1].focused, true);
     await copy.events.click(); assert.equal(copied, input.value); assert.equal(copy.textContent, 'Copied!');
+    assert.equal(feedback.textContent, ''); assert.equal(feedback.hidden, true);
     copyReset(); assert.equal(copy.textContent, 'Copy URL');
     now += 2000; timer(); assert.equal(input.value, 'https://fixture-api.test/mcp/early-access'); assert.equal(copy.disabled, false); assert.equal(grant.textContent, 'ChatGPT connection: Not yet verified');
+    assert.equal(feedback.hidden, false); assert.match(feedback.textContent, /Connection status expired/);
+    const expiryWarning = feedback.textContent;
     copied = ''; await copy.events.click(); assert.equal(copied, input.value);
+    assert.equal(feedback.textContent, expiryWarning);
     grant.dataset.expires = 'malformed'; grant.textContent = 'ChatGPT connection: Connected'; timer();
     assert.equal(grant.textContent, 'ChatGPT connection: Not yet verified');
     assert.equal(input.value, copied);
     clipboardAvailable = false; await copy.events.click(); assert.equal(input.focused, true); assert.equal(input.selected, true);
-    assert.equal(copy.textContent, 'Copy URL'); assert.equal(copyReset, undefined);
+    assert.equal(copy.textContent, 'Select and copy'); assert.equal(copyReset, undefined); assert.equal(feedback.textContent, expiryWarning);
     clipboardAvailable = true; pendingWrites = [];
     const firstClick = copy.events.click(); const secondClick = copy.events.click();
     pendingWrites[0].resolve(); await firstClick;
@@ -54,7 +65,7 @@ class Element {
     const staleClick = copy.events.click(); const failedClick = copy.events.click();
     pendingWrites[1].reject(new Error('Clipboard unavailable')); await failedClick;
     pendingWrites[0].resolve(); await staleClick;
-    assert.equal(copy.textContent, 'Copy URL'); assert.equal(copyReset, undefined);
+    assert.equal(copy.textContent, 'Select and copy'); assert.equal(copyReset, undefined);
     input.value = ''; copied = ''; await copy.events.click(); assert.equal(copied, '');
     console.log('YoRo Early Access keyboard/public URL copy/status expiry JS contract passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
