@@ -235,6 +235,77 @@ class YoRo_Connector_Runtime {
 		];
 	}
 
+	/** Bounded CLI session; the caller owns scheduling and the current site/user boundary. */
+	public function run_early_access_session( $seconds = 55, $observe = null, $before_round = null ) {
+		if ( 'cli' !== PHP_SAPI ) {
+			return new WP_Error( 'yoro_connector_cli_required', 'A CLI worker is required.' );
+		}
+		$started = ( $this->clock )();
+		$deadline = $started + max( 1, min( 55, (float) $seconds ) );
+		$summary = [ 'ticks' => 0, 'reads' => 0, 'writes' => 0, 'empty_polls' => 0 ];
+		$idle = 0;
+		while ( $summary['ticks'] < 40 && ( $this->clock )() < $deadline ) {
+			if ( is_callable( $before_round ) ) {
+				$before_round();
+			}
+			$round = $this->early_access_session_round( 0 === $summary['ticks'], $deadline );
+			if ( is_wp_error( $round ) ) {
+				return $round;
+			}
+			$summary['ticks']++;
+			$summary['reads'] += $round['reads'];
+			$summary['writes'] += $round['writes'];
+			$active = $round['reads'] + $round['writes'] > 0;
+			$summary['empty_polls'] += $active ? 0 : 1;
+			if ( is_callable( $observe ) ) {
+				$observe( $summary );
+			}
+			// Drain queued work immediately. Back off only when no work was received.
+			$idle = $active ? 0 : min( 4, $idle + 1 );
+			$remaining = $deadline - ( $this->clock )();
+			if ( ! $active && $remaining > 0 ) {
+				( $this->sleeper )( min( $remaining, min( 10, 2 ** $idle ) ) );
+			}
+		}
+		$summary['elapsed_ms'] = (int) round( ( ( $this->clock )() - $started ) * 1000 );
+		return $summary;
+	}
+
+	protected function early_access_session_round( $publish, $deadline ) {
+		if ( ! self::early_access_read_allowed() ) {
+			return new WP_Error( 'yoro_connector_early_access_unavailable', 'Early Access is unavailable.' );
+		}
+		$lock = self::acquire_lock();
+		if ( null === $lock ) {
+			return [ 'reads' => 0, 'writes' => 0 ];
+		}
+		try {
+			if ( $publish && ( $this->clock )() < $deadline ) {
+				( new YoRo_Connector_Snapshot_Publisher( $this->client ) )->publish_if_due();
+			}
+			$counts = [ 'reads' => 0, 'writes' => 0 ];
+			foreach ( [ 'reads', 'writes' ] as $lane ) {
+				if ( ( $this->clock )() >= $deadline ) {
+					break;
+				}
+				if ( 'writes' === $lane && ! self::early_access_write_allowed() ) {
+					continue;
+				}
+				$result = 'reads' === $lane ? $this->run_early_access_once() : $this->run_early_access_write_once();
+				if ( is_wp_error( $result ) ) {
+					return $result;
+				}
+				if ( ! is_array( $result ) || true !== ( $result['success'] ?? false ) ) {
+					return new WP_Error( 'yoro_connector_worker_result_invalid', 'The worker result is unavailable.' );
+				}
+				$counts[ $lane ] = empty( $result['empty'] ) ? 1 : 0;
+			}
+			return $counts;
+		} finally {
+			self::release_lock( $lock );
+		}
+	}
+
 	private static function retry_delay( $hint ) {
 		if ( ! is_numeric( $hint ) || ! is_finite( (float) $hint ) || (float) $hint <= 0 ) {
 			return self::DEFAULT_RETRY_SECONDS;
@@ -404,6 +475,9 @@ class YoRo_Connector_Runtime {
 		if ( ! $allowed() || ! $owns_lock() ) {
 			return new WP_Error( 'yoro_r2_unavailable', 'A locked R2 operator runner is required.' );
 		}
+		if ( $ordinary && ! $this->client->early_access_has_budget() ) {
+			return [ 'success' => true, 'empty' => true, 'throttled' => true ];
+		}
 		$claim = $request( 'claim' );
 		if ( is_wp_error( $claim ) || ! empty( $claim['empty'] ) ) {
 			return $claim;
@@ -417,9 +491,15 @@ class YoRo_Connector_Runtime {
 		if ( is_wp_error( $valid ) ) {
 			return $valid;
 		}
+		if ( $ordinary && ! $this->client->early_access_has_budget( 3 ) ) {
+			return new WP_Error( 'yoro_connector_transport_budget', 'The delivery must wait for transport capacity.' );
+		}
 		foreach ( [ 'ack', 'lease' ] as $step ) {
 			if ( ! $owns_lock() || ! $allowed() ) {
 				return self::lock_lost_error();
+			}
+			if ( $ordinary && ! $this->client->early_access_has_budget( 'ack' === $step ? 3 : 2 ) ) {
+				return new WP_Error( 'yoro_connector_transport_budget', 'The delivery must wait for transport capacity.' );
 			}
 			$response = $request( $step, $operation['envelope_id'], [], $authority['claim_token'], $authority['lease_generation'] );
 			if ( is_wp_error( $response ) ) {
@@ -431,6 +511,9 @@ class YoRo_Connector_Runtime {
 			return $valid;
 		}
         if ( ! $owns_lock() || ! $allowed() ) { return self::lock_lost_error(); }
+		if ( $ordinary && ! $this->client->early_access_has_budget( 1 ) ) {
+			return new WP_Error( 'yoro_connector_transport_budget', 'Result transport capacity is required before execution.' );
+		}
 		$journal = YoRo_Connector_Execution_Journal::begin( $operation );
         if ( ! in_array( $journal['state'] ?? '', [ 'new', 'executing', 'completed', 'conflict' ], true ) ) {
             return new WP_Error( 'yoro_connector_journal_unavailable', 'A durable execution journal is required.' );

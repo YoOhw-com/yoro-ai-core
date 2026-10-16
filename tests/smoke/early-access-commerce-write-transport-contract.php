@@ -10,9 +10,11 @@ $admins = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID
 $block = static function() { throw new RuntimeException( 'The disposable write runner must not make a network request.' ); };
 add_filter( 'pre_wp_mail', '__return_true' );
 $client = new class extends YoRo_Connector_Client {
-    public $operation; public $results = []; public $steps = []; public $after_lease = null;
+    public $operation; public $results = []; public $steps = []; public $after_lease = null; public $budget_drop_step = null; public $budget_remaining = null;
+    public function early_access_has_budget( $requests = 4 ) { return null === $this->budget_remaining ? parent::early_access_has_budget( $requests ) : $this->budget_remaining >= $requests; }
     public function early_access_write_request( $step, $id = '', $payload = [], $token = '', $generation = 0 ) {
         $this->steps[] = $step;
+        if ( count( $this->steps ) === $this->budget_drop_step ) { $this->budget_remaining = max( 0, 3 - $this->budget_drop_step ); }
         if ( 'claim' === $step ) { return [ 'success' => true, 'delivery' => [ 'delivery_id' => 'fixture-delivery', 'claim_token' => str_repeat( 'a', 80 ), 'lease_generation' => 1, 'operations' => [ $this->operation ] ] ]; }
         if ( str_repeat( 'a', 80 ) !== $token || 1 !== $generation || $id !== $this->operation['envelope_id'] ) { throw new RuntimeException( 'The fenced lease was lost.' ); }
         if ( 'lease' === $step && null !== $this->after_lease ) { ( $this->after_lease )(); }
@@ -69,6 +71,29 @@ try {
     add_filter( 'pre_http_request', $block );
     $lock = $acquire->invoke( null ); $assert( null !== $lock, 'The runner owns its existing database lock.' );
     $runtime = new YoRo_Connector_Runtime( $client );
+    $client->budget_remaining = 3;
+    $budget_result = $runtime->run_early_access_write_once();
+    $assert( ! is_wp_error( $budget_result ) && ! empty( $budget_result['throttled'] ) && [] === $client->steps, 'Insufficient pipeline capacity must stop before claim.' );
+    $journal_key = new ReflectionMethod( YoRo_Connector_Execution_Journal::class, 'key' );
+    foreach ( [ 1, 2, 3 ] as $drop ) {
+        $client->budget_remaining = null; $client->budget_drop_step = $drop; $client->steps = [];
+        $budget_result = $runtime->run_early_access_write_once();
+        $assert( is_wp_error( $budget_result ) && 'yoro_connector_transport_budget' === $budget_result->get_error_code(), 'Quota lost after claim/ack/lease must stop before execution.' );
+        $assert( count( $client->steps ) === $drop && 5 === wc_get_product( $product->get_id() )->get_stock_quantity() && false === get_option( $journal_key->invoke( null, $client->operation ) ), 'Insufficient callback capacity must not mutate or begin a journal.' );
+    }
+    $client->budget_remaining = null; $client->budget_drop_step = null; $client->steps = [];
+    // A slow read may finish after the soft deadline; it must not start a new write.
+    $release->invoke( null, $lock ); $lock = null; $virtual_time = 0.0;
+    $deadline_runtime = new class( $client, static function() use ( &$virtual_time ) { return $virtual_time; } ) extends YoRo_Connector_Runtime {
+        public $after_read;
+        public function run_early_access_once() { ( $this->after_read )(); return [ 'success' => true, 'empty' => true ]; }
+        public function run_early_access_write_once() { throw new RuntimeException( 'A write started after the session deadline.' ); }
+    };
+    $deadline_runtime->after_read = static function() use ( &$virtual_time ) { $virtual_time = 60.0; };
+    $round_method = new ReflectionMethod( YoRo_Connector_Runtime::class, 'early_access_session_round' );
+    $round_result = $round_method->invoke( $deadline_runtime, false, 55.0 );
+    $assert( [ 'reads' => 0, 'writes' => 0 ] === $round_result && 60.0 === $virtual_time, 'A late read finishes safely but cannot start another lane.' );
+    $lock = $acquire->invoke( null );
     for ( $attempt = 0; $attempt < 2; $attempt++ ) {
         $r = $runtime->run_early_access_write_once();
         $assert( ! is_wp_error( $r ) && true === ( $r['success'] ?? null ), 'The fenced runner delivers a terminal result: ' . ( is_wp_error( $r ) ? $r->get_error_code() : '' ) );
