@@ -17,6 +17,7 @@ class YoRo_Connector_Runtime {
 	const DEFAULT_RETRY_SECONDS = 5;
 
 	private $client;
+	private $wake_request = false;
     private $unified_claim_available = true;
 	private $clock;
 	private $sleeper;
@@ -273,13 +274,26 @@ class YoRo_Connector_Runtime {
 		return array_merge( $summary, $this->client->early_access_transport_metrics() );
 	}
 
+	/** One authenticated has-work signal; operation authority is obtained only by claim. */
+	public function run_early_access_wake() {
+		$this->wake_request = true;
+		$this->client->set_early_access_deadline( 35 );
+		try {
+			$round = $this->early_access_session_round( false, ( $this->clock )() + 35 );
+			return is_wp_error( $round ) ? $round : [ 'success' => true, 'processed' => $round['reads'] + $round['writes'] ];
+		} finally {
+			$this->client->set_early_access_deadline();
+			$this->wake_request = false;
+		}
+	}
+
 	protected function early_access_session_round( $publish, $deadline ) {
 		if ( ! self::early_access_read_allowed() ) {
 			return new WP_Error( 'yoro_connector_early_access_unavailable', 'Early Access is unavailable.' );
 		}
 		$lock = self::acquire_lock();
 		if ( null === $lock ) {
-			return [ 'reads' => 0, 'writes' => 0 ];
+			return $this->wake_request ? new WP_Error( 'yoro_wake_busy', 'A connector runner is already active.', [ 'status' => 409 ] ) : [ 'reads' => 0, 'writes' => 0 ];
 		}
 		try {
 			if ( $publish && ( $this->clock )() < $deadline ) {
@@ -289,6 +303,7 @@ class YoRo_Connector_Runtime {
             if ( $this->unified_claim_available && ( $this->clock )() < $deadline ) {
                 $claim = $this->client->early_access_request( 'next' );
                 if ( is_wp_error( $claim ) && in_array( $claim->get_error_data()['status'] ?? null, [ 404, 405 ], true ) ) {
+                    if ( $this->wake_request ) { return $claim; }
                     $this->unified_claim_available = false;
                 } else {
                     if ( is_wp_error( $claim ) || ! empty( $claim['empty'] ) ) {

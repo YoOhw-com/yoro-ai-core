@@ -11,6 +11,31 @@ class YoRo_Connector_Client {
     private $early_access_requests = 0;
     private $early_access_remaining = 24;
     private $early_access_metrics = [];
+    private $early_access_deadline = null;
+
+    /** Bound the complete wake transport, including slow or unavailable API hops. */
+    public function set_early_access_deadline( $seconds = null ) {
+        $this->early_access_deadline = null === $seconds ? null : microtime( true ) + max( 0, min( 35, (float) $seconds ) );
+    }
+
+    private function early_access_timeout() {
+        return null === $this->early_access_deadline ? 20 : max( 0, min( 20, $this->early_access_deadline - microtime( true ) ) );
+    }
+
+    public function register_early_access_wake( array $payload ) {
+        if ( ! YoRo_Connector_Runtime::early_access_read_allowed() || 'https' !== wp_parse_url( YoRo_AI_Settings::get_ai_api_url(), PHP_URL_SCHEME ) ) {
+            return new WP_Error( 'yoro_wake_unavailable', 'Connector wake is unavailable.' );
+        }
+        $response = wp_remote_request( $this->api_base_url( YoRo_AI_Settings::get_ai_api_url() ) . '/early-access/wake/register', [
+            'method' => 'POST', 'timeout' => 10, 'redirection' => 0, 'sslverify' => true, 'limit_response_size' => 2048,
+            'headers' => [ 'Authorization' => 'Bearer ' . YoRo_AI_Settings::get_ai_api_site_key(), 'Accept' => 'application/json', 'Content-Type' => 'application/json' ],
+            'body' => wp_json_encode( $payload ),
+        ] );
+        if ( is_wp_error( $response ) ) { return $response; }
+        $json = json_decode( wp_remote_retrieve_body( $response ), true );
+        return 200 === (int) wp_remote_retrieve_response_code( $response ) && true === ( $json['success'] ?? null )
+            ? [ 'success' => true ] : new WP_Error( 'yoro_wake_registration_failed', 'Connector wake registration is unavailable.' );
+    }
 
     /** Reserve a full claim/ack/lease/result pipeline under the shared 30/minute limit. */
     public function early_access_has_budget( $requests = 4 ) {
@@ -87,9 +112,11 @@ class YoRo_Connector_Client {
 		if ( ! is_string( $body ) || strlen( $body ) > 65536 ) {
 			return new WP_Error( 'yoro_early_access_invalid_result', 'The Early Access payload is outside its safe boundary.' );
 		}
+        $timeout = $this->early_access_timeout();
+        if ( $timeout < 1 ) { return new WP_Error( 'yoro_wake_deadline', 'The bounded connector request has ended.' ); }
         $transport_started = hrtime( true );
 		$response = wp_remote_request( $this->api_base_url( YoRo_AI_Settings::get_ai_api_url() ) . $path, [
-			'method' => 'POST', 'timeout' => 20, 'redirection' => 0, 'sslverify' => true,
+			'method' => 'POST', 'timeout' => $timeout, 'redirection' => 0, 'sslverify' => true,
 			'limit_response_size' => 65536,
 			'headers' => array_merge( [ 'Authorization' => 'Bearer ' . YoRo_AI_Settings::get_ai_api_site_key(),
 				'Accept' => 'application/json', 'Content-Type' => 'application/json' ],
@@ -135,9 +162,11 @@ class YoRo_Connector_Client {
 		if ( ! is_string( $body ) || strlen( $body ) > 65536 ) {
 			return new WP_Error( 'yoro_early_access_invalid_result', 'The Early Access payload is outside its safe boundary.' );
 		}
+        $timeout = $this->early_access_timeout();
+        if ( $timeout < 1 ) { return new WP_Error( 'yoro_wake_deadline', 'The bounded connector request has ended.' ); }
         $transport_started = hrtime( true );
 		$response = wp_remote_request( $this->api_base_url( YoRo_AI_Settings::get_ai_api_url() ) . $path, [
-			'method' => 'POST', 'timeout' => 20, 'redirection' => 0, 'sslverify' => true,
+			'method' => 'POST', 'timeout' => $timeout, 'redirection' => 0, 'sslverify' => true,
 			'limit_response_size' => 65536,
 			'headers' => array_merge( [ 'Authorization' => 'Bearer ' . YoRo_AI_Settings::get_ai_api_site_key(),
 				'Accept' => 'application/json', 'Content-Type' => 'application/json' ],

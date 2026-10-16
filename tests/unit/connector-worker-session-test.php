@@ -58,3 +58,22 @@ $missing_headers = new YoRo_Connector_Client();
 for ( $i = 0; $i < 21; $i++ ) { $record_budget->invoke( $missing_headers, [ 'headers' => [] ] ); }
 $assert( ! $missing_headers->early_access_has_budget() && $missing_headers->early_access_has_budget( 3 ), 'Missing quota headers must still retain the conservative 24-request session cap.' );
 echo "Shared read/write transport budget contract passed.\n";
+
+// The HTTPS wake path is a single round without sleeping or publisher work.
+$now = 0.0; $sleeps = [];
+$wake = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client(), $clock, $sleeper );
+$wake->rounds = [ [ 'reads' => 1, 'writes' => 0 ], [ 'reads' => 1, 'writes' => 1 ] ];
+$receipt = $wake->run_early_access_wake();
+$assert( [ 'success' => true, 'processed' => 1 ] === $receipt && 1 === $wake->calls, 'A wake signal must process exactly one bounded ordinary round.' );
+$assert( [ false ] === $wake->publish_flags && [] === $sleeps, 'Wake must not publish snapshots or wait for more work.' );
+$wake->rounds = [ new WP_Error( 'fixture_denied', 'Denied' ) ];
+$assert( is_wp_error( $wake->run_early_access_wake() ), 'Wake must preserve denied or unknown outcomes without rerunning a claim.' );
+$deadline = new ReflectionProperty( YoRo_Connector_Client::class, 'early_access_deadline' );
+$client_property = new ReflectionProperty( YoRo_Connector_Runtime::class, 'client' );
+$assert( null === $deadline->getValue( $client_property->getValue( $wake ) ), 'Wake deadlines must be cleared even after transport errors.' );
+$budget_client->set_early_access_deadline( 0 );
+$timeout = new ReflectionMethod( YoRo_Connector_Client::class, 'early_access_timeout' );
+$assert( 0 === $timeout->invoke( $budget_client ), 'An expired wake deadline has no further HTTP budget.' );
+$budget_client->set_early_access_deadline();
+$assert( 20 === $timeout->invoke( $budget_client ), 'The existing fallback transport timeout remains unchanged.' );
+echo "Bounded single-round wake runtime contract passed.\n";
