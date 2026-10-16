@@ -12,6 +12,7 @@ class YoRo_Connector_Wake {
 	const NONCE_PREFIX = 'yoro_wake_nonce_';
 	const RATE_PREFIX = 'yoro_wake_rate_';
 	const MAX_SKEW = 60;
+	private static $health_write_failed_binding = null;
 
 	public static function init() {
 		add_action( 'rest_api_init', [ __CLASS__, 'register_routes' ] );
@@ -121,7 +122,9 @@ class YoRo_Connector_Wake {
 				|| ( 'healthy' === $health['state'] && $health['last_failure_at'] < ( $current['last_failure_at'] ?? 0 ) )
 				|| ( ! $accepted && 'blocked' === ( $current['state'] ?? null ) ) ) { return; }
 		}
-		update_option( self::HEALTH_OPTION, $health, false );
+		$written = update_option( self::HEALTH_OPTION, $health, false );
+		// WordPress also returns false for unchanged values; verify that case before downgrading.
+		self::$health_write_failed_binding = ! $written && get_option( self::HEALTH_OPTION, [] ) !== $health ? $binding : null;
 	}
 
 	/** Sanitized current telemetry; safe for the scoped connection UI and runtime probes. */
@@ -129,6 +132,7 @@ class YoRo_Connector_Wake {
 		$unknown = [ 'state' => 'unknown', 'last_success_at' => 0, 'last_failure_at' => 0, 'retry_after' => 0 ];
 		$bindings = self::bindings();
 		$state = get_option( self::HEALTH_OPTION, [] );
+		if ( null !== $bindings && self::$health_write_failed_binding === self::binding_hash( $bindings ) ) { return $unknown; }
 		if ( null === $bindings || ! is_array( $state ) || ! hash_equals( self::binding_hash( $bindings ), (string) ( $state['binding'] ?? '' ) )
 			|| ! is_int( $state['observed_at'] ?? null ) || $state['observed_at'] > time() || $state['observed_at'] < time() - 900 ) { return $unknown; }
 		if ( ! in_array( $state['state'] ?? null, [ 'healthy', 'blocked', 'degraded', 'unknown', 'disabled' ], true )

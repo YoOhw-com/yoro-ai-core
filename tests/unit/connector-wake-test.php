@@ -17,7 +17,10 @@ function wp_salt( $key ) { return 'fixture-private-salt-' . $key; }
 function wp_parse_url( $url, $part ) { return parse_url( $url, $part ); }
 function rest_url( $path ) { return 'https://shop.example/wp-json/' . $path; }
 function get_option( $key, $default = false ) { return $GLOBALS['options'][ $key ] ?? $default; }
-function update_option( $key, $value, $autoload = null ) { $GLOBALS['options'][ $key ] = $value; $GLOBALS['autoload'][ $key ] = $autoload; return true; }
+function update_option( $key, $value, $autoload = null ) {
+    if ( ! empty( $GLOBALS['fail_health_write'] ) && YoRo_Connector_Wake::HEALTH_OPTION === $key ) { return false; }
+    $GLOBALS['options'][ $key ] = $value; $GLOBALS['autoload'][ $key ] = $autoload; return true;
+}
 function register_rest_route( $namespace, $path, $args ) { $GLOBALS['route'] = [ $namespace, $path, $args ]; }
 class WP_REST_Request {
     public $query = []; public $files = []; public $headers = [ 'content-type' => 'application/json' ];
@@ -127,6 +130,23 @@ YoRo_Connector_Wake::record_response( $health_response( 'blocked', [ 'x-yoro-wak
 ob_start(); $render_status->invoke( null, true ); $blocked_markup = ob_get_clean();
 $assert( str_contains( $blocked_markup, 'Polling fallback enabled' ) && ! str_contains( $blocked_markup, 'blocked' ) && ! str_contains( $blocked_markup, 'raw-error' ), 'Hosting failures render English fallback guidance rather than raw statuses.' );
 YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+$GLOBALS['fail_health_write'] = true;
+YoRo_Connector_Wake::record_response( $health_response( 'blocked', [ 'x-yoro-wake-last-failure-at' => (string) time(), 'x-yoro-wake-retry-after' => '600' ] ), true );
+$assert( ! YoRo_Connector_Wake::available() && 'unknown' === YoRo_Connector_Wake::health()['state'], 'A failed telemetry write cannot leave stale healthy state active in this session.' );
+$GLOBALS['fail_health_write'] = false;
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+$assert( YoRo_Connector_Wake::available(), 'A later stored receipt recovers from a local telemetry write failure.' );
+$GLOBALS['fail_health_write'] = true;
+YoRo_Connector_Wake::record_response( [ 'headers' => $GLOBALS['options'][ YoRo_Connector_Wake::HEALTH_OPTION ] ], false );
+$assert( ! YoRo_Connector_Wake::available(), 'A failed unknown-state write also prefers fast polling.' );
+$GLOBALS['fail_health_write'] = false;
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+// Model update_option returning false for an unchanged but successfully stored value.
+$GLOBALS['fail_health_write'] = true;
+$stored_health = $GLOBALS['options'][ YoRo_Connector_Wake::HEALTH_OPTION ];
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-observed-at' => (string) $stored_health['observed_at'], 'x-yoro-wake-last-success-at' => (string) $stored_health['last_success_at'], 'x-yoro-wake-last-failure-at' => (string) $stored_health['last_failure_at'] ] ), true );
+$assert( YoRo_Connector_Wake::available(), 'An unchanged stored value is not a telemetry write failure.' );
+$GLOBALS['fail_health_write'] = false;
 YoRo_Connector_Wake::register_routes();
 $assert( [ 'YoRo_Connector_Wake', 'permission' ] === $GLOBALS['route'][2]['permission_callback'], 'The public endpoint must have a signed permission callback.' );
 $body = [ 'version' => 1, 'connection_id' => 'connector-fixture', 'installation_uuid' => 'installation-fixture', 'site_key_id' => 42, 'timestamp' => time(), 'nonce' => bin2hex( random_bytes( 32 ) ) ];
