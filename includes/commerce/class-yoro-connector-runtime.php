@@ -17,6 +17,7 @@ class YoRo_Connector_Runtime {
 	const DEFAULT_RETRY_SECONDS = 5;
 
 	private $client;
+	private $wake_request = false;
     private $unified_claim_available = true;
 	private $clock;
 	private $sleeper;
@@ -266,11 +267,29 @@ class YoRo_Connector_Runtime {
 			$idle = $active ? 0 : min( 4, $idle + 1 );
 			$remaining = $deadline - ( $this->clock )();
 			if ( ! $active && $remaining > 0 ) {
-				( $this->sleeper )( min( $remaining, min( 3, 2 ** $idle ) ) );
+				$idle_cap = $this->wake_available() ? 10 : 3;
+				( $this->sleeper )( min( $remaining, min( $idle_cap, 2 ** $idle ) ) );
 			}
 		}
 		$summary['elapsed_ms'] = (int) round( ( ( $this->clock )() - $started ) * 1000 );
 		return array_merge( $summary, $this->client->early_access_transport_metrics() );
+	}
+
+	protected function wake_available() {
+		return class_exists( 'YoRo_Connector_Wake' ) && YoRo_Connector_Wake::available();
+	}
+
+	/** One authenticated has-work signal; operation authority is obtained only by claim. */
+	public function run_early_access_wake() {
+		$this->wake_request = true;
+		$this->client->set_early_access_deadline( 35 );
+		try {
+			$round = $this->early_access_session_round( false, ( $this->clock )() + 35 );
+			return is_wp_error( $round ) ? $round : [ 'success' => true, 'processed' => $round['reads'] + $round['writes'] ];
+		} finally {
+			$this->client->set_early_access_deadline();
+			$this->wake_request = false;
+		}
 	}
 
 	protected function early_access_session_round( $publish, $deadline ) {
@@ -279,7 +298,7 @@ class YoRo_Connector_Runtime {
 		}
 		$lock = self::acquire_lock();
 		if ( null === $lock ) {
-			return [ 'reads' => 0, 'writes' => 0 ];
+			return $this->wake_request ? new WP_Error( 'yoro_wake_busy', 'A connector runner is already active.', [ 'status' => 409 ] ) : [ 'reads' => 0, 'writes' => 0 ];
 		}
 		try {
 			if ( $publish && ( $this->clock )() < $deadline ) {
@@ -289,6 +308,7 @@ class YoRo_Connector_Runtime {
             if ( $this->unified_claim_available && ( $this->clock )() < $deadline ) {
                 $claim = $this->client->early_access_request( 'next' );
                 if ( is_wp_error( $claim ) && in_array( $claim->get_error_data()['status'] ?? null, [ 404, 405 ], true ) ) {
+                    if ( $this->wake_request ) { return $claim; }
                     $this->unified_claim_available = false;
                 } else {
                     if ( is_wp_error( $claim ) || ! empty( $claim['empty'] ) ) {

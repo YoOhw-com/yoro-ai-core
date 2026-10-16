@@ -123,6 +123,7 @@ class YoRo_AI_Core {
         require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-early-access-wordpress-read.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-early-access-order-queue-read.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-runtime.php';
+		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-wake.php';
 	}
 
 	private static function include_rest() {
@@ -158,6 +159,7 @@ class YoRo_AI_Core {
 		do_action( 'yoro_register_actions' );
 
 		YoRo_Connector_Runtime::init();
+		YoRo_Connector_Wake::init();
 
 		YoRo_REST_API::init();
 

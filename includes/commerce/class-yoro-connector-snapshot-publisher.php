@@ -19,6 +19,9 @@ class YoRo_Connector_Snapshot_Publisher {
 	}
 
 	public function publish_if_due() {
+		if ( class_exists( 'YoRo_Connector_Wake' ) ) {
+			YoRo_Connector_Wake::maybe_register( $this->client );
+		}
 		$state = get_option( self::OPTION_SYNC_STATE, [] );
 		$published_at = is_array( $state ) ? absint( $state['published_at'] ?? 0 ) : 0;
 
