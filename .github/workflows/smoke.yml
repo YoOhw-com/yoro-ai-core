@@ -167,6 +167,9 @@ jobs:
           php "$RUNNER_TEMP/wp-cli.phar" eval-file \
             "$GITHUB_WORKSPACE/tests/smoke/strict-output-validation-readiness-contract.php" \
             --path="$RUNNER_TEMP/wordpress"
+          php "$RUNNER_TEMP/wp-cli.phar" eval-file \
+            "$GITHUB_WORKSPACE/tests/smoke/early-access-wordpress-read-contract.php" \
+            --path="$RUNNER_TEMP/wordpress"
 
   smoke:
     name: WordPress and WooCommerce Smoke
