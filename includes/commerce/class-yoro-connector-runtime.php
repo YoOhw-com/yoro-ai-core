@@ -267,12 +267,16 @@ class YoRo_Connector_Runtime {
 			$idle = $active ? 0 : min( 4, $idle + 1 );
 			$remaining = $deadline - ( $this->clock )();
 			if ( ! $active && $remaining > 0 ) {
-				$idle_cap = class_exists( 'YoRo_Connector_Wake' ) && YoRo_Connector_Wake::available() ? 10 : 3;
+				$idle_cap = $this->wake_available() ? 10 : 3;
 				( $this->sleeper )( min( $remaining, min( $idle_cap, 2 ** $idle ) ) );
 			}
 		}
 		$summary['elapsed_ms'] = (int) round( ( ( $this->clock )() - $started ) * 1000 );
 		return array_merge( $summary, $this->client->early_access_transport_metrics() );
+	}
+
+	protected function wake_available() {
+		return class_exists( 'YoRo_Connector_Wake' ) && YoRo_Connector_Wake::available();
 	}
 
 	/** One authenticated has-work signal; operation authority is obtained only by claim. */

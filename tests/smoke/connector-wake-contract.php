@@ -3,6 +3,9 @@
 if ( ! defined( 'ABSPATH' ) ) { exit( 1 ); }
 if ( ! class_exists( 'YoRo_Connector_Wake' ) ) { YoRo_AI_Core::init(); }
 if ( ! class_exists( 'YoRo_Connector_Wake' ) ) { throw new RuntimeException( 'The wake endpoint is not bootstrapped.' ); }
+if ( ! YoRo_Connector_Runtime::early_access_read_allowed() && YoRo_Connector_Wake::available() ) {
+    throw new RuntimeException( 'A disabled ordinary runtime must not advertise wake readiness.' );
+}
 $request = new WP_REST_Request( 'POST', '/yoro/v1/connector-wake' );
 $request->set_header( 'Content-Type', 'application/json' );
 $request->set_body( '{}' );
