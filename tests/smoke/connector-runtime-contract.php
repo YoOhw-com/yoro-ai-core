@@ -981,6 +981,8 @@ PHP;
 	wp_set_current_user( $original_user_id );
 }
 
+require __DIR__ . '/../unit/connector-worker-session-test.php';
+
 if ( $failures ) {
 	foreach ( $failures as $failure ) {
 		fwrite( STDERR, "FAIL: {$failure}\n" );
