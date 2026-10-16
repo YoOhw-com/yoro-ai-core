@@ -267,7 +267,8 @@ class YoRo_Connector_Runtime {
 			$idle = $active ? 0 : min( 4, $idle + 1 );
 			$remaining = $deadline - ( $this->clock )();
 			if ( ! $active && $remaining > 0 ) {
-				( $this->sleeper )( min( $remaining, min( 3, 2 ** $idle ) ) );
+				$idle_cap = class_exists( 'YoRo_Connector_Wake' ) && YoRo_Connector_Wake::available() ? 10 : 3;
+				( $this->sleeper )( min( $remaining, min( $idle_cap, 2 ** $idle ) ) );
 			}
 		}
 		$summary['elapsed_ms'] = (int) round( ( ( $this->clock )() - $started ) * 1000 );

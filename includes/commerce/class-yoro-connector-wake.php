@@ -82,9 +82,19 @@ class YoRo_Connector_Wake {
 		update_option( self::OPTION, $state, false );
 		$result = $client->register_early_access_wake( [ 'version' => 1, 'secret' => $secret, 'endpoint' => $bindings['endpoint'] ] );
 		if ( ! is_wp_error( $result ) && true === ( $result['success'] ?? null ) ) {
+			$state['registered_at'] = time();
 			$state['next_attempt'] = time() + 600;
 			update_option( self::OPTION, $state, false );
 		}
+	}
+
+	/** A recent registration reduces empty polling; it never disables the cron fallback. */
+	public static function available() {
+		$bindings = self::bindings();
+		$state = get_option( self::OPTION, [] );
+		$registered = is_array( $state ) ? ( $state['registered_at'] ?? null ) : null;
+		return null !== $bindings && is_int( $registered ) && $registered <= time() && $registered >= time() - 15 * 60
+			&& '' !== self::read_secret( $state, self::binding_hash( $bindings ) );
 	}
 
 	private static function denied( $status = 401 ) {

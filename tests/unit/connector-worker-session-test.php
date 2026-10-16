@@ -77,3 +77,24 @@ $assert( 0 === $timeout->invoke( $budget_client ), 'An expired wake deadline has
 $budget_client->set_early_access_deadline();
 $assert( 20 === $timeout->invoke( $budget_client ), 'The existing fallback transport timeout remains unchanged.' );
 echo "Bounded single-round wake runtime contract passed.\n";
+
+class YoRo_Connector_Wake {
+    public static $healthy = false;
+    public static function available() { return self::$healthy; }
+}
+YoRo_Connector_Wake::$healthy = true;
+$now = 0.0; $sleeps = [];
+$healthy_fallback = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client(), $clock, $sleeper );
+$healthy_fallback->rounds = [ [ 'reads' => 1, 'writes' => 0 ], [ 'reads' => 1, 'writes' => 0 ] ];
+$receipt = $healthy_fallback->run_early_access_session( 55 );
+$assert( [ 2, 4, 8, 10, 10 ] === array_slice( $sleeps, 0, 5 ) && 55.0 === $now, 'Healthy wake registration must reduce empty polling while retaining the session deadline.' );
+$assert( 2 === $receipt['reads'] && 10 === $receipt['ticks'], 'Queued work still drains immediately, with eight bounded fallback polls.' );
+$now = 0.0; $sleeps = [];
+$expiring_sleeper = static function( $seconds ) use ( &$now, &$sleeps ) {
+    $now += $seconds; $sleeps[] = $seconds;
+    if ( $now >= 14 ) { YoRo_Connector_Wake::$healthy = false; }
+};
+$stale_fallback = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client(), $clock, $expiring_sleeper );
+$stale_fallback->run_early_access_session( 25 );
+$assert( [ 2, 4, 8, 3, 3, 3, 2.0 ] === $sleeps, 'Stale registration must restore the existing three-second fallback within the running session.' );
+echo "Wake-aware fallback polling contract passed.\n";
