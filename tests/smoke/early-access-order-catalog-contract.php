@@ -22,6 +22,13 @@ try {
         $order->set_customer_note( 'PRIVATE-NOTE' ); $order->update_meta_data( 'secret', 'PRIVATE-META' ); $order->save();
         $ids[] = $order->get_id();
     }
+    $account_id = wp_create_user( 'yr0178-order-buyer', wp_generate_password(), 'buyer@example.invalid' );
+    $assert( ! is_wp_error( $account_id ), 'The disposable customer fixture must be created.' );
+    $selected = wc_get_order( $ids[0] ); $selected->set_customer_id( $account_id );
+    $selected->set_shipping_first_name( 'Ada' ); $selected->set_shipping_last_name( 'Buyer' ); $selected->set_shipping_address_1( '123 Example Street' ); $selected->set_shipping_phone( '+12025550199' );
+    $shipping = new WC_Order_Item_Shipping(); $shipping->set_method_title( 'Flat rate' ); $shipping->set_method_id( 'flat_rate' ); $shipping->set_total( '5' ); $selected->add_item( $shipping );
+    $fee = new WC_Order_Item_Fee(); $fee->set_name( 'Handling' ); $fee->set_amount( '2' ); $fee->set_total( '2' ); $selected->add_item( $fee ); $selected->calculate_totals( false ); $selected->save();
+    for ( $i = 0; $i < 22; $i++ ) { $selected->add_order_note( 'STAFF-NOTE-' . $i, false, true ); }
     $before = array_map( static function( $id ) { return wp_json_encode( wc_get_order( $id )->get_data() ); }, $ids );
     $read = static function( $action, $params, $page = 1 ) { return YoRo_Early_Access_Order_Read::execute( [ 'action' => $action, 'params' => $params,
         'extensions' => [ 'yoro.mcp_early_access_product_read' => [ 'read_family' => 'orders', 'order_page' => $page ] ] ] ); };
@@ -45,6 +52,23 @@ try {
     foreach ( [ 'PRIVATE-', 'private-order@example.com', '+12025550123' ] as $private ) { $assert( false === strpos( $wire, $private ), 'Private customer data must never enter the read projection.' ); }
     $timeline = $read( 'orders.get_timeline', [ 'order_id' => $ids[0], 'limit' => 10 ] );
     $assert( 1 === $timeline['data']['count'] && 'created' === $timeline['data']['events'][0]['type'], 'Timeline contains only recorded system milestones.' );
+    $enhanced_read = static function( $action, $params, $page = 1 ) { return YoRo_Early_Access_Order_Read::execute( [ 'action' => $action, 'params' => $params,
+        'extensions' => [ 'yoro.mcp_early_access_product_read' => [ 'read_family' => 'orders', 'read_contract_version' => 1, 'order_projection_version' => 1,
+            ...( 'orders.get_timeline' === $action ? [ 'notes_page' => $page ] : [] ) ] ] ] ); };
+    $rich = $enhanced_read( 'orders.get_details', [ 'order_ids' => $ids ] );
+    $extra = $rich['data']['orders'][0]['extensions']['yoro.order_details'];
+    $assert( 'yr0178-order-buyer' === $extra['account']['username'] && $account_id === $extra['account']['id'], 'Selected details must expose only the linked account username and ID.' );
+    $assert( 'private-order@example.com' === $extra['billing']['email'] && '+12025550123' === $extra['billing']['phone'], 'Selected billing contacts must be included when negotiated.' );
+    $assert( '+12025550199' === $extra['shipping']['phone'] && '' === $extra['shipping']['email'], 'Shipping contact values must not be invented from billing.' );
+    $assert( 5.0 === (float) $extra['totals']['shipping'] && 'Handling' === $extra['totals']['fees'][0]['name'], 'Shipping and fee lines must come from order CRUD.' );
+    $assert( null === $rich['data']['orders'][1]['extensions']['yoro.order_details']['account'], 'Guest orders must not inherit another account.' );
+    $assert( ! str_contains( wp_json_encode( $rich ), 'PRIVATE-META' ), 'Private custom metadata must remain excluded.' );
+    $notes1 = $enhanced_read( 'orders.get_timeline', [ 'order_id' => $ids[0], 'limit' => 20 ] );
+    $notes2 = $enhanced_read( 'orders.get_timeline', [ 'order_id' => $ids[0], 'limit' => 20 ], 2 );
+    $note_ids = static function( $result ) { return array_column( array_filter( $result['data']['events'], static function( $event ) { return 'note' === $event['type']; } ), 'id' ); };
+    $assert( 20 === count( $note_ids( $notes1 ) ) && $notes1['extensions']['yoro.order_notes']['has_next_page'] && '2' === $notes1['extensions']['yoro.order_notes']['next_cursor'], 'Notes must use bounded pages.' );
+    $assert( count( $note_ids( $notes2 ) ) >= 2 && ! array_intersect( $note_ids( $notes1 ), $note_ids( $notes2 ) ), 'Stable note pages must not repeat notes.' );
+    $assert( false === strpos( wp_json_encode( $first ), 'private-order@example.com' ) && false === strpos( wp_json_encode( $first ), 'STAFF-NOTE-' ), 'Search summaries cannot inherit detail contacts or notes.' );
     foreach ( [ [ 'orders.update_status', [ 'order_ids' => $ids, 'status' => 'completed' ] ], [ 'orders.search', [ 'limit' => 21 ] ],
         [ 'orders.search', [ 'limit' => 10, 'email' => 'private-order@example.com' ] ], [ 'orders.search', [ 'limit' => 10, 'date_from' => '2026-02-30' ] ],
         [ 'orders.get_details', [ 'order_ids' => [ '1' ] ] ], [ 'orders.get_timeline', [ 'order_id' => $ids[0], 'limit' => 0 ] ] ] as $bad ) {

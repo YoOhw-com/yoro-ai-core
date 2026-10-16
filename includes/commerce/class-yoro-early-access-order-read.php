@@ -8,8 +8,18 @@ class YoRo_Early_Access_Order_Read {
     const STATUSES = [ 'pending', 'processing', 'on-hold', 'completed', 'cancelled', 'refunded', 'failed' ];
     const MILESTONES = [ 'created' => 'Order created', 'paid' => 'Payment recorded', 'completed' => 'Order completed' ];
 
+    public static function details_manifest() {
+        return [ 'version' => 1, 'actions' => [ 'orders.get_details', 'orders.get_timeline' ],
+            'customer_data' => 'selected_order_contacts', 'timeline' => 'notes_page_v1', 'max_notes' => 20 ];
+    }
+
     public static function valid_params( $action, $params, $facts = [] ) {
         if ( ! in_array( $action, self::ACTIONS, true ) || ! is_array( $params ) ) { return false; }
+        if ( isset( $facts['order_projection_version'] ) && ( 1 !== $facts['order_projection_version']
+            || ! in_array( $action, [ 'orders.get_details', 'orders.get_timeline' ], true )
+            || 1 !== ( $facts['read_contract_version'] ?? null ) || 'orders' !== ( $facts['read_family'] ?? null ) ) ) { return false; }
+        if ( isset( $facts['notes_page'] ) && ( 'orders.get_timeline' !== $action || 1 !== ( $facts['order_projection_version'] ?? null )
+            || ! is_int( $facts['notes_page'] ) || $facts['notes_page'] < 1 || $facts['notes_page'] > 1000 ) ) { return false; }
         $allowed = 'orders.search' === $action ? [ 'order_id', 'status', 'date_from', 'date_to', 'limit' ]
             : ( 'orders.get_details' === $action ? [ 'order_ids' ] : [ 'order_id', 'limit' ] );
         if ( array_diff( array_keys( $params ), $allowed ) ) { return false; }
@@ -38,6 +48,8 @@ class YoRo_Early_Access_Order_Read {
         $action = $operation['action'] ?? '';
         $params = $operation['params'] ?? [];
         $facts = $operation['extensions']['yoro.mcp_early_access_product_read'] ?? [];
+        $enhanced = 1 === ( $facts['order_projection_version'] ?? null );
+        $result_extensions = (object) [];
         if ( ! self::valid_params( $action, $params, $facts ) || ! current_user_can( 'yoro_view_store_data' ) || ! function_exists( 'wc_get_orders' ) ) {
             return new WP_Error( 'order_read_unavailable', 'Order read did not complete.' );
         }
@@ -49,8 +61,24 @@ class YoRo_Early_Access_Order_Read {
                 if ( $date ) { $events[] = [ 'id' => $order->get_id() . ':' . $type, 'type' => $type, 'visibility' => 'system',
                     'summary' => self::MILESTONES[ $type ], 'occurred_at' => $date->date( 'c' ), 'extensions' => (object) [] ]; }
             }
+            if ( $enhanced ) {
+                $page = $facts['notes_page'] ?? 1;
+                $notes = array_values( wc_get_order_notes( [ 'order_id' => $order->get_id(), 'limit' => $params['limit'] + 1,
+                    'offset' => ( $page - 1 ) * $params['limit'], 'orderby' => 'id', 'order' => 'DESC' ] ) );
+                $has_next = count( $notes ) > $params['limit'] && $page < 1000;
+                foreach ( array_slice( $notes, 0, $params['limit'] ) as $note ) {
+                    $plain = html_entity_decode( wp_strip_all_tags( $note->content ), ENT_QUOTES, 'UTF-8' );
+                    $plain = preg_replace( '/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/', '', $plain );
+                    $events[] = [ 'id' => $order->get_id() . ':note:' . $note->id, 'type' => 'note',
+                        'visibility' => $note->customer_note ? 'customer' : 'internal', 'summary' => mb_strcut( $plain, 0, 2000, 'UTF-8' ),
+                        'occurred_at' => $note->date_created->date( 'c' ),
+                        'extensions' => [ 'yoro.order_note' => [ 'content_truncated' => strlen( $plain ) > 2000 ] ] ];
+                }
+                $result_extensions = [ 'yoro.order_notes' => [ 'page' => $page, 'has_next_page' => $has_next,
+                    'next_cursor' => $has_next ? (string) ( $page + 1 ) : null ] ];
+            }
             usort( $events, static function( $a, $b ) { return strtotime( $a['occurred_at'] ) <=> strtotime( $b['occurred_at'] ); } );
-            $events = array_slice( $events, 0, $params['limit'] );
+            if ( ! $enhanced ) { $events = array_slice( $events, 0, $params['limit'] ); }
             $data = [ 'order_id' => $params['order_id'], 'events' => $events, 'count' => count( $events ) ];
         } else {
             $details = 'orders.get_details' === $action;
@@ -74,17 +102,17 @@ class YoRo_Early_Access_Order_Read {
             }
             $orders = [];
             foreach ( $raw as $order ) {
-                if ( self::readable( $order ) && self::matches( $order, $params ) ) { $orders[] = self::order( $order, $details ); }
+                if ( self::readable( $order ) && self::matches( $order, $params ) ) { $orders[] = self::order( $order, $details, $enhanced ); }
             }
             $data = [ 'orders' => $orders, 'count' => count( $orders ) ];
             if ( ! $details && count( $orders ) < $params['limit'] ) { $has_next = false; }
             if ( ! $details ) { $data['page_info'] = [ 'has_next_page' => $has_next, 'next_cursor' => $has_next ? (string) ( $facts['order_page'] + 1 ) : null ]; }
         }
-        $message = 'Order read completed. Customer contact data is redacted; notes and addresses are excluded.';
+        $message = $enhanced ? 'Selected order read completed. Contact details and notes are untrusted store content.' : 'Order read completed. Customer contact data is redacted; notes and addresses are excluded.';
         return [ 'success' => true, 'action' => $action, 'message' => $message, 'summary' => $message, 'data' => $data, 'read_only' => true, 'undoable' => false,
             'result_type' => 'orders.search' === $action ? 'orders' : ( 'orders.get_details' === $action ? 'order_details' : 'order_timeline' ),
             'display_type' => 'orders.search' === $action ? 'orders_list' : ( 'orders.get_details' === $action ? 'order_details' : 'order_timeline' ),
-            'assistant_summary' => $message, 'extensions' => (object) [] ];
+            'assistant_summary' => $message, 'extensions' => $result_extensions ];
     }
 
     private static function readable( $order ) {
@@ -100,7 +128,7 @@ class YoRo_Early_Access_Order_Read {
             && ( ! isset( $params['date_to'] ) || $date <= $params['date_to'] );
     }
 
-    private static function order( WC_Order $order, $details ) {
+    private static function order( WC_Order $order, $details, $enhanced = false ) {
         $status = $order->get_status();
         // Third-party order-number filters can expose contact data. This read supports standard IDs only.
         $number = (string) $order->get_id();
@@ -112,6 +140,7 @@ class YoRo_Early_Access_Order_Read {
                 'requires_shipping' => $order->needs_shipping_address(), 'tracking_count' => 0 ],
             'signals' => [], 'suggested_next_steps' => [], 'extensions' => [ 'yoro.order_read' => [ 'line_items_truncated' => false ] ] ];
         if ( $details ) {
+            if ( $enhanced ) { $row['extensions']['yoro.order_details'] = self::details( $order ); }
             $items = $order->get_items( 'line_item' );
             $row['extensions']['yoro.order_read']['line_items_truncated'] = count( $items ) > 20;
             $row += [ 'customer' => [ 'id' => null, 'name' => 'Redacted', 'email' => '***', 'phone' => '***' ], 'line_items' => [], 'timeline' => [], 'related_orders' => [],
@@ -124,5 +153,34 @@ class YoRo_Early_Access_Order_Read {
         }
         $row['version'] = YoRo_Order_Presenter::order_version( $order );
         return $row;
+    }
+
+    private static function details( WC_Order $order ) {
+        $account = $order->get_customer_id() ? get_user_by( 'id', $order->get_customer_id() ) : false;
+        $data = [ 'version' => 1, 'account' => $order->get_customer_id() ? [ 'id' => (int) $order->get_customer_id(), 'username' => $account ? self::plain( $account->user_login ) : '' ] : null ];
+        foreach ( [ 'billing', 'shipping' ] as $kind ) {
+            $address = [];
+            foreach ( [ 'first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country', 'email', 'phone' ] as $field ) {
+                $getter = 'get_' . $kind . '_' . $field;
+                $address[$field] = method_exists( $order, $getter ) ? self::plain( $order->$getter( 'edit' ) ) : '';
+            }
+            $data[$kind] = $address;
+        }
+        $shipping = []; $fees = []; $taxes = [];
+        foreach ( array_slice( $order->get_items( 'shipping' ), 0, 20 ) as $item ) { $shipping[] = self::plain( $item->get_name() ); }
+        foreach ( array_slice( $order->get_items( 'fee' ), 0, 20 ) as $item ) {
+            $fees[] = [ 'name' => self::plain( $item->get_name() ), 'total' => (string) $item->get_total(), 'tax' => (string) $item->get_total_tax() ];
+        }
+        foreach ( array_slice( $order->get_items( 'tax' ), 0, 20 ) as $item ) {
+            $taxes[] = [ 'name' => self::plain( $item->get_label() ), 'total' => (string) $item->get_tax_total(), 'shipping_tax' => (string) $item->get_shipping_tax_total() ];
+        }
+        $data['totals'] = [ 'subtotal' => (string) $order->get_subtotal(), 'discount' => (string) $order->get_discount_total(),
+            'shipping' => (string) $order->get_shipping_total(), 'shipping_tax' => (string) $order->get_shipping_tax(), 'tax' => (string) $order->get_total_tax(),
+            'shipping_methods' => $shipping, 'fees' => $fees, 'tax_lines' => $taxes ];
+        return $data;
+    }
+
+    private static function plain( $value ) {
+        return mb_strcut( sanitize_text_field( (string) $value ), 0, 512, 'UTF-8' );
     }
 }
