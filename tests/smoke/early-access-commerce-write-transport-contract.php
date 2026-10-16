@@ -11,6 +11,12 @@ $block = static function() { throw new RuntimeException( 'The disposable write r
 add_filter( 'pre_wp_mail', '__return_true' );
 $client = new class extends YoRo_Connector_Client {
     public $operation; public $results = []; public $steps = []; public $after_lease = null; public $budget_drop_step = null; public $budget_remaining = null;
+    public $next_attempts = 0;
+    public function early_access_request( $step, $id = '', $payload = [], $token = '', $generation = 0 ) {
+        if ( 'next' !== $step ) { throw new RuntimeException( 'Unexpected read transport in the write fixture.' ); }
+        $this->next_attempts++;
+        return new WP_Error( 'yoro_http_error', 'Legacy server fixture.', [ 'status' => 404 ] );
+    }
     public function early_access_has_budget( $requests = 4 ) { return null === $this->budget_remaining ? parent::early_access_has_budget( $requests ) : $this->budget_remaining >= $requests; }
     public function early_access_write_request( $step, $id = '', $payload = [], $token = '', $generation = 0 ) {
         $this->steps[] = $step;
@@ -92,6 +98,7 @@ try {
     $deadline_runtime->after_read = static function() use ( &$virtual_time ) { $virtual_time = 60.0; };
     $round_method = new ReflectionMethod( YoRo_Connector_Runtime::class, 'early_access_session_round' );
     $round_result = $round_method->invoke( $deadline_runtime, false, 55.0 );
+    $assert( 1 === $client->next_attempts, 'A legacy server is probed once before falling back to the lane deadline guard.' );
     $assert( [ 'reads' => 0, 'writes' => 0 ] === $round_result && 60.0 === $virtual_time, 'A late read finishes safely but cannot start another lane.' );
     $lock = $acquire->invoke( null );
     for ( $attempt = 0; $attempt < 2; $attempt++ ) {

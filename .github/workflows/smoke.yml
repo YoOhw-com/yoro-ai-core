@@ -121,6 +121,7 @@ jobs:
           php tests/unit/api-endpoint-resolver-test.php
           php tests/unit/api-connection-client-test.php
           php tests/unit/trace-context-test.php
+          php tests/unit/connector-worker-session-test.php
 
       - name: Run media reference transport contract
         run: php tests/contracts/media-reference-transport-contract.php
@@ -244,6 +245,7 @@ jobs:
           php tests/unit/api-endpoint-resolver-test.php
           php tests/unit/api-connection-client-test.php
           php tests/unit/trace-context-test.php
+          php tests/unit/connector-worker-session-test.php
 
       - name: Install disposable WordPress and WooCommerce
         run: |
