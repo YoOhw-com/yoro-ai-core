@@ -17,6 +17,7 @@ class YoRo_Connector_Runtime {
 	const DEFAULT_RETRY_SECONDS = 5;
 
 	private $client;
+    private $unified_claim_available = true;
 	private $clock;
 	private $sleeper;
 	private static $held_lock = null;
@@ -257,6 +258,7 @@ class YoRo_Connector_Runtime {
 			$summary['writes'] += $round['writes'];
 			$active = $round['reads'] + $round['writes'] > 0;
 			$summary['empty_polls'] += $active ? 0 : 1;
+            $summary = array_merge( $summary, $this->client->early_access_transport_metrics() );
 			if ( is_callable( $observe ) ) {
 				$observe( $summary );
 			}
@@ -264,11 +266,11 @@ class YoRo_Connector_Runtime {
 			$idle = $active ? 0 : min( 4, $idle + 1 );
 			$remaining = $deadline - ( $this->clock )();
 			if ( ! $active && $remaining > 0 ) {
-				( $this->sleeper )( min( $remaining, min( 10, 2 ** $idle ) ) );
+				( $this->sleeper )( min( $remaining, min( 3, 2 ** $idle ) ) );
 			}
 		}
 		$summary['elapsed_ms'] = (int) round( ( ( $this->clock )() - $started ) * 1000 );
-		return $summary;
+		return array_merge( $summary, $this->client->early_access_transport_metrics() );
 	}
 
 	protected function early_access_session_round( $publish, $deadline ) {
@@ -284,6 +286,28 @@ class YoRo_Connector_Runtime {
 				( new YoRo_Connector_Snapshot_Publisher( $this->client ) )->publish_if_due();
 			}
 			$counts = [ 'reads' => 0, 'writes' => 0 ];
+            if ( $this->unified_claim_available && ( $this->clock )() < $deadline ) {
+                $claim = $this->client->early_access_request( 'next' );
+                if ( is_wp_error( $claim ) && in_array( $claim->get_error_data()['status'] ?? null, [ 404, 405 ], true ) ) {
+                    $this->unified_claim_available = false;
+                } else {
+                    if ( is_wp_error( $claim ) || ! empty( $claim['empty'] ) ) {
+                        return is_wp_error( $claim ) ? $claim : $counts;
+                    }
+                    $lane = $claim['transport_lane'] ?? null;
+                    if ( ! in_array( $lane, [ 'read', 'write' ], true ) ) {
+                        return new WP_Error( 'yoro_early_access_invalid_lane', 'An exact delivery lane is required.' );
+                    }
+                    $result = $this->run_r2_once( true, 'write' === $lane, $claim );
+                    if ( is_wp_error( $result ) ) { return $result; }
+                    if ( ! is_array( $result ) || true !== ( $result['success'] ?? false ) ) {
+                        return new WP_Error( 'yoro_connector_worker_result_invalid', 'The worker result is unavailable.' );
+                    }
+                    $counts[ 'write' === $lane ? 'writes' : 'reads' ] = 1;
+                    return $counts;
+                }
+            }
+
 			foreach ( [ 'reads', 'writes' ] as $lane ) {
 				if ( ( $this->clock )() >= $deadline ) {
 					break;
@@ -464,7 +488,7 @@ class YoRo_Connector_Runtime {
 		}
 	}
 
-	public function run_r2_once( $ordinary = false, $commerce_write = false ) {
+	public function run_r2_once( $ordinary = false, $commerce_write = false, $prefetched_claim = null ) {
         $owns_lock = static function() { return null !== self::$held_lock && self::runner_lock_valid(); };
         $allowed = static function() use ( $ordinary, $commerce_write ) { return $commerce_write ? ( $ordinary && self::early_access_write_allowed() ) : ( $ordinary ? self::early_access_read_allowed() : self::r2_read_allowed() ); };
         $validate = function( $operation ) use ( $ordinary, $commerce_write ) { return $commerce_write ? $this->validate_early_access_write_operation( $operation ) : ( $ordinary ? $this->validate_early_access_operation( $operation ) : $this->validate_r2_operation( $operation ) ); };
@@ -475,10 +499,10 @@ class YoRo_Connector_Runtime {
 		if ( ! $allowed() || ! $owns_lock() ) {
 			return new WP_Error( 'yoro_r2_unavailable', 'A locked R2 operator runner is required.' );
 		}
-		if ( $ordinary && ! $this->client->early_access_has_budget() ) {
+		if ( $ordinary && ! $this->client->early_access_has_budget( null === $prefetched_claim ? 4 : 3 ) ) {
 			return [ 'success' => true, 'empty' => true, 'throttled' => true ];
 		}
-		$claim = $request( 'claim' );
+		$claim = null === $prefetched_claim ? $request( 'claim' ) : $prefetched_claim;
 		if ( is_wp_error( $claim ) || ! empty( $claim['empty'] ) ) {
 			return $claim;
 		}
@@ -494,7 +518,10 @@ class YoRo_Connector_Runtime {
 		if ( $ordinary && ! $this->client->early_access_has_budget( 3 ) ) {
 			return new WP_Error( 'yoro_connector_transport_budget', 'The delivery must wait for transport capacity.' );
 		}
+        $lease_until = strtotime( $claim['delivery']['lease_expires_at'] ?? '' );
+        $conditional_read = $ordinary && ! $commerce_write && 'conditional-v1' === ( $claim['read_lease_policy'] ?? null ) && false !== $lease_until;
 		foreach ( [ 'ack', 'lease' ] as $step ) {
+            if ( 'lease' === $step && $conditional_read && $lease_until - time() >= 75 ) { continue; }
 			if ( ! $owns_lock() || ! $allowed() ) {
 				return self::lock_lost_error();
 			}
@@ -587,6 +614,13 @@ class YoRo_Connector_Runtime {
 			return self::lock_lost_error();
 		}
 
+        if ( $conditional_read && $lease_until - time() < 20 ) {
+            if ( ! $this->client->early_access_has_budget( 2 ) ) {
+                return new WP_Error( 'yoro_connector_transport_budget', 'Lease and result transport capacity are required.' );
+            }
+            $renewed = $request( 'lease', $operation['envelope_id'], [], $authority['claim_token'], $authority['lease_generation'] );
+            if ( is_wp_error( $renewed ) ) { return $renewed; }
+        }
 		return $request( 'result', $operation['envelope_id'], $result, $authority['claim_token'], $authority['lease_generation'] );
 	}
 

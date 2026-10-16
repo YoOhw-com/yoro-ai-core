@@ -10,13 +10,28 @@ class YoRo_Connector_Client {
 
     private $early_access_requests = 0;
     private $early_access_remaining = 24;
+    private $early_access_metrics = [];
 
     /** Reserve a full claim/ack/lease/result pipeline under the shared 30/minute limit. */
     public function early_access_has_budget( $requests = 4 ) {
         return min( 24 - $this->early_access_requests, $this->early_access_remaining ) >= $requests;
     }
 
-    protected function record_early_access_budget( $response ) {
+    public function early_access_transport_metrics() {
+        return [ 'transport' => $this->early_access_metrics ];
+    }
+
+    protected function record_early_access_budget( $response, $step = 'unknown', $elapsed_ms = 0 ) {
+        $metric = $this->early_access_metrics[ $step ] ?? [ 'requests' => 0, 'elapsed_ms' => 0, 'empty' => 0, 'errors' => 0 ];
+        $metric['requests']++;
+        $metric['elapsed_ms'] += max( 0, (int) $elapsed_ms );
+        if ( is_wp_error( $response ) ) { $metric['errors']++; }
+        else {
+            $status = (int) wp_remote_retrieve_response_code( $response );
+            $metric['empty'] += 204 === $status ? 1 : 0;
+            $metric['errors'] += $status < 200 || $status >= 300 ? 1 : 0;
+        }
+        $this->early_access_metrics[ $step ] = $metric;
         $this->early_access_requests++;
         if ( ! is_wp_error( $response ) ) {
             $remaining = wp_remote_retrieve_header( $response, 'x-ratelimit-remaining' );
@@ -60,32 +75,33 @@ class YoRo_Connector_Client {
 	}
 
 	public function early_access_request( $step, $envelope_id = '', array $payload = [], $claim_token = '', $generation = 0 ) {
-		if ( ! YoRo_Connector_Runtime::early_access_read_allowed() || ! in_array( $step, [ 'claim', 'ack', 'lease', 'result' ], true )
-			|| ( 'claim' !== $step && ! preg_match( '/\Aenvelope_[a-f0-9]{64}\z/D', $envelope_id ) ) ) {
+		if ( ! YoRo_Connector_Runtime::early_access_read_allowed() || ! in_array( $step, [ 'claim', 'next', 'ack', 'lease', 'result' ], true )
+			|| ( ! in_array( $step, [ 'claim', 'next' ], true ) && ! preg_match( '/\Aenvelope_[a-f0-9]{64}\z/D', $envelope_id ) ) ) {
 			return new WP_Error( 'yoro_early_access_unavailable', 'Early Access read transport is unavailable.' );
 		}
-		if ( 'claim' === $step && ! $this->early_access_has_budget() ) {
+		if ( in_array( $step, [ 'claim', 'next' ], true ) && ! $this->early_access_has_budget() ) {
 			return [ 'success' => true, 'empty' => true, 'throttled' => true ];
 		}
-		$path = '/early-access/product-reads/' . ( 'claim' === $step ? 'claim' : rawurlencode( $envelope_id ) . '/' . $step );
+		$path = 'next' === $step ? '/early-access/operations/claim' : '/early-access/product-reads/' . ( 'claim' === $step ? 'claim' : rawurlencode( $envelope_id ) . '/' . $step );
 		$body = wp_json_encode( empty( $payload ) ? (object) [] : $payload );
 		if ( ! is_string( $body ) || strlen( $body ) > 65536 ) {
 			return new WP_Error( 'yoro_early_access_invalid_result', 'The Early Access payload is outside its safe boundary.' );
 		}
+        $transport_started = hrtime( true );
 		$response = wp_remote_request( $this->api_base_url( YoRo_AI_Settings::get_ai_api_url() ) . $path, [
 			'method' => 'POST', 'timeout' => 20, 'redirection' => 0, 'sslverify' => true,
 			'limit_response_size' => 65536,
 			'headers' => array_merge( [ 'Authorization' => 'Bearer ' . YoRo_AI_Settings::get_ai_api_site_key(),
 				'Accept' => 'application/json', 'Content-Type' => 'application/json' ],
-				'claim' === $step ? [] : $this->lease_headers( $claim_token, $generation ) ),
+				in_array( $step, [ 'claim', 'next' ], true ) ? [] : $this->lease_headers( $claim_token, $generation ) ),
 			'body' => $body,
 		] );
-		$this->record_early_access_budget( $response );
+		$this->record_early_access_budget( $response, 'read.' . $step, ( hrtime( true ) - $transport_started ) / 1e6 );
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}
 		$status = (int) wp_remote_retrieve_response_code( $response );
-		if ( 204 === $status && 'claim' === $step ) {
+		if ( 204 === $status && in_array( $step, [ 'claim', 'next' ], true ) ) {
 			return [ 'success' => true, 'empty' => true ];
 		}
 		$json = json_decode( wp_remote_retrieve_body( $response ), true );
@@ -93,6 +109,16 @@ class YoRo_Connector_Client {
 			return new WP_Error( 'yoro_early_access_http_error', 'Early Access read transport was denied.', [ 'status' => $status ] );
 		}
 
+        if ( 'next' === $step ) {
+            $lane = wp_remote_retrieve_header( $response, 'x-yoro-delivery-lane' );
+            if ( ! in_array( $lane, [ 'read', 'write' ], true ) ) {
+                return new WP_Error( 'yoro_early_access_invalid_lane', 'An exact delivery lane is required.' );
+            }
+            $json['transport_lane'] = $lane;
+        }
+        if ( 'conditional-v1' === wp_remote_retrieve_header( $response, 'x-yoro-read-lease-policy' ) ) {
+            $json['read_lease_policy'] = 'conditional-v1';
+        }
 		return $json;
 	}
 
@@ -109,6 +135,7 @@ class YoRo_Connector_Client {
 		if ( ! is_string( $body ) || strlen( $body ) > 65536 ) {
 			return new WP_Error( 'yoro_early_access_invalid_result', 'The Early Access payload is outside its safe boundary.' );
 		}
+        $transport_started = hrtime( true );
 		$response = wp_remote_request( $this->api_base_url( YoRo_AI_Settings::get_ai_api_url() ) . $path, [
 			'method' => 'POST', 'timeout' => 20, 'redirection' => 0, 'sslverify' => true,
 			'limit_response_size' => 65536,
@@ -117,7 +144,7 @@ class YoRo_Connector_Client {
 				'claim' === $step ? [] : $this->lease_headers( $claim_token, $generation ) ),
 			'body' => $body,
 		] );
-		$this->record_early_access_budget( $response );
+		$this->record_early_access_budget( $response, 'write.' . $step, ( hrtime( true ) - $transport_started ) / 1e6 );
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}

@@ -2,6 +2,7 @@
 // Pure scheduler contract; no network, WordPress boot or real sleeping.
 if ( ! defined( 'ABSPATH' ) ) { define( 'ABSPATH', __DIR__ . '/' ); }
 require_once dirname( __DIR__, 2 ) . '/includes/commerce/class-yoro-connector-client.php';
+if ( ! function_exists( 'wp_remote_retrieve_response_code' ) ) { function wp_remote_retrieve_response_code( $response ) { return $response['response']['code'] ?? 200; } }
 if ( ! function_exists( 'wp_remote_retrieve_header' ) ) { function wp_remote_retrieve_header( $response, $name ) { return $response['headers'][ $name ] ?? ''; } }
 if ( ! class_exists( 'WP_Error' ) ) {
     class WP_Error {
@@ -34,7 +35,7 @@ $observed = [];
 $receipt = $session->run_early_access_session( 55, static function ( $value ) use ( &$observed, &$now ) { $observed[] = [ $now, $value ]; } );
 $assert( 2 === $receipt['reads'] && 1 === $receipt['writes'], 'The session must drain reads and writes without losing counts.' );
 $assert( 0.0 === $observed[0][0] && 0.0 === $observed[1][0] && 0.0 === $observed[2][0], 'Queued work must drain without an inter-operation sleep.' );
-$assert( 55.0 === $now && [ 2, 4, 8, 10 ] === array_slice( $sleeps, 0, 4 ), 'Idle polling must back off and stop at the bounded deadline.' );
+$assert( 55.0 === $now && [ 2, 3, 3, 3 ] === array_slice( $sleeps, 0, 4 ), 'Idle polling must back off and stop at the bounded deadline.' );
 $assert( [ true ] === array_values( array_filter( $session->publish_flags ) ), 'Publication may run only on the first round.' );
 $now = 0.0; $sleeps = [];
 $session->rounds = array_fill( 0, 41, [ 'reads' => 1, 'writes' => 0 ] );

@@ -89,7 +89,7 @@ try {
     $observed_operation = null;
     if ( ! YoRo_Connector_Runtime::early_access_read_allowed() ) { throw new RuntimeException( 'The current ordinary projection must allow this disposable source read.' ); }
     $bridge = static function ( $pre, $args, $url ) use ( &$requests, &$observed_operation, $packet ) {
-        if ( 0 !== strpos( $url, 'https://r2-api.yorohq.com' . '/api/v1/early-access/product-reads/' ) ) {
+        if ( 0 !== strpos( $url, 'https://r2-api.yorohq.com' . '/api/v1/early-access/product-reads/' ) && 'https://r2-api.yorohq.com/api/v1/early-access/operations/claim' !== $url ) {
             return $pre;
         }
         if ( 'https://r2-api.yorohq.com' !== substr( $url, 0, strlen( 'https://r2-api.yorohq.com' ) )
@@ -100,10 +100,13 @@ try {
         $args['headers']['Host'] = parse_url( 'https://r2-api.yorohq.com', PHP_URL_HOST );
         $args['sslcertificates'] = $packet['tls_ca'];
         $response = wp_remote_request( 'https://127.0.0.1:' . $packet['tls_port'] . parse_url( $url, PHP_URL_PATH ), $args );
-        if ( ! is_wp_error( $response ) && str_ends_with( $url, '/claim' ) ) {
+        if ( ! is_wp_error( $response ) && 200 === (int) wp_remote_retrieve_response_code( $response ) && str_ends_with( $url, '/claim' ) ) {
             $body = json_decode( wp_remote_retrieve_body( $response ), true );
             $observed_operation = $body['delivery']['operations'][0] ?? null;
             if ( 'crash' === $packet['mode'] && is_array( $observed_operation ) ) {
+                // Force the near-expiry renewal path while the fenced server lease remains valid.
+                $body['delivery']['lease_expires_at'] = gmdate( 'c', time() + 30 );
+                $response['body'] = wp_json_encode( $body );
                 YoRo_Connector_Execution_Journal::begin( $observed_operation );
             }
         }
@@ -114,14 +117,20 @@ try {
     $acquire = new ReflectionMethod( YoRo_Connector_Runtime::class, 'acquire_lock' );
     $release = new ReflectionMethod( YoRo_Connector_Runtime::class, 'release_lock' );
     $lock = $acquire->invoke( null );
-    try { $result = ( new YoRo_Connector_Runtime() )->run_early_access_once(); }
+    try {
+        $client = new YoRo_Connector_Client();
+        $claim = $client->early_access_request( 'next' );
+        if ( is_wp_error( $claim ) || 'read' !== ( $claim['transport_lane'] ?? null ) ) { throw new RuntimeException( 'The unified claim lost its read lane.' ); }
+        $result = ( new YoRo_Connector_Runtime( $client ) )->run_r2_once( true, false, $claim );
+    }
     finally { $release->invoke( null, $lock ); }
     if ( is_wp_error( $result ) || true !== ( $result['success'] ?? null ) || $before !== $snapshot() ) {
         throw new RuntimeException( is_wp_error( $result ) ? $result->get_error_code() . ': ' . $result->get_error_message() : 'The network read mutated business state or failed.' );
     }
-    if ( 4 !== count( $requests ) || ! str_ends_with( $requests[0], '/claim' ) || ! str_ends_with( $requests[1], '/ack' )
-        || ! str_ends_with( $requests[2], '/lease' ) || ! str_ends_with( $requests[3], '/result' ) || YoRo_Connector_Runtime::live_cutover_allowed() ) {
-        throw new RuntimeException( 'The dedicated HTTP sequence or generic cutover invariant failed.' );
+    $steps = array_map( static function( $path ) { return basename( $path ); }, $requests );
+    $expected_steps = 'crash' === $packet['mode'] ? [ 'claim', 'ack', 'lease', 'result' ] : [ 'claim', 'ack', 'result' ];
+    if ( $steps !== $expected_steps || '/api/v1/early-access/operations/claim' !== $requests[0] || YoRo_Connector_Runtime::live_cutover_allowed() ) {
+        throw new RuntimeException( 'The dedicated negotiated fenced HTTP sequence or generic cutover invariant failed.' );
     }
     if ( ! is_array( $observed_operation ) || 'completed' !== ( YoRo_Connector_Execution_Journal::begin( $observed_operation )['state'] ?? '' ) ) {
         throw new RuntimeException( 'The exact ordinary Early Access completed journal must replay.' );
