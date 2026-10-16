@@ -8,6 +8,24 @@ class YoRo_Connector_Client {
 
 	const R2_ORIGIN = 'https://r2-api.yorohq.com';
 
+    private $early_access_requests = 0;
+    private $early_access_remaining = 24;
+
+    /** Reserve a full claim/ack/lease/result pipeline under the shared 30/minute limit. */
+    public function early_access_has_budget( $requests = 4 ) {
+        return min( 24 - $this->early_access_requests, $this->early_access_remaining ) >= $requests;
+    }
+
+    protected function record_early_access_budget( $response ) {
+        $this->early_access_requests++;
+        if ( ! is_wp_error( $response ) ) {
+            $remaining = wp_remote_retrieve_header( $response, 'x-ratelimit-remaining' );
+            if ( is_numeric( $remaining ) && (float) $remaining >= 0 ) {
+                $this->early_access_remaining = min( $this->early_access_remaining, (int) $remaining );
+            }
+        }
+    }
+
 	public function r2_request( $step, $envelope_id = '', array $payload = [], $claim_token = '', $generation = 0 ) {
 		if ( ! YoRo_Connector_Runtime::r2_read_allowed() || ! in_array( $step, [ 'claim', 'ack', 'lease', 'result' ], true )
 			|| ( 'claim' !== $step && ! preg_match( '/\Aenvelope_[a-f0-9]{64}\z/D', $envelope_id ) ) ) {
@@ -46,6 +64,9 @@ class YoRo_Connector_Client {
 			|| ( 'claim' !== $step && ! preg_match( '/\Aenvelope_[a-f0-9]{64}\z/D', $envelope_id ) ) ) {
 			return new WP_Error( 'yoro_early_access_unavailable', 'Early Access read transport is unavailable.' );
 		}
+		if ( 'claim' === $step && ! $this->early_access_has_budget() ) {
+			return [ 'success' => true, 'empty' => true, 'throttled' => true ];
+		}
 		$path = '/early-access/product-reads/' . ( 'claim' === $step ? 'claim' : rawurlencode( $envelope_id ) . '/' . $step );
 		$body = wp_json_encode( empty( $payload ) ? (object) [] : $payload );
 		if ( ! is_string( $body ) || strlen( $body ) > 65536 ) {
@@ -59,6 +80,7 @@ class YoRo_Connector_Client {
 				'claim' === $step ? [] : $this->lease_headers( $claim_token, $generation ) ),
 			'body' => $body,
 		] );
+		$this->record_early_access_budget( $response );
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}
@@ -79,6 +101,9 @@ class YoRo_Connector_Client {
 			|| ( 'claim' !== $step && ! preg_match( '/\Aenvelope_[a-f0-9]{64}\z/D', $envelope_id ) ) ) {
 			return new WP_Error( 'yoro_early_access_unavailable', 'Confirmed commerce write transport is unavailable.' );
 		}
+		if ( 'claim' === $step && ! $this->early_access_has_budget() ) {
+			return [ 'success' => true, 'empty' => true, 'throttled' => true ];
+		}
 		$path = '/early-access/commerce-writes/' . ( 'claim' === $step ? 'claim' : rawurlencode( $envelope_id ) . '/' . $step );
 		$body = wp_json_encode( empty( $payload ) ? (object) [] : $payload );
 		if ( ! is_string( $body ) || strlen( $body ) > 65536 ) {
@@ -92,6 +117,7 @@ class YoRo_Connector_Client {
 				'claim' === $step ? [] : $this->lease_headers( $claim_token, $generation ) ),
 			'body' => $body,
 		] );
+		$this->record_early_access_budget( $response );
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}

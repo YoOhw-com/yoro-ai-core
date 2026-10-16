@@ -1,7 +1,8 @@
 <?php
 // Pure scheduler contract; no network, WordPress boot or real sleeping.
 if ( ! defined( 'ABSPATH' ) ) { define( 'ABSPATH', __DIR__ . '/' ); }
-if ( ! class_exists( 'YoRo_Connector_Client' ) ) { class YoRo_Connector_Client {} }
+require_once dirname( __DIR__, 2 ) . '/includes/commerce/class-yoro-connector-client.php';
+if ( ! function_exists( 'wp_remote_retrieve_header' ) ) { function wp_remote_retrieve_header( $response, $name ) { return $response['headers'][ $name ] ?? ''; } }
 if ( ! class_exists( 'WP_Error' ) ) {
     class WP_Error {
         private $code;
@@ -17,7 +18,7 @@ class YoRo_Connector_Session_Unit extends YoRo_Connector_Runtime {
     public $rounds = [];
     public $calls = 0;
     public $publish_flags = [];
-    protected function early_access_session_round( $publish ) {
+    protected function early_access_session_round( $publish, $deadline ) {
         $this->calls++;
         $this->publish_flags[] = $publish;
         return array_shift( $this->rounds ) ?? [ 'reads' => 0, 'writes' => 0 ];
@@ -45,3 +46,14 @@ $error = $session->run_early_access_session();
 $assert( is_wp_error( $error ) && 'fixture_denied' === $error->get_error_code() && 0.0 === $now, 'A denied or unknown result must stop without retrying the operation.' );
 
 echo "Adaptive CLI worker session contract passed.\n";
+
+$budget_client = new YoRo_Connector_Client();
+$record_budget = new ReflectionMethod( YoRo_Connector_Client::class, 'record_early_access_budget' );
+$record_budget->invoke( $budget_client, [ 'headers' => [ 'x-ratelimit-remaining' => '3' ] ] );
+$assert( ! $budget_client->early_access_has_budget() && $budget_client->early_access_has_budget( 3 ), 'Low server quota must prohibit another full claim pipeline.' );
+$record_budget->invoke( $budget_client, [ 'headers' => [ 'x-ratelimit-remaining' => '0' ] ] );
+$assert( ! $budget_client->early_access_has_budget( 1 ), 'An exhausted or 429 response must prohibit local execution without result capacity.' );
+$missing_headers = new YoRo_Connector_Client();
+for ( $i = 0; $i < 21; $i++ ) { $record_budget->invoke( $missing_headers, [ 'headers' => [] ] ); }
+$assert( ! $missing_headers->early_access_has_budget() && $missing_headers->early_access_has_budget( 3 ), 'Missing quota headers must still retain the conservative 24-request session cap.' );
+echo "Shared read/write transport budget contract passed.\n";
