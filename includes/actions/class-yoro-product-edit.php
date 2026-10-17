@@ -9,7 +9,7 @@ final class YoRo_Product_Edit
 
     public const Extension = 'yoro.early_access_product_edit';
 
-    public const Fields = ['name', 'regular_price', 'sale_price', 'sku', 'global_unique_id', 'manage_stock', 'stock_quantity', 'stock_status', 'backorders', 'low_stock_amount'];
+    public const Fields = ['name', 'regular_price', 'sale_price', 'date_on_sale_from', 'date_on_sale_to', 'sku', 'global_unique_id', 'manage_stock', 'stock_quantity', 'stock_status', 'backorders', 'low_stock_amount'];
 
     public static function manifest(): array
     {
@@ -22,6 +22,8 @@ final class YoRo_Product_Edit
         $price = ['type' => 'string', 'pattern' => '^(?:|(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,6})?)$'];
 
         return ['name' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 255],
+            'date_on_sale_from' => ['type' => ['string', 'null'], 'pattern' => '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'],
+            'date_on_sale_to' => ['type' => ['string', 'null'], 'pattern' => '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'],
             'regular_price' => $price, 'sale_price' => $price, 'sku' => ['type' => 'string', 'maxLength' => 100],
             'global_unique_id' => ['type' => 'string', 'maxLength' => 100], 'manage_stock' => ['type' => 'boolean'],
             'stock_quantity' => ['type' => ['integer', 'null'], 'minimum' => -1000000000, 'maximum' => 1000000000],
@@ -44,7 +46,8 @@ final class YoRo_Product_Edit
                     && ($field !== 'global_unique_id' || preg_match('/\A[0-9-]*[0-9Xx]?\z/D', $value) === 1);
             } elseif (in_array($field, ['regular_price','sale_price'], true)) {
                 $valid = is_string($value) && preg_match('/\A(?:|(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?)\z/D', $value) === 1;
-            } elseif ($field === 'manage_stock') { $valid = is_bool($value); }
+            } elseif (in_array($field, ['date_on_sale_from','date_on_sale_to'], true)) { $valid = self::validDate($value); }
+            elseif ($field === 'manage_stock') { $valid = is_bool($value); }
             elseif (in_array($field, ['stock_quantity','low_stock_amount'], true)) { $valid = $value === null || (is_int($value) && $value >= ($field === 'stock_quantity' ? -1000000000 : 0) && $value <= 1000000000); }
             elseif ($field === 'stock_status') { $valid = in_array($value, ['instock','outofstock','onbackorder'], true); }
             elseif ($field === 'backorders') { $valid = in_array($value, ['no','notify','yes'], true); }
@@ -54,6 +57,13 @@ final class YoRo_Product_Edit
         }
 
         return array_replace(array_intersect_key(array_fill_keys(self::Fields, null), $changes), $changes);
+    }
+
+    public static function validDate($value): bool
+    {
+        if ($value === null) { return true; }
+        if (!is_string($value) || !preg_match('/\A([0-9]{4})-([0-9]{2})-([0-9]{2})\z/D', $value, $parts)) { return false; }
+        return checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1]);
     }
 
     public static function normalizedPrice(string $value): string
@@ -68,7 +78,7 @@ final class YoRo_Product_Edit
         if (! is_array($before) || array_diff(self::Fields, array_keys($before)) !== []) {
             self::invalid();
         }
-        if (($row['type'] === 'variable' && array_intersect(array_keys($changes), ['regular_price', 'sale_price']) !== [])
+        if (($row['type'] === 'variable' && array_intersect(array_keys($changes), ['regular_price', 'sale_price', 'date_on_sale_from', 'date_on_sale_to']) !== [])
             || ($row['type'] === 'variation' && array_key_exists('name', $changes))) {
             self::invalid();
         }
@@ -88,6 +98,11 @@ final class YoRo_Product_Edit
             if ($after['regular_price'] === '' || strcmp(str_pad($sale[0], 12, '0', STR_PAD_LEFT).str_pad($sale[1] ?? '', 6, '0'), str_pad($regular[0], 12, '0', STR_PAD_LEFT).str_pad($regular[1] ?? '', 6, '0')) >= 0) {
                 self::invalid();
             }
+        }
+        if (array_intersect(array_keys($changes), ['date_on_sale_from', 'date_on_sale_to']) !== []
+            && $after['date_on_sale_from'] !== null && $after['date_on_sale_to'] !== null
+            && strcmp($after['date_on_sale_from'], $after['date_on_sale_to']) > 0) {
+            self::invalid();
         }
         $stock = array_intersect(array_keys($changes), ['manage_stock', 'stock_quantity', 'stock_status', 'backorders', 'low_stock_amount']);
         if ($stock !== []) {
@@ -136,18 +151,20 @@ final class YoRo_Product_Edit
         $fields = [];
         foreach (self::Fields as $field) {
             $getter = 'get_' . $field;
-            $fields[$field] = method_exists($product, $getter) ? $product->$getter('edit') : '';
+            $value = method_exists($product, $getter) ? $product->$getter('edit') : '';
+            $fields[$field] = in_array($field, ['date_on_sale_from','date_on_sale_to'], true)
+                ? ($value ? wp_date('Y-m-d', $value->getTimestamp(), wp_timezone()) : null) : $value;
         }
         foreach (['regular_price','sale_price'] as $field) { $fields[$field] = self::normalizedPrice((string) $fields[$field]); }
         foreach (['stock_quantity','low_stock_amount'] as $field) { $fields[$field] = '' === $fields[$field] || null === $fields[$field] ? null : (int) $fields[$field]; }
         $fields['manage_stock'] = true === $fields['manage_stock'];
         $editable = self::Fields;
-        if ('variable' === $product->get_type()) { $editable = array_diff($editable, ['regular_price','sale_price']); }
+        if ('variable' === $product->get_type()) { $editable = array_diff($editable, ['regular_price','sale_price','date_on_sale_from','date_on_sale_to']); }
         if ('variation' === $product->get_type()) { $editable = array_diff($editable, ['name']); }
         if (!method_exists($product, 'set_global_unique_id')) { $editable = array_diff($editable, ['global_unique_id']); }
         $enabled = 'yes' === get_option('woocommerce_manage_stock');
         if (!$enabled) { $editable = array_diff($editable, ['manage_stock','stock_quantity','stock_status','backorders','low_stock_amount']); }
-        return ['edit_fields' => $fields, 'editable_fields' => array_values($editable),
+        return ['sale_timezone' => wp_timezone_string(), 'edit_fields' => $fields, 'editable_fields' => array_values($editable),
             'stock_management_enabled' => $enabled, 'stock_managed_by_parent' => 'parent' === $product->get_manage_stock(),
             'no_stock_amount' => max(0, (int) get_option('woocommerce_notify_no_stock_amount', 0))];
     }
@@ -171,7 +188,21 @@ final class YoRo_Product_Edit
             $facts = self::facts($product);
             $changes = self::effective(self::changes($params['changes'] ?? null), ['type'=>$product->get_type(),'extensions'=>['woocommerce.product'=>$facts]]);
             // Validate every setter on the in-memory object before any save occurs.
-            foreach ($changes as $field=>$value) { $setter = 'set_'.$field; $product->$setter(null === $value ? '' : $value); }
+            foreach ($changes as $field=>$value) {
+                $setter = 'set_'.$field;
+                if (in_array($field, ['date_on_sale_from','date_on_sale_to'], true)) {
+                    if ($value !== null) {
+                        $date = new DateTimeImmutable($value . ('date_on_sale_from' === $field ? ' 00:00:00' : ' 23:59:59'), wp_timezone());
+                        if ($date->format('Y-m-d') !== $value) { self::invalid(); }
+                        $value = $date->getTimestamp();
+                    }
+                    $product->$setter($value);
+                } else { $product->$setter(null === $value ? '' : $value); }
+            }
+            // Compare exact timestamps too, including a retained opposite boundary.
+            if (array_intersect(array_keys($changes), ['date_on_sale_from','date_on_sale_to']) !== []
+                && $product->get_date_on_sale_from('edit') && $product->get_date_on_sale_to('edit')
+                && $product->get_date_on_sale_from('edit')->getTimestamp() > $product->get_date_on_sale_to('edit')->getTimestamp()) { self::invalid(); }
             $product->validate_props();
             return ['product'=>$product,'changes'=>$changes,'before'=>$facts['edit_fields']];
         } catch (Throwable $error) {

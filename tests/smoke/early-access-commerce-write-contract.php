@@ -55,6 +55,37 @@ try {
         $bad=$make('products.update_details',['product_id'=>$product->get_id(),'changes'=>$bad_changes,'expected_version'=>$version],$version);
         $assert(is_wp_error(YoRo_Early_Access_Commerce_Write::execute($bad)), 'Invalid price, identifier, field or quantity is rejected before saving.');
     }
+    $original_timezone = get_option('timezone_string'); $original_offset = get_option('gmt_offset');
+    try {
+        foreach (['Asia/Ho_Chi_Minh','America/New_York','UTC'] as $timezone) {
+            update_option('timezone_string',$timezone);
+            $scheduled_product = wc_get_product($product->get_id());
+            $version = YoRo_Commerce_Discovery_Service::product_version($scheduled_product);
+            $dates = ['date_on_sale_from'=>'2028-03-12','date_on_sale_to'=>'2028-03-12'];
+            $scheduled = $make('products.update_details',['product_id'=>$product->get_id(),'changes'=>$dates,'expected_version'=>$version],$version);
+            $preview=YoRo_Product_Edit::preview($scheduled['params']);
+            $assert(!is_wp_error($preview) && $preview['after']===$dates, 'Same-day schedules preview without saving.');
+            $saved=YoRo_Early_Access_Commerce_Write::execute($scheduled);
+            $assert(!is_wp_error($saved), 'Schedules save with explicit store-local dates: '.$timezone.' '.(is_wp_error($saved)?$saved->get_error_message():''));
+            $scheduled_product=wc_get_product($product->get_id());
+            $from=$scheduled_product->get_date_on_sale_from('edit')->getTimestamp();$to=$scheduled_product->get_date_on_sale_to('edit')->getTimestamp();
+            $assert(wp_date('Y-m-d H:i:s',$from,wp_timezone())==='2028-03-12 00:00:00' && wp_date('Y-m-d H:i:s',$to,wp_timezone())==='2028-03-12 23:59:59', 'Both date boundaries use the store time zone independently, including DST.');
+            $assert('25'===$scheduled_product->get_price(), 'Future scheduled sales retain the regular active price.');
+            $scheduled_product->set_date_on_sale_from($from+123);$scheduled_product->save();$scheduled_product=wc_get_product($product->get_id());
+            $version=YoRo_Commerce_Discovery_Service::product_version($scheduled_product);
+            $rename=$make('products.update_details',['product_id'=>$product->get_id(),'changes'=>['name'=>'Scheduled rename '.$timezone],'expected_version'=>$version],$version);
+            $assert(!is_wp_error(YoRo_Early_Access_Commerce_Write::execute($rename)) && wc_get_product($product->get_id())->get_date_on_sale_from('edit')->getTimestamp()===$from+123, 'Omitted dates preserve exact pre-existing timestamps.');
+            $scheduled_product=wc_get_product($product->get_id());$version=YoRo_Commerce_Discovery_Service::product_version($scheduled_product);
+            foreach ([['date_on_sale_to'=>'2028-03-11'],['date_on_sale_from'=>'2027-02-29'],['date_on_sale_from'=>'2028-03-12T00:00:00Z']] as $invalid_dates) {
+                $invalid=$make('products.update_details',['product_id'=>$product->get_id(),'changes'=>$invalid_dates,'expected_version'=>$version],$version);
+                $assert(is_wp_error(YoRo_Early_Access_Commerce_Write::execute($invalid)), 'Invalid or reversed dates cannot save.');
+            }
+            $clear=$make('products.update_details',['product_id'=>$product->get_id(),'changes'=>['date_on_sale_from'=>null,'date_on_sale_to'=>null],'expected_version'=>$version],$version);
+            $assert(!is_wp_error(YoRo_Early_Access_Commerce_Write::execute($clear)), 'Explicit null dates clear through direct WC setters.');
+            $scheduled_product=wc_get_product($product->get_id());$assert(null===$scheduled_product->get_date_on_sale_from('edit') && null===$scheduled_product->get_date_on_sale_to('edit') && '20'===$scheduled_product->get_price(), 'Cleared boundaries reactivate the valid sale price.');
+        }
+    } finally {update_option('timezone_string',$original_timezone);update_option('gmt_offset',$original_offset);}
+    $product=wc_get_product($product->get_id());$product->set_name($edit_changes['name']);$product->save();$product=wc_get_product($product->get_id());
     $duplicate = new WC_Product_Simple();$duplicate->set_name('Duplicate identifier fixture');$duplicate->set_status('publish');$duplicate->set_sku('yr0178-duplicate-'.$product->get_id());$duplicate->save();
     $version=YoRo_Commerce_Discovery_Service::product_version($product);
     $bad=$make('products.update_details',['product_id'=>$product->get_id(),'changes'=>['name'=>'Must not persist','sku'=>$duplicate->get_sku()],'expected_version'=>$version],$version);
