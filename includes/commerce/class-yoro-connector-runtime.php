@@ -252,6 +252,8 @@ class YoRo_Connector_Runtime {
 			}
 			$round = $this->early_access_session_round( 0 === $summary['ticks'], $deadline );
 			if ( is_wp_error( $round ) ) {
+                $retry = $this->client->early_access_retry_after();
+                if ( $retry > 0 ) { ( $this->sleeper )( min( $retry, max( 0, $deadline - ( $this->clock )() ) ) ); }
 				return $round;
 			}
 			$summary['ticks']++;
@@ -268,7 +270,7 @@ class YoRo_Connector_Runtime {
 			$remaining = $deadline - ( $this->clock )();
 			if ( ! $active && $remaining > 0 ) {
 				$idle_cap = $this->wake_available() ? 10 : 3;
-				( $this->sleeper )( min( $remaining, min( $idle_cap, 2 ** $idle ) ) );
+				( $this->sleeper )( min( $remaining, max( $this->client->early_access_retry_after(), min( $idle_cap, 2 ** $idle ) ) ) );
 			}
 		}
 		$summary['elapsed_ms'] = (int) round( ( ( $this->clock )() - $started ) * 1000 );

@@ -193,6 +193,7 @@ class YoRo_Admin_Page {
                                 <button type="submit" class="button button-primary" name="<?php echo ! empty( $account['connected'] ) ? 'yoro_ai_api_disconnect' : 'yoro_ai_api_connect'; ?>" value="1" <?php disabled( '' === YoRo_AI_Settings::get_ai_api_url() && ! ( defined( 'WP_DEBUG' ) && WP_DEBUG && ! YoRo_AI_Settings::is_ai_api_url_locked() ) ); ?>><?php echo esc_html( ! empty( $account['connected'] ) ? __( 'Disconnect YoRo', 'yoro-ai-core' ) : __( 'Connect YoRo account', 'yoro-ai-core' ) ); ?></button>
                             </form>
                             <?php else : ?><p><?php esc_html_e( 'Ask your WordPress administrator to manage this connection.', 'yoro-ai-core' ); ?></p><?php endif; ?>
+                            <?php self::render_transport_status( ! empty( $account['connected'] ) ); ?>
                         </div></li>
                         <li><div><h3><?php esc_html_e( 'Copy the Early Access Server URL', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'In ChatGPT, add a custom MCP connection and paste this Server URL.', 'yoro-ai-core' ); ?></p>
                             <div class="yoro-server-url" data-yoro-server-url><label class="screen-reader-text" for="yoro-server-url"><?php esc_html_e( 'Early Access Server URL', 'yoro-ai-core' ); ?></label><input id="yoro-server-url" type="text" readonly spellcheck="false" value="<?php echo esc_attr( $url ); ?>" placeholder="<?php echo esc_attr__( 'Configure your YoRo account connection first', 'yoro-ai-core' ); ?>" /><button type="button" class="button button-primary" data-yoro-copy-url <?php disabled( '' === $url ); ?>><?php esc_html_e( 'Copy URL', 'yoro-ai-core' ); ?></button></div>
@@ -210,6 +211,35 @@ class YoRo_Admin_Page {
             </section>
             <footer><?php esc_html_e( 'A secure connection. Your account permissions stay in control.', 'yoro-ai-core' ); ?></footer>
         </main>
+        <?php
+    }
+
+    private static function render_transport_status( $connected ) {
+        if ( ! $connected ) { return; }
+        $health = YoRo_Connector_Wake::health();
+        $labels = [
+            'healthy' => [ __( 'Fast updates available', 'yoro-ai-core' ), __( 'Scheduled polling remains enabled as a fallback if fast updates are delayed.', 'yoro-ai-core' ) ],
+            'blocked' => [ __( 'Polling fallback enabled', 'yoro-ai-core' ), __( 'Your hosting provider is delaying fast updates. Scheduled polling remains enabled while YoRo retries automatically.', 'yoro-ai-core' ) ],
+            'degraded' => [ __( 'Polling fallback enabled', 'yoro-ai-core' ), __( 'Fast updates are temporarily delayed. Scheduled polling remains enabled while YoRo reconnects automatically.', 'yoro-ai-core' ) ],
+            'unknown' => [ __( 'Polling fallback enabled', 'yoro-ai-core' ), __( 'YoRo will use fast updates once delivery is verified. Scheduled polling remains enabled in the meantime.', 'yoro-ai-core' ) ],
+            'disabled' => [ __( 'Polling fallback enabled', 'yoro-ai-core' ), __( 'Scheduled polling is enabled to receive requests securely from YoRo.', 'yoro-ai-core' ) ],
+        ];
+        $state = isset( $labels[ $health['state'] ] ) ? $health['state'] : 'unknown';
+        [ $title, $description ] = $labels[ $state ];
+        if ( ! YoRo_Connector_Runtime::early_access_read_allowed() ) {
+            $title = __( 'Connection check pending', 'yoro-ai-core' );
+            $description = __( 'This store’s connection is not currently verified. Check the YoRo account connection and availability.', 'yoro-ai-core' );
+            $state = 'unknown';
+        }
+        ?>
+        <div class="yoro-transport-status<?php echo 'healthy' === $state ? ' yoro-transport-status-healthy' : ''; ?>">
+            <strong><?php echo esc_html( $title ); ?></strong>
+            <p><?php echo esc_html( $description ); ?></p>
+            <?php if ( 'healthy' !== $state && YoRo_Connector_Runtime::early_access_read_allowed() ) : ?><p><?php esc_html_e( 'For consistent scheduled checks on low-traffic sites, ask your hosting provider to configure regular WordPress cron checks.', 'yoro-ai-core' ); ?></p><?php endif; ?>
+            <?php if ( $health['last_success_at'] > 0 ) : ?>
+                <p class="yoro-transport-last-success"><?php echo esc_html( sprintf( __( 'Last successful fast update: %s', 'yoro-ai-core' ), wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $health['last_success_at'] ) ) ); ?></p>
+            <?php endif; ?>
+        </div>
         <?php
     }
 

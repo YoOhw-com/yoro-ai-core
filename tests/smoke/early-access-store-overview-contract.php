@@ -17,7 +17,10 @@ try {
         $order = new WC_Order(); $order->set_status( $status ); $order->set_currency( $code ); $order->set_total( $amount ); $order->set_date_created( $stamp ?? time() - 10 );
         $order->set_billing_email( 'PRIVATE-EMAIL@example.com' ); $order->set_billing_phone( '12025550123' ); $order->set_customer_note( 'PRIVATE-NOTE' ); $order->save(); return $order;
     };
-    $a = $make( '10', 'USD' ); $b = $make( '20', 'USD', 'completed' ); $make( '999', 'EUR' ); $make( '5', 'USD', 'completed', time() - DAY_IN_SECONDS - 10 );
+    $a = $make( '10', 'USD' ); $b = $make( '20', 'USD', 'completed' ); $foreign = $make( '999', 'EUR' ); $prior = $make( '5', 'USD', 'processing', time() - DAY_IN_SECONDS - 10 );
+    $make( '7', 'USD', 'failed' );
+    $product = new WC_Product_Simple(); $product->set_name( 'Overview shipping fixture' ); $product->set_virtual( false ); $product->save();
+    $a->add_product( $product, 1 ); $prior->add_product( $product, 1 );
     $read = static function( $action, $params ) {
         $block = static function() { throw new RuntimeException( 'Overview reads cannot request a remote provider.' ); };
         add_filter( 'pre_http_request', $block );
@@ -25,16 +28,33 @@ try {
         finally { remove_filter( 'pre_http_request', $block ); }
     };
     $before = wp_json_encode( wc_get_order( $a->get_id() )->get_data() );
-    foreach ( array_slice( YoRo_Early_Access_Store_Overview_Read::ACTIONS, 0, 4 ) as $action ) {
-        $r = $read( $action, [ 'window' => 'today' ] );
-        $assert( true === $r['success'], 'All four report actions return bounded aggregate snapshots.' );
-        $assert( 2 === $r['data']['metrics']['order_count'] && '30.000000' === $r['data']['metrics']['gross_sales'] && '15.000000' === $r['data']['metrics']['average_order_value'], 'Money aggregates use only processing/completed store-currency orders.' );
-        $m = $r['extensions']['yoro.store_overview'];
-        $assert( false === $r['data']['metrics']['is_complete'] && 1 === $m['current']['other_currency_orders'] && false === $m['comparison_complete'], 'Excluded currencies make period comparisons incomplete.' );
-        $assert( [ 'customer_followups', 'inventory' ] === $m['not_assessed'] && 0 === $r['data']['counts']['customer_followups'] && 0 === $r['data']['counts']['inventory'], 'Frozen wire placeholders have mandatory not-assessed provenance.' );
-        $assert( [] === $r['data']['attention_items'] && [] === $r['data']['inventory_items'], 'No customer or product records enter aggregate results.' );
-        $assert( false === strpos( wp_json_encode( $r ), 'PRIVATE-' ) && false === strpos( wp_json_encode( $r ), '12025550123' ), 'Customer content is excluded before journaling.' );
-        $assert( ! array_intersect( [ 'totals_up', 'totals_down', 'no_sales' ], array_column( $r['data']['priorities'], 'domain' ) ), 'Partial periods cannot generate full-period trend or zero-sales claims.' );
+    $item_reads = []; $product_reads = [];
+    $observe_items = static function( $items, $order ) use ( &$item_reads ) { $item_reads[] = $order->get_id(); return $items; };
+    $observe_products = static function( $product, $item ) use ( &$product_reads ) { $product_reads[] = $item->get_order_id(); return $product; };
+    add_filter( 'wc_shipping_enabled', '__return_true' );
+    add_filter( 'woocommerce_order_get_items', $observe_items, 10, 2 );
+    add_filter( 'woocommerce_order_item_product', $observe_products, 10, 2 );
+    try {
+        foreach ( array_slice( YoRo_Early_Access_Store_Overview_Read::ACTIONS, 0, 4 ) as $action ) {
+            $item_reads = []; $product_reads = [];
+            $r = $read( $action, [ 'window' => 'today' ] );
+            $assert( true === $r['success'], 'All four report actions return bounded aggregate snapshots.' );
+            $assert( 2 === $r['data']['metrics']['order_count'] && '30.000000' === $r['data']['metrics']['gross_sales'] && '15.000000' === $r['data']['metrics']['average_order_value'], 'Money aggregates use only processing/completed store-currency orders.' );
+            $m = $r['extensions']['yoro.store_overview'];
+            $assert( false === $r['data']['metrics']['is_complete'] && 1 === $m['current']['other_currency_orders'] && false === $m['comparison_complete'], 'Excluded currencies make period comparisons incomplete.' );
+            $assert( [ 'customer_followups', 'inventory' ] === $m['not_assessed'] && 0 === $r['data']['counts']['customer_followups'] && 0 === $r['data']['counts']['inventory'], 'Frozen wire placeholders have mandatory not-assessed provenance.' );
+            $assert( [] === $r['data']['attention_items'] && [] === $r['data']['inventory_items'], 'No customer or product records enter aggregate results.' );
+            $assert( false === strpos( wp_json_encode( $r ), 'PRIVATE-' ) && false === strpos( wp_json_encode( $r ), '12025550123' ), 'Customer content is excluded before journaling.' );
+            $assert( ! array_intersect( [ 'totals_up', 'totals_down', 'no_sales' ], array_column( $r['data']['priorities'], 'domain' ) ), 'Partial periods cannot generate full-period trend or zero-sales claims.' );
+            sort( $item_reads ); $expected_items = [ $a->get_id(), $foreign->get_id() ]; sort( $expected_items );
+            $assert( $expected_items === $item_reads && [ $a->get_id() ] === $product_reads, 'Only current processing orders load shipping items/products; previous comparison orders never do.' );
+            $assert( 1 === $r['data']['counts']['fulfillment'] && 1 === $r['data']['counts']['attention'], 'Current operational counts still assess physical shipping and failed-order attention.' );
+            $assert( 1 === $r['data']['comparison']['metrics']['order_count']['previous'] && '5.000000' === $r['data']['comparison']['metrics']['gross_sales']['previous']
+                && '5.000000' === $r['data']['comparison']['metrics']['average_order_value']['previous'] && 1 === $m['previous']['status_counts']['processing'], 'Previous processing orders retain all monetary comparison and status metrics without item reads.' );
+        }
+    } finally {
+        remove_filter( 'woocommerce_order_get_items', $observe_items, 10 ); remove_filter( 'woocommerce_order_item_product', $observe_products, 10 );
+        remove_filter( 'wc_shipping_enabled', '__return_true' );
     }
     $assert( $before === wp_json_encode( wc_get_order( $a->get_id() )->get_data() ), 'Overview reads do not change orders.' );
     update_option( 'timezone_string', 'America/New_York' );

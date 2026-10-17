@@ -30,7 +30,7 @@ class YoRo_Early_Access_Store_Overview_Read {
         if ( ! is_string( $currency ) || ! preg_match( '/\A[A-Z]{3}\z/D', $currency ) ) { return new WP_Error( 'store_currency_unavailable', 'The store currency is unavailable.' ); }
         [ $window, $previous ] = self::windows( $params['window'], $generated );
         [ $current, $meta, $counts ] = self::period( $window, $currency, $generated );
-        [ $prior, $prior_meta ] = self::period( $previous, $currency, $generated );
+        [ $prior, $prior_meta ] = self::period( $previous, $currency, $generated, false );
         $comparison = [];
         foreach ( [ 'order_count', 'gross_sales', 'average_order_value' ] as $field ) {
             $a = 'order_count' === $field ? $current[ $field ] : self::units( $current[ $field ] );
@@ -65,7 +65,7 @@ class YoRo_Early_Access_Store_Overview_Read {
         return [ $make( $key, $label, $start, $end ), $make( 'previous_equivalent_window', 'Previous equivalent period', $start->modify( '-' . $days . ' days' ), $end->modify( '-' . $days . ' days' ) ) ];
     }
 
-    private static function period( array $window, $currency, $generated ) {
+    private static function period( array $window, $currency, $generated, $include_counts = true ) {
         $raw = wc_get_orders( [ 'type' => 'shop_order', 'status' => YoRo_Early_Access_Order_Read::STATUSES, 'limit' => 101, 'page' => 1,
             'date_created' => strtotime( $window['start'] ) . '...' . strtotime( $window['end'] ), 'orderby' => 'date ID', 'order' => 'DESC' ] );
         $has_more = count( $raw ) > 100; $raw = array_slice( $raw, 0, 100 );
@@ -76,9 +76,12 @@ class YoRo_Early_Access_Store_Overview_Read {
             $status = $order->get_status(); $created = $order->get_date_created()->getTimestamp();
             if ( $created < strtotime( $window['start'] ) || $created > strtotime( $window['end'] ) ) { $invalid++; continue; }
             $statuses[ $status ]++;
-            $age = (int) floor( ( $generated - $created ) / HOUR_IN_SECONDS );
-            if ( ( 'pending' === $status && $age >= 24 ) || ( 'on-hold' === $status && $age >= 48 ) || ( 'processing' === $status && $age >= 72 ) || ( 'failed' === $status && $age >= 0 && $age <= 168 ) ) { $counts['attention']++; }
-            if ( 'processing' === $status && wc_shipping_enabled() && YoRo_Orders_Read_Service::fulfillment_order_requires_shipping( $order ) ) { $counts['fulfillment']++; }
+            // Only the current period exposes operational counts; comparison needs monetary aggregates only.
+            if ( $include_counts ) {
+                $age = (int) floor( ( $generated - $created ) / HOUR_IN_SECONDS );
+                if ( ( 'pending' === $status && $age >= 24 ) || ( 'on-hold' === $status && $age >= 48 ) || ( 'processing' === $status && $age >= 72 ) || ( 'failed' === $status && $age >= 0 && $age <= 168 ) ) { $counts['attention']++; }
+                if ( 'processing' === $status && wc_shipping_enabled() && YoRo_Orders_Read_Service::fulfillment_order_requires_shipping( $order ) ) { $counts['fulfillment']++; }
+            }
             if ( $order->get_currency() !== $currency ) { $other++; continue; }
             if ( ! in_array( $status, [ 'processing', 'completed' ], true ) ) { continue; }
             $amount = self::units( $order->get_total() );

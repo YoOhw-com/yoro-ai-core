@@ -8,11 +8,19 @@ class WP_Error {
 }
 function is_wp_error( $value ) { return $value instanceof WP_Error; }
 function wp_json_encode( $value ) { return json_encode( $value ); }
+function wp_remote_retrieve_header( $response, $name ) { return $response['headers'][ $name ] ?? ''; }
+function __( $value, $domain = null ) { return $value; }
+function esc_html( $value ) { return htmlspecialchars( $value, ENT_QUOTES ); }
+function esc_html_e( $value, $domain = null ) { echo esc_html( $value ); }
+function wp_date( $format, $timestamp ) { return gmdate( 'Y-m-d H:i', $timestamp ); }
 function wp_salt( $key ) { return 'fixture-private-salt-' . $key; }
 function wp_parse_url( $url, $part ) { return parse_url( $url, $part ); }
 function rest_url( $path ) { return 'https://shop.example/wp-json/' . $path; }
 function get_option( $key, $default = false ) { return $GLOBALS['options'][ $key ] ?? $default; }
-function update_option( $key, $value, $autoload = null ) { $GLOBALS['options'][ $key ] = $value; $GLOBALS['autoload'][ $key ] = $autoload; return true; }
+function update_option( $key, $value, $autoload = null ) {
+    if ( ! empty( $GLOBALS['fail_health_write'] ) && YoRo_Connector_Wake::HEALTH_OPTION === $key ) { return false; }
+    $GLOBALS['options'][ $key ] = $value; $GLOBALS['autoload'][ $key ] = $autoload; return true;
+}
 function register_rest_route( $namespace, $path, $args ) { $GLOBALS['route'] = [ $namespace, $path, $args ]; }
 class WP_REST_Request {
     public $query = []; public $files = []; public $headers = [ 'content-type' => 'application/json' ];
@@ -65,16 +73,80 @@ $client = new YoRo_Connector_Client();
 YoRo_Connector_Wake::maybe_register( $client );
 $assert( 1 === count( $client->calls ) && 1 === $client->calls[0]['version'], 'Wake registers its versioned endpoint once.' );
 $secret = $client->calls[0]['secret'];
-$assert( YoRo_Connector_Wake::available(), 'A recent successful registration makes wake available.' );
-$GLOBALS['options'][ YoRo_Connector_Wake::OPTION ]['registered_at'] = time() - 901;
-$assert( ! YoRo_Connector_Wake::available(), 'A stale registration restores normal polling.' );
-$GLOBALS['options'][ YoRo_Connector_Wake::OPTION ]['registered_at'] = time() + 1;
-$assert( ! YoRo_Connector_Wake::available(), 'A future registration timestamp cannot suppress polling.' );
-$GLOBALS['options'][ YoRo_Connector_Wake::OPTION ]['registered_at'] = time();
+$assert( ! YoRo_Connector_Wake::available(), 'Registration alone must not slow polling before a real wake succeeds.' );
 $assert( 1 === preg_match( '/^[a-f0-9]{64}$/D', $secret ), 'Wake uses 256 bits of random signing material.' );
 $assert( ! str_contains( json_encode( $GLOBALS['options'] ), $secret ) && false === $GLOBALS['autoload'][ YoRo_Connector_Wake::OPTION ], 'Signing material is encrypted and not autoloaded.' );
 YoRo_Connector_Wake::maybe_register( $client );
 $assert( 1 === count( $client->calls ), 'Successful registration must not repeat every poll.' );
+$health_response = static function( $state = 'healthy', $overrides = [] ) {
+    return [ 'headers' => array_merge( [ 'x-yoro-wake-state' => $state, 'x-yoro-wake-observed-at' => (string) time(),
+        'x-yoro-wake-last-success-at' => (string) ( time() - 1 ), 'x-yoro-wake-last-failure-at' => '0',
+        'x-yoro-wake-retry-after' => '0' ], $overrides ) ];
+};
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+$assert( YoRo_Connector_Wake::available() && false === $GLOBALS['autoload'][ YoRo_Connector_Wake::HEALTH_OPTION ], 'A validated real success enables slower polling with nonautoload telemetry.' );
+$before_registration = YoRo_Connector_Wake::health();
+$GLOBALS['options'][ YoRo_Connector_Wake::OPTION ]['next_attempt'] = time() - 1;
+YoRo_Connector_Wake::maybe_register( $client );
+$assert( $before_registration === YoRo_Connector_Wake::health(), 'Same-key registration does not reset existing transport health.' );
+YoRo_Connector_Wake::record_response( $health_response( 'blocked', [ 'x-yoro-wake-last-failure-at' => (string) time(), 'x-yoro-wake-retry-after' => '600' ] ), true );
+$assert( ! YoRo_Connector_Wake::available() && 'blocked' === YoRo_Connector_Wake::health()['state'], 'A hosting challenge immediately restores the fast polling fallback.' );
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-observed-at' => (string) ( time() - 1 ), 'x-yoro-wake-last-success-at' => (string) ( time() - 1 ) ] ), true );
+$assert( ! YoRo_Connector_Wake::available() && 'blocked' === YoRo_Connector_Wake::health()['state'], 'An older healthy reply cannot overwrite a newer hosting challenge.' );
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time() ] ), true );
+$assert( ! YoRo_Connector_Wake::available(), 'An old success without the latest failure cannot clear a challenge within the same second.' );
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-observed-at' => (string) ( time() + 1 ) ] ), true );
+$assert( ! YoRo_Connector_Wake::available(), 'Malformed or future replies cannot turn a blocked connection healthy.' );
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+$assert( YoRo_Connector_Wake::available(), 'A new successful receipt recovers healthy transport after a hosting challenge.' );
+foreach ( [ [ 'x-yoro-wake-state' => 'raw-error' ], [ 'x-yoro-wake-observed-at' => time() ],
+    [ 'x-yoro-wake-observed-at' => (string) ( time() + 1 ) ], [ 'x-yoro-wake-observed-at' => (string) ( time() - 901 ) ],
+    [ 'x-yoro-wake-last-success-at' => (string) ( time() + 1 ) ], [ 'x-yoro-wake-last-success-at' => (string) ( time() - 901 ) ],
+    [ 'x-yoro-wake-last-failure-at' => (string) ( time() + 1 ) ], [ 'x-yoro-wake-retry-after' => '601' ],
+    [ 'x-yoro-wake-retry-after' => '1' ], [ 'x-yoro-wake-last-success-at' => [] ], [ 'x-yoro-wake-retry-after' => '' ] ] as $invalid ) {
+    YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+    YoRo_Connector_Wake::record_response( $health_response( 'healthy', $invalid ), true );
+    $assert( ! YoRo_Connector_Wake::available() && 'unknown' === YoRo_Connector_Wake::health()['state'], 'Malformed, expired or future telemetry cannot suppress polling.' );
+}
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+YoRo_Connector_Wake::record_response( [ 'headers' => [] ], true );
+$assert( ! YoRo_Connector_Wake::available(), 'Missing headers restore fast polling for older APIs.' );
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+YoRo_Connector_Wake::record_response( $health_response(), false );
+$assert( ! YoRo_Connector_Wake::available(), 'An error or untrusted response cannot keep a healthy hint alive.' );
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+$GLOBALS['options'][ YoRo_Connector_Wake::HEALTH_OPTION ]['observed_at'] = time() - 901;
+$assert( ! YoRo_Connector_Wake::available(), 'Stored telemetry expires even without another API response.' );
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+YoRo_Connector_Wake::record_poll_cooldown( 600 );
+$assert( 600 === YoRo_Connector_Wake::poll_retry_after(), 'Rate cooldown survives the current worker session.' );
+$GLOBALS['options'][ YoRo_Connector_Wake::POLL_OPTION ]['until'] = time() + 601;
+$assert( 0 === YoRo_Connector_Wake::poll_retry_after(), 'Corrupted or future cooldowns cannot suspend polling indefinitely.' );
+require dirname( __DIR__, 2 ) . '/includes/admin/class-yoro-admin-page.php';
+$render_status = new ReflectionMethod( YoRo_Admin_Page::class, 'render_transport_status' );
+ob_start(); $render_status->invoke( null, true ); $healthy_markup = ob_get_clean();
+$assert( str_contains( $healthy_markup, 'Fast updates available' ) && str_contains( $healthy_markup, 'Last successful fast update:' ) && ! str_contains( $healthy_markup, $secret ), 'Connection UI renders useful success feedback without credentials.' );
+YoRo_Connector_Wake::record_response( $health_response( 'blocked', [ 'x-yoro-wake-last-failure-at' => (string) time(), 'x-yoro-wake-retry-after' => '600' ] ), true );
+ob_start(); $render_status->invoke( null, true ); $blocked_markup = ob_get_clean();
+$assert( str_contains( $blocked_markup, 'Polling fallback enabled' ) && ! str_contains( $blocked_markup, 'blocked' ) && ! str_contains( $blocked_markup, 'raw-error' ), 'Hosting failures render English fallback guidance rather than raw statuses.' );
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+$GLOBALS['fail_health_write'] = true;
+YoRo_Connector_Wake::record_response( $health_response( 'blocked', [ 'x-yoro-wake-last-failure-at' => (string) time(), 'x-yoro-wake-retry-after' => '600' ] ), true );
+$assert( ! YoRo_Connector_Wake::available() && 'unknown' === YoRo_Connector_Wake::health()['state'], 'A failed telemetry write cannot leave stale healthy state active in this session.' );
+$GLOBALS['fail_health_write'] = false;
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+$assert( YoRo_Connector_Wake::available(), 'A later stored receipt recovers from a local telemetry write failure.' );
+$GLOBALS['fail_health_write'] = true;
+YoRo_Connector_Wake::record_response( [ 'headers' => $GLOBALS['options'][ YoRo_Connector_Wake::HEALTH_OPTION ] ], false );
+$assert( ! YoRo_Connector_Wake::available(), 'A failed unknown-state write also prefers fast polling.' );
+$GLOBALS['fail_health_write'] = false;
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
+// Model update_option returning false for an unchanged but successfully stored value.
+$GLOBALS['fail_health_write'] = true;
+$stored_health = $GLOBALS['options'][ YoRo_Connector_Wake::HEALTH_OPTION ];
+YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-observed-at' => (string) $stored_health['observed_at'], 'x-yoro-wake-last-success-at' => (string) $stored_health['last_success_at'], 'x-yoro-wake-last-failure-at' => (string) $stored_health['last_failure_at'] ] ), true );
+$assert( YoRo_Connector_Wake::available(), 'An unchanged stored value is not a telemetry write failure.' );
+$GLOBALS['fail_health_write'] = false;
 YoRo_Connector_Wake::register_routes();
 $assert( [ 'YoRo_Connector_Wake', 'permission' ] === $GLOBALS['route'][2]['permission_callback'], 'The public endpoint must have a signed permission callback.' );
 $body = [ 'version' => 1, 'connection_id' => 'connector-fixture', 'installation_uuid' => 'installation-fixture', 'site_key_id' => 42, 'timestamp' => time(), 'nonce' => bin2hex( random_bytes( 32 ) ) ];
@@ -123,6 +195,7 @@ YoRo_Connector_Runtime::$allowed = true;
 YoRo_AI_Settings::$key = 'rotated-private-site-key';
 $assert( is_wp_error( YoRo_Connector_Wake::permission( $request( $body ) ) ), 'Site credential rotation invalidates the old signing material.' );
 $assert( ! YoRo_Connector_Wake::available(), 'Readiness requires the current credential binding.' );
+$assert( 0 === YoRo_Connector_Wake::poll_retry_after(), 'Credential rotation cannot inherit another credential’s rate cooldown.' );
 YoRo_Connector_Wake::maybe_register( $client );
-$assert( 2 === count( $client->calls ) && $secret !== $client->calls[1]['secret'], 'A new site credential registers a fresh independent secret.' );
+$assert( 3 === count( $client->calls ) && $secret !== $client->calls[2]['secret'], 'A new site credential registers a fresh independent secret.' );
 echo "Signed connector wake boundary passed ({$assertions} assertions).\n";

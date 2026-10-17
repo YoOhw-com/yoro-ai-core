@@ -6666,3 +6666,11 @@ body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant :is(
 .yoro-coming-soon { text-align: center; padding: 60px 30px; }
 .yoro-onboarding footer { text-align: center; margin: 24px; color: #606c58; font-size: 12px; }
 @media (max-width: 600px) { .yoro-onboarding { margin: 16px auto; padding: 12px; } .yoro-onboarding-card { padding: 20px; } .yoro-card-heading { align-items: flex-start; flex-direction: column; } .yoro-capsule button { padding: 10px 16px; } .yoro-connection-steps li { gap: 12px; } }
+
+/* Scoped connector transport feedback on the YoRo account page. */
+.yoro-onboarding .yoro-transport-status { margin-top: 20px; padding: 16px 18px; border: 1px solid #d4ddca; border-radius: 16px; background: #f4f6ef; }
+.yoro-onboarding .yoro-transport-status > strong { display: flex; align-items: center; gap: 9px; color: #2b3a20; font-size: 14px; }
+.yoro-onboarding .yoro-transport-status > strong::before { content: ""; width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #9a7b32; }
+.yoro-onboarding .yoro-transport-status-healthy > strong::before { background: #3c7853; }
+.yoro-onboarding .yoro-transport-status p { margin: 8px 0 0; font-size: 13px; line-height: 1.6; }
+.yoro-onboarding .yoro-transport-status .yoro-transport-last-success { color: #66745b; font-size: 12px; }

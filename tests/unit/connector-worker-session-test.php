@@ -97,3 +97,17 @@ $stale_fallback->wake_healthy = true;
 $stale_fallback->run_early_access_session( 25 );
 $assert( [ 2, 4, 8, 3, 3, 3, 2.0 ] === $sleeps, 'Stale registration must restore the existing three-second fallback within the running session.' );
 echo "Wake-aware fallback polling contract passed.\n";
+
+// A rate-limited API must not cause a tight retry loop or bypass the session deadline.
+$now = 0.0; $sleeps = [];
+$limited_client = new YoRo_Connector_Client();
+$record_budget->invoke( $limited_client, [ 'response' => [ 'code' => 429 ], 'headers' => [ 'retry-after' => '120' ] ] );
+$limited_session = new YoRo_Connector_Session_Unit( $limited_client, $clock, $sleeper );
+$limited_session->rounds = [ [ 'reads' => 0, 'writes' => 0 ] ];
+$limited_session->run_early_access_session( 55 );
+$assert( [ 55.0 ] === $sleeps && 1 === $limited_session->calls, 'A long Retry-After consumes the remaining session in one bounded sleep.' );
+$now = 0.0; $sleeps = [];
+$limited_session = new YoRo_Connector_Session_Unit( $limited_client, $clock, $sleeper );
+$limited_session->rounds = [ new WP_Error( 'rate_limited', 'Wait' ) ];
+$assert( is_wp_error( $limited_session->run_early_access_session( 55 ) ) && [ 55.0 ] === $sleeps && 1 === $limited_session->calls, 'Rate-limit errors sleep once within the deadline and return without retrying a delivery.' );
+echo "Rate-limited worker session contract passed.\n";

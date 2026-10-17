@@ -7,9 +7,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 /** Authenticated notification only. All execution authority remains in the pull protocol. */
 class YoRo_Connector_Wake {
 	const OPTION = 'yoro_connector_wake_v1';
+	const HEALTH_OPTION = 'yoro_connector_wake_health_v1';
+	const POLL_OPTION = 'yoro_connector_poll_cooldown_v1';
 	const NONCE_PREFIX = 'yoro_wake_nonce_';
 	const RATE_PREFIX = 'yoro_wake_rate_';
 	const MAX_SKEW = 60;
+	private static $health_write_failed_binding = null;
 
 	public static function init() {
 		add_action( 'rest_api_init', [ __CLASS__, 'register_routes' ] );
@@ -88,13 +91,78 @@ class YoRo_Connector_Wake {
 		}
 	}
 
-	/** A recent registration reduces empty polling; it never disables the cron fallback. */
-	public static function available() {
+	/** Transport telemetry never grants authority or extends an operation's lifetime. */
+	public static function record_response( $response, $authorized_success ) {
 		$bindings = self::bindings();
-		$state = get_option( self::OPTION, [] );
-		$registered = is_array( $state ) ? ( $state['registered_at'] ?? null ) : null;
-		return null !== $bindings && is_int( $registered ) && $registered <= time() && $registered >= time() - 15 * 60
-			&& '' !== self::read_secret( $state, self::binding_hash( $bindings ) );
+		if ( null === $bindings ) { return; }
+		$binding = self::binding_hash( $bindings );
+		$health = [ 'binding' => $binding, 'state' => 'unknown', 'observed_at' => time(), 'last_success_at' => 0, 'last_failure_at' => 0, 'retry_after' => 0 ];
+		$accepted = false;
+		if ( $authorized_success && ! is_wp_error( $response ) ) {
+			$state = wp_remote_retrieve_header( $response, 'x-yoro-wake-state' );
+			$valid = is_string( $state ) && in_array( $state, [ 'healthy', 'blocked', 'degraded', 'unknown', 'disabled' ], true );
+			$parsed = [];
+			foreach ( [ 'observed_at' => 'observed-at', 'last_success_at' => 'last-success-at', 'last_failure_at' => 'last-failure-at', 'retry_after' => 'retry-after' ] as $field => $header ) {
+				$value = wp_remote_retrieve_header( $response, 'x-yoro-wake-' . $header );
+				if ( ! is_string( $value ) || ! preg_match( '/\A(?:0|[1-9][0-9]{0,9})\z/D', $value ) ) { $valid = false; break; }
+				$parsed[ $field ] = (int) $value;
+			}
+			if ( $valid && $parsed['observed_at'] > 0 && $parsed['observed_at'] <= time() && $parsed['observed_at'] >= time() - 900
+				&& $parsed['last_success_at'] <= $parsed['observed_at'] && $parsed['last_failure_at'] <= $parsed['observed_at'] && $parsed['retry_after'] <= 600
+				&& ( 'healthy' !== $state || ( $parsed['last_success_at'] > 0 && $parsed['last_success_at'] >= time() - 900 && $parsed['last_success_at'] >= $parsed['last_failure_at'] && 0 === $parsed['retry_after'] ) ) ) {
+				$health = array_merge( $health, $parsed, [ 'state' => $state ] );
+				$accepted = true;
+			}
+		}
+		$current = get_option( self::HEALTH_OPTION, [] );
+		if ( is_array( $current ) && hash_equals( $binding, (string) ( $current['binding'] ?? '' ) )
+			&& is_int( $current['observed_at'] ?? null ) && $current['observed_at'] <= time() && $current['observed_at'] >= time() - 900 ) {
+			// Delayed responses must not clear a newer hosting failure or resurrect stale success.
+			if ( $health['observed_at'] < $current['observed_at']
+				|| ( 'healthy' === $health['state'] && $health['last_failure_at'] < ( $current['last_failure_at'] ?? 0 ) )
+				|| ( ! $accepted && 'blocked' === ( $current['state'] ?? null ) ) ) { return; }
+		}
+		$written = update_option( self::HEALTH_OPTION, $health, false );
+		// WordPress also returns false for unchanged values; verify that case before downgrading.
+		self::$health_write_failed_binding = ! $written && get_option( self::HEALTH_OPTION, [] ) !== $health ? $binding : null;
+	}
+
+	/** Sanitized current telemetry; safe for the scoped connection UI and runtime probes. */
+	public static function health() {
+		$unknown = [ 'state' => 'unknown', 'last_success_at' => 0, 'last_failure_at' => 0, 'retry_after' => 0 ];
+		$bindings = self::bindings();
+		$state = get_option( self::HEALTH_OPTION, [] );
+		if ( null !== $bindings && self::$health_write_failed_binding === self::binding_hash( $bindings ) ) { return $unknown; }
+		if ( null === $bindings || ! is_array( $state ) || ! hash_equals( self::binding_hash( $bindings ), (string) ( $state['binding'] ?? '' ) )
+			|| ! is_int( $state['observed_at'] ?? null ) || $state['observed_at'] > time() || $state['observed_at'] < time() - 900 ) { return $unknown; }
+		if ( ! in_array( $state['state'] ?? null, [ 'healthy', 'blocked', 'degraded', 'unknown', 'disabled' ], true )
+			|| ! is_int( $state['last_success_at'] ?? null ) || ! is_int( $state['last_failure_at'] ?? null ) || ! is_int( $state['retry_after'] ?? null )
+			|| $state['last_success_at'] < 0 || $state['last_failure_at'] < 0 || $state['last_success_at'] > $state['observed_at'] || $state['last_failure_at'] > $state['observed_at']
+			|| $state['retry_after'] < 0 || $state['retry_after'] > 600 ) { return $unknown; }
+		if ( 'healthy' === $state['state'] && ( $state['last_success_at'] < time() - 900 || $state['last_success_at'] < $state['last_failure_at'] || 0 !== $state['retry_after'] ) ) {
+			$state['state'] = 'unknown';
+		}
+		return [ 'state' => $state['state'] ?? 'unknown', 'last_success_at' => $state['last_success_at'] ?? 0,
+			'last_failure_at' => $state['last_failure_at'] ?? 0, 'retry_after' => max( 0, ( $state['observed_at'] + ( $state['retry_after'] ?? 0 ) ) - time() ) ];
+	}
+
+	/** Registration alone is not evidence that the hosting edge delivered a wake. */
+	public static function available() {
+		return 'healthy' === self::health()['state'];
+	}
+
+	public static function record_poll_cooldown( $seconds ) {
+		$bindings = self::bindings();
+		if ( null !== $bindings ) {
+			update_option( self::POLL_OPTION, [ 'binding' => self::binding_hash( $bindings ), 'until' => time() + max( 1, min( 600, (int) $seconds ) ) ], false );
+		}
+	}
+
+	public static function poll_retry_after() {
+		$bindings = self::bindings();
+		$state = get_option( self::POLL_OPTION, [] );
+		return null !== $bindings && is_array( $state ) && hash_equals( self::binding_hash( $bindings ), (string) ( $state['binding'] ?? '' ) )
+			&& is_int( $state['until'] ?? null ) && $state['until'] <= time() + 600 ? max( 0, $state['until'] - time() ) : 0;
 	}
 
 	private static function denied( $status = 401 ) {
