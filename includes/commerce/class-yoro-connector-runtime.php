@@ -563,6 +563,7 @@ class YoRo_Connector_Runtime {
 		if ( $ordinary && ! $this->client->early_access_has_budget( 1 ) ) {
 			return new WP_Error( 'yoro_connector_transport_budget', 'Result transport capacity is required before execution.' );
 		}
+        $report = $ordinary && ! $commerce_write && in_array( $operation['action'], array_slice( YoRo_Early_Access_Store_Overview_Read::ACTIONS, 0, 4 ), true );
 		$journal = YoRo_Connector_Execution_Journal::begin( $operation );
         if ( ! in_array( $journal['state'] ?? '', [ 'new', 'executing', 'completed', 'conflict' ], true ) ) {
             return new WP_Error( 'yoro_connector_journal_unavailable', 'A durable execution journal is required.' );
@@ -579,7 +580,7 @@ class YoRo_Connector_Runtime {
                 unset( $result['extensions']['yoro.local_early_access_journal'] );
                 if ( empty( $result['extensions'] ) ) { unset( $result['extensions'] ); }
             }
-		} elseif ( 'executing' === ( $journal['state'] ?? '' ) ) {
+		} elseif ( 'executing' === ( $journal['state'] ?? '' ) && ! $report ) {
 			$result = $this->failed_result( $operation, 'local_execution_outcome_unknown', 'The prior R2 read stopped before its result was journaled.' );
             $completed = $this->complete_read_journal( $operation, $result, $ordinary );
             if ( $commerce_write && 'completed' !== ( $completed['state'] ?? '' ) ) {
@@ -599,7 +600,12 @@ class YoRo_Connector_Runtime {
                 } elseif ( $ordinary && 1 === ( $operation['extensions']['yoro.mcp_early_access_product_read']['read_contract_version'] ?? null ) ) {
                     try {
                         $class = self::expanded_read_executor( $operation['extensions']['yoro.mcp_early_access_product_read']['read_family'] ?? null );
-                        $execution = $class ? $class::execute( $operation ) : new WP_Error( 'read_unavailable', 'Read did not complete.' );
+                        $execution = $class ? ( $report ? $class::execute( $operation, function() use ( $allowed, $owns_lock, $validate, $operation ) { return $allowed() && $owns_lock() && ! is_wp_error( $validate( $operation ) ); } ) : $class::execute( $operation ) ) : new WP_Error( 'read_unavailable', 'Read did not complete.' );
+                        if ( $report && is_array( $execution ) && ! empty( $execution['deferred'] ) ) {
+                            if ( ! $owns_lock() || ! $allowed() || is_wp_error( $validate( $operation ) ) ) { return self::lock_lost_error(); }
+                            $deferred = $request( 'defer', $operation['envelope_id'], [], $authority['claim_token'], $authority['lease_generation'] );
+                            return is_wp_error( $deferred ) ? $deferred : [ 'success' => true, 'deferred' => true ];
+                        }
                     } catch ( Throwable $error ) {
                         $execution = new WP_Error( 'product_read_unavailable', 'Product read did not complete.' );
                     }

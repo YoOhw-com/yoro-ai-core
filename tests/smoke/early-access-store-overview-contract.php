@@ -41,14 +41,11 @@ try {
             $assert( true === $r['success'], 'All four report actions return bounded aggregate snapshots.' );
             $assert( 2 === $r['data']['metrics']['order_count'] && '30.000000' === $r['data']['metrics']['gross_sales'] && '15.000000' === $r['data']['metrics']['average_order_value'], 'Money aggregates use only processing/completed store-currency orders.' );
             $m = $r['extensions']['yoro.store_overview'];
-            $assert( false === $r['data']['metrics']['is_complete'] && 1 === $m['current']['other_currency_orders'] && false === $m['comparison_complete'], 'Excluded currencies make period comparisons incomplete.' );
+            $assert( true === $r['data']['metrics']['is_complete'] && 0 === $m['current']['other_currency_orders'] && true === $m['comparison_complete'] && isset($m['full_report']['current']['currencies']['EUR']), 'Complete reports retain all currencies separately.' );
             $assert( [ 'customer_followups', 'inventory' ] === $m['not_assessed'] && 0 === $r['data']['counts']['customer_followups'] && 0 === $r['data']['counts']['inventory'], 'Frozen wire placeholders have mandatory not-assessed provenance.' );
             $assert( [] === $r['data']['attention_items'] && [] === $r['data']['inventory_items'], 'No customer or product records enter aggregate results.' );
             $assert( false === strpos( wp_json_encode( $r ), 'PRIVATE-' ) && false === strpos( wp_json_encode( $r ), '12025550123' ), 'Customer content is excluded before journaling.' );
-            $assert( ! array_intersect( [ 'totals_up', 'totals_down', 'no_sales' ], array_column( $r['data']['priorities'], 'domain' ) ), 'Partial periods cannot generate full-period trend or zero-sales claims.' );
-            sort( $item_reads ); $expected_items = [ $a->get_id(), $foreign->get_id() ]; sort( $expected_items );
-            $assert( $expected_items === $item_reads && [ $a->get_id() ] === $product_reads, 'Only current processing orders load shipping items/products; previous comparison orders never do.' );
-            $assert( 1 === $r['data']['counts']['fulfillment'] && 1 === $r['data']['counts']['attention'], 'Current operational counts still assess physical shipping and failed-order attention.' );
+            $assert( 2 === $r['data']['counts']['fulfillment'] && 1 === $r['data']['counts']['attention'], 'Current backlog includes physical unfulfilled orders from both current and older creation dates.' );
             $assert( 1 === $r['data']['comparison']['metrics']['order_count']['previous'] && '5.000000' === $r['data']['comparison']['metrics']['gross_sales']['previous']
                 && '5.000000' === $r['data']['comparison']['metrics']['average_order_value']['previous'] && 1 === $m['previous']['status_counts']['processing'], 'Previous processing orders retain all monetary comparison and status metrics without item reads.' );
         }
@@ -73,7 +70,7 @@ try {
     for ( $i = 0; $i < 101; $i++ ) { $backdated = $make( '1', 'USD', 'pending', time() - 60 ); }
     $assert( $newest->get_id() < $backdated->get_id(), 'Imported older orders have newer IDs at the sample cutoff.' );
     $r = $read( 'store.get_insights', [ 'window' => 'today' ] );
-    $assert( 100 === $r['extensions']['yoro.store_overview']['current']['scanned'] && true === $r['extensions']['yoro.store_overview']['current']['has_more'] && false === $r['data']['metrics']['is_complete'], 'Only 100 newest orders per period are aggregated, with a sentinel for more.' );
+    $assert( $r['extensions']['yoro.store_overview']['current']['scanned'] > 100 && false === $r['extensions']['yoro.store_overview']['current']['has_more'] && true === $r['data']['metrics']['is_complete'], 'All matching period orders are aggregated beyond the former sample limit.' );
     $assert( 3 === $r['data']['metrics']['order_count'] && '1030.000000' === $r['data']['metrics']['gross_sales'], 'Creation date, rather than ID, determines which orders survive the sample cutoff.' );
     foreach ( [ [ 'orders.update_status', [ 'window' => 'today' ] ], [ 'operations.get_summary', [ 'window' => 'all_time' ] ], [ 'store.get_insights', [ 'window' => 'today', 'include_pii' => true ] ],
         [ 'coupons.lookup', [ 'coupon_code' => 'SAVE10' ] ], [ 'coupons.lookup', [ 'coupon_code' => 'private@example.com' ] ] ] as $bad ) {

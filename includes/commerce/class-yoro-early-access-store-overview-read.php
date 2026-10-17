@@ -15,10 +15,10 @@ class YoRo_Early_Access_Store_Overview_Read {
             return [ 'coupon_code' ] === array_keys( $params ) && is_string( $params['coupon_code'] )
                 && 1 === preg_match( '/\A[a-z0-9][a-z0-9_-]{0,63}\z/D', $params['coupon_code'] );
         }
-        return [ 'window' ] === array_keys( $params ) && in_array( $params['window'], self::WINDOWS, true );
+        return ! array_diff( array_keys( $params ), [ 'window', 'date_basis' ] ) && in_array( $params['window'] ?? null, self::WINDOWS, true ) && in_array( $params['date_basis'] ?? 'created', [ 'created', 'paid' ], true );
     }
 
-    public static function execute( array $operation ) {
+    public static function execute( array $operation, $guard = null ) {
         $action = $operation['action'] ?? '';
         $params = $operation['params'] ?? [];
         if ( ! self::valid_params( $action, $params ) || ! current_user_can( 'yoro_view_store_data' ) || ! function_exists( 'wc_get_orders' ) ) {
@@ -26,32 +26,31 @@ class YoRo_Early_Access_Store_Overview_Read {
         }
         $generated = time();
         if ( 'coupons.lookup' === $action ) { return self::coupon( $action, $params['coupon_code'], $generated ); }
-        $currency = get_woocommerce_currency();
-        if ( ! is_string( $currency ) || ! preg_match( '/\A[A-Z]{3}\z/D', $currency ) ) { return new WP_Error( 'store_currency_unavailable', 'The store currency is unavailable.' ); }
-        [ $window, $previous ] = self::windows( $params['window'], $generated );
-        [ $current, $meta, $counts ] = self::period( $window, $currency, $generated );
-        [ $prior, $prior_meta ] = self::period( $previous, $currency, $generated, false );
+        $full = YoRo_Complete_Store_Report::run( $operation, $guard );
+        if ( is_wp_error( $full ) || isset( $full['deferred'] ) ) { return $full; }
+        $currency = get_woocommerce_currency(); $periods = [];
+        foreach ( [ 'current', 'previous' ] as $key ) {
+            $p = $full[$key]; $m = $p['currencies'][$currency] ?? [ 'order_count' => 0, 'order_totals' => '0.000000' ];
+            $units = YoRo_Complete_Store_Report::units( $m['order_totals'] );
+            $periods[$key] = [ 'order_count' => $m['order_count'], 'gross_sales' => $m['order_totals'],
+                'average_order_value' => YoRo_Complete_Store_Report::decimal( $m['order_count'] ? intdiv( $units + intdiv( $m['order_count'], 2 ), $m['order_count'] ) : 0 ),
+                'currency' => $currency, 'is_complete' => 0 === $p['invalid_orders'] ];
+        }
         $comparison = [];
         foreach ( [ 'order_count', 'gross_sales', 'average_order_value' ] as $field ) {
-            $a = 'order_count' === $field ? $current[ $field ] : self::units( $current[ $field ] );
-            $b = 'order_count' === $field ? $prior[ $field ] : self::units( $prior[ $field ] );
-            $comparison[ $field ] = [ 'current' => $current[ $field ], 'previous' => $prior[ $field ], 'trend' => $a > $b ? 'up' : ( $a < $b ? 'down' : 'flat' ),
-                'delta' => 'order_count' === $field ? (string) ( $a - $b ) : self::decimal( $a - $b ) ];
+            $a = 'order_count' === $field ? $periods['current'][$field] : YoRo_Complete_Store_Report::units( $periods['current'][$field] );
+            $b = 'order_count' === $field ? $periods['previous'][$field] : YoRo_Complete_Store_Report::units( $periods['previous'][$field] );
+            $comparison[$field] = [ 'current' => $periods['current'][$field], 'previous' => $periods['previous'][$field], 'trend' => $a > $b ? 'up' : ( $a < $b ? 'down' : 'flat' ),
+                'delta' => 'order_count' === $field ? (string) ( $a - $b ) : YoRo_Complete_Store_Report::decimal( $a - $b ) ];
         }
-        $complete = $current['is_complete'] && $prior['is_complete'];
-        $priorities = [];
-        if ( $counts['attention'] > 0 ) { $priorities[] = self::priority( 'attention', 'Orders need attention', 'At least one sampled order meets the attention rule.', 'medium' ); }
-        if ( $complete && 0 === $current['order_count'] ) { $priorities[] = self::priority( 'no_sales', 'No qualifying orders', 'No processing or completed orders in the selected store-currency period.', 'low' ); }
-        if ( $complete && $current['order_count'] > 0 && 'flat' !== $comparison['gross_sales']['trend'] ) {
-            $up = 'up' === $comparison['gross_sales']['trend'];
-            $priorities[] = self::priority( $up ? 'totals_up' : 'totals_down', $up ? 'Order totals increased' : 'Order totals decreased', 'Compared with the previous equivalent calendar period; this is not a forecast.', 'low' );
-        }
-        $data = [ 'window' => $window, 'metrics' => $current, 'comparison' => [ 'window' => $previous, 'metrics' => $comparison ],
-            // Frozen wire fields are placeholders only; the mandatory assessment marker travels in the same journaled result.
-            'counts' => $counts + [ 'customer_followups' => 0, 'inventory' => 0 ], 'attention_items' => [], 'inventory_items' => [], 'priorities' => $priorities ];
-        return self::result( $action, $data, [ 'version' => 1, 'kind' => 'report', 'generated_at' => gmdate( 'c', $generated ), 'scan_limit' => 100,
-            'current' => $meta, 'previous' => $prior_meta, 'amount_basis' => self::AMOUNT_BASIS, 'sales_statuses' => [ 'processing', 'completed' ],
-            'not_assessed' => self::NOT_ASSESSED, 'comparison_complete' => $complete ] );
+        $stats = static function( $p ) { return [ 'scanned' => $p['scanned'], 'has_more' => false, 'invalid_orders' => $p['invalid_orders'], 'other_currency_orders' => 0, 'status_counts' => $p['status_counts'] ]; };
+        $data = [ 'window' => $full['windows'][0], 'metrics' => $periods['current'], 'comparison' => [ 'window' => $full['windows'][1], 'metrics' => $comparison ],
+            'counts' => [ 'attention' => $full['backlog']['attention'], 'fulfillment' => $full['backlog']['fulfillment'], 'customer_followups' => 0, 'inventory' => 0 ],
+            'attention_items' => [], 'inventory_items' => [], 'priorities' => [] ];
+        return self::result( $action, $data, [ 'version' => 2, 'kind' => 'report', 'generated_at' => $full['generated_at'], 'batch_size' => 100,
+            'current' => $stats( $full['current'] ), 'previous' => $stats( $full['previous'] ), 'amount_basis' => self::AMOUNT_BASIS,
+            'sales_statuses' => [ 'processing', 'completed', 'refunded' ], 'not_assessed' => self::NOT_ASSESSED,
+            'comparison_complete' => $periods['current']['is_complete'] && $periods['previous']['is_complete'], 'full_report' => $full ] );
     }
 
     public static function windows( $key, $generated ) {
@@ -63,34 +62,6 @@ class YoRo_Early_Access_Store_Overview_Read {
         $label = [ 'today' => 'Today', 'yesterday' => 'Yesterday', 'last_7_days' => 'Last 7 days', 'last_30_days' => 'Last 30 days' ][ $key ];
         $make = static function( $name, $title, $from, $to ) use ( $now ) { return [ 'key' => $name, 'label' => $title, 'start' => $from->format( 'c' ), 'end' => $to->format( 'c' ), 'timezone' => $now->getTimezone()->getName() ]; };
         return [ $make( $key, $label, $start, $end ), $make( 'previous_equivalent_window', 'Previous equivalent period', $start->modify( '-' . $days . ' days' ), $end->modify( '-' . $days . ' days' ) ) ];
-    }
-
-    private static function period( array $window, $currency, $generated, $include_counts = true ) {
-        $raw = wc_get_orders( [ 'type' => 'shop_order', 'status' => YoRo_Early_Access_Order_Read::STATUSES, 'limit' => 101, 'page' => 1,
-            'date_created' => strtotime( $window['start'] ) . '...' . strtotime( $window['end'] ), 'orderby' => 'date ID', 'order' => 'DESC' ] );
-        $has_more = count( $raw ) > 100; $raw = array_slice( $raw, 0, 100 );
-        $statuses = array_fill_keys( YoRo_Early_Access_Order_Read::STATUSES, 0 );
-        $invalid = 0; $other = 0; $total = 0; $eligible = 0; $counts = [ 'attention' => 0, 'fulfillment' => 0 ];
-        foreach ( $raw as $order ) {
-            if ( ! $order instanceof WC_Order || 'shop_order' !== $order->get_type() || ! $order->get_date_created() || ! array_key_exists( $order->get_status(), $statuses ) ) { $invalid++; continue; }
-            $status = $order->get_status(); $created = $order->get_date_created()->getTimestamp();
-            if ( $created < strtotime( $window['start'] ) || $created > strtotime( $window['end'] ) ) { $invalid++; continue; }
-            $statuses[ $status ]++;
-            // Only the current period exposes operational counts; comparison needs monetary aggregates only.
-            if ( $include_counts ) {
-                $age = (int) floor( ( $generated - $created ) / HOUR_IN_SECONDS );
-                if ( ( 'pending' === $status && $age >= 24 ) || ( 'on-hold' === $status && $age >= 48 ) || ( 'processing' === $status && $age >= 72 ) || ( 'failed' === $status && $age >= 0 && $age <= 168 ) ) { $counts['attention']++; }
-                if ( 'processing' === $status && wc_shipping_enabled() && YoRo_Orders_Read_Service::fulfillment_order_requires_shipping( $order ) ) { $counts['fulfillment']++; }
-            }
-            if ( $order->get_currency() !== $currency ) { $other++; continue; }
-            if ( ! in_array( $status, [ 'processing', 'completed' ], true ) ) { continue; }
-            $amount = self::units( $order->get_total() );
-            if ( null === $amount || $amount > 999999999999999 ) { $invalid++; continue; }
-            $total += $amount; $eligible++;
-        }
-        $metrics = [ 'order_count' => $eligible, 'gross_sales' => self::decimal( $total ), 'average_order_value' => self::decimal( $eligible ? intdiv( $total + intdiv( $eligible, 2 ), $eligible ) : 0 ),
-            'currency' => $currency, 'is_complete' => ! $has_more && 0 === $invalid && 0 === $other ];
-        return [ $metrics, [ 'scanned' => count( $raw ), 'has_more' => $has_more, 'invalid_orders' => $invalid, 'other_currency_orders' => $other, 'status_counts' => $statuses ], $counts ];
     }
 
     private static function units( $value ) {
@@ -139,7 +110,7 @@ class YoRo_Early_Access_Store_Overview_Read {
 
     private static function result( $action, array $data, array $meta ) {
         $message = 'coupons.lookup' === $action ? 'Stored coupon settings only. Cart and customer eligibility are not evaluated.'
-            : 'Bounded aggregate snapshot of standard-status orders. Amounts are stored order totals, not net revenue. Customer follow-ups and inventory are not assessed. Comparison conclusions require complete periods.';
+            : 'Complete-period aggregate with separate currencies, refund-date flows and current backlog. Amount definitions and data timestamps are explicit. Inventory and customer follow-ups are not assessed.';
         return [ 'success' => true, 'action' => $action, 'message' => $message, 'summary' => $message, 'data' => $data, 'read_only' => true, 'undoable' => false,
             'result_type' => 'store_overview', 'display_type' => 'store_overview', 'assistant_summary' => $message, 'extensions' => [ 'yoro.store_overview' => $meta ] ];
     }

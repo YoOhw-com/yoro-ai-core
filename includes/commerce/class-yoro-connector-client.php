@@ -123,7 +123,7 @@ class YoRo_Connector_Client {
 	}
 
 	public function early_access_request( $step, $envelope_id = '', array $payload = [], $claim_token = '', $generation = 0 ) {
-		if ( ! YoRo_Connector_Runtime::early_access_read_allowed() || ! in_array( $step, [ 'claim', 'next', 'ack', 'lease', 'result' ], true )
+		if ( ! YoRo_Connector_Runtime::early_access_read_allowed() || ! in_array( $step, [ 'claim', 'next', 'ack', 'lease', 'defer', 'result' ], true )
 			|| ( ! in_array( $step, [ 'claim', 'next' ], true ) && ! preg_match( '/\Aenvelope_[a-f0-9]{64}\z/D', $envelope_id ) ) ) {
 			return new WP_Error( 'yoro_early_access_unavailable', 'Early Access read transport is unavailable.' );
 		}
