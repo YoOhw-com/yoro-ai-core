@@ -227,6 +227,7 @@ class YoRo_Commerce_Contract_Builder {
 		if ( 'store.get_daily_briefing' === $name ) {
 			$catalog_input_schema = [
 				'window'       => [ 'type' => 'string', 'maxLength' => 120 ],
+                ...array_fill_keys( array_values( array_diff( YoRo_Store_Report_Period::Fields, [ 'window' ] ) ), [ 'type' => 'string' ] ),
 				'time_window'  => self::resolved_time_window_input_schema(),
 				'answer_shape' => [ 'type' => 'string', 'enum' => [ 'business_overview' ] ],
 				'limit'        => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 10 ],

@@ -16,3 +16,8 @@ foreach($cases as[$params,$now,$tz,$week,$start,$end]){
 }
 $assert(!YoRo_Early_Access_Store_Overview_Read::valid_params('store.get_insights',['window'=>'custom','date_from'=>'2024-02-30','date_to'=>'2024-03-01']),'Invalid dates are rejected locally.');
 echo "Store report periods: calendar/week-start/leap/DST/custom and chart bounds passed.\n";
+
+$manifest=YoRo_Commerce_Contract_Builder::build_capability_manifest(['connector_key'=>'woocommerce','connector_connection_id'=>'connection_period_smoke','execution_mode'=>'remote_agent','protocol_version'=>1],1);
+$assert(is_array($manifest),'Report test builds the actual connector manifest.');
+foreach(array_slice(YoRo_Early_Access_Store_Overview_Read::ACTIONS,0,4)as$action){$rows=array_values(array_filter($manifest['actions'],static function($row)use($action){return$row['name']===$action;}));$assert(count($rows)===1,'Every report action has one manifest declaration.');foreach(YoRo_Store_Report_Period::Fields as$field){$assert(isset($rows[0]['input_schema']['properties'][$field]),$action.' manifest must negotiate '.$field);}}
+echo "Actual report manifests expose every period and comparison parameter for all four tools.\n";
