@@ -45,7 +45,7 @@ try {
             $assert( [ 'customer_followups', 'inventory' ] === $m['not_assessed'] && 0 === $r['data']['counts']['customer_followups'] && 0 === $r['data']['counts']['inventory'], 'Frozen wire placeholders have mandatory not-assessed provenance.' );
             $assert( [] === $r['data']['attention_items'] && [] === $r['data']['inventory_items'], 'No customer or product records enter aggregate results.' );
             $assert( false === strpos( wp_json_encode( $r ), 'PRIVATE-' ) && false === strpos( wp_json_encode( $r ), '12025550123' ), 'Customer content is excluded before journaling.' );
-            $assert( 1 === $r['data']['counts']['fulfillment'] && 1 === $r['data']['counts']['attention'], 'Current operational counts still assess physical shipping and failed-order attention.' );
+            $assert( 2 === $r['data']['counts']['fulfillment'] && 1 === $r['data']['counts']['attention'], 'Current backlog includes physical unfulfilled orders from both current and older creation dates.' );
             $assert( 1 === $r['data']['comparison']['metrics']['order_count']['previous'] && '5.000000' === $r['data']['comparison']['metrics']['gross_sales']['previous']
                 && '5.000000' === $r['data']['comparison']['metrics']['average_order_value']['previous'] && 1 === $m['previous']['status_counts']['processing'], 'Previous processing orders retain all monetary comparison and status metrics without item reads.' );
         }
