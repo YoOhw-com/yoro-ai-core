@@ -1,11 +1,12 @@
 <?php
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
+require_once __DIR__ . '/class-yoro-store-report-period.php';
 
 /** Bounded aggregate projection before the ordinary read journal. */
 class YoRo_Early_Access_Store_Overview_Read {
     const ACTIONS = [ 'operations.get_summary', 'store.get_business_summary', 'store.get_daily_briefing', 'store.get_insights', 'coupons.lookup' ];
-    const WINDOWS = [ 'today', 'yesterday', 'last_7_days', 'last_30_days' ];
+    const WINDOWS = YoRo_Store_Report_Period::Windows;
     const NOT_ASSESSED = [ 'customer_followups', 'inventory' ];
     const AMOUNT_BASIS = 'order_totals_including_tax_shipping_after_discounts_before_refunds';
 
@@ -15,7 +16,7 @@ class YoRo_Early_Access_Store_Overview_Read {
             return [ 'coupon_code' ] === array_keys( $params ) && is_string( $params['coupon_code'] )
                 && 1 === preg_match( '/\A[a-z0-9][a-z0-9_-]{0,63}\z/D', $params['coupon_code'] );
         }
-        return ! array_diff( array_keys( $params ), [ 'window', 'date_basis' ] ) && in_array( $params['window'] ?? null, self::WINDOWS, true ) && in_array( $params['date_basis'] ?? 'created', [ 'created', 'paid' ], true );
+        try { return isset( $params['window'] ) && YoRo_Store_Report_Period::parameters( $params ) === $params; } catch ( Throwable $error ) { return false; }
     }
 
     public static function execute( array $operation, $guard = null ) {
@@ -47,21 +48,14 @@ class YoRo_Early_Access_Store_Overview_Read {
         $data = [ 'window' => $full['windows'][0], 'metrics' => $periods['current'], 'comparison' => [ 'window' => $full['windows'][1], 'metrics' => $comparison ],
             'counts' => [ 'attention' => $full['backlog']['attention'], 'fulfillment' => $full['backlog']['fulfillment'], 'customer_followups' => 0, 'inventory' => 0 ],
             'attention_items' => [], 'inventory_items' => [], 'priorities' => [] ];
-        return self::result( $action, $data, [ 'version' => 2, 'kind' => 'report', 'generated_at' => $full['generated_at'], 'batch_size' => 100,
+        return self::result( $action, $data, [ 'version' => 3, 'kind' => 'report', 'generated_at' => $full['generated_at'], 'batch_size' => 100,
             'current' => $stats( $full['current'] ), 'previous' => $stats( $full['previous'] ), 'amount_basis' => self::AMOUNT_BASIS,
             'sales_statuses' => [ 'processing', 'completed', 'refunded' ], 'not_assessed' => self::NOT_ASSESSED,
             'comparison_complete' => $periods['current']['is_complete'] && $periods['previous']['is_complete'], 'full_report' => $full ] );
     }
 
     public static function windows( $key, $generated ) {
-        $now = ( new DateTimeImmutable( '@' . $generated ) )->setTimezone( wp_timezone() );
-        $days = 'last_7_days' === $key ? 7 : ( 'last_30_days' === $key ? 30 : 1 );
-        $start = $now->setTime( 0, 0 )->modify( '-' . ( $days - 1 ) . ' days' );
-        $end = $now;
-        if ( 'yesterday' === $key ) { $start = $start->modify( '-1 day' ); $end = $start->setTime( 23, 59, 59 ); }
-        $label = [ 'today' => 'Today', 'yesterday' => 'Yesterday', 'last_7_days' => 'Last 7 days', 'last_30_days' => 'Last 30 days' ][ $key ];
-        $make = static function( $name, $title, $from, $to ) use ( $now ) { return [ 'key' => $name, 'label' => $title, 'start' => $from->format( 'c' ), 'end' => $to->format( 'c' ), 'timezone' => $now->getTimezone()->getName() ]; };
-        return [ $make( $key, $label, $start, $end ), $make( 'previous_equivalent_window', 'Previous equivalent period', $start->modify( '-' . $days . ' days' ), $end->modify( '-' . $days . ' days' ) ) ];
+        return YoRo_Store_Report_Period::resolve( [ 'window' => $key ], new DateTimeImmutable( '@' . $generated ), wp_timezone_string(), (int) get_option( 'start_of_week', 1 ) )['windows'];
     }
 
     private static function units( $value ) {

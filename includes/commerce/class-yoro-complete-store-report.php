@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /** Resumable, private-free report aggregation in the authoritative Woo datastore. */
 final class YoRo_Complete_Store_Report {
-    const VERSION = 2;
+    const VERSION = 3;
     const BATCH_SIZE = 100;
     const STATE_OPTION = '_yoro_complete_report_state_v2';
     const GENERATION_OPTION = '_yoro_complete_report_generation_v2';
@@ -33,7 +33,7 @@ final class YoRo_Complete_Store_Report {
             add_action( $hook, static function() { self::invalidate(); }, 10, 0 );
         }
         add_action( 'updated_option', static function( $name ) {
-            if ( in_array( $name, [ 'timezone_string', 'gmt_offset', 'woocommerce_currency', 'woocommerce_calc_taxes', 'woocommerce_calc_shipping', 'woocommerce_ship_to_countries', 'woocommerce_custom_orders_table_enabled' ], true ) ) { self::invalidate(); }
+            if ( in_array( $name, [ 'timezone_string', 'gmt_offset', 'woocommerce_currency', 'woocommerce_calc_taxes', 'woocommerce_calc_shipping', 'woocommerce_ship_to_countries', 'woocommerce_custom_orders_table_enabled', 'start_of_week' ], true ) ) { self::invalidate(); }
         }, 10, 1 );
     }
 
@@ -51,11 +51,11 @@ final class YoRo_Complete_Store_Report {
     }
 
     public static function manifest() {
-        return [ 'version' => 2, 'actions' => YoRo_Early_Access_Store_Overview_Read::ACTIONS, 'batch_size' => self::BATCH_SIZE,
+        return [ 'version' => 3, 'actions' => YoRo_Early_Access_Store_Overview_Read::ACTIONS, 'batch_size' => self::BATCH_SIZE,
             'coverage' => 'all_matching_orders', 'windows' => YoRo_Early_Access_Store_Overview_Read::WINDOWS,
             'date_bases' => [ 'created', 'paid' ], 'customer_data' => 'excluded', 'coupon_lookup' => 'exact_code',
             'amount_basis' => YoRo_Early_Access_Store_Overview_Read::AMOUNT_BASIS,
-            'not_assessed' => YoRo_Early_Access_Store_Overview_Read::NOT_ASSESSED, 'comparison' => 'previous_equivalent_calendar_period' ];
+            'not_assessed' => YoRo_Early_Access_Store_Overview_Read::NOT_ASSESSED, 'comparison' => YoRo_Store_Report_Period::Comparisons, 'max_period_days' => 366, 'report_execution_seconds' => 1800, 'calendar' => 'store_timezone_and_week_start' ];
     }
 
     /** Four independent scopes bound storage without evicting another active calculation. */
@@ -63,15 +63,18 @@ final class YoRo_Complete_Store_Report {
         if ( ! current_user_can( 'yoro_view_store_data' ) ) { return new WP_Error( 'report_access_denied', 'Report access is unavailable.' ); }
         $params = $operation['params']; $basis = $params['date_basis'] ?? 'created';
         $scope = hash( 'sha256', wp_json_encode( [ self::VERSION, get_current_user_id(), home_url(), YoRo_AI_Settings::get_ai_api_url(),
-            $params['window'], $basis, wp_timezone_string(), get_woocommerce_currency(), wp_date( 'Y-m-d' ), \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ] ) );
+            $params, $basis, (int) get_option( 'start_of_week', 1 ), wp_timezone_string(), get_woocommerce_currency(), wp_date( 'Y-m-d' ), \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ] ) );
         $state_key = self::state_key( $scope );
         if ( null === $state_key ) { return [ 'deferred' => true ]; }
         $state = get_option( $state_key, [] ); $revision = self::generation(); $mutation = self::generation( self::MUTATION_OPTION );
         $owner = hash( 'sha256', $operation['envelope_id'] ?? wp_generate_uuid4() );
         if ( ! is_array( $state ) || ( $state['scope'] ?? null ) !== $scope || ( $state['mutation'] ?? null ) !== $mutation || ( ! empty( $state['complete'] ) && ( $state['revision'] ?? null ) !== $revision && ( $state['owner'] ?? null ) !== $owner ) || ( $state['expires'] ?? 0 ) <= time() ) {
-            $now = time(); [ $window, $previous ] = YoRo_Early_Access_Store_Overview_Read::windows( $params['window'], $now );
-            $state = [ 'scope' => $scope, 'owner' => $owner, 'mutation' => $mutation, 'revision' => $revision, 'as_of' => $now, 'expires' => $now + 300,
-                'phase' => 0, 'cursor' => 0, 'anchor' => self::anchor(), 'basis' => $basis, 'windows' => [ $window, $previous ],
+            $now = time();
+            try { $resolved = YoRo_Store_Report_Period::resolve( $params, new DateTimeImmutable( '@' . $now ), wp_timezone_string(), (int) get_option( 'start_of_week', 1 ) ); }
+            catch ( Throwable $error ) { return new WP_Error( 'report_period_invalid', 'Use valid reporting dates of at most 366 days, without future dates.' ); }
+            [ $window, $previous ] = $resolved['windows'];
+            $state = [ 'scope' => $scope, 'owner' => $owner, 'mutation' => $mutation, 'revision' => $revision, 'as_of' => $now, 'expires' => min( $now + 1800, isset( $operation['expires_at'] ) ? strtotime( $operation['expires_at'] ) : $now + 1800 ),
+                'phase' => 0, 'cursor' => 0, 'anchor' => self::anchor(), 'basis' => $basis, 'windows' => [ $window, $previous ], 'period_context' => $resolved['context'],
                 'periods' => [ self::empty_period(), self::empty_period() ], 'backlog' => [ 'open' => 0, 'attention' => 0, 'fulfillment' => 0 ], 'complete' => false ];
         }
         if ( $state['complete'] && ( $state['completed_at'] ?? $state['as_of'] ) + 30 <= time() ) { delete_option( $state_key ); return self::run( $operation, $guard ); }
@@ -83,6 +86,7 @@ final class YoRo_Complete_Store_Report {
             }
             if ( self::generation( self::MUTATION_OPTION ) !== $state['mutation'] ) { delete_option( $state_key ); return new WP_Error( 'report_changed', 'Store data changed. Request a current report.' ); }
             if ( $state['complete'] ) { $result = self::finish( $state ); if ( self::generation( self::MUTATION_OPTION ) !== $state['mutation'] ) { return new WP_Error( 'report_changed', 'Store data changed. Request a current report.' ); } return $result; }
+            if ( $state['period_context']['comparison_mode'] === 'none' && in_array( $state['phase'], [ 1, 3 ], true ) ) { $state['phase']++; $state['cursor'] = 0; continue; }
             $rows = self::batch( $state );
             foreach ( $rows as $order ) {
                 if ( ! $order instanceof WC_Order && ! $order instanceof WC_Order_Refund ) { throw new RuntimeException( 'report_invalid_order' ); }
@@ -119,7 +123,7 @@ final class YoRo_Complete_Store_Report {
             }
             if ( count( $index ) >= 4 ) { return null; }
         }
-        $index[$key] = time() + 300;
+        $index[$key] = time() + 1800;
         update_option( self::STATE_OPTION . '_index', $index, false );
         return $key;
     }
@@ -197,6 +201,7 @@ final class YoRo_Complete_Store_Report {
         foreach ( $order->get_items( 'fee' ) as $fee ) { self::add( $m['fees'], self::units( (string) $fee->get_total(), true ) ); }
         if ( $p['breakdowns_complete'] ) {
             $day = $order->{ $state['basis'] === 'paid' ? 'get_date_paid' : 'get_date_created' }()->setTimezone( wp_timezone() )->format( 'Y-m-d' );
+            $day = YoRo_Store_Report_Period::bucket( $day, $state['windows'][$phase % 2], $state['period_context'] );
             $p['daily'][$day][$currency] = $p['daily'][$day][$currency] ?? [ 'order_count' => 0, 'order_totals' => 0 ]; $p['daily'][$day][$currency]['order_count']++; self::add( $p['daily'][$day][$currency]['order_totals'], $amount );
             $method = sanitize_key( $order->get_payment_method() ) ?: 'not_set';
             if ( ! isset( $p['payments'][$method] ) && count( $p['payments'] ) >= 32 ) {
@@ -252,9 +257,9 @@ final class YoRo_Complete_Store_Report {
             }
             $p['products'] = $products;
         } unset( $p );
-        $result = [ 'version' => 2, 'status' => 'complete', 'generated_at' => gmdate( 'c', $state['as_of'] ), 'completed_at' => gmdate( 'c', $state['completed_at'] ),
+        $result = [ 'version' => 3, 'status' => 'complete', 'generated_at' => gmdate( 'c', $state['as_of'] ), 'completed_at' => gmdate( 'c', $state['completed_at'] ),
             'date_basis' => $state['basis'], 'refund_basis' => 'refund_created_date', 'data_revision' => hash( 'sha256', $state['revision'] ),
-            'windows' => $state['windows'], 'current' => $periods[0], 'previous' => $periods[1], 'backlog' => $state['backlog'], 'batch_size' => self::BATCH_SIZE ];
+            'windows' => $state['windows'], 'period_context' => $state['period_context'], 'current' => $periods[0], 'previous' => $periods[1], 'backlog' => $state['backlog'], 'batch_size' => self::BATCH_SIZE ];
         if ( strlen( wp_json_encode( $result ) ) > 38000 ) {
             foreach ( [ 'current', 'previous' ] as $key ) { $result[$key]['daily'] = []; $result[$key]['payments'] = []; $result[$key]['products'] = []; $result[$key]['product_ranking_complete'] = false; $result[$key]['breakdowns_complete'] = false; }
         }
