@@ -133,6 +133,16 @@ try {
             $standalone = $check( $read( [ 'email' => $email, 'currency' => 'USD' ], 2, [ 'limit' => 1 ] ), 3, 'Standalone page numbers take a fresh snapshot' );
             $assert( 1 === $standalone['data']['count'], 'A standalone second page is supported.' );
             $check( $finder( [ 'email' => $email ], [ 'currency' => 'EUR', 'status' => 'pending', 'date_from' => '2026-10-10', 'date_to' => '2026-10-10' ] ), 1, 'Finder shares database filters and date/status bounds' );
+            $phone_order = new WC_Order(); $phone_order->set_status( 'pending' ); $phone_order->set_billing_phone( '+1 202-555-0199' ); $phone_order->save();
+            $period_phone = [ 'limit' => 20, 'phone' => '+1 (202) 555.0199' ];
+            $phone_facts = [ 'order_search' => [ 'version' => 1, 'filters' => [], 'page' => 1 ] ];
+            $assert( YoRo_Early_Access_Customer_Service_Read::valid_params( 'orders.find_by_customer', $period_phone, $phone_facts ), 'Negotiated finder validation accepts periods admitted by the API.' );
+            $period_result = $check( $finder( $period_phone ), 1, 'Negotiated finder execution normalizes a period-formatted phone' );
+            $assert( $phone_order->get_id() === $period_result['data']['orders'][0]['id'], 'The period-formatted finder returns the exact normalized phone match.' );
+            foreach ( [ 'orders.find_by_customer', 'customers.lookup' ] as $legacy_action ) {
+                $assert( ! YoRo_Early_Access_Customer_Service_Read::valid_params( $legacy_action, $period_phone ), 'Legacy customer reads retain their previous phone validation.' );
+            }
+            $assert( is_wp_error( YoRo_Early_Access_Customer_Service_Read::execute( [ 'action' => 'orders.find_by_customer', 'params' => $period_phone ] ) ), 'A legacy finder does not silently opt into the negotiated phone format.' );
             $reference = $check( $finder( [ 'order_id' => (int) $one->get_id() ], [ 'currency' => 'EUR' ] ), 1, 'Finder reference keeps customer correlation' );
             $assert( in_array( 'reference_order_id', $reference['extensions']['yoro.order_search']['matches'][0]['reasons'], true ), 'Reason keys identify the filter without echoing contact data.' );
             $assert( is_wp_error( $finder( [ 'email' => $email ], [ 'phone' => '+84901234567' ] ) ), 'Finder extras cannot override its canonical selector.' );

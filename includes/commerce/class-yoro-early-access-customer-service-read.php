@@ -24,7 +24,10 @@ final class YoRo_Early_Access_Customer_Service_Read {
         if ( in_array( $key, [ 'customer_id', 'order_id' ], true ) ) { return is_int( $value ) && $value > 0; }
         if ( ! is_string( $value ) || trim( $value ) !== $value || preg_match( '/[\x00-\x1f\x7f<>]/', $value ) || 1 !== preg_match( '//u', $value ) ) { return false; }
         if ( 'email' === $key ) { return strlen( $value ) <= 254 && (bool) is_email( $value ); }
-        if ( 'phone' === $key ) { return strlen( $value ) <= 32 && preg_match( '/\A[+0-9 ()-]+\z/D', $value ) && strlen( self::phone( $value ) ) >= 7 && strlen( self::phone( $value ) ) <= 15; }
+        if ( 'phone' === $key ) {
+            $pattern = 'orders.find_by_customer' === $action && isset( $facts['order_search'] ) ? '/\A[+0-9 ().-]+\z/D' : '/\A[+0-9 ()-]+\z/D';
+            return strlen( $value ) <= 32 && preg_match( $pattern, $value ) && strlen( self::phone( $value ) ) >= 7 && strlen( self::phone( $value ) ) <= 15;
+        }
         return mb_strlen( $value ) >= 2 && mb_strlen( $value ) <= 80;
     }
 

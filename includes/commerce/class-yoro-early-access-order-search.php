@@ -116,7 +116,7 @@ final class YoRo_Early_Access_Order_Search {
         $reasons = array_values( array_diff( array_keys( $filters ), self::COMPANIONS ) );
         $base = $params;
         if ( 'orders.find_by_customer' === $action ) {
-            if ( ! YoRo_Early_Access_Customer_Service_Read::valid_params( $action, $params ) ) { return new WP_Error( 'order_search_invalid', 'The customer selector is invalid.' ); }
+            if ( ! YoRo_Early_Access_Customer_Service_Read::valid_params( $action, $params, $facts ) ) { return new WP_Error( 'order_search_invalid', 'The customer selector is invalid.' ); }
             foreach ( YoRo_Early_Access_Customer_Service_Read::SELECTORS as $key ) {
                 if ( isset( $params[$key] ) ) { $mapped = 'order_id' === $key ? 'reference_order_id' : $key; $filters[$mapped] = $params[$key]; $reasons[] = $mapped; }
             }
