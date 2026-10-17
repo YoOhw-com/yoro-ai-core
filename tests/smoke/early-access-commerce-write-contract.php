@@ -37,6 +37,72 @@ try {
     $operation = $make( 'products.update_stock_status', [ 'product_id' => $product->get_id(), 'stock_status' => 'outofstock', 'expected_version' => $version ], $version );
     $r = YoRo_Early_Access_Commerce_Write::execute( $operation );
     $assert( ! is_wp_error( $r ) && 'outofstock' === wc_get_product( $product->get_id() )->get_stock_status(), 'Manual stock status uses the existing canonical write service.' );
+    $product = wc_get_product($product->get_id());
+    $edit_changes = ['name'=>'Edited disposable product','regular_price'=>'25','sale_price'=>'20',
+        'sku'=>'yr0178-edit-'.$product->get_id(),'global_unique_id'=>'9780306406157','manage_stock'=>true,'stock_quantity'=>12,
+        'stock_status'=>'instock','backorders'=>'notify','low_stock_amount'=>2];
+    $version = YoRo_Commerce_Discovery_Service::product_version($product);
+    $edit = $make('products.update_details',['product_id'=>$product->get_id(),'changes'=>$edit_changes,'expected_version'=>$version],$version);
+    $assert(is_wp_error(YoRo_Early_Access_Commerce_Write::execute($edit, static function(){return false;})), 'Product edits honor the final execution fence.');
+    $assert(wc_get_product($product->get_id())->get_name() !== $edit_changes['name'], 'A denied fence does not save fields.');
+    $result = YoRo_Early_Access_Commerce_Write::execute($edit);
+    $assert(!is_wp_error($result) && $result['data']['changes'] === $edit_changes, 'The product patch saves and verifies every confirmed field: '.(is_wp_error($result)?$result->get_error_code():wp_json_encode($result)));
+    $product = wc_get_product($product->get_id());
+    $assert($product->get_name()===$edit_changes['name'] && '20' === $product->get_price() && 12 === $product->get_stock_quantity(), 'Product name, active sale price and quantity update through WooCommerce CRUD.');
+    $assert(is_wp_error(YoRo_Early_Access_Commerce_Write::execute($edit)), 'A product patch cannot execute again with the old version.');
+    foreach ([['regular_price'=>'19'], ['sale_price'=>'26'], ['price'=>'1'], ['stock_quantity'=>1.5], ['global_unique_id'=>'ABC']] as $bad_changes) {
+        $version=YoRo_Commerce_Discovery_Service::product_version($product);
+        $bad=$make('products.update_details',['product_id'=>$product->get_id(),'changes'=>$bad_changes,'expected_version'=>$version],$version);
+        $assert(is_wp_error(YoRo_Early_Access_Commerce_Write::execute($bad)), 'Invalid price, identifier, field or quantity is rejected before saving.');
+    }
+    $original_timezone = get_option('timezone_string'); $original_offset = get_option('gmt_offset');
+    try {
+        foreach (['Asia/Ho_Chi_Minh','America/New_York','UTC'] as $timezone) {
+            update_option('timezone_string',$timezone);
+            $scheduled_product = wc_get_product($product->get_id());
+            $version = YoRo_Commerce_Discovery_Service::product_version($scheduled_product);
+            $dates = ['date_on_sale_from'=>'2028-03-12','date_on_sale_to'=>'2028-03-12'];
+            $scheduled = $make('products.update_details',['product_id'=>$product->get_id(),'changes'=>$dates,'expected_version'=>$version],$version);
+            $preview=YoRo_Product_Edit::preview($scheduled['params']);
+            $assert(!is_wp_error($preview) && $preview['after']===$dates, 'Same-day schedules preview without saving.');
+            $saved=YoRo_Early_Access_Commerce_Write::execute($scheduled);
+            $assert(!is_wp_error($saved), 'Schedules save with explicit store-local dates: '.$timezone.' '.(is_wp_error($saved)?$saved->get_error_message():''));
+            $scheduled_product=wc_get_product($product->get_id());
+            $from=$scheduled_product->get_date_on_sale_from('edit')->getTimestamp();$to=$scheduled_product->get_date_on_sale_to('edit')->getTimestamp();
+            $assert(wp_date('Y-m-d H:i:s',$from,wp_timezone())==='2028-03-12 00:00:00' && wp_date('Y-m-d H:i:s',$to,wp_timezone())==='2028-03-12 23:59:59', 'Both date boundaries use the store time zone independently, including DST.');
+            $assert('25'===$scheduled_product->get_price(), 'Future scheduled sales retain the regular active price.');
+            $scheduled_product->set_date_on_sale_from($from+123);$scheduled_product->save();$scheduled_product=wc_get_product($product->get_id());
+            $version=YoRo_Commerce_Discovery_Service::product_version($scheduled_product);
+            $rename=$make('products.update_details',['product_id'=>$product->get_id(),'changes'=>['name'=>'Scheduled rename '.$timezone],'expected_version'=>$version],$version);
+            $assert(!is_wp_error(YoRo_Early_Access_Commerce_Write::execute($rename)) && wc_get_product($product->get_id())->get_date_on_sale_from('edit')->getTimestamp()===$from+123, 'Omitted dates preserve exact pre-existing timestamps.');
+            $scheduled_product=wc_get_product($product->get_id());$version=YoRo_Commerce_Discovery_Service::product_version($scheduled_product);
+            foreach ([['date_on_sale_to'=>'2028-03-11'],['date_on_sale_from'=>'2027-02-29'],['date_on_sale_from'=>'2028-03-12T00:00:00Z']] as $invalid_dates) {
+                $invalid=$make('products.update_details',['product_id'=>$product->get_id(),'changes'=>$invalid_dates,'expected_version'=>$version],$version);
+                $assert(is_wp_error(YoRo_Early_Access_Commerce_Write::execute($invalid)), 'Invalid or reversed dates cannot save.');
+            }
+            $clear=$make('products.update_details',['product_id'=>$product->get_id(),'changes'=>['date_on_sale_from'=>null,'date_on_sale_to'=>null],'expected_version'=>$version],$version);
+            $assert(!is_wp_error(YoRo_Early_Access_Commerce_Write::execute($clear)), 'Explicit null dates clear through direct WC setters.');
+            $scheduled_product=wc_get_product($product->get_id());$assert(null===$scheduled_product->get_date_on_sale_from('edit') && null===$scheduled_product->get_date_on_sale_to('edit') && '20'===$scheduled_product->get_price(), 'Cleared boundaries reactivate the valid sale price.');
+        }
+    } finally {update_option('timezone_string',$original_timezone);update_option('gmt_offset',$original_offset);}
+    $product=wc_get_product($product->get_id());$product->set_name($edit_changes['name']);$product->save();$product=wc_get_product($product->get_id());
+    $duplicate = new WC_Product_Simple();$duplicate->set_name('Duplicate identifier fixture');$duplicate->set_status('publish');$duplicate->set_sku('yr0178-duplicate-'.$product->get_id());$duplicate->save();
+    $version=YoRo_Commerce_Discovery_Service::product_version($product);
+    $bad=$make('products.update_details',['product_id'=>$product->get_id(),'changes'=>['name'=>'Must not persist','sku'=>$duplicate->get_sku()],'expected_version'=>$version],$version);
+    $assert(is_wp_error(YoRo_Early_Access_Commerce_Write::execute($bad)) && wc_get_product($product->get_id())->get_name()===$edit_changes['name'], 'Duplicate SKU cannot partially persist the earlier name setter.');
+    $product->set_sku('yr0178-same-second-'.$product->get_id());$product->save();$product=wc_get_product($product->get_id());
+    $assert($version!==YoRo_Commerce_Discovery_Service::product_version($product), 'SKU participates in the version even within one timestamp second.');
+    $facts=YoRo_Product_Edit::facts($variation);
+    $assert($facts['stock_managed_by_parent'] && false===$facts['edit_fields']['manage_stock'], 'Editing inherited stock uses the raw local management setting.');
+    $version=YoRo_Commerce_Discovery_Service::product_version($variation);
+    $local=$make('products.update_details',['product_id'=>$variation->get_id(),'changes'=>['manage_stock'=>true,'stock_quantity'=>3,'stock_status'=>'instock'],'expected_version'=>$version],$version);
+    $assert(!is_wp_error(YoRo_Early_Access_Commerce_Write::execute($local)) && 20===wc_get_product($parent->get_id())->get_stock_quantity(), 'Explicit variation stock opt-in never mutates parent quantity.');
+    $version=YoRo_Commerce_Discovery_Service::product_version($product);
+    $off=$make('products.update_details',['product_id'=>$product->get_id(),'changes'=>['manage_stock'=>false,'stock_quantity'=>null,'backorders'=>'no','low_stock_amount'=>null],'expected_version'=>$version],$version);
+    $assert(!is_wp_error(YoRo_Early_Access_Commerce_Write::execute($off)), 'Disabling stock management explicitly includes WooCommerce clearing effects.');
+    $product=wc_get_product($product->get_id());$assert(null===$product->get_stock_quantity() && 'no'===$product->get_backorders(), 'Disabled quantity and backorder settings match the reviewed patch.');
+    $read=YoRo_Early_Access_Product_Read::execute(['action'=>'products.get_details','params'=>['product_ids'=>[$product->get_id()]],'workflow_id'=>wp_generate_uuid4(),'operation_id'=>'operation_1']);
+    $assert(isset($read['data']['products'][0]['extensions']['woocommerce.product']['edit_fields']), 'Product detail reads include bounded edit facts.');
     $order = new WC_Order(); $order->set_status( 'pending' ); $order->set_total( '10.00' ); $order->save();
     $read = YoRo_Early_Access_Order_Read::execute( [ 'action' => 'orders.get_details', 'params' => [ 'order_ids' => [ $order->get_id() ] ] ] );
     $assert( $read['data']['orders'][0]['version'] === YoRo_Order_Presenter::order_version( wc_get_order( $order->get_id() ) ), 'The detail read returns the write service optimistic version.' );

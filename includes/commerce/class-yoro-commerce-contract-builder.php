@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:970799ead3248c1d4a6f9231e6b241813c2ba2b867f646d77703df17cf8ea107';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:8ececeee69f9b261acace3eab691a0e3d7417d451e151728d7075c3e7856a3d8';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -58,6 +58,7 @@ class YoRo_Commerce_Contract_Builder {
 		];
 		if ( yoro_ai_core_has_woocommerce() ) {
 			$extensions['yoro.early_access_commerce_writes'] = YoRo_Early_Access_Commerce_Write::manifest();
+            $extensions['yoro.early_access_product_edit'] = YoRo_Product_Edit::manifest();
             $extensions['yoro.early_access_customer_service'] = YoRo_Early_Access_Customer_Service_Read::manifest();
             $extensions['yoro.early_access_wordpress_read'] = YoRo_Early_Access_WordPress_Read::manifest();
             $extensions['yoro.early_access_order_reads'] = [ 'version' => 1, 'actions' => YoRo_Early_Access_Order_Read::ACTIONS, 'max_items' => 20,
@@ -418,6 +419,11 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
+        if ('products.update_details' === $action_name) {
+            return self::closed_object_schema(['product_id'=>['type'=>'integer'],
+                'changes'=>self::closed_object_schema(YoRo_Product_Edit::properties(), []),
+                'current_version'=>['type'=>'string']], ['product_id','changes','current_version']);
+        }
 		if ( 'products.update_stock' === $action_name ) {
 			return self::closed_object_schema(
 				[
@@ -1238,12 +1244,15 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_write_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'orders.update_status', 'products.update_stock', 'products.update_stock_status' ],
+			[ 'orders.update_status', 'products.update_stock', 'products.update_stock_status', 'products.update_details' ],
 			true
 		);
 	}
 
 	private static function canonical_write_data( $action_name, array $execution ) {
+        if ('products.update_details' === $action_name) {
+            return ['product_id'=>$execution['product_id'], 'changes'=>$execution['changes'], 'current_version'=>$execution['current_version']];
+        }
 		if ( 'orders.update_status' === $action_name ) {
 			$current_versions = [];
 

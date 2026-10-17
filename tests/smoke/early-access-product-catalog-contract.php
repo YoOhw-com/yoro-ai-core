@@ -35,6 +35,31 @@ try {
     $assert( is_array( $detail ) && 2 === $detail['data']['count'], 'Details must include the published variation and exclude drafts.' );
     $assert( $variable->get_id() === $detail['data']['products'][1]['extensions']['woocommerce.product']['parent_id'], 'Variation details must identify their parent.' );
     $assert( false === strpos( $detail['data']['products'][0]['extensions']['woocommerce.product']['description'], '<' ), 'Descriptions must be plain text.' );
+    if ( 'https' !== wp_parse_url( home_url(), PHP_URL_SCHEME ) ) {
+        $assert( null === $detail['data']['products'][0]['extensions']['woocommerce.product']['admin_edit_url'], 'An insecure site must not advertise an admin editor URL.' );
+    }
+    // CI uses HTTP disposable WordPress; exercise the HTTPS projection without changing its stored URLs.
+    $https_editor_url = static function( $url ) { return set_url_scheme( $url, 'https' ); };
+    $denied_editor = static function( $caps, $cap, $user_id, $args ) use ( $simple, $variable ) {
+        return 'edit_post' === $cap && in_array( (int) ( $args[0] ?? 0 ), [ $simple->get_id(), $variable->get_id() ], true ) ? [ 'do_not_allow' ] : $caps;
+    };
+    add_filter( 'home_url', $https_editor_url );
+    add_filter( 'site_url', $https_editor_url );
+    try {
+        $editor_detail = $read( 'products.get_details', [ 'product_ids' => [ $simple->get_id(), $variation->get_id() ] ] );
+        $assert( get_edit_post_link( $simple->get_id(), 'raw' ) === $editor_detail['data']['products'][0]['extensions']['woocommerce.product']['admin_edit_url'], 'A permitted actor must receive the exact simple product editor link.' );
+        $assert( get_edit_post_link( $variable->get_id(), 'raw' ) === $editor_detail['data']['products'][1]['extensions']['woocommerce.product']['admin_edit_url'], 'A variation must open its parent product editor.' );
+        add_filter( 'map_meta_cap', $denied_editor, 10, 4 );
+        $denied = $read( 'products.get_details', [ 'product_ids' => [ $simple->get_id(), $variation->get_id() ] ] );
+        $assert( 2 === $denied['data']['count'], 'Read access must remain available without native edit permission.' );
+        foreach ( $denied['data']['products'] as $item ) {
+            $assert( null === $item['extensions']['woocommerce.product']['admin_edit_url'], 'An actor without edit permission must not receive an admin editor link.' );
+        }
+    } finally {
+        remove_filter( 'map_meta_cap', $denied_editor, 10 );
+        remove_filter( 'home_url', $https_editor_url );
+        remove_filter( 'site_url', $https_editor_url );
+    }
     $sku = $read( 'products.search', [ 'sku' => $prefix . '.VARIATION', 'status' => 'publish', 'limit' => 1 ] );
     $assert( 1 === $sku['data']['count'] && $variation->get_id() === $sku['data']['products'][0]['id'], 'An exact variation SKU must be readable.' );
     $queue = $read( 'products.get_inventory_queue', [ 'focus' => 'low_stock', 'limit' => 50 ] );
