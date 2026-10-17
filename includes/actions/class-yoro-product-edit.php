@@ -187,7 +187,16 @@ final class YoRo_Product_Edit
             }
             $facts = self::facts($product);
             $changes = self::effective(self::changes($params['changes'] ?? null), ['type'=>$product->get_type(),'extensions'=>['woocommerce.product'=>$facts]]);
-            // Validate every setter on the in-memory object before any save occurs.
+            self::apply_changes($product, $changes);
+            return ['product'=>$product,'changes'=>$changes,'before'=>$facts['edit_fields']];
+        } catch (Throwable $error) {
+            return new WP_Error('product_edit_invalid', 'The product change is invalid or an identifier is already in use. Check the fields and read the product again.');
+        }
+    }
+
+    /** Validate setters on an in-memory product before its first save. */
+    public static function apply_changes(WC_Product $product, array $changes): void
+    {
             foreach ($changes as $field=>$value) {
                 $setter = 'set_'.$field;
                 if (in_array($field, ['date_on_sale_from','date_on_sale_to'], true)) {
@@ -204,10 +213,6 @@ final class YoRo_Product_Edit
                 && $product->get_date_on_sale_from('edit') && $product->get_date_on_sale_to('edit')
                 && $product->get_date_on_sale_from('edit')->getTimestamp() > $product->get_date_on_sale_to('edit')->getTimestamp()) { self::invalid(); }
             $product->validate_props();
-            return ['product'=>$product,'changes'=>$changes,'before'=>$facts['edit_fields']];
-        } catch (Throwable $error) {
-            return new WP_Error('product_edit_invalid', 'The product change is invalid or an identifier is already in use. Check the fields and read the product again.');
-        }
     }
 
     public static function execute($params)

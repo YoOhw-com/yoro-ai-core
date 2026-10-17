@@ -7,6 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Orders_Actions {
 
 	public static function register() {
+        YoRo_Variable_Product::register();
         YoRo_Action_Registry::register('products.update_details', [
             'label'=>'Edit product', 'description'=>'Edit supported fields of one published product.',
             'category'=>'products','permission'=>'yoro_execute_actions','callback'=>[YoRo_Product_Edit::class,'execute'],
