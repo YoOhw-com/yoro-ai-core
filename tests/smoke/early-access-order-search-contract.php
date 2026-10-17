@@ -94,6 +94,13 @@ try {
                 $ids = array_column( $result['data']['orders'], 'id' ); $assert( count( $ids ) === count( array_unique( $ids ) ), 'Repeated lines and notes cannot duplicate orders.' );
                 return $result;
             };
+            $exact_id = (int) $one->get_id();
+            foreach ( [ [], [ 'email' => $email, 'currency' => 'USD' ] ] as $selectors ) {
+                $exact = $check( $read( $selectors, 1, [ 'order_id' => $exact_id, 'limit' => 1 ] ), 1, 'Canonical ID remains exact before pagination' );
+                $assert( [ $exact_id ] === array_column( $exact['data']['orders'], 'id' ) && ! $exact['data']['page_info']['has_next_page'], 'ID lookup cannot return another order or offer another page.' );
+            }
+            $check( $read( [ 'currency' => 'EUR' ], 1, [ 'order_id' => $exact_id, 'limit' => 1 ] ), 0, 'An ID lookup still requires every negotiated predicate' );
+            $check( $read( [], 1, [ 'order_id' => PHP_INT_MAX, 'limit' => 1 ] ), 0, 'Unknown ID never becomes an unfiltered query' );
             $check( $read( [ 'email' => strtoupper( $email ) ] ), 3, 'Exact billing email reaches old orders' );
             $check( $read( [ 'username' => $login ] ), 3, 'Username resolves to the linked account' );
             $check( $read( [ 'username' => 'missing-' . $tag ] ), 0, 'Unknown username cannot become all customers' );

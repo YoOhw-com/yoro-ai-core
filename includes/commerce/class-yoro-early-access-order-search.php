@@ -146,7 +146,7 @@ final class YoRo_Early_Access_Order_Search {
         $args = [ 'type' => 'shop_order', 'status' => isset( $base['status'] ) ? [ $base['status'] ] : YoRo_Early_Access_Order_Read::STATUSES,
             'limit' => $params['limit'], 'page' => $page, 'paginate' => true, 'orderby' => 'ID', 'order' => 'DESC', 'suppress_filters' => false,
             '_yoro_order_search' => wp_generate_uuid4() ];
-        if ( isset( $base['order_id'] ) ) { $args['include'] = [ $base['order_id'] ]; }
+        if ( isset( $base['order_id'] ) ) { $filters['_exact_order_id'] = $base['order_id']; }
         $from = isset( $base['date_from'] ) ? new DateTimeImmutable( $base['date_from'], wp_timezone() ) : null;
         $to = isset( $base['date_to'] ) ? ( new DateTimeImmutable( $base['date_to'], wp_timezone() ) )->modify( '+1 day' )->modify( '-1 second' ) : null;
         if ( $from && $to ) { $args['date_created'] = $from->getTimestamp() . '...' . $to->getTimestamp(); }
@@ -234,6 +234,7 @@ final class YoRo_Early_Access_Order_Search {
             return $wpdb->prepare( "(SELECT yos_m.meta_value FROM {$meta} yos_m WHERE yos_m.{$meta_id} = {$id} AND yos_m.meta_key = %s LIMIT 1)", $key );
         };
         $where = [ $wpdb->prepare( "{$id} <= %d", $anchor ) ];
+        if ( isset( $filters['_exact_order_id'] ) ) { $where[] = $wpdb->prepare( "{$id} = %d", $filters['_exact_order_id'] ); }
         if ( ! empty( $filters['_no_match'] ) ) { $where[] = '1=0'; }
         foreach ( [ 'customer_id', 'email', 'currency', 'payment_method', 'shipping_country', 'shipping_state', 'shipping_city', 'shipping_postcode' ] as $key ) {
             if ( isset( $filters[$key] ) ) { $where[] = self::compare( $scalar( $key ), $filters[$key] ); }
