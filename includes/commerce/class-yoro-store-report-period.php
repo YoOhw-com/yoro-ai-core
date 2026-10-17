@@ -143,8 +143,8 @@ final class YoRo_Store_Report_Period
         } elseif ($mode === 'previous_year') {
             $priorStart = self::month($start, -12);
             $priorEnd = ! $partial && $step < 0 ? $priorStart->modify('+'.(-$step).' months')->modify('-1 day')->setTime(23, 59, 59) : self::month($end, -12);
-            $shorter = $partial && ($priorStart->format('m-d') !== $start->format('m-d') || $priorEnd->format('m-d') !== $end->format('m-d'));
-            if ($partial && $priorEnd->format('j') !== $end->format('j')) {
+            $shorter = ($partial || $step >= 0) && ($priorStart->format('m-d') !== $start->format('m-d') || $priorEnd->format('m-d') !== $end->format('m-d'));
+            if (($partial || $step >= 0) && $priorEnd->format('j') !== $end->format('j')) {
                 $priorEnd = $priorEnd->setTime(23, 59, 59);
             }
         } elseif ($step < 0) {
