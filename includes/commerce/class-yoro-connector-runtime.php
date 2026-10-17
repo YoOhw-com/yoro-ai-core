@@ -721,7 +721,7 @@ class YoRo_Connector_Runtime {
         $expanded = 1 === ( $facts['read_contract_version'] ?? null );
         $class = self::expanded_read_executor( $facts['read_family'] ?? null );
         $valid_selectors = $expanded
-            ? ( $class && ( 'orders' === ( $facts['read_family'] ?? null )
+            ? ( $class && ( in_array( $facts['read_family'] ?? null, [ 'orders', 'customer_service' ], true )
                 ? $class::valid_params( $operation['action'] ?? '', $params, $facts )
                 : $class::valid_params( $operation['action'] ?? '', $params ) ) )
                 && ( $facts['action'] ?? null ) === ( $operation['action'] ?? null )

@@ -14,7 +14,8 @@ class YoRo_Early_Access_Order_Read {
     }
 
     public static function valid_params( $action, $params, $facts = [] ) {
-        if ( ! in_array( $action, self::ACTIONS, true ) || ! is_array( $params ) ) { return false; }
+        if ( ! in_array( $action, self::ACTIONS, true ) || ! is_array( $params ) || ! is_array( $facts ) ) { return false; }
+        if ( array_key_exists( 'order_search', $facts ) && ! YoRo_Early_Access_Order_Search::valid_facts( $action, $params, $facts ) ) { return false; }
         if ( isset( $facts['order_projection_version'] ) && ( 1 !== $facts['order_projection_version']
             || ! in_array( $action, [ 'orders.get_details', 'orders.get_timeline' ], true )
             || 1 !== ( $facts['read_contract_version'] ?? null ) || 'orders' !== ( $facts['read_family'] ?? null ) ) ) { return false; }
@@ -53,6 +54,7 @@ class YoRo_Early_Access_Order_Read {
         if ( ! self::valid_params( $action, $params, $facts ) || ! current_user_can( 'yoro_view_store_data' ) || ! function_exists( 'wc_get_orders' ) ) {
             return new WP_Error( 'order_read_unavailable', 'Order read did not complete.' );
         }
+        if ( 'orders.search' === $action && isset( $facts['order_search'] ) ) { return YoRo_Early_Access_Order_Search::execute( $operation ); }
         if ( 'orders.get_timeline' === $action ) {
             $order = wc_get_order( $params['order_id'] );
             if ( ! self::readable( $order ) ) { return new WP_Error( 'order_read_unavailable', 'Order read did not complete.' ); }
@@ -118,6 +120,9 @@ class YoRo_Early_Access_Order_Read {
     private static function readable( $order ) {
         return $order instanceof WC_Order && 'shop_order' === $order->get_type() && in_array( $order->get_status(), self::STATUSES, true ) && $order->get_date_created();
     }
+
+    /** Shared redacted projection for negotiated searches; no filter values or customer text. */
+    public static function search_row( WC_Order $order ) { return self::order( $order, false ); }
 
     private static function matches( WC_Order $order, array $params ) {
         $date = $order->get_date_created()->date( 'Y-m-d' );

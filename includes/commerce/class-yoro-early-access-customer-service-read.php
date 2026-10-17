@@ -12,7 +12,9 @@ final class YoRo_Early_Access_Customer_Service_Read {
             'customer_data' => 'redacted', 'semantics' => 'bounded_candidate_snapshot_v1' ];
     }
 
-    public static function valid_params( $action, $params ) {
+    public static function valid_params( $action, $params, $facts = [] ) {
+        if ( ! is_array( $facts ) ) { return false; }
+        if ( array_key_exists( 'order_search', $facts ) && ! YoRo_Early_Access_Order_Search::valid_facts( $action, $params, $facts ) ) { return false; }
         if ( ! in_array( $action, self::ACTIONS, true ) || ! is_array( $params ) || array_diff( array_keys( $params ), [ 'limit', ...self::SELECTORS ] )
             || ! is_int( $params['limit'] ?? null ) || $params['limit'] < 1 || $params['limit'] > 20 ) { return false; }
         $selectors = array_intersect( array_keys( $params ), self::SELECTORS );
@@ -28,9 +30,11 @@ final class YoRo_Early_Access_Customer_Service_Read {
 
     public static function execute( array $operation ) {
         $action = $operation['action'] ?? ''; $params = $operation['params'] ?? [];
-        if ( ! self::valid_params( $action, $params ) || ! current_user_can( 'yoro_view_store_data' ) || ! function_exists( 'wc_get_orders' ) ) {
+        $facts = $operation['extensions']['yoro.mcp_early_access_product_read'] ?? [];
+        if ( ! self::valid_params( $action, $params, $facts ) || ! current_user_can( 'yoro_view_store_data' ) || ! function_exists( 'wc_get_orders' ) ) {
             return new WP_Error( 'customer_service_unavailable', 'Customer service read did not complete.' );
         }
+        if ( 'orders.find_by_customer' === $action && isset( $facts['order_search'] ) ) { return YoRo_Early_Access_Order_Search::execute( $operation ); }
         $queue = 'customers.get_service_queue' === $action; $identity = 'orders.find_by_identity' === $action;
         $seed = isset( $params['order_id'] ) ? wc_get_order( $params['order_id'] ) : null;
         if ( isset( $params['order_id'] ) && ! self::readable( $seed ) ) { return new WP_Error( 'customer_service_unavailable', 'The reference order is unavailable.' ); }
