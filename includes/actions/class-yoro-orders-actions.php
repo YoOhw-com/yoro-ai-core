@@ -129,6 +129,7 @@ class YoRo_Orders_Actions {
 				'write_action'=> false,
 				'input_schema'=> [
 					'window' => 'string',
+                    'date_basis' => 'string',
 					'time_window' => 'object',
 					'focus'  => 'string',
 				],
@@ -602,6 +603,7 @@ class YoRo_Orders_Actions {
 				'write_action'=> false,
 				'input_schema'=> [
 					'window' => 'string',
+                    'date_basis' => 'string',
 					'time_window' => 'object',
 					'limit'  => 'integer',
 				],
@@ -644,6 +646,7 @@ class YoRo_Orders_Actions {
 				'write_action'=> false,
 				'input_schema'=> [
 					'window' => 'string',
+                    'date_basis' => 'string',
 					'time_window' => 'object',
 					'focus'  => 'string',
 				],
@@ -689,6 +692,7 @@ class YoRo_Orders_Actions {
 				'write_action'=> false,
 				'input_schema'=> [
 					'window' => 'string',
+                    'date_basis' => 'string',
 					'time_window' => 'object',
 					'limit'  => 'integer',
 				],

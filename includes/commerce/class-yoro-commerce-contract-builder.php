@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:45a3f47dc4c875b780623042dd144b70405b338928fe490b9c046d5c67b0d30c';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:a9c3e95b63775ee286246385d1263796d1efc072d9ee84a42ab48df14fbc1f75';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -71,9 +71,7 @@ class YoRo_Commerce_Contract_Builder {
 				'scan_limit' => 100, 'customer_data' => 'redacted', 'semantics' => 'oldest_candidate_snapshot_v1' ];
 			$extensions['yoro.early_access_order_tracking'] = [ 'version' => 1, 'actions' => YoRo_Early_Access_Order_Tracking_Read::ACTIONS, 'max_shipments' => 5,
 				'source_items' => 20, 'custom_links' => false, 'provider_verified' => false, 'customer_data' => 'redacted' ];
-            $extensions['yoro.early_access_store_overview'] = [ 'version' => 1, 'actions' => YoRo_Early_Access_Store_Overview_Read::ACTIONS,
-                'scan_limit' => 100, 'windows' => YoRo_Early_Access_Store_Overview_Read::WINDOWS, 'customer_data' => 'excluded', 'coupon_lookup' => 'exact_code',
-                'amount_basis' => YoRo_Early_Access_Store_Overview_Read::AMOUNT_BASIS, 'not_assessed' => YoRo_Early_Access_Store_Overview_Read::NOT_ASSESSED, 'comparison' => 'previous_equivalent_calendar_period' ];
+            $extensions['yoro.early_access_store_overview'] = YoRo_Complete_Store_Report::manifest();
             $extensions['yoro.early_access_product_reads'] = [
                 'version' => 1, 'actions' => YoRo_Early_Access_Product_Read::ACTIONS, 'max_items' => 50,
             ];
