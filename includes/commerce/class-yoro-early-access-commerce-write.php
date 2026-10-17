@@ -4,10 +4,10 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /** Single-target, versioned writes. Called only by the locked, fenced connector runner. */
 final class YoRo_Early_Access_Commerce_Write {
-    const ACTIONS = [ 'products.update_stock', 'products.update_stock_status', 'orders.update_status', 'orders.add_note' ];
+    const ACTIONS = [ 'products.update_details', 'products.update_stock', 'products.update_stock_status', 'orders.update_status', 'orders.add_note' ];
 
     public static function manifest() {
-        return [ 'version' => 1, 'actions' => self::ACTIONS, 'max_targets' => 1, 'requires_source_read' => true,
+        return [ 'version' => 1, 'actions' => array_values(array_diff(self::ACTIONS, ['products.update_details'])), 'max_targets' => 1, 'requires_source_read' => true,
             'requires_confirmation' => true, 'result_version' => 1 ];
     }
 
@@ -17,6 +17,12 @@ final class YoRo_Early_Access_Commerce_Write {
             || ! is_string( $facts['source_result_hash'] ?? null ) || ! preg_match( '/\A[a-f0-9]{64}\z/D', $facts['source_result_hash'] )
             || ! is_string( $facts['expected_version'] ?? null ) || ! preg_match( '/\A[a-f0-9]{64}\z/D', $facts['expected_version'] ) ) {
             return false;
+        }
+        if ('products.update_details' === $action) {
+            try { YoRo_Product_Edit::changes($params['changes'] ?? null); }
+            catch (Throwable $error) { return false; }
+            return 3 === count($params) && !array_diff(array_keys($params), ['product_id','changes','expected_version'])
+                && is_int($params['product_id'] ?? null) && $params['product_id'] > 0 && ($params['expected_version'] ?? null) === $facts['expected_version'];
         }
         if ( str_starts_with( $action, 'products.' ) ) {
             $field = 'products.update_stock' === $action ? 'stock_quantity' : 'stock_status';
@@ -54,7 +60,7 @@ final class YoRo_Early_Access_Commerce_Write {
         }
         if ( str_starts_with( $action, 'products.' ) ) {
             $target = wc_get_product( $params['product_id'] );
-            if ( ! $target || 'publish' !== $target->get_status() || ! in_array( $target->get_type(), [ 'simple', 'variation' ], true )
+            if ( ! $target || 'publish' !== $target->get_status() || ! in_array( $target->get_type(), 'products.update_details' === $action ? [ 'simple', 'variable', 'variation' ] : [ 'simple', 'variation' ], true )
                 || ( 'products.update_stock' === $action && true !== $target->get_manage_stock( 'edit' ) )
                 || ( 'products.update_stock_status' === $action && $target->get_manage_stock() ) ) {
                 return new WP_Error( 'confirmed_product_unavailable', 'This product does not support the selected stock change.' );

@@ -7,6 +7,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Orders_Actions {
 
 	public static function register() {
+        YoRo_Action_Registry::register('products.update_details', [
+            'label'=>'Edit product', 'description'=>'Edit supported fields of one published product.',
+            'category'=>'products','permission'=>'yoro_execute_actions','callback'=>[YoRo_Product_Edit::class,'execute'],
+            'preview_callback'=>[YoRo_Product_Edit::class,'preview'],'risk_level'=>'medium','write_action'=>true,
+            'requires_confirmation'=>true,'effect'=>'mutate','reversibility'=>'none','target_type'=>'product','max_items'=>1,
+            'input_schema'=>['product_id'=>'integer','changes'=>'object','expected_version'=>'string'],
+            'canonical_input_schema'=>['product_id'=>['type'=>'integer','minimum'=>1],
+                'changes'=>['type'=>'object','properties'=>YoRo_Product_Edit::properties(),'required'=>[],'additionalProperties'=>false],
+                'expected_version'=>['type'=>'string','pattern'=>'^[a-f0-9]{64}$']],
+            'required_params'=>['product_id','changes','expected_version'],'concurrency_strategy'=>'optimistic_version',
+            'ai_description'=>'Edit the name, regular/sale price, SKU, global unique ID and stock settings for one product after explicit confirmation. Omitted fields are unchanged.',
+            'capabilities'=>['products','inventory','write']]);
 		YoRo_Action_Registry::register(
 			'orders.search',
 			[
