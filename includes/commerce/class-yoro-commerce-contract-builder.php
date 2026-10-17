@@ -422,12 +422,12 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
-        if (in_array($action_name, YoRo_Variable_Product::WriteActions, true)) {
+        if (in_array($action_name, ['products.update_attributes', 'products.create_variation'], true)) {
             $fields=['product_id'=>['type'=>'integer'],'changes'=>self::closed_object_schema(YoRo_Variable_Product::properties($action_name), []),'current_version'=>['type'=>'string']];
-            if($action_name===YoRo_Variable_Product::CreateAction){$fields['variation_id']=['type'=>'integer'];$fields['variation_version']=['type'=>'string'];}
+            if($action_name==='products.create_variation'){$fields['variation_id']=['type'=>'integer'];$fields['variation_version']=['type'=>'string'];}
             return self::closed_object_schema($fields,array_keys($fields));
         }
-        if ($action_name===YoRo_Variable_Product::ReadAction) {
+        if ($action_name==='products.get_variable_details') {
             return self::closed_object_schema(['products'=>self::array_schema(self::canonical_product_schema()),'variations'=>self::array_schema(self::canonical_product_schema()),
                 'variable'=>YoRo_Variable_Product::factsSchema(),'count'=>['type'=>'integer'],
                 'page_info'=>self::closed_object_schema(['page'=>['type'=>'integer'],'limit'=>['type'=>'integer'],'total'=>['type'=>'integer'],'has_more'=>['type'=>'boolean']],['page','limit','total','has_more'])],
@@ -1250,7 +1250,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_read_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ YoRo_Variable_Product::ReadAction, 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ],
+			[ 'products.get_variable_details', 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ],
 			true
 		);
 	}
@@ -1258,15 +1258,15 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_write_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			array_merge(YoRo_Variable_Product::WriteActions, [ 'orders.update_status', 'products.update_stock', 'products.update_stock_status', 'products.update_details' ]),
+			array_merge(['products.update_attributes', 'products.create_variation'], [ 'orders.update_status', 'products.update_stock', 'products.update_stock_status', 'products.update_details' ]),
 			true
 		);
 	}
 
 	private static function canonical_write_data( $action_name, array $execution ) {
-        if (in_array($action_name,YoRo_Variable_Product::WriteActions,true)){
+        if (in_array($action_name,['products.update_attributes', 'products.create_variation'],true)){
             return is_array($execution['data']??null) ? $execution['data'] : array_intersect_key($execution,array_flip(
-                $action_name===YoRo_Variable_Product::CreateAction ? ['product_id','changes','current_version','variation_id','variation_version'] : ['product_id','changes','current_version']));
+                $action_name==='products.create_variation' ? ['product_id','changes','current_version','variation_id','variation_version'] : ['product_id','changes','current_version']));
         }
         if ('products.update_details' === $action_name) {
             return ['product_id'=>$execution['product_id'], 'changes'=>$execution['changes'], 'current_version'=>$execution['current_version']];
@@ -1315,7 +1315,7 @@ class YoRo_Commerce_Contract_Builder {
 
 	private static function canonical_read_data( $action_name, array $execution ) {
 		$raw_data = is_array( $execution['data'] ?? null ) ? $execution['data'] : [];
-        if($action_name===YoRo_Variable_Product::ReadAction){return $raw_data ?: array_intersect_key($execution,array_flip(['products','variations','variable','count','page_info']));}
+        if($action_name==='products.get_variable_details'){return $raw_data ?: array_intersect_key($execution,array_flip(['products','variations','variable','count','page_info']));}
 
 		if ( in_array( $action_name, [ 'content.search', 'comments.list', 'media.search' ], true ) ) {
 			$items = self::is_list_array( $raw_data )
