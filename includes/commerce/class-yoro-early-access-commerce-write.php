@@ -4,10 +4,10 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /** Single-target, versioned writes. Called only by the locked, fenced connector runner. */
 final class YoRo_Early_Access_Commerce_Write {
-    const ACTIONS = [ 'products.update_details', 'products.update_stock', 'products.update_stock_status', 'orders.update_status', 'orders.add_note' ];
+    const ACTIONS = [ YoRo_Variable_Product::AttributeAction, YoRo_Variable_Product::CreateAction, 'products.update_details', 'products.update_stock', 'products.update_stock_status', 'orders.update_status', 'orders.add_note' ];
 
     public static function manifest() {
-        return [ 'version' => 1, 'actions' => array_values(array_diff(self::ACTIONS, ['products.update_details'])), 'max_targets' => 1, 'requires_source_read' => true,
+        return [ 'version' => 1, 'actions' => array_values(array_diff(self::ACTIONS, array_merge(['products.update_details'],YoRo_Variable_Product::WriteActions))), 'max_targets' => 1, 'requires_source_read' => true,
             'requires_confirmation' => true, 'result_version' => 1 ];
     }
 
@@ -17,6 +17,11 @@ final class YoRo_Early_Access_Commerce_Write {
             || ! is_string( $facts['source_result_hash'] ?? null ) || ! preg_match( '/\A[a-f0-9]{64}\z/D', $facts['source_result_hash'] )
             || ! is_string( $facts['expected_version'] ?? null ) || ! preg_match( '/\A[a-f0-9]{64}\z/D', $facts['expected_version'] ) ) {
             return false;
+        }
+        if (in_array($action,YoRo_Variable_Product::WriteActions,true)) {
+            try{YoRo_Variable_Product::changes($action,$params['changes']??null);}catch(Throwable $error){return false;}
+            return count($params)===3 && !array_diff(array_keys($params),['product_id','changes','expected_version']) && is_int($params['product_id']??null)
+                && $params['product_id']>0 && ($params['expected_version']??null)===$facts['expected_version'];
         }
         if ('products.update_details' === $action) {
             try { YoRo_Product_Edit::changes($params['changes'] ?? null); }
@@ -60,12 +65,12 @@ final class YoRo_Early_Access_Commerce_Write {
         }
         if ( str_starts_with( $action, 'products.' ) ) {
             $target = wc_get_product( $params['product_id'] );
-            if ( ! $target || 'publish' !== $target->get_status() || ! in_array( $target->get_type(), 'products.update_details' === $action ? [ 'simple', 'variable', 'variation' ] : [ 'simple', 'variation' ], true )
+            if ( ! $target || 'publish' !== $target->get_status() || ! in_array( $target->get_type(), in_array($action,YoRo_Variable_Product::WriteActions,true) ? ['variable'] : ('products.update_details' === $action ? [ 'simple', 'variable', 'variation' ] : [ 'simple', 'variation' ]), true )
                 || ( 'products.update_stock' === $action && true !== $target->get_manage_stock( 'edit' ) )
                 || ( 'products.update_stock_status' === $action && $target->get_manage_stock() ) ) {
                 return new WP_Error( 'confirmed_product_unavailable', 'This product does not support the selected stock change.' );
             }
-            $version = YoRo_Commerce_Discovery_Service::product_version( $target );
+            $version = in_array($action,YoRo_Variable_Product::WriteActions,true) ? YoRo_Variable_Product::context($target)['version'] : YoRo_Commerce_Discovery_Service::product_version( $target );
         } else {
             $target = wc_get_order( $params['order_ids'][0] );
             if ( ! $target || 'shop_order' !== $target->get_type() ) { return new WP_Error( 'confirmed_order_unavailable', 'This order is unavailable.' ); }
@@ -80,6 +85,9 @@ final class YoRo_Early_Access_Commerce_Write {
         $execution = YoRo_Action_Executor::execute( $action, $params, true, false, [ 'connector_remote_agent' => true,
             'workflow_id' => $operation['workflow_id'] ?? '', 'operation_id' => $operation['operation_id'] ?? '' ] );
         if ( is_wp_error( $execution ) || ! is_array( $execution ) || empty( $execution['success'] ) ) {
+            if(is_array($execution) && 'local_execution_outcome_unknown' === ($execution['error']['code'] ?? null)) {
+                return new WP_Error('local_execution_outcome_unknown','Read the target again; do not repeat this change.');
+            }
             return is_wp_error( $execution ) ? $execution : new WP_Error( 'confirmed_change_failed', 'The confirmed change did not complete.' );
         }
         $result = YoRo_Commerce_Contract_Builder::canonical_execution_payload( $execution, $action );

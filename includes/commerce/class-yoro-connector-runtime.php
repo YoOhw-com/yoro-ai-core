@@ -686,7 +686,7 @@ class YoRo_Connector_Runtime {
 
     private static function expanded_read_executor( $family ) {
         if ( null === $family ) { return YoRo_Early_Access_Product_Read::class; }
-        $classes = [ 'wordpress_read' => YoRo_Early_Access_WordPress_Read::class, 'customer_service' => YoRo_Early_Access_Customer_Service_Read::class, 'store_overview' => YoRo_Early_Access_Store_Overview_Read::class, 'order_tracking' => YoRo_Early_Access_Order_Tracking_Read::class,
+        $classes = [ 'variable_products' => YoRo_Variable_Product::class, 'wordpress_read' => YoRo_Early_Access_WordPress_Read::class, 'customer_service' => YoRo_Early_Access_Customer_Service_Read::class, 'store_overview' => YoRo_Early_Access_Store_Overview_Read::class, 'order_tracking' => YoRo_Early_Access_Order_Tracking_Read::class,
             'order_queues' => YoRo_Early_Access_Order_Queue_Read::class, 'orders' => YoRo_Early_Access_Order_Read::class ];
         return is_string( $family ) ? ( $classes[ $family ] ?? null ) : null;
     }

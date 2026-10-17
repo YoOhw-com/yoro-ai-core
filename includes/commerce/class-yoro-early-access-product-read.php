@@ -109,7 +109,7 @@ class YoRo_Early_Access_Product_Read {
 			'display_type' => $inventory ? 'inventory_queue' : 'products_list', 'assistant_summary' => $message, 'extensions' => (object) [] ];
 	}
 
-	private static function product( $product, $details ) {
+	public static function product( $product, $details ) {
 		if ( ! $product instanceof WC_Product || 'publish' !== $product->get_status() || ! in_array( $product->get_type(), [ 'simple', 'variable', 'variation' ], true ) ) {
 			return null;
 		}
@@ -122,7 +122,9 @@ class YoRo_Early_Access_Product_Read {
 		$image = $product->get_image_id();
 		$attributes = [];
 		foreach ( $product->get_attributes() as $name => $value ) {
-			$attributes[] = mb_strcut( sanitize_text_field( wc_attribute_label( $name ) . ': ' . $product->get_attribute( $name ) ), 0, 200, 'UTF-8' );
+			$option = $product->get_attribute( $name );
+            if ('variation' === $product->get_type() && '' === (string) $option) { $option = 'Any option'; }
+            $attributes[] = mb_strcut( sanitize_text_field( wc_attribute_label( $name ) . ': ' . $option ), 0, 200, 'UTF-8' );
 			if ( count( $attributes ) >= 20 ) { break; }
 		}
 		$threshold = function_exists( 'wc_get_low_stock_amount' ) ? wc_get_low_stock_amount( $product ) : null;
