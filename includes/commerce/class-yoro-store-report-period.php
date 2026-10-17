@@ -127,7 +127,7 @@ final class YoRo_Store_Report_Period
             throw new \InvalidArgumentException('Future reporting dates are unavailable.');
         }
         $partial = $end > $now;
-        
+
         $end = $partial ? $now : $end;
         $days = self::bounds($start, $end);
         $shorter = false;
@@ -142,9 +142,11 @@ final class YoRo_Store_Report_Period
             }
         } elseif ($mode === 'previous_year') {
             $priorStart = self::month($start, -12);
-            $priorEnd = self::month($end, -12);
-            $shorter = $priorStart->format('m-d') !== $start->format('m-d') || $priorEnd->format('m-d') !== $end->format('m-d');
-            if ($priorEnd->format('j') !== $end->format('j')) { $priorEnd = $priorEnd->setTime(23, 59, 59); }
+            $priorEnd = ! $partial && $step < 0 ? $priorStart->modify('+'.(-$step).' months')->modify('-1 day')->setTime(23, 59, 59) : self::month($end, -12);
+            $shorter = $partial && ($priorStart->format('m-d') !== $start->format('m-d') || $priorEnd->format('m-d') !== $end->format('m-d'));
+            if ($partial && $priorEnd->format('j') !== $end->format('j')) {
+                $priorEnd = $priorEnd->setTime(23, 59, 59);
+            }
         } elseif ($step < 0) {
             $priorStart = self::month($start, $step);
             $priorLimit = $start->modify('-1 day')->setTime(23, 59, 59);
@@ -153,7 +155,9 @@ final class YoRo_Store_Report_Period
                 $priorEnd = $priorLimit;
             }
             $shorter = $partial && $priorEnd->format('j') !== $end->format('j');
-            if ($shorter) { $priorEnd = $priorEnd->setTime(23, 59, 59); }
+            if ($shorter) {
+                $priorEnd = $priorEnd->setTime(23, 59, 59);
+            }
         } else {
             $shift = $step > 0 ? 7 : $days;
             $priorStart = $start->modify('-'.$shift.' days');
@@ -176,6 +180,6 @@ final class YoRo_Store_Report_Period
             $date = $date->modify('-'.(((int) $date->format('w') - $context['week_starts_on'] + 7) % 7).' days');
         }
 
-        return max($date->format('Y-m-d'),substr($window['start'],0,10));
+        return max($date->format('Y-m-d'), substr($window['start'], 0, 10));
     }
 }
