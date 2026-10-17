@@ -5,6 +5,9 @@ if ( ! class_exists( 'YoRo_Early_Access_Order_Search' ) ) { YoRo_AI_Core::init()
 if ( ! class_exists( 'WooCommerce' ) ) { echo "Order search unavailable without WooCommerce.\n"; return; }
 if ( str_ends_with( (string) wp_parse_url( home_url(), PHP_URL_HOST ), 'yorohq.com' ) ) { throw new RuntimeException( 'Disposable fixtures only.' ); }
 $assert = static function( $ok, $why ) { if ( ! $ok ) { throw new RuntimeException( $why ); } };
+$phone_examples = json_decode( file_get_contents( dirname( __DIR__ ) . '/fixtures/order-phone-examples.json' ), true )['cases'];
+$phone_lookup = [];
+foreach ( $phone_examples as $example ) { $phone_lookup[$example['region'] . '|' . $example['input']] = $example['facts']; }
 // Fresh CPT installations may not have HPOS tables. Native DDL must finish before fixture transactions begin.
 $assert( wc_get_container()->get( Automattic\WooCommerce\Internal\DataStores\Orders\DataSynchronizer::class )->create_database_tables(),
     'The disposable installation must have native HPOS tables before testing either datastore.' );
@@ -72,9 +75,10 @@ try {
                 $distractor = new WC_Order(); $distractor->set_status( 'completed' ); $distractor->set_currency( 'USD' );
                 $distractor->set_total( '1' ); $distractor->save();
             }
-            $read = static function( $filters, $page = 1, $params = [] ) {
+            $read = static function( $filters, $page = 1, $params = [], $phone = null ) use ( $phone_lookup ) {
+                $phone = $phone ?? ( $phone_lookup[( $filters['phone_country'] ?? '' ) . '|' . ( $filters['phone'] ?? '' )] ?? null );
                 return YoRo_Early_Access_Order_Read::execute( [ 'action' => 'orders.search', 'params' => array_merge( [ 'limit' => 20 ], $params ),
-                    'extensions' => [ 'yoro.mcp_early_access_product_read' => [ 'order_page' => $page, 'order_search' => [ 'version' => 1, 'filters' => $filters, 'page' => $page ] ] ] ] );
+                    'extensions' => [ 'yoro.mcp_early_access_product_read' => array_merge( [ 'order_page' => $page, 'order_search' => [ 'version' => 1, 'filters' => $filters, 'page' => $page ] ], $phone ? [ 'order_phone' => $phone ] : [] ) ] ] );
             };
             $hook_counts = static function() {
                 $counts = [];
@@ -199,6 +203,15 @@ try {
                 $assert( false === strpos( $wire, $private ), 'Search output and metadata must not echo contacts, addresses, notes or filter values.' );
             }
             wp_set_current_user( 0 ); $assert( is_wp_error( $read( [] ) ), 'Unauthenticated searches fail closed.' ); wp_set_current_user( (int) $admins[0] );
+            foreach ( $phone_examples as $example ) {
+                if ( ! empty( $example['helper'] ) ) { continue; }
+                $global_phone = new WC_Order(); $global_phone->set_status( 'pending' ); $global_phone->set_billing_country( $example['region'] );
+                $global_phone->set_billing_phone( $example['stored'] ); $global_phone->save();
+                $found = $check( $read( [ 'phone' => $example['input'], 'phone_country' => $example['region'] ], 1, [], $example['facts'] ), 1, 'Worldwide exact phone equivalence ' . $example['region'] );
+                $assert( [ $global_phone->get_id() ] === array_column( $found['data']['orders'], 'id' ), 'Regional phone normalization returns only the expected order.' );
+                $bad_phone = $example['facts']; $bad_phone['regional'][0]['number'] = "' OR 1=1 --";
+                $assert( is_wp_error( $read( [ 'phone' => $example['input'], 'phone_country' => $example['region'] ], 1, [], $bad_phone ) ), 'Normalized phone facts cannot contain SQL.' );
+            }
             $assert( $original_hook_counts === $hook_counts(), 'Scoped query callbacks are cleaned up.' );
         } finally {
             remove_filter( 'option_active_plugins', $active_number );

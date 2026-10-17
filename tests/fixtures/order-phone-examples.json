@@ -1,0 +1,2937 @@
+{
+    "source": "Synthetic examples compiled from giggsey/libphonenumber-for-php-lite 9.0.41 (Apache-2.0); no customer data.",
+    "cases": [
+        {
+            "region": "US",
+            "input": "+12015550123",
+            "stored": "(201) 555-0123",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "12015550123",
+                    "0012015550123"
+                ],
+                "regional": [
+                    {
+                        "number": "00012015550123",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "001112015550123",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "00112015550123",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00912015550123",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01012015550123",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01112015550123",
+                        "regions": [
+                            "MH"
+                        ]
+                    },
+                    {
+                        "number": "012015550123",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "02012015550123",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "11912015550123",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "2015550123",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "81012015550123",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "CA",
+            "input": "+15062345678",
+            "stored": "(506) 234-5678",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "15062345678",
+                    "0015062345678"
+                ],
+                "regional": [
+                    {
+                        "number": "00015062345678",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "001115062345678",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "00115062345678",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00915062345678",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01015062345678",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01115062345678",
+                        "regions": [
+                            "MH"
+                        ]
+                    },
+                    {
+                        "number": "015062345678",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "02015062345678",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "11915062345678",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "5062345678",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "81015062345678",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "GB",
+            "input": "+441212345678",
+            "stored": "0121 234 5678",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "441212345678",
+                    "00441212345678"
+                ],
+                "regional": [
+                    {
+                        "number": "000441212345678",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "0011441212345678",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "001441212345678",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "009441212345678",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "010441212345678",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "011441212345678",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "01212345678",
+                        "regions": [
+                            "GB",
+                            "GG",
+                            "IM",
+                            "JE"
+                        ]
+                    },
+                    {
+                        "number": "020441212345678",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "0441212345678",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "119441212345678",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "1212345678",
+                        "regions": [
+                            "GB",
+                            "GG",
+                            "IM",
+                            "JE"
+                        ]
+                    },
+                    {
+                        "number": "810441212345678",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "DE",
+            "input": "+4930123456",
+            "stored": "030 123456",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "4930123456",
+                    "004930123456"
+                ],
+                "regional": [
+                    {
+                        "number": "0004930123456",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "00114930123456",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "0014930123456",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "0094930123456",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "0104930123456",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "0114930123456",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "0204930123456",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "030123456",
+                        "regions": [
+                            "DE"
+                        ]
+                    },
+                    {
+                        "number": "04930123456",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "1194930123456",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "30123456",
+                        "regions": [
+                            "DE"
+                        ]
+                    },
+                    {
+                        "number": "8104930123456",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "FR",
+            "input": "+33123456789",
+            "stored": "01 23 45 67 89",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "33123456789",
+                    "0033123456789"
+                ],
+                "regional": [
+                    {
+                        "number": "00033123456789",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "001133123456789",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "00133123456789",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00933123456789",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01033123456789",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01133123456789",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "0123456789",
+                        "regions": [
+                            "FR"
+                        ]
+                    },
+                    {
+                        "number": "02033123456789",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "033123456789",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "11933123456789",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "123456789",
+                        "regions": [
+                            "FR"
+                        ]
+                    },
+                    {
+                        "number": "81033123456789",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "IT",
+            "input": "+390212345678",
+            "stored": "02 1234 5678",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "390212345678",
+                    "00390212345678"
+                ],
+                "regional": [
+                    {
+                        "number": "000390212345678",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "0011390212345678",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "001390212345678",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "009390212345678",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "010390212345678",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "011390212345678",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "020390212345678",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "0212345678",
+                        "regions": [
+                            "IT",
+                            "VA"
+                        ]
+                    },
+                    {
+                        "number": "0390212345678",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "119390212345678",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "810390212345678",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "JP",
+            "input": "+81312345678",
+            "stored": "03-1234-5678",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "81312345678",
+                    "0081312345678"
+                ],
+                "regional": [
+                    {
+                        "number": "00081312345678",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "001181312345678",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "00181312345678",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00981312345678",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01181312345678",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "02081312345678",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "0312345678",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "081312345678",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "11981312345678",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "312345678",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "81081312345678",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "CN",
+            "input": "+861012345678",
+            "stored": "010 1234 5678",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "861012345678",
+                    "00861012345678"
+                ],
+                "regional": [
+                    {
+                        "number": "000861012345678",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "0011861012345678",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "001861012345678",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "009861012345678",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01012345678",
+                        "regions": [
+                            "CN"
+                        ]
+                    },
+                    {
+                        "number": "010861012345678",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "011861012345678",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "020861012345678",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "0861012345678",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "1012345678",
+                        "regions": [
+                            "CN"
+                        ]
+                    },
+                    {
+                        "number": "119861012345678",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "810861012345678",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "RU",
+            "input": "+73011234567",
+            "stored": "8 (301) 123-45-67",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "73011234567",
+                    "0073011234567"
+                ],
+                "regional": [
+                    {
+                        "number": "00073011234567",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "001173011234567",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "00173011234567",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00973011234567",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01073011234567",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01173011234567",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "02073011234567",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "073011234567",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "11973011234567",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "3011234567",
+                        "regions": [
+                            "KZ",
+                            "RU"
+                        ]
+                    },
+                    {
+                        "number": "81073011234567",
+                        "regions": [
+                            "BY",
+                            "TJ",
+                            "TM"
+                        ]
+                    },
+                    {
+                        "number": "83011234567",
+                        "regions": [
+                            "KZ",
+                            "RU"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "KZ",
+            "input": "+77123456789",
+            "stored": "8 (71234) 5 67 89",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "77123456789",
+                    "0077123456789"
+                ],
+                "regional": [
+                    {
+                        "number": "00077123456789",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "001177123456789",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "00177123456789",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00977123456789",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01077123456789",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01177123456789",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "02077123456789",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "077123456789",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "11977123456789",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "7123456789",
+                        "regions": [
+                            "KZ",
+                            "RU"
+                        ]
+                    },
+                    {
+                        "number": "81077123456789",
+                        "regions": [
+                            "BY",
+                            "TJ",
+                            "TM"
+                        ]
+                    },
+                    {
+                        "number": "87123456789",
+                        "regions": [
+                            "KZ",
+                            "RU"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "AR",
+            "input": "+541123456789",
+            "stored": "011 2345-6789",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "541123456789",
+                    "00541123456789"
+                ],
+                "regional": [
+                    {
+                        "number": "000541123456789",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "0011541123456789",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "001541123456789",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "009541123456789",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "010541123456789",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01123456789",
+                        "regions": [
+                            "AR"
+                        ]
+                    },
+                    {
+                        "number": "011541123456789",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "020541123456789",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "0541123456789",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "1123456789",
+                        "regions": [
+                            "AR"
+                        ]
+                    },
+                    {
+                        "number": "119541123456789",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "810541123456789",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "BR",
+            "input": "+551123456789",
+            "stored": "(11) 2345-6789",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "551123456789",
+                    "00551123456789"
+                ],
+                "regional": [
+                    {
+                        "number": "000551123456789",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "0011551123456789",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "001551123456789",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "009551123456789",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "010551123456789",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "011551123456789",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "020551123456789",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "0551123456789",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "1123456789",
+                        "regions": [
+                            "BR"
+                        ]
+                    },
+                    {
+                        "number": "119551123456789",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "810551123456789",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "MX",
+            "input": "+522001234567",
+            "stored": "200 123 4567",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "522001234567",
+                    "00522001234567"
+                ],
+                "regional": [
+                    {
+                        "number": "000522001234567",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "0011522001234567",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "001522001234567",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "009522001234567",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "010522001234567",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "011522001234567",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "020522001234567",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "0522001234567",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "119522001234567",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "2001234567",
+                        "regions": [
+                            "MX"
+                        ]
+                    },
+                    {
+                        "number": "810522001234567",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "ZA",
+            "input": "+27101234567",
+            "stored": "010 123 4567",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "27101234567",
+                    "0027101234567"
+                ],
+                "regional": [
+                    {
+                        "number": "00027101234567",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "001127101234567",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "00127101234567",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00927101234567",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "0101234567",
+                        "regions": [
+                            "ZA"
+                        ]
+                    },
+                    {
+                        "number": "01027101234567",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01127101234567",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "02027101234567",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "027101234567",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "101234567",
+                        "regions": [
+                            "ZA"
+                        ]
+                    },
+                    {
+                        "number": "11927101234567",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "81027101234567",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "EG",
+            "input": "+20234567890",
+            "stored": "02 34567890",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "20234567890",
+                    "0020234567890"
+                ],
+                "regional": [
+                    {
+                        "number": "00020234567890",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "001120234567890",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "00120234567890",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00920234567890",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01020234567890",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01120234567890",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "02020234567890",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "020234567890",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "0234567890",
+                        "regions": [
+                            "EG"
+                        ]
+                    },
+                    {
+                        "number": "11920234567890",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "234567890",
+                        "regions": [
+                            "EG"
+                        ]
+                    },
+                    {
+                        "number": "81020234567890",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "IN",
+            "input": "+917410410123",
+            "stored": "074104 10123",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "917410410123",
+                    "00917410410123"
+                ],
+                "regional": [
+                    {
+                        "number": "000917410410123",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "0011917410410123",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "001917410410123",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "009917410410123",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "010917410410123",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "011917410410123",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "020917410410123",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "07410410123",
+                        "regions": [
+                            "IN"
+                        ]
+                    },
+                    {
+                        "number": "0917410410123",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "119917410410123",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "7410410123",
+                        "regions": [
+                            "IN"
+                        ]
+                    },
+                    {
+                        "number": "810917410410123",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "ID",
+            "input": "+62218350123",
+            "stored": "(021) 8350123",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "62218350123",
+                    "0062218350123"
+                ],
+                "regional": [
+                    {
+                        "number": "00062218350123",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "001162218350123",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "00162218350123",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00962218350123",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01062218350123",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01162218350123",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "02062218350123",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "0218350123",
+                        "regions": [
+                            "ID"
+                        ]
+                    },
+                    {
+                        "number": "062218350123",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "11962218350123",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "218350123",
+                        "regions": [
+                            "ID"
+                        ]
+                    },
+                    {
+                        "number": "81062218350123",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "AU",
+            "input": "+61212345678",
+            "stored": "(02) 1234 5678",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "61212345678",
+                    "0061212345678"
+                ],
+                "regional": [
+                    {
+                        "number": "00061212345678",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "00161212345678",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00961212345678",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01061212345678",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01161212345678",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "02061212345678",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "0212345678",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "061212345678",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "11961212345678",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "212345678",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "81061212345678",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "NZ",
+            "input": "+6432345678",
+            "stored": "03 234 5678",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "6432345678",
+                    "006432345678"
+                ],
+                "regional": [
+                    {
+                        "number": "0006432345678",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "00116432345678",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "0016432345678",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "0096432345678",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "0106432345678",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "0116432345678",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "0206432345678",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "032345678",
+                        "regions": [
+                            "NZ"
+                        ]
+                    },
+                    {
+                        "number": "06432345678",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "1196432345678",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "32345678",
+                        "regions": [
+                            "NZ"
+                        ]
+                    },
+                    {
+                        "number": "8106432345678",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "RE",
+            "input": "+262262161234",
+            "stored": "0262 16 12 34",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "262262161234",
+                    "00262262161234"
+                ],
+                "regional": [
+                    {
+                        "number": "000262262161234",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "0011262262161234",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "001262262161234",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "009262262161234",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "010262262161234",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "011262262161234",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "020262262161234",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "0262161234",
+                        "regions": [
+                            "RE",
+                            "YT"
+                        ]
+                    },
+                    {
+                        "number": "0262262161234",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "119262262161234",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "262161234",
+                        "regions": [
+                            "RE",
+                            "YT"
+                        ]
+                    },
+                    {
+                        "number": "810262262161234",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "AC",
+            "input": "+24762889",
+            "stored": "62889",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "24762889",
+                    "0024762889"
+                ],
+                "regional": [
+                    {
+                        "number": "00024762889",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "001124762889",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "00124762889",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00924762889",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01024762889",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01124762889",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "02024762889",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "024762889",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "11924762889",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "62889",
+                        "regions": [
+                            "AC"
+                        ]
+                    },
+                    {
+                        "number": "81024762889",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "NU",
+            "input": "+6837012",
+            "stored": "7012",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "6837012",
+                    "006837012"
+                ],
+                "regional": [
+                    {
+                        "number": "0006837012",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "00116837012",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "0016837012",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "0096837012",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "0106837012",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "0116837012",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "0206837012",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "06837012",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "1196837012",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "7012",
+                        "regions": [
+                            "NU"
+                        ]
+                    },
+                    {
+                        "number": "8106837012",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "VN",
+            "input": "+842101234567",
+            "stored": "0210 1234 567",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "842101234567",
+                    "00842101234567"
+                ],
+                "regional": [
+                    {
+                        "number": "000842101234567",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "0011842101234567",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "001842101234567",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "009842101234567",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "010842101234567",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "011842101234567",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "020842101234567",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "02101234567",
+                        "regions": [
+                            "VN"
+                        ]
+                    },
+                    {
+                        "number": "0842101234567",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "119842101234567",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "2101234567",
+                        "regions": [
+                            "VN"
+                        ]
+                    },
+                    {
+                        "number": "810842101234567",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "region": "VN",
+            "input": "+84901234567",
+            "stored": "+84901234567",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "84901234567",
+                    "0084901234567"
+                ],
+                "regional": [
+                    {
+                        "number": "00084901234567",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "001184901234567",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "00184901234567",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00984901234567",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01084901234567",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01184901234567",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "02084901234567",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "084901234567",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "0901234567",
+                        "regions": [
+                            "VN"
+                        ]
+                    },
+                    {
+                        "number": "11984901234567",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "81084901234567",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    },
+                    {
+                        "number": "901234567",
+                        "regions": [
+                            "VN"
+                        ]
+                    }
+                ]
+            },
+            "helper": true
+        },
+        {
+            "region": "VN",
+            "input": "849123456",
+            "stored": "849123456",
+            "facts": {
+                "version": 1,
+                "international": [
+                    "84849123456",
+                    "0084849123456"
+                ],
+                "regional": [
+                    {
+                        "number": "00084849123456",
+                        "regions": [
+                            "KE"
+                        ]
+                    },
+                    {
+                        "number": "001184849123456",
+                        "regions": [
+                            "AU",
+                            "CC",
+                            "CX"
+                        ]
+                    },
+                    {
+                        "number": "00184849123456",
+                        "regions": [
+                            "GY",
+                            "MN"
+                        ]
+                    },
+                    {
+                        "number": "00984849123456",
+                        "regions": [
+                            "NG"
+                        ]
+                    },
+                    {
+                        "number": "01084849123456",
+                        "regions": [
+                            "JP"
+                        ]
+                    },
+                    {
+                        "number": "01184849123456",
+                        "regions": [
+                            "AG",
+                            "AI",
+                            "AS",
+                            "BB",
+                            "BM",
+                            "BS",
+                            "CA",
+                            "DM",
+                            "DO",
+                            "GD",
+                            "GU",
+                            "JM",
+                            "KN",
+                            "KY",
+                            "LC",
+                            "MH",
+                            "MP",
+                            "MS",
+                            "PR",
+                            "SX",
+                            "TC",
+                            "TT",
+                            "US",
+                            "VC",
+                            "VG",
+                            "VI"
+                        ]
+                    },
+                    {
+                        "number": "02084849123456",
+                        "regions": [
+                            "MU"
+                        ]
+                    },
+                    {
+                        "number": "084849123456",
+                        "regions": [
+                            "CV",
+                            "WS"
+                        ]
+                    },
+                    {
+                        "number": "0849123456",
+                        "regions": [
+                            "VN"
+                        ]
+                    },
+                    {
+                        "number": "11984849123456",
+                        "regions": [
+                            "CU"
+                        ]
+                    },
+                    {
+                        "number": "81084849123456",
+                        "regions": [
+                            "BY",
+                            "KZ",
+                            "RU",
+                            "TJ",
+                            "TM"
+                        ]
+                    },
+                    {
+                        "number": "849123456",
+                        "regions": [
+                            "VN"
+                        ]
+                    }
+                ]
+            },
+            "helper": true
+        }
+    ]
+}

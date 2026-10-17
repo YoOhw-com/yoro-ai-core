@@ -55,6 +55,8 @@ final class YoRo_Early_Access_Order_Search {
         }
         $has_name = isset( $filters['customer_name'] ) || isset( $params['customer_name'] );
         $has_phone = isset( $filters['phone'] ) || isset( $params['phone'] );
+        if ( isset( $filters['phone_country'] ) && ! isset( $facts['order_phone'] ) ) { return false; }
+        if ( isset( $facts['order_phone'] ) && ( ! $has_phone || ! self::valid_phone_facts( $facts['order_phone'] ) ) ) { return false; }
         if ( ( isset( $filters['name_match'] ) || isset( $filters['name_source'] ) ) && ! $has_name
             || isset( $filters['phone_country'] ) && ! $has_phone
             || isset( $filters['product_match'] ) && ! isset( $filters['product_name'] ) && ! isset( $filters['item_name'] )
@@ -62,7 +64,7 @@ final class YoRo_Early_Access_Order_Search {
         foreach ( [ 'customer_id', 'reference_order_id', 'product_id', 'variation_id', 'anchor_id' ] as $key ) {
             if ( array_key_exists( $key, $filters ) && ( ! is_int( $filters[$key] ) || $filters[$key] < 1 ) ) { return false; }
         }
-        $lengths = [ 'email' => [ 3, 254 ], 'phone' => [ 7, 32 ], 'username' => [ 1, 60 ], 'customer_name' => [ 2, 80 ], 'sku' => [ 1, 128 ], 'product_name' => [ 2, 256 ],
+        $lengths = [ 'email' => [ 3, 254 ], 'phone' => [ isset( $filters['phone_country'] ) ? 3 : 7, 32 ], 'username' => [ 1, 60 ], 'customer_name' => [ 2, 80 ], 'sku' => [ 1, 128 ], 'product_name' => [ 2, 256 ],
             'item_name' => [ 2, 256 ], 'payment_method' => [ 1, 80 ], 'shipping_state' => [ 1, 80 ], 'shipping_city' => [ 1, 80 ], 'shipping_postcode' => [ 1, 32 ],
             'shipping_address' => [ 2, 200 ], 'tracking_number' => [ 6, 64 ], 'tracking_carrier' => [ 1, 80 ], 'note_text' => [ 3, 200 ], 'order_number' => [ 1, 64 ] ];
         foreach ( $lengths as $key => $bounds ) {
@@ -73,7 +75,7 @@ final class YoRo_Early_Access_Order_Search {
             if ( isset( $filters[$key] ) && preg_match( '/[{}]/', $filters[$key] ) ) { return false; }
         }
         if ( isset( $filters['phone'] ) && ( ! preg_match( '/\A[+0-9 ().-]+\z/D', $filters['phone'] )
-            || strlen( self::digits( $filters['phone'] ) ) < 7 || strlen( self::digits( $filters['phone'] ) ) > 15 ) ) { return false; }
+            || strlen( self::digits( $filters['phone'] ) ) < ( isset( $filters['phone_country'] ) ? 3 : 7 ) || strlen( self::digits( $filters['phone'] ) ) > ( isset( $facts['order_phone'] ) ? 20 : 15 ) ) ) { return false; }
         foreach ( [ 'phone_country', 'shipping_country' ] as $key ) {
             if ( isset( $filters[$key] ) && ( ! is_string( $filters[$key] ) || ! preg_match( '/\A[A-Z]{2}\z/D', $filters[$key] ) ) ) { return false; }
         }
@@ -135,6 +137,7 @@ final class YoRo_Early_Access_Order_Search {
             elseif ( strlen( self::digits( $seed->get_billing_phone( 'edit' ) ) ) >= 7 ) { $filters['phone'] = $seed->get_billing_phone( 'edit' ); }
             else { return new WP_Error( 'order_search_reference_unavailable', 'The reference order has no supported customer identity.' ); }
         }
+        if ( isset( $facts['order_phone'] ) ) { $filters['_phone'] = $facts['order_phone']; }
         // Display-number filters are arbitrary code; use only explicitly verified storage adapters.
         $filters['_custom_number'] = in_array( 'skyverge_sequential_order_numbers_1_11_2', self::number_adapters(), true );
         if ( isset( $filters['order_number'] ) && ! $filters['_custom_number'] ) {
@@ -241,11 +244,15 @@ final class YoRo_Early_Access_Order_Search {
         }
         if ( isset( $filters['phone'] ) ) {
             $phone = self::phone_sql( $scalar( 'billing_phone' ) ); $raw = self::digits( $filters['phone'] );
-            $phone_where = [ self::compare( $phone, $raw ) ];
-            if ( isset( $filters['phone_country'] ) ) {
-                $variants = self::phone_variants( $filters['phone'], $filters['phone_country'] );
-                if ( $variants ) { $phone_where[] = '(' . self::compare( $scalar( 'billing_country' ), $filters['phone_country'] ) . ' AND ('
-                    . implode( ' OR ', array_map( static function( $value ) use ( $phone ) { return self::compare( $phone, $value ); }, $variants ) ) . '))'; }
+            $phone_where = [];
+            if ( isset( $filters['_phone'] ) ) {
+                foreach ( $filters['_phone']['international'] as $number ) { $phone_where[] = self::compare( $phone, $number ); }
+                foreach ( $filters['_phone']['regional'] as $group ) {
+                    $regions = implode( ' OR ', array_map( static function( $region ) use ( $scalar ) { return self::compare( $scalar( 'billing_country' ), $region ); }, $group['regions'] ) );
+                    $phone_where[] = '(' . self::compare( $phone, $group['number'] ) . ' AND (' . $regions . '))';
+                }
+            } else {
+                $phone_where[] = self::compare( $phone, $raw );
             }
             $where[] = '(' . implode( ' OR ', $phone_where ) . ')';
         }
@@ -303,21 +310,23 @@ final class YoRo_Early_Access_Order_Search {
         return $expression;
     }
 
-    /** Only explicit country rules; no suffix or country inference. Other countries retain exact normalized matching. */
-    private static function phone_variants( $value, $country ) {
-        $code = self::digits( (string) WC()->countries->get_country_calling_code( $country ) );
-        if ( ! $code ) { return []; }
-        $digits = self::digits( $value ); $international = 0 === strpos( $value, '+' ) || 0 === strpos( $digits, '00' );
-        if ( 0 === strpos( $digits, '00' ) ) { $digits = substr( $digits, 2 ); }
-        $trunk = in_array( $country, [ 'VN', 'GB', 'AU', 'NZ', 'DE', 'FR', 'NL', 'BE', 'CH', 'AT', 'JP', 'KR', 'IN', 'ZA', 'ID', 'MY', 'TH' ], true );
-        $nanp = in_array( $country, [ 'US', 'CA' ], true );
-        if ( ! $trunk && ! $nanp ) { return []; }
-        if ( $international || ( $nanp && 11 === strlen( $digits ) && 0 === strpos( $digits, $code ) ) ) {
-            if ( 0 !== strpos( $digits, $code ) ) { return []; }
-            $national = substr( $digits, strlen( $code ) );
-        } else { $national = $trunk && 0 === strpos( $digits, '0' ) ? substr( $digits, 1 ) : $digits; }
-        if ( strlen( $national ) < 6 || ( $nanp && strlen( $national ) !== 10 ) ) { return []; }
-        return array_values( array_unique( [ $code . $national, '00' . $code . $national, ( $trunk ? '0' : '' ) . $national ] ) );
+    /** API-owned equivalences are finite exact strings, never SQL fragments or suffixes. */
+    private static function valid_phone_facts( $value ) {
+        if ( ! is_array( $value ) || count( $value ) !== 3 || array_diff( array_keys( $value ), [ 'version', 'international', 'regional' ] )
+            || 1 !== ( $value['version'] ?? null ) || ! is_array( $value['international'] ?? null ) || array_values( $value['international'] ) !== $value['international']
+            || 2 !== count( $value['international'] ) || ! is_string( $value['international'][0] ) || ! preg_match( '/\A[1-9][0-9]{5,14}\z/D', $value['international'][0] )
+            || '00' . $value['international'][0] !== $value['international'][1]
+            || ! is_array( $value['regional'] ?? null ) || array_values( $value['regional'] ) !== $value['regional'] || count( $value['regional'] ) > 32 ) { return false; }
+        $numbers = [];
+        foreach ( $value['regional'] as $group ) {
+            if ( ! is_array( $group ) || count( $group ) !== 2 || array_diff( array_keys( $group ), [ 'number', 'regions' ] )
+                || ! is_string( $group['number'] ?? null ) || ! preg_match( '/\A[0-9]{3,20}\z/D', $group['number'] )
+                || in_array( $group['number'], $numbers, true ) || ! is_array( $group['regions'] ?? null ) || array_values( $group['regions'] ) !== $group['regions']
+                || count( $group['regions'] ) < 1 || count( $group['regions'] ) > 250 || count( $group['regions'] ) !== count( array_unique( $group['regions'], SORT_REGULAR ) ) ) { return false; }
+            foreach ( $group['regions'] as $region ) { if ( ! is_string( $region ) || ! preg_match( '/\A[A-Z]{2}\z/D', $region ) ) { return false; } }
+            $numbers[] = $group['number'];
+        }
+        return true;
     }
 
     private static function item_predicate( array $filters, $id ) {

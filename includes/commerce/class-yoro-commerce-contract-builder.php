@@ -65,6 +65,7 @@ class YoRo_Commerce_Contract_Builder {
                 'customer_data' => 'redacted', 'pagination' => 'page_v1', 'timeline' => 'milestones_only' ];
             $extensions['yoro.early_access_order_details'] = YoRo_Early_Access_Order_Read::details_manifest();
             $extensions['yoro.early_access_order_search'] = YoRo_Early_Access_Order_Search::manifest();
+            $extensions['yoro.early_access_order_phone'] = [ 'version' => 1, 'semantics' => 'region_bound_number_v1', 'max_groups' => 32 ];
 			$extensions['yoro.early_access_order_queues'] = [ 'version' => 1, 'actions' => YoRo_Early_Access_Order_Queue_Read::ACTIONS, 'max_items' => 20,
 				'scan_limit' => 100, 'customer_data' => 'redacted', 'semantics' => 'oldest_candidate_snapshot_v1' ];
 			$extensions['yoro.early_access_order_tracking'] = [ 'version' => 1, 'actions' => YoRo_Early_Access_Order_Tracking_Read::ACTIONS, 'max_shipments' => 5,

@@ -26,7 +26,7 @@ final class YoRo_Early_Access_Customer_Service_Read {
         if ( 'email' === $key ) { return strlen( $value ) <= 254 && (bool) is_email( $value ); }
         if ( 'phone' === $key ) {
             $pattern = 'orders.find_by_customer' === $action && isset( $facts['order_search'] ) ? '/\A[+0-9 ().-]+\z/D' : '/\A[+0-9 ()-]+\z/D';
-            return strlen( $value ) <= 32 && preg_match( $pattern, $value ) && strlen( self::phone( $value ) ) >= 7 && strlen( self::phone( $value ) ) <= 15;
+            return strlen( $value ) <= 32 && preg_match( $pattern, $value ) && strlen( self::phone( $value ) ) >= ( isset( $facts['order_phone'], $facts['order_search']['filters']['phone_country'] ) ? 3 : 7 ) && strlen( self::phone( $value ) ) <= ( isset( $facts['order_phone'] ) ? 20 : 15 );
         }
         return mb_strlen( $value ) >= 2 && mb_strlen( $value ) <= 80;
     }
