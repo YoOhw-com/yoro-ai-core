@@ -129,7 +129,12 @@ class YoRo_Early_Access_Product_Read {
 		$extra = [ 'parent_id' => (int) $product->get_parent_id(), 'image_url' => self::url( $image ? wp_get_attachment_image_url( $image, 'woocommerce_thumbnail' ) : null ),
 			'permalink' => self::url( $product->get_permalink() ), 'attributes' => $attributes, 'manage_stock' => (bool) $product->managing_stock(),
 			'low_stock_amount' => is_numeric( $threshold ) ? max( 0, (int) $threshold ) : null ];
-		if ( $details ) { $extra = array_merge($extra, YoRo_Product_Edit::facts($product)); $extra['description'] = mb_strcut( sanitize_textarea_field( wp_strip_all_tags( $product->get_short_description() ?: $product->get_description() ) ), 0, 2000, 'UTF-8' ); }
+		if ( $details ) {
+			$extra = array_merge($extra, YoRo_Product_Edit::facts($product));
+			$target = 'variation' === $product->get_type() ? $product->get_parent_id() : $product->get_id();
+			$extra['admin_edit_url'] = current_user_can( 'edit_post', $target ) ? self::url( get_edit_post_link( $target, 'raw' ) ) : null;
+			$extra['description'] = mb_strcut( sanitize_textarea_field( wp_strip_all_tags( $product->get_short_description() ?: $product->get_description() ) ), 0, 2000, 'UTF-8' );
+		}
 		return [ 'id' => (int) $product->get_id(), 'name' => mb_strcut( sanitize_text_field( $product->get_name() ), 0, 1024, 'UTF-8' ),
 			'sku' => $product->get_sku(), 'status' => 'publish', 'type' => $product->get_type(), 'price' => (string) $product->get_price(),
 			'currency' => get_woocommerce_currency(), 'stock_quantity' => null === $product->get_stock_quantity() ? null : (int) $product->get_stock_quantity(),

@@ -35,6 +35,21 @@ try {
     $assert( is_array( $detail ) && 2 === $detail['data']['count'], 'Details must include the published variation and exclude drafts.' );
     $assert( $variable->get_id() === $detail['data']['products'][1]['extensions']['woocommerce.product']['parent_id'], 'Variation details must identify their parent.' );
     $assert( false === strpos( $detail['data']['products'][0]['extensions']['woocommerce.product']['description'], '<' ), 'Descriptions must be plain text.' );
+    $assert( get_edit_post_link( $simple->get_id(), 'raw' ) === $detail['data']['products'][0]['extensions']['woocommerce.product']['admin_edit_url'], 'A permitted actor must receive the exact simple product editor link.' );
+    $assert( get_edit_post_link( $variable->get_id(), 'raw' ) === $detail['data']['products'][1]['extensions']['woocommerce.product']['admin_edit_url'], 'A variation must open its parent product editor.' );
+    $denied_editor = static function( $caps, $cap, $user_id, $args ) use ( $simple, $variable ) {
+        return 'edit_post' === $cap && in_array( (int) ( $args[0] ?? 0 ), [ $simple->get_id(), $variable->get_id() ], true ) ? [ 'do_not_allow' ] : $caps;
+    };
+    add_filter( 'map_meta_cap', $denied_editor, 10, 4 );
+    try {
+        $denied = $read( 'products.get_details', [ 'product_ids' => [ $simple->get_id(), $variation->get_id() ] ] );
+        $assert( 2 === $denied['data']['count'], 'Read access must remain available without native edit permission.' );
+        foreach ( $denied['data']['products'] as $item ) {
+            $assert( null === $item['extensions']['woocommerce.product']['admin_edit_url'], 'An actor without edit permission must not receive an admin editor link.' );
+        }
+    } finally {
+        remove_filter( 'map_meta_cap', $denied_editor, 10 );
+    }
     $sku = $read( 'products.search', [ 'sku' => $prefix . '.VARIATION', 'status' => 'publish', 'limit' => 1 ] );
     $assert( 1 === $sku['data']['count'] && $variation->get_id() === $sku['data']['products'][0]['id'], 'An exact variation SKU must be readable.' );
     $queue = $read( 'products.get_inventory_queue', [ 'focus' => 'low_stock', 'limit' => 50 ] );
