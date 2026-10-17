@@ -248,7 +248,7 @@ final class YoRo_Early_Access_Order_Search {
             if ( isset( $filters['_phone'] ) ) {
                 foreach ( $filters['_phone']['international'] as $number ) { $phone_where[] = self::compare( $phone, $number ); }
                 foreach ( $filters['_phone']['regional'] as $group ) {
-                    $regions = implode( ' OR ', array_map( static function( $region ) use ( $scalar ) { return self::compare( $scalar( 'billing_country' ), $region ); }, $group['regions'] ) );
+                    $regions = $wpdb->prepare( $scalar( 'billing_country' ) . ' IN (' . implode( ',', array_fill( 0, count( $group['regions'] ), '%s' ) ) . ')', ...$group['regions'] );
                     $phone_where[] = '(' . self::compare( $phone, $group['number'] ) . ' AND (' . $regions . '))';
                 }
             } else {
