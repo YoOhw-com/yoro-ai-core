@@ -5,6 +5,9 @@ if ( ! class_exists( 'YoRo_Early_Access_Order_Search' ) ) { YoRo_AI_Core::init()
 if ( ! class_exists( 'WooCommerce' ) ) { echo "Order search unavailable without WooCommerce.\n"; return; }
 if ( str_ends_with( (string) wp_parse_url( home_url(), PHP_URL_HOST ), 'yorohq.com' ) ) { throw new RuntimeException( 'Disposable fixtures only.' ); }
 $assert = static function( $ok, $why ) { if ( ! $ok ) { throw new RuntimeException( $why ); } };
+// Fresh CPT installations may not have HPOS tables. Native DDL must finish before fixture transactions begin.
+$assert( wc_get_container()->get( Automattic\WooCommerce\Internal\DataStores\Orders\DataSynchronizer::class )->create_database_tables(),
+    'The disposable installation must have native HPOS tables before testing either datastore.' );
 $original_user = get_current_user_id(); $admins = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ] );
 $block_http = static function() { throw new RuntimeException( 'An order search cannot make an outbound request.' ); };
 add_filter( 'pre_http_request', $block_http ); add_filter( 'pre_wp_mail', '__return_true' );
