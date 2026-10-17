@@ -312,7 +312,7 @@ final class YoRo_Early_Access_Order_Search {
         $trunk = in_array( $country, [ 'VN', 'GB', 'AU', 'NZ', 'DE', 'FR', 'NL', 'BE', 'CH', 'AT', 'JP', 'KR', 'IN', 'ZA', 'ID', 'MY', 'TH' ], true );
         $nanp = in_array( $country, [ 'US', 'CA' ], true );
         if ( ! $trunk && ! $nanp ) { return []; }
-        if ( $international || 0 === strpos( $digits, $code ) ) {
+        if ( $international || ( $nanp && 11 === strlen( $digits ) && 0 === strpos( $digits, $code ) ) ) {
             if ( 0 !== strpos( $digits, $code ) ) { return []; }
             $national = substr( $digits, strlen( $code ) );
         } else { $national = $trunk && 0 === strpos( $digits, '0' ) ? substr( $digits, 1 ) : $digits; }

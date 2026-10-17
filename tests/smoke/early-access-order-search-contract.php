@@ -108,6 +108,10 @@ try {
             $check( $read( [ 'reference_order_id' => (int) $one->get_id() ] ), 3, 'Reference order uses the linked account' );
             $check( $read( [ 'phone' => '+84 901-234-567', 'currency' => 'USD' ] ), 1, 'Raw normalized phone never guesses a country or suffix' );
             $check( $read( [ 'phone' => '+84901234567', 'phone_country' => 'VN', 'currency' => 'USD' ] ), 2, 'Country-aware phone requires a compatible stored country' );
+            $different_country->set_billing_country( 'VN' ); $different_country->set_billing_phone( '0849123456' ); $different_country->save();
+            $prefix_match = $check( $read( [ 'phone' => '849123456', 'phone_country' => 'VN' ] ), 1, 'A national number beginning with the calling code remains national' );
+            $assert( [ $different_country->get_id() ] === array_column( $prefix_match['data']['orders'], 'id' ), 'Calling-code coincidence cannot select a different local number.' );
+            $different_country->set_billing_country( 'US' ); $different_country->set_billing_phone( '0901234567' ); $different_country->save();
             $check( $read( [ 'phone' => '901234567', 'currency' => 'USD' ] ), 0, 'Phone suffixes do not match' );
             $assert( is_wp_error( $read( [ 'email' => $email, 'customer_name' => 'Buyer' ] ) ), 'Ambiguous customer selectors fail closed.' );
             $check( $read( [ 'customer_name' => 'synthetic buyer', 'currency' => 'EUR' ] ), 1, 'Exact full billing name' );
