@@ -12,7 +12,9 @@ final class YoRo_Early_Access_Customer_Service_Read {
             'customer_data' => 'redacted', 'semantics' => 'bounded_candidate_snapshot_v1' ];
     }
 
-    public static function valid_params( $action, $params ) {
+    public static function valid_params( $action, $params, $facts = [] ) {
+        if ( ! is_array( $facts ) ) { return false; }
+        if ( array_key_exists( 'order_search', $facts ) && ! YoRo_Early_Access_Order_Search::valid_facts( $action, $params, $facts ) ) { return false; }
         if ( ! in_array( $action, self::ACTIONS, true ) || ! is_array( $params ) || array_diff( array_keys( $params ), [ 'limit', ...self::SELECTORS ] )
             || ! is_int( $params['limit'] ?? null ) || $params['limit'] < 1 || $params['limit'] > 20 ) { return false; }
         $selectors = array_intersect( array_keys( $params ), self::SELECTORS );
@@ -22,15 +24,20 @@ final class YoRo_Early_Access_Customer_Service_Read {
         if ( in_array( $key, [ 'customer_id', 'order_id' ], true ) ) { return is_int( $value ) && $value > 0; }
         if ( ! is_string( $value ) || trim( $value ) !== $value || preg_match( '/[\x00-\x1f\x7f<>]/', $value ) || 1 !== preg_match( '//u', $value ) ) { return false; }
         if ( 'email' === $key ) { return strlen( $value ) <= 254 && (bool) is_email( $value ); }
-        if ( 'phone' === $key ) { return strlen( $value ) <= 32 && preg_match( '/\A[+0-9 ()-]+\z/D', $value ) && strlen( self::phone( $value ) ) >= 7 && strlen( self::phone( $value ) ) <= 15; }
+        if ( 'phone' === $key ) {
+            $pattern = 'orders.find_by_customer' === $action && isset( $facts['order_search'] ) ? '/\A[+0-9 ().-]+\z/D' : '/\A[+0-9 ()-]+\z/D';
+            return strlen( $value ) <= 32 && preg_match( $pattern, $value ) && strlen( self::phone( $value ) ) >= ( isset( $facts['order_phone'], $facts['order_search']['filters']['phone_country'] ) ? 3 : 7 ) && strlen( self::phone( $value ) ) <= ( isset( $facts['order_phone'] ) ? 20 : 15 );
+        }
         return mb_strlen( $value ) >= 2 && mb_strlen( $value ) <= 80;
     }
 
     public static function execute( array $operation ) {
         $action = $operation['action'] ?? ''; $params = $operation['params'] ?? [];
-        if ( ! self::valid_params( $action, $params ) || ! current_user_can( 'yoro_view_store_data' ) || ! function_exists( 'wc_get_orders' ) ) {
+        $facts = $operation['extensions']['yoro.mcp_early_access_product_read'] ?? [];
+        if ( ! self::valid_params( $action, $params, $facts ) || ! current_user_can( 'yoro_view_store_data' ) || ! function_exists( 'wc_get_orders' ) ) {
             return new WP_Error( 'customer_service_unavailable', 'Customer service read did not complete.' );
         }
+        if ( 'orders.find_by_customer' === $action && isset( $facts['order_search'] ) ) { return YoRo_Early_Access_Order_Search::execute( $operation ); }
         $queue = 'customers.get_service_queue' === $action; $identity = 'orders.find_by_identity' === $action;
         $seed = isset( $params['order_id'] ) ? wc_get_order( $params['order_id'] ) : null;
         if ( isset( $params['order_id'] ) && ! self::readable( $seed ) ) { return new WP_Error( 'customer_service_unavailable', 'The reference order is unavailable.' ); }
