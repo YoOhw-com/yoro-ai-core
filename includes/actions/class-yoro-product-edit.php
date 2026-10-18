@@ -210,10 +210,10 @@ final class YoRo_Product_Edit
                 || !is_string($params['expected_version'] ?? null) || !preg_match('/\A[a-f0-9]{64}\z/D', $params['expected_version'])
                 || !current_user_can('yoro_execute_actions') || !current_user_can('edit_post', $params['product_id'])) { self::invalid(); }
             $product = wc_get_product($params['product_id']);
-            if (!$product || 'publish' !== $product->get_status() || !in_array($product->get_type(), ['simple','variable','variation'], true)) { self::invalid(); }
+            if (!$product || !in_array($product->get_status(), ['publish','draft'], true) || !in_array($product->get_type(), ['simple','variable','variation'], true)) { self::invalid(); }
             if ('variation' === $product->get_type()) {
                 $parent = wc_get_product($product->get_parent_id());
-                if (!$parent || 'publish' !== $parent->get_status()) { self::invalid(); }
+                if (!$parent || !in_array($parent->get_status(), ['publish','draft'], true) || !current_user_can('edit_post',$parent->get_id())) { self::invalid(); }
             }
             if (!hash_equals(YoRo_Commerce_Discovery_Service::product_version($product), $params['expected_version'])) {
                 return new WP_Error('product_version_conflict', 'The product changed after its preview. Read it again before preparing another change.');

@@ -176,10 +176,10 @@ final class YoRo_Variable_Product
         if ($complete && (count($selections) !== count($options) || $options === [])) { self::invalid(); }
     }
 
-    private static function parent_product($id)
+    private static function parent_product($id, bool $allowDraft = false)
     {
         $product = is_int($id) && $id > 0 ? wc_get_product($id) : false;
-        if (!$product || !$product->is_type('variable') || 'publish' !== $product->get_status()
+        if (!$product || !$product->is_type('variable') || !in_array($product->get_status(), $allowDraft ? ['publish','draft'] : ['publish'], true)
             || !current_user_can('yoro_execute_actions') || !current_user_can('edit_post', $id)) { self::invalid(); }
         return $product;
     }
@@ -198,6 +198,7 @@ final class YoRo_Variable_Product
 
     public static function context(WC_Product_Variable $parent): array
     {
+        $parent=self::parent_product($parent->get_id(),true);
         $ids = get_posts(['post_type'=>'product_variation','post_parent'=>$parent->get_id(),
             'post_status'=>['publish','private','draft','pending','future'],'numberposts'=>self::MaxChildren + 1,
             'fields'=>'ids','orderby'=>'ID','order'=>'ASC','suppress_filters'=>false]);
@@ -259,17 +260,18 @@ final class YoRo_Variable_Product
     public static function read(array $operation)
     {
         $params=$operation['params']??[];
+        $lifecycle=1===($operation['extensions']['yoro.mcp_early_access_product_read']['product_lifecycle_version']??null);
         try {
-            if(!self::valid_read_params($operation['action']??'', $params)){self::invalid();}
-            $parent=self::parent_product($params['product_id']);$context=self::context($parent);
+            if(!self::valid_read_params($operation['action']??'', $params)||!current_user_can('yoro_view_store_data')){self::invalid();}
+            $parent=self::parent_product($params['product_id'],$lifecycle);$context=self::context($parent);
             $query=wc_get_products(['type'=>'variation','parent'=>$parent->get_id(),'status'=>'publish','limit'=>$params['limit'],
                 'page'=>$params['page'],'orderby'=>'id','order'=>'ASC','paginate'=>true]);
-            $rows=[];foreach($query->products as $variation){$row=YoRo_Early_Access_Product_Read::product($variation,false);if($row){$rows[]=$row;}}
-            $data=['products'=>[YoRo_Early_Access_Product_Read::product($parent,true)],'variations'=>$rows,'variable'=>$context,
+            $rows=[];foreach($query->products as $variation){$row=YoRo_Early_Access_Product_Read::product($variation,false,$lifecycle);if($row){$rows[]=$row;}}
+            $data=['products'=>[YoRo_Early_Access_Product_Read::product($parent,true,$lifecycle)],'variations'=>$rows,'variable'=>$context,
                 'count'=>count($rows),'page_info'=>['page'=>$params['page'],'limit'=>$params['limit'],'total'=>(int)$query->total,'has_more'=>$params['page']<(int)$query->max_num_pages]];
             return ['success'=>true,'action'=>self::ReadAction,'message'=>'Variable product read completed.','summary'=>'Variable product read completed.',
                 'data'=>$data,'read_only'=>true,'undoable'=>false,'result_type'=>'variable_product','display_type'=>'variable_product','assistant_summary'=>'Variable product read completed.','extensions'=>(object)[]];
-        } catch(Throwable $error){return new WP_Error('variable_product_unavailable','Use an editable published variable product within the supported bounds.');}
+        } catch(Throwable $error){return new WP_Error('variable_product_unavailable','Use an authorized variable product within the supported bounds.');}
     }
 
     public static function valid_params($action, $params): bool
@@ -279,13 +281,14 @@ final class YoRo_Variable_Product
 
     public static function execute(array $operation)
     {
+        // Preserve negotiated read facts without widening the legacy registry callback.
+        if(1===($operation['extensions']['yoro.mcp_early_access_product_read']['product_lifecycle_version']??null)){return self::read($operation);}
         $result=YoRo_Action_Executor::execute($operation['action'],$operation['params'],true,false,['connector_remote_agent'=>true,
             'workflow_id'=>$operation['workflow_id']??'','operation_id'=>$operation['operation_id']??'']);
         if(is_wp_error($result)){return $result;}
         if(!is_array($result)||empty($result['success'])){return new WP_Error('variable_product_unavailable','The variable-product read did not complete.');}
-        $payload = YoRo_Commerce_Contract_Builder::canonical_execution_payload($result,self::ReadAction);
-        // The early-access transport exposes only the closed management DTO.
-        $payload['extensions'] = (object) [];
+        $payload=YoRo_Commerce_Contract_Builder::canonical_execution_payload($result,self::ReadAction);
+        $payload['extensions']=(object)[];
         return $payload;
     }
 
@@ -294,7 +297,7 @@ final class YoRo_Variable_Product
         foreach(self::WriteActions as $action){
             YoRo_Action_Registry::register($action,[
                 'label'=>$action===self::CreateAction?'Create variation':'Edit product attributes',
-                'description'=>'Change one published variable product after explicit confirmation.',
+                'description'=>'Change one authorized published or draft variable product after explicit confirmation.',
                 'category'=>'products','permission'=>'yoro_execute_actions','callback'=>static function($params)use($action){return self::write($params,$action);},
                 'preview_callback'=>static function($params)use($action){return self::preview($params,$action);},
                 'risk_level'=>'medium','write_action'=>true,'requires_confirmation'=>true,'effect'=>'mutate','reversibility'=>'none',
@@ -305,7 +308,7 @@ final class YoRo_Variable_Product
                 'required_params'=>['product_id','changes','expected_version'],'concurrency_strategy'=>'optimistic_version','capabilities'=>['products','inventory','write']]);
         }
         YoRo_Action_Registry::register(self::ReadAction,[
-            'label'=>'View variations','description'=>'Read one editable published variable product and a bounded page of published variations.',
+            'label'=>'View variations','description'=>'Read one authorized variable product and a bounded page of published variations. Draft access requires negotiated lifecycle support.',
             'category'=>'products','permission'=>'yoro_view_store_data','callback'=>static function($params){
                 unset($params['_yoro_confirmed'],$params['_yoro_preview']);return self::read(['action'=>self::ReadAction,'params'=>$params]);},
             'risk_level'=>'low','write_action'=>false,'read_only'=>true,'effect'=>'read','target_type'=>'product','max_targets'=>1,'max_items'=>20,
@@ -319,7 +322,7 @@ final class YoRo_Variable_Product
         try {
             if(!is_array($params)||!in_array($action,self::WriteActions,true)
                 ||array_diff(array_keys($params),['product_id','changes','expected_version','_yoro_confirmed','_yoro_preview'])){self::invalid();}
-            $parent=self::parent_product($params['product_id']??null);$facts=self::context($parent);
+            $parent=self::parent_product($params['product_id']??null,true);$facts=self::context($parent);
             if(!is_string($params['expected_version']??null)||!hash_equals($facts['version'],$params['expected_version'])){
                 return new WP_Error('product_version_conflict','The variable product changed after preview. Read it again.');
             }
@@ -365,11 +368,11 @@ final class YoRo_Variable_Product
     public static function write($params, string $action)
     {
         $prepared=self::prepare($params,$action);if(is_wp_error($prepared)){return $prepared;}
-        $product=$prepared['product'];$parentId=$prepared['parent']->get_id();
+        $product=$prepared['product'];$parentId=$prepared['parent']->get_id();$parentStatus=$prepared['parent']->get_status();
         try {
             $product->save();
             WC_Product_Variable::sync($parentId);wc_delete_product_transients($parentId);clean_post_cache($parentId);clean_post_cache($product->get_id());
-            $parent=wc_get_product($parentId);if(!$parent||!$parent->is_type('variable')||$parent->get_status()!=='publish'){throw new RuntimeException('Outcome mismatch');}$facts=self::context($parent);$changes=$prepared['changes'];
+            $parent=wc_get_product($parentId);if(!$parent||!$parent->is_type('variable')||$parent->get_status()!==$parentStatus||!in_array($parentStatus,['publish','draft'],true)){throw new RuntimeException('Outcome mismatch');}$facts=self::context($parent);$changes=$prepared['changes'];
             if($action===self::AttributeAction){
                 foreach($changes as $field=>$value){
                     $actual=$facts[$field];

@@ -38,6 +38,10 @@ class YoRo_Order_Presenter {
 
 	public static function order_version( WC_Order $order ) {
 		$date_modified = $order->get_date_modified();
+		$tracking = [];
+		foreach ( [ '_tracking_number', '_wc_shipment_tracking_items', '_aftership_tracking_number', '_aftership_tracking_items', '_wcast_tracking_number', '_wcst_order_trackno', '_yith_tracking_code' ] as $key ) {
+			$tracking[$key] = $order->get_meta( $key, true, 'edit' );
+		}
 
 		return hash(
 			'sha256',
@@ -48,6 +52,11 @@ class YoRo_Order_Presenter {
 					$order->get_status(),
 					$order->get_total(),
 					$order->get_currency(),
+					$order->get_address( 'billing' ),
+					$order->get_address( 'shipping' ),
+					$order->get_customer_note( 'edit' ),
+					$tracking,
+                    class_exists('YoRo_Order_Management') ? YoRo_Order_Management::tracking_fingerprint($order) : [],
 				]
 			)
 		);

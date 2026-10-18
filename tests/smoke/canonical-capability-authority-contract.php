@@ -69,6 +69,15 @@ $actual_names     = array_values( array_column( $actual_actions, 'name' ) );
 $missing_names    = array_values( array_diff( $expected_names, $actual_names ) );
 $extra_names      = array_values( array_diff( $actual_names, $expected_names ) );
 
+// Native tracking writes are advertised only on stores with the supported WooCommerce storage enabled.
+if ( class_exists( 'YoRo_Order_Management' ) && ! YoRo_Order_Management::tracking_available() ) {
+	$optional = YoRo_Order_Management::TrackingActions;
+	$assert( [] === array_values( array_intersect( $optional, $actual_names ) ), 'Unsupported native tracking must never be advertised.' );
+	$marker = $manifest['extensions'][ YoRo_Order_Management::ManifestExtension ] ?? [];
+	$assert( false === ( $marker['tracking_supported'] ?? null ), 'The marker must disclose unsupported native tracking.' );
+	$missing_names = array_values( array_diff( $missing_names, $optional ) );
+}
+
 $assert( [] === $missing_names, 'The connector must support every API canonical action in this exact compatibility tranche.' );
 $assert(
 	[] === $extra_names,
@@ -183,8 +192,8 @@ $assert(
 	'The connector canonical action semantics must hash to the exact API-owned catalog digest.'
 );
 $assert(
-	count( $expected_names ) === count( $canonical_binding['support'] ?? [] ),
-	'The connector must publish one provider-neutral support fact for every canonical action.'
+	count( $actual_names ) === count( $canonical_binding['support'] ?? [] ),
+	'The connector must publish one provider-neutral support fact for every advertised canonical action.'
 );
 
 foreach ( [ 'orders.search', 'orders.update_status', 'products.update_stock', 'products.update_stock_status', 'orders.add_note' ] as $focus_action ) {

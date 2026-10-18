@@ -563,7 +563,7 @@ class YoRo_Connector_Runtime {
 		if ( $ordinary && ! $this->client->early_access_has_budget( 1 ) ) {
 			return new WP_Error( 'yoro_connector_transport_budget', 'Result transport capacity is required before execution.' );
 		}
-        $report = $ordinary && ! $commerce_write && in_array( $operation['action'], array_slice( YoRo_Early_Access_Store_Overview_Read::ACTIONS, 0, 4 ), true );
+        $report = $ordinary && ! $commerce_write && in_array( $operation['action'], [...array_slice( YoRo_Early_Access_Store_Overview_Read::ACTIONS, 0, 4 ), 'customers.get_period_summary'], true );
 		$journal = YoRo_Connector_Execution_Journal::begin( $operation );
         if ( ! in_array( $journal['state'] ?? '', [ 'new', 'executing', 'completed', 'conflict' ], true ) ) {
             return new WP_Error( 'yoro_connector_journal_unavailable', 'A durable execution journal is required.' );
@@ -600,7 +600,7 @@ class YoRo_Connector_Runtime {
                 } elseif ( $ordinary && 1 === ( $operation['extensions']['yoro.mcp_early_access_product_read']['read_contract_version'] ?? null ) ) {
                     try {
                         $class = self::expanded_read_executor( $operation['extensions']['yoro.mcp_early_access_product_read']['read_family'] ?? null );
-                        $execution = $class ? ( $report ? $class::execute( $operation, function() use ( $allowed, $owns_lock, $validate, $operation ) { return $allowed() && $owns_lock() && ! is_wp_error( $validate( $operation ) ); } ) : $class::execute( $operation ) ) : new WP_Error( 'read_unavailable', 'Read did not complete.' );
+                        $execution = in_array($class,[YoRo_Order_Management::class,YoRo_Product_Lifecycle::class,YoRo_Product_Reviews::class],true) ? $class::execute_read($operation) : ($class ? ( $report ? $class::execute( $operation, function() use ( $allowed, $owns_lock, $validate, $operation ) { return $allowed() && $owns_lock() && ! is_wp_error( $validate( $operation ) ); } ) : $class::execute( $operation ) ) : new WP_Error( 'read_unavailable', 'Read did not complete.' ));
                         if ( $report && is_array( $execution ) && ! empty( $execution['deferred'] ) ) {
                             if ( ! $owns_lock() || ! $allowed() || is_wp_error( $validate( $operation ) ) ) { return self::lock_lost_error(); }
                             $deferred = $request( 'defer', $operation['envelope_id'], [], $authority['claim_token'], $authority['lease_generation'] );
@@ -692,7 +692,7 @@ class YoRo_Connector_Runtime {
 
     private static function expanded_read_executor( $family ) {
         if ( null === $family ) { return YoRo_Early_Access_Product_Read::class; }
-        $classes = [ 'coupons' => YoRo_Early_Access_Coupon_Read::class, 'variable_products' => YoRo_Variable_Product::class, 'wordpress_read' => YoRo_Early_Access_WordPress_Read::class, 'customer_service' => YoRo_Early_Access_Customer_Service_Read::class, 'store_overview' => YoRo_Early_Access_Store_Overview_Read::class, 'order_tracking' => YoRo_Early_Access_Order_Tracking_Read::class,
+        $classes = [ 'product_reviews' => YoRo_Product_Reviews::class, 'customer_history' => YoRo_Customer_History_Report::class, 'product_lifecycle' => YoRo_Product_Lifecycle::class, 'order_management' => YoRo_Order_Management::class, 'coupons' => YoRo_Early_Access_Coupon_Read::class, 'variable_products' => YoRo_Variable_Product::class, 'wordpress_read' => YoRo_Early_Access_WordPress_Read::class, 'customer_service' => YoRo_Early_Access_Customer_Service_Read::class, 'store_overview' => YoRo_Early_Access_Store_Overview_Read::class, 'order_tracking' => YoRo_Early_Access_Order_Tracking_Read::class,
             'order_queues' => YoRo_Early_Access_Order_Queue_Read::class, 'orders' => YoRo_Early_Access_Order_Read::class ];
         return is_string( $family ) ? ( $classes[ $family ] ?? null ) : null;
     }
@@ -727,7 +727,7 @@ class YoRo_Connector_Runtime {
         $expanded = 1 === ( $facts['read_contract_version'] ?? null );
         $class = self::expanded_read_executor( $facts['read_family'] ?? null );
         $valid_selectors = $expanded
-            ? ( $class && ( in_array( $facts['read_family'] ?? null, [ 'orders', 'customer_service' ], true )
+            ? ( $class && ( ( $class === YoRo_Early_Access_Product_Read::class || in_array( $facts['read_family'] ?? null, [ 'orders', 'customer_service' ], true ) )
                 ? $class::valid_params( $operation['action'] ?? '', $params, $facts )
                 : $class::valid_params( $operation['action'] ?? '', $params ) ) )
                 && ( $facts['action'] ?? null ) === ( $operation['action'] ?? null )

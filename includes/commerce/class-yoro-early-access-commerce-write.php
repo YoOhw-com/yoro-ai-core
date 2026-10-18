@@ -4,10 +4,10 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /** Single-target, versioned writes. Called only by the locked, fenced connector runner. */
 final class YoRo_Early_Access_Commerce_Write {
-    const ACTIONS = [ YoRo_Product_Batch::Action, ...YoRo_Coupon_Management::WriteActions, YoRo_Variable_Product::AttributeAction, YoRo_Variable_Product::CreateAction, 'products.update_details', 'products.update_stock', 'products.update_stock_status', 'orders.update_status', 'orders.add_note' ];
+    const ACTIONS = [ ...YoRo_Product_Reviews::WriteActions, ...YoRo_Product_Lifecycle::WriteActions, YoRo_Order_Batch::Action, ...YoRo_Order_Management::WriteActions, YoRo_Product_Batch::Action, ...YoRo_Coupon_Management::WriteActions, YoRo_Variable_Product::AttributeAction, YoRo_Variable_Product::CreateAction, 'products.update_details', 'products.update_stock', 'products.update_stock_status', 'orders.update_status', 'orders.add_note' ];
 
     public static function manifest() {
-        return [ 'version' => 1, 'actions' => array_values(array_diff(self::ACTIONS, array_merge(['products.update_details',YoRo_Product_Batch::Action],YoRo_Variable_Product::WriteActions,YoRo_Coupon_Management::WriteActions))), 'max_targets' => 1, 'requires_source_read' => true,
+        return [ 'version' => 1, 'actions' => array_values(array_diff(self::ACTIONS, array_merge(['products.update_details',YoRo_Product_Batch::Action,YoRo_Order_Batch::Action],YoRo_Order_Management::WriteActions,YoRo_Product_Lifecycle::WriteActions,YoRo_Product_Reviews::WriteActions,YoRo_Variable_Product::WriteActions,YoRo_Coupon_Management::WriteActions))), 'max_targets' => 1, 'requires_source_read' => true,
             'requires_confirmation' => true, 'result_version' => 1 ];
     }
 
@@ -18,6 +18,10 @@ final class YoRo_Early_Access_Commerce_Write {
             || ! is_string( $facts['expected_version'] ?? null ) || ! preg_match( '/\A[a-f0-9]{64}\z/D', $facts['expected_version'] ) ) {
             return false;
         }
+        if (in_array($action,YoRo_Product_Reviews::WriteActions,true)) { return YoRo_Product_Reviews::valid_params($action,$params) && ($params['expected_version'] ?? null) === $facts['expected_version']; }
+        if (in_array($action,YoRo_Product_Lifecycle::WriteActions,true)) { return YoRo_Product_Lifecycle::valid_params($action,$params) && ($params['expected_version'] ?? null) === $facts['expected_version']; }
+        if ($action === YoRo_Order_Batch::Action) { return YoRo_Order_Batch::valid_params($params) && hash_equals(YoRo_Order_Batch::version($params),$facts['expected_version']); }
+        if (in_array($action,YoRo_Order_Management::WriteActions,true)) { return YoRo_Order_Management::valid_params($action,$params) && ($params['expected_version'] ?? null) === $facts['expected_version']; }
         if ($action === YoRo_Product_Batch::Action) {
             return YoRo_Product_Batch::valid_params($params) && hash_equals(YoRo_Product_Batch::version($params), $facts['expected_version']);
         }
@@ -68,19 +72,33 @@ final class YoRo_Early_Access_Commerce_Write {
             || empty( $operation['authorization']['execution_permit'] ) ) {
             return new WP_Error( 'confirmed_commerce_denied', 'Confirmed change authority is unavailable.' );
         }
+        if ($action === YoRo_Order_Batch::Action) { return YoRo_Order_Batch::execute_operation($operation,$fence); }
         if ($action === YoRo_Product_Batch::Action) { return YoRo_Product_Batch::execute_operation($operation,$fence); }
         if ( 'orders.add_note' === $action && ( $operation['user_content_slots'] ?? null ) !== [ [
             'field' => 'note', 'content' => $params['note'], 'content_scope' => 'internal_note', 'provenance' => 'user_goal',
         ] ] ) {
             return new WP_Error( 'confirmed_note_scope_invalid', 'The confirmed internal note content does not match its scoped slot.' );
         }
-        if (in_array($action,YoRo_Coupon_Management::WriteActions,true)) {
+        if ('products.reply_review' === $action && ($operation['user_content_slots'] ?? null) !== [['field'=>'content','content'=>$params['changes']['content'],'content_scope'=>'public_review_reply','provenance'=>'user_goal']]) { return new WP_Error('confirmed_review_reply_scope_invalid','The public reply does not match its exact scoped content.'); }
+        if (in_array($action,YoRo_Product_Reviews::WriteActions,true)) {
+            $prepared = YoRo_Product_Reviews::prepare($params,$action);
+            if (is_wp_error($prepared)) { return $prepared; }
+            $version = $facts['expected_version'];
+        } elseif (in_array($action,YoRo_Product_Lifecycle::WriteActions,true)) {
+            $prepared = YoRo_Product_Lifecycle::prepare($params,$action);
+            if (is_wp_error($prepared)) { return $prepared; }
+            $version = $facts['expected_version'];
+        } elseif (in_array($action,YoRo_Order_Management::WriteActions,true)) {
+            $prepared = YoRo_Order_Management::prepare($params,$action);
+            if (is_wp_error($prepared)) { return $prepared; }
+            $version = $facts['expected_version'];
+        } elseif (in_array($action,YoRo_Coupon_Management::WriteActions,true)) {
             $prepared = YoRo_Coupon_Management::prepare($params,$action === 'coupons.create_managed');
             if (is_wp_error($prepared)) { return $prepared; }
             $version = $facts['expected_version']; // prepare freshly verifies the coupon/search-source version.
         } elseif ( str_starts_with( $action, 'products.' ) ) {
             $target = wc_get_product( $params['product_id'] );
-            if ( ! $target || 'publish' !== $target->get_status() || ! in_array( $target->get_type(), in_array($action,YoRo_Variable_Product::WriteActions,true) ? ['variable'] : ('products.update_details' === $action ? [ 'simple', 'variable', 'variation' ] : [ 'simple', 'variation' ]), true )
+            if ( ! $target || !in_array($target->get_status(), ['publish','draft'], true) || !current_user_can('edit_post',$target->get_id()) || ! in_array( $target->get_type(), in_array($action,YoRo_Variable_Product::WriteActions,true) ? ['variable'] : ('products.update_details' === $action ? [ 'simple', 'variable', 'variation' ] : [ 'simple', 'variation' ]), true )
                 || ( 'products.update_stock' === $action && true !== $target->get_manage_stock( 'edit' ) )
                 || ( 'products.update_stock_status' === $action && $target->get_manage_stock() ) ) {
                 return new WP_Error( 'confirmed_product_unavailable', 'This product does not support the selected stock change.' );

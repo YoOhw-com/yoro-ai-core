@@ -184,6 +184,19 @@ try {
 	$assert( $order instanceof WC_Order, 'A WooCommerce order fixture is required.' );
 	$order_id = $order->get_id();
 	$order = wc_get_order( $order_id );
+	// Timestamp equality must not hide edits made during the same second.
+	$modified_at = $order->get_date_modified();
+	foreach ( [ 'billing_email' => 'version-test@example.invalid', 'shipping_address_1' => 'Changed same-second address', 'customer_note' => 'Changed customer instruction' ] as $field => $value ) {
+		$before = YoRo_Order_Presenter::order_version( $order );
+		$order->{ 'set_' . $field }( $value );
+		$order->set_date_modified( $modified_at );
+		$assert( $before !== YoRo_Order_Presenter::order_version( $order ), 'Order versions must bind ' . $field . ' without relying on timestamps.' );
+	}
+	$before_tracking = YoRo_Order_Presenter::order_version( $order );
+	$order->update_meta_data( '_wc_shipment_tracking_items', [ [ 'tracking_number' => 'YR0178-VERSION', 'tracking_provider' => 'dhl' ] ] );
+	$assert( $before_tracking !== YoRo_Order_Presenter::order_version( $order ), 'Order versions must bind stored tracking data.' );
+	$order->save();
+	$order = wc_get_order( $order_id );
 	$order_version = YoRo_Order_Presenter::order_version( $order );
 
 	$stale_order = YoRo_Orders_Write_Service::update_order_status(
