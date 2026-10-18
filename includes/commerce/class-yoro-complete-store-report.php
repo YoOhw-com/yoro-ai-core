@@ -59,11 +59,17 @@ final class YoRo_Complete_Store_Report {
     }
 
     /** Four independent scopes bound storage without evicting another active calculation. */
-    public static function run( array $operation, $guard = null ) {
+    public static function run( array $operation, $guard = null, array $selection = [] ) {
         if ( ! current_user_can( 'yoro_view_store_data' ) ) { return new WP_Error( 'report_access_denied', 'Report access is unavailable.' ); }
+        if ($selection && (array_diff(array_keys($selection), ['scope_key','predicate','matches','summary_only','finish'])
+            || !is_string($selection['scope_key'] ?? null) || !preg_match('/\A[a-f0-9]{64}\z/D',$selection['scope_key'])
+            || !is_callable($selection['predicate'] ?? null) || !is_callable($selection['matches'] ?? null)
+            || ($selection['summary_only'] ?? null)!==true || !is_callable($selection['finish'] ?? null))) {
+            return new WP_Error('report_selection_invalid','The local report selector is unavailable.');
+        }
         $params = $operation['params']; $basis = $params['date_basis'] ?? 'created';
         $scope = hash( 'sha256', wp_json_encode( [ self::VERSION, get_current_user_id(), home_url(), YoRo_AI_Settings::get_ai_api_url(),
-            $params, $basis, (int) get_option( 'start_of_week', 1 ), wp_timezone_string(), get_woocommerce_currency(), wp_date( 'Y-m-d' ), \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ] ) );
+            $selection ? ($operation['action'] ?? '') : '', $selection['scope_key'] ?? '', $params, $basis, (int) get_option( 'start_of_week', 1 ), wp_timezone_string(), get_woocommerce_currency(), wp_date( 'Y-m-d' ), \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled() ] ) );
         $state_key = self::state_key( $scope );
         if ( null === $state_key ) { return [ 'deferred' => true ]; }
         $state = get_option( $state_key, [] ); $revision = self::generation(); $mutation = self::generation( self::MUTATION_OPTION );
@@ -76,8 +82,9 @@ final class YoRo_Complete_Store_Report {
             $state = [ 'scope' => $scope, 'owner' => $owner, 'mutation' => $mutation, 'revision' => $revision, 'as_of' => $now, 'expires' => min( $now + 1800, isset( $operation['expires_at'] ) ? strtotime( $operation['expires_at'] ) : $now + 1800 ),
                 'phase' => 0, 'cursor' => 0, 'anchor' => self::anchor(), 'basis' => $basis, 'windows' => [ $window, $previous ], 'period_context' => $resolved['context'],
                 'periods' => [ self::empty_period(), self::empty_period() ], 'backlog' => [ 'open' => 0, 'attention' => 0, 'fulfillment' => 0 ], 'complete' => false ];
+            if ($selection) {foreach($state['periods'] as &$period){$period['breakdowns_complete']=false;$period['product_ranking_complete']=false;}unset($period);}
         }
-        if ( $state['complete'] && ( $state['completed_at'] ?? $state['as_of'] ) + 30 <= time() ) { delete_option( $state_key ); return self::run( $operation, $guard ); }
+        if ( $state['complete'] && ( $state['completed_at'] ?? $state['as_of'] ) + 30 <= time() ) { delete_option( $state_key ); return self::run( $operation, $guard, $selection ); }
         $until = microtime( true ) + max( 0.001, min( 12, (float) apply_filters( 'yoro_complete_report_seconds', 12 ) ) );
         do {
             if ( ( is_callable( $guard ) && ! $guard() ) || ! current_user_can( 'yoro_view_store_data' )
@@ -85,11 +92,18 @@ final class YoRo_Complete_Store_Report {
                 return new WP_Error( 'report_access_expired', 'Report access expired before completion.' );
             }
             if ( self::generation( self::MUTATION_OPTION ) !== $state['mutation'] ) { delete_option( $state_key ); return new WP_Error( 'report_changed', 'Store data changed. Request a current report.' ); }
-            if ( $state['complete'] ) { $result = self::finish( $state ); if ( self::generation( self::MUTATION_OPTION ) !== $state['mutation'] ) { return new WP_Error( 'report_changed', 'Store data changed. Request a current report.' ); } return $result; }
+            if ( $state['complete'] ) { $result = $selection ? ($selection['finish'])($state) : self::finish( $state ); if ( self::generation( self::MUTATION_OPTION ) !== $state['mutation'] ) { return new WP_Error( 'report_changed', 'Store data changed. Request a current report.' ); } return $result; }
+            if ($selection && $state['phase']===4) {
+                $state['phase']=5;$state['complete']=true;$state['completed_at']=time();update_option($state_key,$state,false);
+                global $wpdb;$saved=$wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",$state_key));
+                if($wpdb->last_error!==''||$saved!==maybe_serialize($state)){throw new RuntimeException('report_checkpoint_unavailable');}
+                continue;
+            }
             if ( $state['period_context']['comparison_mode'] === 'none' && in_array( $state['phase'], [ 1, 3 ], true ) ) { $state['phase']++; $state['cursor'] = 0; continue; }
-            $rows = self::batch( $state );
+            $rows = self::batch( $state, $selection );
             foreach ( $rows as $order ) {
                 if ( ! $order instanceof WC_Order && ! $order instanceof WC_Order_Refund ) { throw new RuntimeException( 'report_invalid_order' ); }
+                if ($selection && !($selection['matches'])($order)) {throw new RuntimeException('report_selection_mismatch');}
                 $state['cursor'] = max( $state['cursor'], $order->get_id() );
                 self::consume( $state, $order );
             }
@@ -138,17 +152,17 @@ final class YoRo_Complete_Store_Report {
     }
 
     /** Keyset predicates are scoped to this query and removed even on failure. */
-    private static function batch( array $state ) {
+    private static function batch( array $state, array $selection = [] ) {
         $refund = $state['phase'] === 2 || $state['phase'] === 3;
         $period = $state['phase'] % 2; $backlog = $state['phase'] === 4;
         $token = wp_generate_uuid4(); $applied = false;
         $predicate = static function( $id ) use ( $state ) { return $id . ' > ' . (int) $state['cursor'] . ' AND ' . $id . ' <= ' . (int) $state['anchor']; };
-        $hpos = static function( $clauses, $query, $vars ) use ( $token, &$applied, $predicate ) {
-            if ( ( $vars['yoro_report_cursor'] ?? null ) === $token ) { $clauses['where'] .= ' AND (' . $predicate( $query->get_table_name( 'orders' ) . '.id' ) . ')'; $applied = true; }
+        $hpos = static function( $clauses, $query, $vars ) use ( $token, &$applied, $predicate, $selection, $refund ) {
+            if ( ( $vars['yoro_report_cursor'] ?? null ) === $token ) { $id=$query->get_table_name('orders').'.id';$clauses['where'] .= ' AND (' . $predicate( $id ) . ')' . ($selection?' AND ('.($selection['predicate'])($id,true,$query,$refund).')':''); $applied = true; }
             return $clauses;
         };
-        $legacy = static function( $where, $query ) use ( $token, &$applied, $predicate ) {
-            if ( $query->get( 'yoro_report_cursor' ) === $token ) { global $wpdb; $where .= ' AND (' . $predicate( $wpdb->posts . '.ID' ) . ')'; $applied = true; }
+        $legacy = static function( $where, $query ) use ( $token, &$applied, $predicate, $selection, $refund ) {
+            if ( $query->get( 'yoro_report_cursor' ) === $token ) { global $wpdb;$id=$wpdb->posts.'.ID'; $where .= ' AND (' . $predicate( $id ) . ')' . ($selection?' AND ('.($selection['predicate'])($id,false,null,$refund).')':''); $applied = true; }
             return $where;
         };
         $legacy_args = static function( $args, $vars ) use ( $token ) { if ( ( $vars['yoro_report_cursor'] ?? null ) === $token ) { $args['yoro_report_cursor'] = $token; $args['suppress_filters'] = false; } return $args; };

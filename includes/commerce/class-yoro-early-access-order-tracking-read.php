@@ -49,6 +49,11 @@ class YoRo_Early_Access_Order_Tracking_Read {
             if ( is_array( $item ) ) { $append( $item['tracking_number'] ?? null, $item['tracking_provider'] ?? null ); }
         }
         foreach ( self::FALLBACK_KEYS as $key ) { $append( $order->get_meta( $key, true ), null ); }
+        if ( class_exists( 'YoRo_Order_Management' ) ) {
+            $native = YoRo_Order_Management::details( $order );
+            $truncated = $truncated || $native['tracking_truncated'];
+            foreach ( $native['tracking'] as $item ) { $append( $item['tracking_number'], $item['carrier'] ); }
+        }
         $message = 'Stored tracking records only. Dispatch and delivery are not verified. Customer contact data and custom links are excluded.';
         return [ 'success' => true, 'action' => $action, 'message' => $message, 'summary' => $message,
             'data' => [ 'order_id' => $params['order_id'], 'status' => $shipments ? 'available' : 'unavailable', 'shipments' => $shipments, 'count' => count( $shipments ) ],

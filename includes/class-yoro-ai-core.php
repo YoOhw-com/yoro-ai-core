@@ -85,6 +85,11 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-product-catalog-options.php';
         require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-product-edit.php';
         require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-product-batch.php';
+        require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-order-management.php';
+        require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-product-lifecycle.php';
+        require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-product-reviews.php';
+        require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-customer-history-report.php';
+        require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-order-batch.php';
         require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-coupon-management.php';
         require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-variable-product.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-commerce-discovery-service.php';
@@ -159,6 +164,11 @@ class YoRo_AI_Core {
 		if ( yoro_ai_core_has_woocommerce() ) {
 			YoRo_Orders_Actions::register();
             YoRo_Product_Batch::register();
+            YoRo_Order_Management::register();
+            YoRo_Product_Lifecycle::register();
+            YoRo_Product_Reviews::register();
+            YoRo_Customer_History_Report::register();
+            YoRo_Order_Batch::register();
             YoRo_Coupon_Management::register();
 		}
 

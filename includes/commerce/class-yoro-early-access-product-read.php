@@ -8,7 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Early_Access_Product_Read {
 	const ACTIONS = [ 'products.search', 'products.get_details', 'products.get_inventory_queue' ];
 
-	public static function valid_params( $action, $params ) {
+	public static function valid_params( $action, $params, $facts = [] ) {
 		if ( ! in_array( $action, [...self::ACTIONS, YoRo_Product_Catalog_Options::Action], true ) || ! is_array( $params ) ) {
 			return false;
 		}
@@ -27,9 +27,10 @@ class YoRo_Early_Access_Product_Read {
 				&& in_array( $params['focus'] ?? 'overview', [ 'overview', 'low_stock', 'out_of_stock', 'on_backorder' ], true );
 		}
 		if ( array_diff( array_keys( $params ), [ 'sku', 'query', 'status', 'type', 'stock_status', 'limit' ] )
-			|| 'publish' !== ( $params['status'] ?? null ) || ( isset( $params['sku'] ) && isset( $params['query'] ) ) ) {
+			|| ! in_array( $params['status'] ?? null, [ 'publish', 'draft' ], true ) || ( isset( $params['sku'] ) && isset( $params['query'] ) ) ) {
 			return false;
 		}
+        if ('draft' === ($params['status'] ?? null) && 1 !== ($facts['product_lifecycle_version'] ?? null)) { return false; }
 		foreach ( [ 'sku' => 128, 'query' => 200 ] as $field => $max ) {
 			if ( array_key_exists( $field, $params ) && ( ! is_string( $params[ $field ] ) || '' === trim( $params[ $field ] )
 				|| strlen( $params[ $field ] ) > $max || ! preg_match( '//u', $params[ $field ] ) || preg_match( '/[\x00-\x1f\x7f]/', $params[ $field ] ) ) ) {
@@ -54,7 +55,9 @@ class YoRo_Early_Access_Product_Read {
 	public static function execute( array $operation ) {
 		$action = $operation['action'];
 		$params = $operation['params'];
-		if ( ! self::valid_params( $action, $params ) ) {
+        $lifecycle = 1 === ($operation['extensions']['yoro.mcp_early_access_product_read']['product_lifecycle_version'] ?? null);
+        if ('draft' === ($params['status'] ?? null) && (!$lifecycle || !current_user_can('yoro_execute_actions'))) { return new WP_Error('draft_product_unavailable','Draft access requires negotiated product editing permission.'); }
+		if ( ! self::valid_params( $action, $params, $operation['extensions']['yoro.mcp_early_access_product_read'] ?? [] ) ) {
 			return new WP_Error( 'yoro_invalid_product_read', 'The bounded product selectors are invalid.' );
 		}
 		$execution = YoRo_Action_Executor::execute( $action, $params, true, false, [ 'connector_remote_agent' => true,
@@ -75,7 +78,8 @@ class YoRo_Early_Access_Product_Read {
 		foreach ( (array) ( $execution['products'] ?? ( $execution['data']['products'] ?? [] ) ) as $row ) {
 			$id = is_array( $row ) ? ( $row['product_id'] ?? ( $row['id'] ?? null ) ) : null;
 			$product = is_numeric( $id ) ? wc_get_product( (int) $id ) : false;
-			$dto = self::product( $product, 'products.get_details' === $action );
+			$dto = self::product( $product, 'products.get_details' === $action, $lifecycle );
+			if (is_array($dto) && !$lifecycle) { unset($dto['extensions']['woocommerce.product_lifecycle']); if ('publish' !== $dto['status']) { $dto = null; } }
 			if ( null === $dto || isset( $products[ $dto['id'] ] ) ) {
 				continue;
 			}
@@ -117,13 +121,14 @@ class YoRo_Early_Access_Product_Read {
 			'display_type' => $inventory ? 'inventory_queue' : 'products_list', 'assistant_summary' => $message, 'extensions' => (object) [] ];
 	}
 
-	public static function product( $product, $details ) {
-		if ( ! $product instanceof WC_Product || 'publish' !== $product->get_status() || ! in_array( $product->get_type(), [ 'simple', 'variable', 'variation' ], true ) ) {
+	public static function product( $product, $details, $allowDraft = false ) {
+		if ( ! $product instanceof WC_Product || ! in_array( $product->get_status(), [ 'publish', 'draft' ], true ) || ! in_array( $product->get_type(), [ 'simple', 'variable', 'variation' ], true ) ) {
 			return null;
 		}
+        if ( 'draft' === $product->get_status() && ( !$allowDraft || ! current_user_can( 'yoro_execute_actions' ) || ! current_user_can( 'edit_post', $product->get_id() ) ) ) { return null; }
 		if ( 'variation' === $product->get_type() ) {
 			$parent = wc_get_product( $product->get_parent_id() );
-			if ( ! $parent instanceof WC_Product || 'publish' !== $parent->get_status() ) {
+			if ( ! $parent instanceof WC_Product || ( 'publish' !== $parent->get_status() && ( !$allowDraft || 'draft' !== $parent->get_status() || ! current_user_can( 'yoro_execute_actions' ) || ! current_user_can( 'edit_post', $parent->get_id() ) ) ) ) {
 				return null;
 			}
 		}
@@ -146,10 +151,12 @@ class YoRo_Early_Access_Product_Read {
 			$extra['description'] = $extra['edit_fields']['description'];
             $extra['short_description'] = $extra['edit_fields']['short_description'];
 		}
+        $extensions = [ 'woocommerce.product' => $extra ];
+        if ( $details && $allowDraft && current_user_can( 'yoro_execute_actions' ) && current_user_can( 'edit_post', $product->get_id() ) ) { $extensions['woocommerce.product_lifecycle'] = YoRo_Product_Lifecycle::details( $product ); }
 		return [ 'id' => (int) $product->get_id(), 'name' => mb_strcut( sanitize_text_field( $product->get_name() ), 0, 1024, 'UTF-8' ),
-			'sku' => $product->get_sku(), 'status' => 'publish', 'type' => $product->get_type(), 'price' => (string) $product->get_price(),
+			'sku' => $product->get_sku(), 'status' => $product->get_status(), 'type' => $product->get_type(), 'price' => (string) $product->get_price(),
 			'currency' => get_woocommerce_currency(), 'stock_quantity' => null === $product->get_stock_quantity() ? null : (int) $product->get_stock_quantity(),
-			'stock_status' => $product->get_stock_status(), 'version' => YoRo_Commerce_Discovery_Service::product_version( $product ), 'extensions' => [ 'woocommerce.product' => $extra ] ];
+			'stock_status' => $product->get_stock_status(), 'version' => YoRo_Commerce_Discovery_Service::product_version( $product ), 'extensions' => $extensions ];
 	}
 
 	private static function url( $url ) {

@@ -86,6 +86,37 @@ try {
     $denied=static function($caps,$cap,$user,$args)use($parent){return $cap==='edit_post'&&($args[0]??null)===$parent->get_id()?['do_not_allow']:$caps;};
     add_filter('map_meta_cap',$denied,10,4);$deniedRead=YoRo_Variable_Product::execute(['action'=>YoRo_Variable_Product::ReadAction,'params'=>['product_id'=>$parent->get_id(),'page'=>1,'limit'=>20]]);remove_filter('map_meta_cap',$denied,10);
     $assert(is_wp_error($deniedRead),'Current product-edit permission is required for management metadata.');
+    $createVersion=YoRo_Product_Lifecycle::context()['target']['version'];
+    $newDraft=['action'=>'products.create','params'=>['product_id'=>0,'changes'=>['name'=>'Disposable lifecycle variable draft','type'=>'variable'],'expected_version'=>$createVersion],
+        'workflow_id'=>wp_generate_uuid4(),'operation_id'=>'operation_1','authorization'=>['execution_permit'=>'disposable-test-permit'],
+        'extensions'=>['yoro.mcp_early_access_commerce_write'=>['source_operation_id'=>'envelope_'.str_repeat('a',64),'source_result_hash'=>str_repeat('b',64),'expected_version'=>$createVersion]]];
+    $newDraftResult=YoRo_Early_Access_Commerce_Write::execute($newDraft);
+    $assert(!is_wp_error($newDraftResult),'Lifecycle creates a draft variable parent through the actual confirmed wrapper.');$draft=wc_get_product($newDraftResult['data']['product_id']);
+    $draftRead=['action'=>YoRo_Variable_Product::ReadAction,'params'=>['product_id'=>$draft->get_id(),'page'=>1,'limit'=>20],
+        'extensions'=>['yoro.mcp_early_access_product_read'=>['product_lifecycle_version'=>1]]];
+    $draftSnapshot=YoRo_Variable_Product::execute($draftRead);
+    $assert(!is_wp_error($draftSnapshot)&&$draftSnapshot['data']['products'][0]['status']==='draft'&&$draftSnapshot['data']['variable']['attributes']===[]&&isset($draftSnapshot['data']['products'][0]['extensions']['woocommerce.product_lifecycle']),
+        'An exact negotiated draft read exposes editable context without publishing the parent.');
+    $legacyDraft=$draftRead;unset($legacyDraft['extensions']);$assert(is_wp_error(YoRo_Variable_Product::execute($legacyDraft)),'A legacy read cannot expose draft parent context.');
+    $wrongFlag=$draftRead;$wrongFlag['extensions']['yoro.mcp_early_access_product_read']['product_lifecycle_version']='1';$assert(is_wp_error(YoRo_Variable_Product::execute($wrongFlag)),'Draft read negotiation uses an exact integer version.');
+    $legacyPublished=YoRo_Variable_Product::execute(['action'=>YoRo_Variable_Product::ReadAction,'params'=>['product_id'=>$parent->get_id(),'page'=>1,'limit'=>20]]);
+    $assert(!is_wp_error($legacyPublished)&&$legacyPublished['data']['products'][0]['status']==='publish'&&!isset($legacyPublished['data']['products'][0]['extensions']['woocommerce.product_lifecycle']),'Legacy published reads preserve their projection and executor path.');
+    $draftAttributes=$make(YoRo_Variable_Product::AttributeAction,['attributes'=>[['name'=>'Size','options'=>['Small','Large'],'visible'=>true,'variation'=>true]],'defaults'=>[['name'=>'Size','option'=>'Small']]],$draft);
+    $draftPreview=YoRo_Variable_Product::preview($draftAttributes['params'],YoRo_Variable_Product::AttributeAction);
+    $assert(!is_wp_error($draftPreview)&&wc_get_product($draft->get_id())->get_attributes()===[],'Draft attribute preview remains non-mutating.');
+    $draftSaved=YoRo_Early_Access_Commerce_Write::execute($draftAttributes);$assert(!is_wp_error($draftSaved)&&wc_get_product($draft->get_id())->get_status()==='draft'&&wc_get_product($draft->get_id())->get_default_attributes()===['size'=>'Small'],'Draft parent attributes and defaults save without publishing.');
+    $draftVariation=$make(YoRo_Variable_Product::CreateAction,['attributes'=>[['name'=>'Size','option'=>'Small']],'regular_price'=>'19.50'],$draft);
+    $draftFence=YoRo_Early_Access_Commerce_Write::execute($draftVariation,static fn()=>false);$assert(is_wp_error($draftFence)&&YoRo_Variable_Product::context(wc_get_product($draft->get_id()))['children_count']===0,'Draft variation creation retains the final execution fence.');
+    $draftCreated=YoRo_Early_Access_Commerce_Write::execute($draftVariation);$assert(!is_wp_error($draftCreated),'A variation can be created inside the authorized draft parent. '.(is_wp_error($draftCreated)?$draftCreated->get_error_message():''));
+    $draftChild=wc_get_product($draftCreated['data']['variation_id']);$assert($draftChild->get_parent_id()===$draft->get_id()&&$draftChild->get_status()==='publish'&&wc_get_product($draft->get_id())->get_status()==='draft','Saving a published child preserves the draft storefront parent.');
+    $draftSnapshot=YoRo_Variable_Product::execute($draftRead);$assert(!is_wp_error($draftSnapshot)&&$draftSnapshot['data']['count']===1&&$draftSnapshot['data']['variations'][0]['id']===$draftChild->get_id(),'Negotiated management reads include children belonging to the draft parent.');
+    $assert(is_wp_error(YoRo_Early_Access_Commerce_Write::execute($draftVariation)),'Draft variation source versions prevent replay.');
+    $denyDraft=static function($caps,$cap,$user,$args)use($draft){return $cap==='edit_post'&&($args[0]??null)===$draft->get_id()?['do_not_allow']:$caps;};add_filter('map_meta_cap',$denyDraft,PHP_INT_MAX,4);
+    $assert(is_wp_error(YoRo_Variable_Product::execute($draftRead))&&is_wp_error(YoRo_Variable_Product::preview($draftVariation['params'],YoRo_Variable_Product::CreateAction)),'Draft reads and writes require the exact parent edit capability.');remove_filter('map_meta_cap',$denyDraft,PHP_INT_MAX);
+    $denyExecution=static fn($caps)=>array_replace($caps,['yoro_execute_actions'=>false]);add_filter('user_has_cap',$denyExecution,PHP_INT_MAX);
+    $assert(is_wp_error(YoRo_Variable_Product::execute($draftRead)),'A user without the YoRo execution capability cannot access draft management metadata.');remove_filter('user_has_cap',$denyExecution,PHP_INT_MAX);
+    foreach(['private','trash'] as $hiddenStatus){$hidden=new WC_Product_Variable();$hidden->set_name('Excluded variable '.$hiddenStatus);$hidden->set_status($hiddenStatus);$hidden->save();$hiddenRead=$draftRead;$hiddenRead['params']['product_id']=$hidden->get_id();$assert(is_wp_error(YoRo_Variable_Product::execute($hiddenRead)),'Lifecycle negotiation never exposes private or trashed variable parents.');}
+    wp_set_current_user(0);$assert(is_wp_error(YoRo_Variable_Product::execute($draftRead)),'Unauthenticated draft management is denied.');wp_set_current_user((int)$admins[0]);
     $unknownSku='yr0178-unknown-'.$parent->get_id();$simulated=false;
     $postSave=static function($product)use($unknownSku,&$simulated){
         if(!$simulated&&$product instanceof WC_Product_Variation&&$product->get_sku()===$unknownSku){$simulated=true;global $wpdb;$wpdb->update($wpdb->posts,['post_status'=>'private'],['ID'=>$product->get_id()]);clean_post_cache($product->get_id());}

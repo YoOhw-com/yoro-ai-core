@@ -240,7 +240,7 @@ class YoRo_Commerce_Contract_Validator {
 			if ( is_wp_error( $keys_valid )
 				|| ! self::bounded_string( $slot['field'], 1, 80 )
 				|| ! self::bounded_string( $slot['content'], 1, 20000 )
-				|| ! in_array( $slot['content_scope'], [ 'internal_note', 'customer_email', 'customer_message', 'store_preference' ], true )
+				|| ! in_array( $slot['content_scope'], [ 'internal_note', 'customer_email', 'customer_message', 'store_preference', 'public_review_reply' ], true )
 				|| ! in_array( $slot['provenance'], [ 'user_literal', 'user_goal' ], true ) ) {
 				return self::invalid( 'user_content_slots' );
 			}

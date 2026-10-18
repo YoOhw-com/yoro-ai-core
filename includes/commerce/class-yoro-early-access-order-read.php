@@ -19,6 +19,7 @@ class YoRo_Early_Access_Order_Read {
         if ( isset( $facts['order_projection_version'] ) && ( 1 !== $facts['order_projection_version']
             || ! in_array( $action, [ 'orders.get_details', 'orders.get_timeline' ], true )
             || 1 !== ( $facts['read_contract_version'] ?? null ) || 'orders' !== ( $facts['read_family'] ?? null ) ) ) { return false; }
+        if ( isset($facts['order_management_version']) && (1 !== $facts['order_management_version'] || 'orders.get_details' !== $action || 1 !== ($facts['order_projection_version'] ?? null))) { return false; }
         if ( isset( $facts['notes_page'] ) && ( 'orders.get_timeline' !== $action || 1 !== ( $facts['order_projection_version'] ?? null )
             || ! is_int( $facts['notes_page'] ) || $facts['notes_page'] < 1 || $facts['notes_page'] > 1000 ) ) { return false; }
         $allowed = 'orders.search' === $action ? [ 'order_id', 'status', 'date_from', 'date_to', 'limit' ]
@@ -50,6 +51,7 @@ class YoRo_Early_Access_Order_Read {
         $params = $operation['params'] ?? [];
         $facts = $operation['extensions']['yoro.mcp_early_access_product_read'] ?? [];
         $enhanced = 1 === ( $facts['order_projection_version'] ?? null );
+        $management = $enhanced && 'orders.get_details' === $action && 1 === ($facts['order_management_version'] ?? null);
         $result_extensions = (object) [];
         if ( ! self::valid_params( $action, $params, $facts ) || ! current_user_can( 'yoro_view_store_data' ) || ! function_exists( 'wc_get_orders' ) ) {
             return new WP_Error( 'order_read_unavailable', 'Order read did not complete.' );
@@ -104,7 +106,7 @@ class YoRo_Early_Access_Order_Read {
             }
             $orders = [];
             foreach ( $raw as $order ) {
-                if ( self::readable( $order ) && self::matches( $order, $params ) ) { $orders[] = self::order( $order, $details, $enhanced ); }
+                if ( self::readable( $order ) && self::matches( $order, $params ) ) { $row = self::order( $order, $details, $enhanced ); if ($management) { $row['extensions']['yoro.order_management'] = YoRo_Order_Management::details($order); } $orders[] = $row; }
             }
             $data = [ 'orders' => $orders, 'count' => count( $orders ) ];
             if ( ! $details && count( $orders ) < $params['limit'] ) { $has_next = false; }
