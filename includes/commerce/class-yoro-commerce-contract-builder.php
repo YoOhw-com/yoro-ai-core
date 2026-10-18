@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:d66c7dbad96abbc0ff98a2a4ff55e0bd38e0e42050623e142337b16185103719';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:ce082c72deb2b329363e97e486513c4c448dc94754fce805c0c03d954e269445';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -64,6 +64,7 @@ class YoRo_Commerce_Contract_Builder {
             $extensions[YoRo_Product_Lifecycle::ManifestExtension] = YoRo_Product_Lifecycle::manifest();
             $extensions['yoro.early_access_product_batch'] = YoRo_Product_Batch::manifest();
             $extensions[YoRo_Order_Management::ManifestExtension] = YoRo_Order_Management::manifest();
+            $extensions[YoRo_Order_Edit::ManifestExtension] = YoRo_Order_Edit::manifest();
             $extensions['yoro.early_access_order_batch'] = YoRo_Order_Batch::manifest();
             $extensions[YoRo_Coupon_Management::ManifestExtension] = YoRo_Coupon_Management::manifest();
             $extensions['yoro.early_access_catalog_options'] = YoRo_Product_Catalog_Options::manifest();
@@ -429,6 +430,7 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
+        if (class_exists('YoRo_Order_Edit') && in_array($action_name,[...YoRo_Order_Edit::ReadActions,...YoRo_Order_Edit::WriteActions],true)) {return YoRo_Order_Edit::result_schema($action_name);}
         if (class_exists('YoRo_Product_Reviews') && in_array($action_name,[...YoRo_Product_Reviews::ReadActions,...YoRo_Product_Reviews::WriteActions],true)) { return YoRo_Product_Reviews::result_schema($action_name); }
         if (class_exists('YoRo_Customer_History_Report') && in_array($action_name,YoRo_Customer_History_Report::ReadActions,true)) { return YoRo_Customer_History_Report::result_schema($action_name); }
         if (class_exists('YoRo_Product_Lifecycle') && in_array($action_name,[...YoRo_Product_Lifecycle::ReadActions,...YoRo_Product_Lifecycle::WriteActions],true)) { return YoRo_Product_Lifecycle::result_schema($action_name); }
@@ -1299,6 +1301,7 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	private static function canonical_write_data( $action_name, array $execution ) {
+        if(class_exists('YoRo_Order_Edit')&&in_array($action_name,YoRo_Order_Edit::WriteActions,true)){return self::canonical_data_fields($action_name,$execution);}
         if (class_exists('YoRo_Product_Reviews') && in_array($action_name,YoRo_Product_Reviews::WriteActions,true)) { return self::canonical_data_fields($action_name,$execution); }
         if (class_exists('YoRo_Product_Lifecycle') && in_array($action_name,YoRo_Product_Lifecycle::WriteActions,true)) { return self::canonical_data_fields($action_name,$execution); }
         if ((class_exists('YoRo_Order_Batch') && $action_name === YoRo_Order_Batch::Action) || (class_exists('YoRo_Order_Management') && in_array($action_name,YoRo_Order_Management::WriteActions,true))) { return self::canonical_data_fields($action_name,$execution); }
@@ -1364,6 +1367,7 @@ class YoRo_Commerce_Contract_Builder {
     }
 
 	private static function canonical_read_data( $action_name, array $execution ) {
+        if(class_exists('YoRo_Order_Edit')&&in_array($action_name,YoRo_Order_Edit::ReadActions,true)){return self::canonical_data_fields($action_name,$execution);}
 		$raw_data = is_array( $execution['data'] ?? null ) ? $execution['data'] : [];
         if((class_exists('YoRo_Product_Reviews') && in_array($action_name,YoRo_Product_Reviews::ReadActions,true)) || (class_exists('YoRo_Customer_History_Report') && in_array($action_name,YoRo_Customer_History_Report::ReadActions,true))){return self::canonical_data_fields($action_name,$execution);}
         if(class_exists('YoRo_Product_Lifecycle') && in_array($action_name,YoRo_Product_Lifecycle::ReadActions,true)){return self::canonical_data_fields($action_name,$execution);}

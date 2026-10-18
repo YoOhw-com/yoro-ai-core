@@ -57,6 +57,7 @@ class YoRo_Order_Presenter {
 					$order->get_customer_note( 'edit' ),
 					$tracking,
                     class_exists('YoRo_Order_Management') ? YoRo_Order_Management::tracking_fingerprint($order) : [],
+                    class_exists('YoRo_Order_Edit') ? YoRo_Order_Edit::fingerprint($order) : [],
 				]
 			)
 		);
