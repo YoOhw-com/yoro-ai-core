@@ -17,18 +17,29 @@ try {
     $read=YoRo_Product_Lifecycle::execute_read(['action'=>'products.get_creation_context','params'=>[],'workflow_id'=>wp_generate_uuid4(),'operation_id'=>'operation_1']);
     $assert(!$failed($read)&&$read['data']['target']['id']===0&&$read['data']['product_types']===['simple','variable']&&(array)$read['extensions']===[],'Creation context uses canonical empty extensions and no dummy product. '.wp_json_encode($read));
     $assert(YoRo_Product_Lifecycle::context()['target']['version']===$read['data']['target']['version'],'Repeated unchanged contexts have one source version.');
+    $cacheGeneration=wp_cache_get_last_changed('terms');usleep(1000);wp_cache_delete('last_changed','terms');$afterReset=YoRo_Product_Lifecycle::context();
+    $assert(wp_cache_get_last_changed('terms')!==$cacheGeneration&&$afterReset===$read['data'],'Resetting ephemeral term cache generation leaves the complete semantic creation context and version unchanged.');
+    wp_cache_flush();$assert(YoRo_Product_Lifecycle::context()===$read['data'],'A full nonpersistent cache reset cannot invalidate an unchanged creation source.');
     $assert(is_wp_error(YoRo_Product_Lifecycle::read_context(['unexpected'=>true])),'Context rejects unknown selectors.');
     $new=$contextParams(['name'=>'Lifecycle simple draft','type'=>'simple']);$before=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='product'");
+    wp_cache_delete('last_changed','terms');
     $preview=YoRo_Product_Lifecycle::preview($new,'products.create');$assert(!$failed($preview)&&(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='product'")===$before,'Creation preview never inserts product rows.');
     $assert(is_wp_error(YoRo_Product_Lifecycle::write($new,'products.create')),'Unconfirmed callbacks reject creation.');
     $assert(is_wp_error(YoRo_Early_Access_Commerce_Write::execute($operation('products.create',$new),static fn()=>false)),'A lost execution fence rejects creation.');
+    wp_cache_delete('last_changed','terms');
     $saved=$execute('products.create',$new);$assert(!$failed($saved),'Create simple draft through the actual confirmed executor. '.wp_json_encode($saved));
     $simpleId=$saved['data']['product_id'];$simple=wc_get_product($simpleId);
     $assert($simple->is_type('simple')&&$simple->get_status()==='draft'&&$simple->get_sku()===''&&$simple->get_global_unique_id()===''&&$saved['data']['source_product_id']===0&&(array)$saved['extensions']===[],'New simple product is an identifier-free draft with a canonical result.');
     $saved=$execute('products.create',$contextParams(['name'=>'Lifecycle variable parent','type'=>'variable']));$assert(!$failed($saved),'Create a variable draft parent. '.wp_json_encode($saved));$parentId=$saved['data']['product_id'];
     $assert(wc_get_product($parentId)->is_type('variable')&&wc_get_product($parentId)->get_children()===[],'New variable parent has no child variations.');
     foreach([['name'=>'Bad','type'=>'external'],['name'=>'Bad','type'=>'simple','status'=>'publish'],['name'=>'<b>HTML</b>','type'=>'simple'],['name'=>str_repeat('é',128),'type'=>'simple'],['type'=>'simple'],['name'=>'Bad','type'=>'simple','meta_data'=>[]]] as $bad){$assert(is_wp_error(YoRo_Product_Lifecycle::preview($contextParams($bad),'products.create')),'Creation rejects unsupported, unbounded and arbitrary data.');}
+    $contextBefore=YoRo_Product_Lifecycle::context()['target']['version'];
     $shipping=wp_insert_term('Lifecycle shipping '.wp_generate_uuid4(),'product_shipping_class');$assert(!is_wp_error($shipping),'Create a disposable existing shipping class.');$shippingId=(int)$shipping['term_id'];
+    $assert($contextBefore!==YoRo_Product_Lifecycle::context()['target']['version'],'A real shipping-class insertion changes the durable creation context.');
+    $staleShipping=$contextParams(['name'=>'Stale shipping context','type'=>'simple']);$renamed=wp_update_term($shippingId,'product_shipping_class',['name'=>'Lifecycle renamed shipping '.wp_generate_uuid4()]);
+    $assert(!is_wp_error($renamed)&&$staleShipping['expected_version']!==YoRo_Product_Lifecycle::context()['target']['version']&&is_wp_error(YoRo_Product_Lifecycle::prepare($staleShipping,'products.create')),'Changing an existing shipping-class display value invalidates the old context without relying on cache timestamps.');
+    $temporary=wp_insert_term('Lifecycle deleted shipping '.wp_generate_uuid4(),'product_shipping_class');$assert(!is_wp_error($temporary),'Create a disposable deletion fixture.');$contextBefore=YoRo_Product_Lifecycle::context()['target']['version'];
+    $assert(wp_delete_term((int)$temporary['term_id'],'product_shipping_class')===true&&$contextBefore!==YoRo_Product_Lifecycle::context()['target']['version'],'Removing a shipping class changes the durable creation context.');
     $other=new WC_Product_Simple();$other->set_name('Lifecycle linked product');$other->set_status('publish');$other->save();$otherId=$other->get_id();
     $patch=$params($simpleId,['status'=>'publish','featured'=>true,'catalog_visibility'=>'catalog','weight'=>'1.250000','length'=>'2','width'=>'3.125','height'=>'4','shipping_class_id'=>$shippingId,'upsell_ids'=>[$otherId],'cross_sell_ids'=>[$parentId]]);
     $oldVersion=$patch['expected_version'];$preview=YoRo_Product_Lifecycle::preview($patch,'products.update_lifecycle');$assert(!$failed($preview)&&wc_get_product($simpleId)->get_status()==='draft','Draft lifecycle preview does not publish.');
@@ -114,6 +125,15 @@ try {
     $assert(is_wp_error(YoRo_Product_Lifecycle::preview($contextParams(['name'=>'No term capability']),'products.create_tag')),'Taxonomy management capability is mandatory.');remove_filter('user_has_cap',$denyTerms,PHP_INT_MAX);
     $contextBefore=YoRo_Product_Lifecycle::context()['target']['version'];$unit=get_option('woocommerce_weight_unit');update_option('woocommerce_weight_unit',$unit==='kg'?'g':'kg');
     $assert($contextBefore!==YoRo_Product_Lifecycle::context()['target']['version'],'Store units invalidate creation source version.');update_option('woocommerce_weight_unit',$unit);
+    foreach(['woocommerce_dimension_unit'=>['cm','m'],'woocommerce_manage_stock'=>['yes','no']] as $option=>$values){
+        $beforeSetting=YoRo_Product_Lifecycle::context()['target']['version'];$old=get_option($option);update_option($option,$old===$values[0]?$values[1]:$values[0]);
+        $assert($beforeSetting!==YoRo_Product_Lifecycle::context()['target']['version'],'Actual '.$option.' settings changes invalidate the creation context.');update_option($option,$old);
+        $assert($beforeSetting===YoRo_Product_Lifecycle::context()['target']['version'],'Restoring the same '.$option.' data restores the semantic version despite cache churn.');
+    }
+    $staleCaps=$contextParams(['name'=>'Capability-bound creation','type'=>'simple']);$contextCaps=static fn($all)=>array_replace($all,['publish_products'=>false]);add_filter('user_has_cap',$contextCaps,PHP_INT_MAX);
+    try{$assert($staleCaps['expected_version']!==YoRo_Product_Lifecycle::context()['target']['version']&&is_wp_error(YoRo_Product_Lifecycle::prepare($staleCaps,'products.create')),'Actual actor capability changes invalidate the old creation source.');}
+    finally{remove_filter('user_has_cap',$contextCaps,PHP_INT_MAX);}
+    $assert($staleCaps['expected_version']===YoRo_Product_Lifecycle::context()['target']['version'],'Restoring the same actor capabilities restores the semantic context version.');
     $assert(YoRo_Product_Lifecycle::manifest()['duplicates_children']===false&&YoRo_Product_Lifecycle::manifest()['draft_reads']===true,'Manifest declares parent-only copies and authorized draft reads.');
     $overflow=wc_get_product($simpleId);$overflow->set_upsell_ids(range(100000,100020));$overflow->save();$details=YoRo_Product_Lifecycle::details(wc_get_product($simpleId));
     $assert(count($details['fields']['upsell_ids'])===20&&in_array('upsell_ids',$details['truncated_fields'],true)&&!in_array('upsell_ids',$details['editable_fields'],true)&&!$details['duplicate_supported'],'Oversized links disclose bounded source coverage and cannot authorize overwrite or copy.');

@@ -143,7 +143,8 @@ final class YoRo_Product_Lifecycle
         $data=['product_types'=>['simple','variable'],'weight_unit'=>(string)get_option('woocommerce_weight_unit','kg'),'dimension_unit'=>(string)get_option('woocommerce_dimension_unit','cm'),
             'shipping_classes'=>$rows,'shipping_classes_truncated'=>$truncated];
         if(strlen($data['weight_unit'])>20||strlen($data['dimension_unit'])>20||$wpdb->last_error!=='') {self::invalid();}
-        $version=hash('sha256',wp_json_encode([$data,get_current_user_id(),$caps,$generation,wp_cache_get_last_changed('terms'),get_option('woocommerce_manage_stock','no')]));
+        // Cache generations can reset between read, preview and execution without any store change.
+        $version=hash('sha256',wp_json_encode([$data,get_current_user_id(),$caps,$generation,get_option('woocommerce_manage_stock','no')]));
         return ['target'=>['id'=>0,'version'=>$version],...$data];
     }
 
