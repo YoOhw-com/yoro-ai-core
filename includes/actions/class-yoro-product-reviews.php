@@ -233,13 +233,15 @@ final class YoRo_Product_Reviews
         $review=$prepared['review'];$replyId=null;
         try {
             if($action==='products.reply_review') {
-                $user=wp_get_current_user();$replyId=wp_insert_comment(['comment_post_ID'=>(int)$review->comment_post_ID,'comment_parent'=>(int)$review->comment_ID,
-                    'comment_type'=>'comment','comment_content'=>$prepared['changes']['content'],'comment_approved'=>1,
-                    'user_id'=>$user->ID,'comment_author'=>$user->display_name,'comment_author_email'=>$user->user_email]);
-                if(!$replyId){throw new RuntimeException('Reply creation unavailable.');}
+                $user=wp_get_current_user();$replyId=wp_new_comment(wp_slash(['comment_post_ID'=>(int)$review->comment_post_ID,'comment_parent'=>(int)$review->comment_ID,
+                    'comment_type'=>'comment','comment_content'=>$prepared['changes']['content'],
+                    'user_id'=>(int)$user->ID,'comment_author'=>$user->display_name,'comment_author_email'=>$user->user_email,
+                    'comment_author_url'=>'','comment_author_IP'=>'','comment_agent'=>'']),true);
+                if(is_wp_error($replyId)||!is_int($replyId)||$replyId<1){return new WP_Error('product_review_reply_rejected','WordPress did not accept this public reply. No reply was created.');}
                 $fresh=get_comment($replyId);
                 if(!$fresh||(int)$fresh->comment_parent!==(int)$review->comment_ID||(int)$fresh->comment_post_ID!==$prepared['product_id']||$fresh->comment_content!==$prepared['changes']['content']
-                    ||(int)$fresh->user_id!==(int)$user->ID||wp_get_comment_status($fresh)!=='approved'){throw new RuntimeException('Reply outcome unavailable.');}
+                    ||$fresh->comment_type!=='comment'||(int)$fresh->user_id!==(int)$user->ID||$fresh->comment_author!==$user->display_name||$fresh->comment_author_email!==$user->user_email
+                    ||$fresh->comment_author_url!==''||wp_get_comment_status($fresh)!=='approved'){throw new RuntimeException('Reply outcome unavailable.');}
             }else {
                 $target=$prepared['changes']['status'];$old=wp_get_comment_status($review);
                 $saved=match($target){'restore'=>$old==='trash'?wp_untrash_comment($review->comment_ID):wp_unspam_comment($review->comment_ID),

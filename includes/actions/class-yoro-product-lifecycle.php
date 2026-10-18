@@ -9,6 +9,8 @@ final class YoRo_Product_Lifecycle
     public const WriteActions = ['products.create','products.duplicate','products.update_lifecycle','products.create_category','products.create_tag'];
     public const ManifestExtension = 'yoro.early_access_product_lifecycle';
     public const Fields = ['status','featured','catalog_visibility','weight','length','width','height','shipping_class_id','upsell_ids','cross_sell_ids'];
+    private const ParentCopyFields = ['description','short_description','virtual','downloadable','regular_price','sale_price','date_on_sale_from','date_on_sale_to','tax_status','tax_class','manage_stock','stock_quantity','stock_status','backorders','low_stock_amount','sold_individually','weight','length','width','height','shipping_class_id','upsell_ids','cross_sell_ids','category_ids','tag_ids','image_id','gallery_image_ids','purchase_note','reviews_allowed','catalog_visibility','featured','attributes','default_attributes'];
+    private const AttributeFields = ['id','name','options','position','visible','variation'];
 
     public static function manifest(): array
     {
@@ -197,18 +199,52 @@ final class YoRo_Product_Lifecycle
         return true;
     }
 
+    /** Every standard preimage copied to the draft, independently of modified-time granularity. */
+    public static function parent_copy_fingerprint(WC_Product $source): array
+    {
+        $fields=[];
+        foreach(self::ParentCopyFields as $field){
+            $getter='get_'.$field;$value=$source->$getter('edit');
+            if($field==='attributes'){
+                $attributes=[];foreach($value as $key=>$attribute){
+                    // Variations expose scalar attribute choices; parent products expose WC attribute objects.
+                    if($attribute instanceof WC_Product_Attribute){$attributes[$key]=self::attribute_values($attribute);}
+                    elseif(is_scalar($attribute)||$attribute===null){$attributes[$key]=$attribute;}else{self::invalid();}
+                }
+                $value=$attributes;
+            }elseif($value instanceof WC_DateTime){$value=['timestamp'=>$value->getTimestamp(),'timezone'=>$value->getTimezone()->getName()];}
+            $fields[$field]=$value;
+        }
+        return ['type'=>$source->get_type(),'fields'=>$fields];
+    }
+
+    private static function attribute_values(WC_Product_Attribute $attribute): array
+    {
+        $values=[];foreach(self::AttributeFields as $field){$getter='get_'.$field;$values[$field]=$attribute->$getter();}
+        return $values;
+    }
+
     private static function copy_parent(WC_Product $source,string $name): WC_Product
     {
         if(!self::copy_supported($source)) {self::invalid();}
         $product=$source->is_type('variable')?new WC_Product_Variable():new WC_Product_Simple();
-        $fields=['description','short_description','virtual','downloadable','regular_price','sale_price','date_on_sale_from','date_on_sale_to','tax_status','tax_class','manage_stock','stock_quantity','stock_status','backorders','low_stock_amount','sold_individually','weight','length','width','height','shipping_class_id','upsell_ids','cross_sell_ids','category_ids','tag_ids','image_id','gallery_image_ids','purchase_note','reviews_allowed','catalog_visibility','featured'];
-        foreach($fields as $field){$getter='get_'.$field;$setter='set_'.$field;$value=$source->$getter('edit');if($value instanceof WC_DateTime){$value=clone $value;}$product->$setter($value);}
+        foreach(self::ParentCopyFields as $field){
+            $getter='get_'.$field;$setter='set_'.$field;$value=$source->$getter('edit');
+            if($field==='attributes'){
+                $attributes=[];foreach($value as $key=>$attribute){
+                    if($attribute->is_taxonomy()){self::term_permission($attribute->get_name(),false);foreach($attribute->get_options() as $term){self::existing_term((int)$term,$attribute->get_name());}}
+                    $copy=new WC_Product_Attribute();foreach(self::attribute_values($attribute) as $property=>$attributeValue){$attributeSetter='set_'.$property;$copy->$attributeSetter($attributeValue);}
+                    // Copy standard attribute data only; plugin-owned extra data is arbitrary metadata.
+                    $attributes[$key]=$copy;
+                }
+                $value=$attributes;
+            }elseif($value instanceof WC_DateTime){$value=clone $value;}
+            $product->$setter($value);
+        }
         // Download file URLs and arbitrary metadata are deliberately outside this parent-only copy.
         if($source->is_downloadable()||$source->get_downloads('edit')!==[]) {self::invalid();}
         foreach(['category_ids'=>'product_cat','tag_ids'=>'product_tag'] as $field=>$taxonomy){$getter='get_'.$field;self::term_permission($taxonomy,false);foreach($source->$getter('edit') as $term){self::existing_term($term,$taxonomy);}}
         self::validate_references(self::fingerprint($source),$source->get_id());
-        $attributes=[];foreach($source->get_attributes('edit') as $key=>$attribute){$attributes[$key]=clone $attribute;if($attribute->is_taxonomy()){self::term_permission($attribute->get_name(),false);foreach($attribute->get_options() as $term){self::existing_term((int)$term,$attribute->get_name());}}}
-        $product->set_attributes($attributes);$product->set_default_attributes($source->get_default_attributes('edit'));
         $product->set_name($name);$product->set_status('draft');$product->set_sku('');if(method_exists($product,'set_global_unique_id')){$product->set_global_unique_id('');}
         return $product;
     }

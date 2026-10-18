@@ -1,6 +1,7 @@
 <?php
 /** Disposable WooCommerce fixtures; no installation, feature flags or external requests. */
 if(!defined('ABSPATH')||!class_exists('WooCommerce')||str_ends_with((string)wp_parse_url(home_url(),PHP_URL_HOST),'yorohq.com')) {throw new RuntimeException('Disposable WooCommerce required.');}
+if(!class_exists('YoRo_Commerce_Discovery_Service')) {require_once dirname(__DIR__,2).'/yoro-ai-core.php';do_action('init');}
 if(!class_exists('YoRo_Product_Lifecycle')) {require_once dirname(__DIR__,2).'/includes/actions/class-yoro-product-lifecycle.php';}
 $assert=static function($ok,$message){if(!$ok){throw new RuntimeException($message);}};
 $failed=static fn($result)=>is_wp_error($result)||(is_array($result)&&empty($result['success']));
@@ -49,6 +50,59 @@ try {
     $variation=new WC_Product_Variation();$variation->set_parent_id($parentId);$variation->set_status('publish');$variation->set_sku('variation-'.wp_generate_uuid4());$variation->set_global_unique_id('1234567890128');$variation->save();
     $saved=$execute('products.duplicate',$params($parentId,['name'=>'Lifecycle variable parent-only copy']));$assert(!$failed($saved),'Duplicate draft variable parent. '.wp_json_encode($saved));$copy=wc_get_product($saved['data']['product_id']);
     $assert($copy->is_type('variable')&&$copy->get_status()==='draft'&&$copy->get_children()===[]&&wc_get_product($variation->get_id())->get_parent_id()===$parentId,'No child or variation unique identifiers are copied or moved.');
+    $attribute=static function(string $name='Size',array $options=['Small','Large'],int $id=0): WC_Product_Attribute {
+        $attribute=new WC_Product_Attribute();$attribute->set_id($id);$attribute->set_name($name);$attribute->set_options($options);$attribute->set_position(0);$attribute->set_visible(true);$attribute->set_variation(true);return $attribute;
+    };
+    $sourceProduct=static function(bool $variable=false)use($attribute): WC_Product {
+        $source=$variable?new WC_Product_Variable():new WC_Product_Simple();$source->set_name('Same-second duplicate source '.wp_generate_uuid4());$source->set_status('publish');
+        $source->set_attributes([$attribute()]);$source->set_date_modified('2026-01-02T03:04:05+00:00');$source->save();return wc_get_product($source->get_id());
+    };
+    $mutateAttribute=static function(WC_Product $source,string $field,$value): void {
+        $attributes=$source->get_attributes('edit');$key=array_key_first($attributes);$changed=clone $attributes[$key];$setter='set_'.$field;$changed->$setter($value);$attributes[$key]=$changed;$source->set_attributes($attributes);
+    };
+    $sameSecondDuplicate=static function(string $field,WC_Product $source,callable $mutate)use($assert,$execute,$params): WC_Product {
+        $stale=$params($source->get_id(),['name'=>'Reviewed duplicate '.$field]);$stamp=clone $source->get_date_modified('edit');
+        $mutated=$mutate($source);if($mutated instanceof WC_Product){$source=$mutated;}$source->save();$source=wc_get_product($source->get_id());$source->set_date_modified($stamp);$source->save();$source=wc_get_product($source->get_id());
+        $assert($source->get_date_modified('edit')->getTimestamp()===$stamp->getTimestamp(),'The '.$field.' regression preserves the exact modified timestamp.');
+        $assert(YoRo_Commerce_Discovery_Service::product_version($source)!==$stale['expected_version'],'The full duplicate source hash binds '.$field.' independently from modified time.');
+        $preview=YoRo_Product_Lifecycle::preview($stale,'products.duplicate');
+        $assert(is_wp_error($preview)&&$preview->get_error_code()==='product_version_conflict','A stale duplicate preview rejects the changed '.$field.' source.');
+        global $wpdb;$before=(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='product'");$rejected=$execute('products.duplicate',$stale);
+        $assert(is_wp_error($rejected)&&(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='product'")===$before,'The confirmed executor creates no copy from stale '.$field.' source values.');
+        $fresh=$execute('products.duplicate',$params($source->get_id(),['name'=>'Fresh duplicate '.$field]));
+        $assert(!is_wp_error($fresh)&&!empty($fresh['success']),'A new explicit duplicate with fresh '.$field.' source version succeeds.');
+        $copy=wc_get_product($fresh['data']['product_id']);
+        $assert(YoRo_Product_Lifecycle::parent_copy_fingerprint($copy)===YoRo_Product_Lifecycle::parent_copy_fingerprint($source),'Fresh duplicate preserves every supported '.$field.' source value exactly.');
+        return $copy;
+    };
+    foreach(['virtual'=>true,'tax_status'=>'shipping','tax_class'=>'reduced-rate','sold_individually'=>true,'purchase_note'=>'Updated fixture purchase instruction','reviews_allowed'=>false] as $field=>$value){
+        $sameSecondDuplicate($field,$sourceProduct(),static function($source)use($field,$value){$setter='set_'.$field;$source->$setter($value);});
+    }
+    foreach(['name'=>'Dimension','options'=>['Medium','Large'],'position'=>3,'visible'=>false,'variation'=>false] as $field=>$value){
+        $sameSecondDuplicate('variable attribute '.$field,$sourceProduct(true),static fn($source)=>$mutateAttribute($source,$field,$value));
+    }
+    $defaults=$sourceProduct(true);$defaults->set_default_attributes(['size'=>'Small']);$defaults->save();
+    $sameSecondDuplicate('variable default attributes',wc_get_product($defaults->get_id()),static fn($source)=>$source->set_default_attributes(['size'=>'Large']));
+    // Taxonomy attributes bind their identity and exact term IDs as well as the six standard attribute values.
+    $taxonomyName='lifecycle_bound_'.substr(str_replace('-','',wp_generate_uuid4()),0,8);$taxonomyId=wc_create_attribute(['name'=>'Lifecycle bound attribute','slug'=>$taxonomyName,'type'=>'select','order_by'=>'menu_order','has_archives'=>false]);
+    $assert(!is_wp_error($taxonomyId),'Create an isolated native WC attribute taxonomy.');$taxonomy='pa_'.$taxonomyName;
+    register_taxonomy($taxonomy,['product'],['public'=>false,'capabilities'=>['manage_terms'=>'manage_product_terms','edit_terms'=>'edit_product_terms','delete_terms'=>'delete_product_terms','assign_terms'=>'assign_product_terms']]);
+    $term=wp_insert_term('Bound option',$taxonomy);$assert(!is_wp_error($term),'Create an existing taxonomy attribute option.');
+    $sameSecondDuplicate('taxonomy attribute identity and options',$sourceProduct(true),static fn($source)=>$source->set_attributes([$attribute($taxonomy,[(int)$term['term_id']],(int)$taxonomyId)]));
+    $typeSource=$sourceProduct();$sameSecondDuplicate('parent product type',$typeSource,static function($source){wp_set_object_terms($source->get_id(),'variable','product_type');clean_post_cache($source->get_id());return new WC_Product_Variable($source->get_id());});
+    $metadata=$sourceProduct(true);$attributes=$metadata->get_attributes('edit');$key=array_key_first($attributes);$changed=clone $attributes[$key];$changed->set_extra_data('private_fixture_payload',['must_not_copy'=>'fixture secret']);$attributes[$key]=$changed;$metadata->set_attributes($attributes);$metadata->save();
+    $metadataId=$metadata->get_id();$rehydrate=static function($attribute,$raw,$product)use($metadataId){if($product->get_id()===$metadataId&&isset($raw['private_fixture_payload'])){$attribute->set_extra_data('private_fixture_payload',$raw['private_fixture_payload']);}return $attribute;};
+    add_filter('woocommerce_product_read_attribute',$rehydrate,10,3);
+    $metadata=wc_get_product($metadataId);$assert($metadata->get_attributes('edit')[$key]->get_all_extra_data()!==[],'A supported plugin read hook restores persisted attribute extra data in the source.');
+    $sourceVersion=YoRo_Commerce_Discovery_Service::product_version($metadata);$standard=YoRo_Product_Lifecycle::parent_copy_fingerprint($metadata);
+    $attributes=$metadata->get_attributes('edit');$changed=clone $attributes[$key];$changed->set_extra_data('private_fixture_payload',['must_not_copy'=>'changed fixture secret']);$attributes[$key]=$changed;$stamp=clone $metadata->get_date_modified('edit');$metadata->set_attributes($attributes);$metadata->save();$metadata=wc_get_product($metadata->get_id());$metadata->set_date_modified($stamp);$metadata->save();$metadata=wc_get_product($metadata->get_id());
+    $assert(YoRo_Product_Lifecycle::parent_copy_fingerprint($metadata)===$standard&&YoRo_Commerce_Discovery_Service::product_version($metadata)===$sourceVersion,'Excluded arbitrary attribute metadata cannot alter the targeted standard copy values.');
+    $fresh=$execute('products.duplicate',$params($metadata->get_id(),['name'=>'Standard attribute-only duplicate']));$assert(!is_wp_error($fresh),'Supported standard attributes remain duplicable when arbitrary attribute extra data is present.');
+    $copy=wc_get_product($fresh['data']['product_id']);$assert($copy->get_attributes('edit')[$key]->get_all_extra_data()===[]&&YoRo_Product_Lifecycle::parent_copy_fingerprint($copy)===$standard,'A draft copies only six native attribute fields and exact defaults, never arbitrary attribute extra data.');
+    $copyAttributes=get_post_meta($copy->get_id(),'_product_attributes',true);$assert(!array_key_exists('private_fixture_payload',$copyAttributes[$key]),'Arbitrary attribute extra data never reaches the copied native storage.');remove_filter('woocommerce_product_read_attribute',$rehydrate,10);
+    $downloadable=$sourceProduct();$downloadStale=$params($downloadable->get_id(),['name'=>'Unsupported downloadable copy']);$downloadable->set_downloadable(true);$downloadable->save();
+    $assert(YoRo_Commerce_Discovery_Service::product_version(wc_get_product($downloadable->get_id()))!==$downloadStale['expected_version']&&is_wp_error(YoRo_Product_Lifecycle::preview($downloadStale,'products.duplicate')),'Downloadable source changes invalidate old versions.');
+    $assert(!YoRo_Product_Lifecycle::details(wc_get_product($downloadable->get_id()))['duplicate_supported']&&is_wp_error(YoRo_Product_Lifecycle::preview($params($downloadable->get_id(),['name'=>'Still unsupported']),'products.duplicate')),'A fresh version never enables unsupported downloadable copies.');
     $categoryName='Lifecycle category '.wp_generate_uuid4();$source=$contextParams(['name'=>$categoryName]);$saved=$execute('products.create_category',$source);$assert(!$failed($saved),'Create exact bounded category. '.wp_json_encode($saved));$categoryId=$saved['data']['term_id'];
     $assert($saved['data']===['term_id'=>$categoryId,'taxonomy'=>'product_cat','name'=>$categoryName,'parent_id'=>0],'Term result contains exactly stored taxonomy fields.');
     $assert($failed($execute('products.create_category',$source)),'Taxonomy generation invalidates old creation context.');
@@ -68,4 +122,4 @@ try {
     $bounded=YoRo_Product_Lifecycle::context();$assert(count($bounded['shipping_classes'])===100&&$bounded['shipping_classes_truncated']&&strlen(wp_json_encode($bounded))<=49152,'Shipping class rows and escaped Unicode fit the existing wire budget and explicitly disclose limited coverage.');
     wp_set_current_user(0);$assert(is_wp_error(YoRo_Product_Lifecycle::read_context([])),'Unauthenticated creation context is denied.');
     echo "Product lifecycle canonical reads, draft create/copy, exact fields, permissions, same-second versions, taxonomy creation and confirmed execution passed.\n";
-}finally{$wpdb->query('ROLLBACK');wp_cache_flush();wp_set_current_user($original);}
+}finally{if(isset($rehydrate)){remove_filter('woocommerce_product_read_attribute',$rehydrate,10);}$wpdb->query('ROLLBACK');wp_cache_flush();wp_set_current_user($original);}

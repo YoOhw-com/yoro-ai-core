@@ -117,15 +117,23 @@ try {
                 'expected_version'=>$params['expected_version'],'params_hash'=>YoRo_Early_Access_Product_Read::params_hash($params),'resource'=>'https://r2-api.yorohq.com/mcp/early-access',
                 'profile'=>'early_access','binding_version'=>2,'installation_uuid'=>$installation,'site_id'=>1,'site_key_id'=>1]]];
     };
-    $client->operation=$make('products.reply_review',['content'=>"Thank you.\nWe appreciate your feedback."]);
+    $postedCount=0;$notificationCalls=['moderator'=>0,'author'=>0];
+    $onModerator=static function($notify,$id)use(&$notificationCalls,$reviewId){if((int)get_comment($id)->comment_parent===$reviewId){$notificationCalls['moderator']++;}return $notify;};
+    $onAuthor=static function($notify,$id)use(&$notificationCalls,$reviewId){if((int)get_comment($id)->comment_parent===$reviewId){$notificationCalls['author']++;}return $notify;};
+    add_filter('notify_moderator',$onModerator,PHP_INT_MAX,2);add_filter('notify_post_author',$onAuthor,PHP_INT_MAX,2);
+    $onPosted=static function($id,$approved,$data)use(&$postedCount,$reviewId){if((int)$data['comment_parent']===$reviewId){$postedCount++;}};
+    add_action('comment_post',$onPosted,PHP_INT_MAX,3);
+    $client->operation=$make('products.reply_review',['content'=>"Thank you. It's helpful.\nReference C:\\notes stays literal."]);
     add_filter('pre_http_request',$block);
     $lock=$acquire->invoke(null);$assert($lock!==null,'The real connector runner owns its database lock.');
     $runtime=new YoRo_Connector_Runtime($client);
     $result=$runtime->run_early_access_write_once();
     $assert(!is_wp_error($result)&&($client->results[count($client->results)-1]['status']??null)==='executed','The confirmed public reply runs through the real parent journal and fenced transport: '.wp_json_encode($result));
     $replies=get_comments(['parent'=>$reviewId,'type'=>'comment','status'=>'all']);$assert(count($replies)===1&&$replies[0]->comment_content===$client->operation['params']['changes']['content']&&(int)$replies[0]->user_id===get_current_user_id(),'The reply is exact public content authored by the actual operator.');
+    $notifications=$notificationCalls;$assert($notifications['moderator']>0&&$notifications['author']>0,'Normal configured WordPress notification callbacks run under the fixture mail guard.');
     $result=$runtime->run_early_access_write_once();
-    $assert(!is_wp_error($result)&&(int)get_comments(['parent'=>$reviewId,'type'=>'comment','count'=>true])===1,'A completed journal replay cannot post another reply.');
+    $assert(!is_wp_error($result)&&(int)get_comments(['parent'=>$reviewId,'type'=>'comment','count'=>true])===1&&$postedCount===1&&$notificationCalls===$notifications,'The configured comment_post hook runs once, and completed journal replay cannot post or notify again.');
+    remove_action('comment_post',$onPosted,PHP_INT_MAX);remove_filter('notify_moderator',$onModerator,PHP_INT_MAX);remove_filter('notify_post_author',$onAuthor,PHP_INT_MAX);
     $client->operation=$make('products.reply_review',['content'=>'Never repeat an uncertain public reply.']);
     YoRo_Connector_Execution_Journal::begin($client->operation);$result=$runtime->run_early_access_write_once();
     $last=end($client->results);
@@ -149,9 +157,45 @@ try {
     $assert(!is_wp_error($result)&&(int)get_comments(['parent'=>$reviewId,'type'=>'comment','count'=>true])===2,'An uncertain persisted reply is never posted again by journal replay.');
     $detail=YoRo_Product_Reviews::read(['review_id'=>$reviewId],'products.get_review');
     $assert(count($detail['data']['replies'])===2&&$detail['data']['replies'][0]['review_id']===$reviewId&&$detail['data']['replies'][0]['product_id']===$product->get_id(),'Read replies remain bound to the exact product and root review.');
-    echo "Product reviews contract passed: product-only keyset reads, safe projection, complete versions/capabilities, explicit public previews, native restore, fenced runtime journal replay and unknown-stop.\n";
+    $replyCount=static fn()=>(int)get_comments(['parent'=>$reviewId,'type'=>'comment','status'=>'any','count'=>true]);
+    $before=$replyCount();$rejectedBody='WordPress policy rejects this exact reply.';$policyCalls=0;
+    $reject=static function($approved,$data)use($rejectedBody,&$policyCalls){if($data['comment_content']===$rejectedBody){$policyCalls++;return new WP_Error('fixture_policy_rejected','Disposable comment policy denied this reply.');}return $approved;};
+    $client->operation=$make('products.reply_review',['content'=>$rejectedBody]);
+    add_filter('pre_comment_approved',$reject,PHP_INT_MAX,2);
+    try{$result=$runtime->run_early_access_write_once();$last=end($client->results);$assert(!is_wp_error($result)&&$last['status']==='failed'&&($last['error']['code']??null)==='confirmed_change_failed'&&$replyCount()===$before&&$policyCalls===1,'A WordPress policy error before insert is a known canonical failure with no reply.');
+        $runtime->run_early_access_write_once();$assert($replyCount()===$before&&$policyCalls===1,'A rejected journal replay neither retries policy nor inserts a reply.');}
+    finally{remove_filter('pre_comment_approved',$reject,PHP_INT_MAX);}
+    foreach([0=>'unapproved','spam'=>'spam'] as $approved=>$expectedStatus){
+        $before=$replyCount();$body='WordPress policy retains a '.$expectedStatus.' reply.';$policyCalls=0;
+        $retain=static function($status,$data)use($body,$approved,&$policyCalls){if($data['comment_content']===$body){$policyCalls++;return $approved;}return $status;};
+        $client->operation=$make('products.reply_review',['content'=>$body]);
+        add_filter('pre_comment_approved',$retain,PHP_INT_MAX,2);
+        try{$result=$runtime->run_early_access_write_once();$last=end($client->results);$saved=get_comments(['parent'=>$reviewId,'type'=>'comment','status'=>'any','number'=>1,'orderby'=>'comment_ID','order'=>'DESC']);
+            $assert(!is_wp_error($result)&&($last['error']['code']??null)==='local_execution_outcome_unknown'&&$replyCount()===$before+1&&$saved[0]->comment_content===$body&&wp_get_comment_status($saved[0])===$expectedStatus,'WordPress '.$expectedStatus.' policy is preserved, never reported as an exact public success.');
+            $calls=$policyCalls;$runtime->run_early_access_write_once();$assert($replyCount()===$before+1&&$policyCalls===$calls,'An uncertain '.$expectedStatus.' reply is never posted or reprocessed again.');
+            $detail=YoRo_Product_Reviews::read(['review_id'=>$reviewId],'products.get_review');$projected=array_values(array_filter($detail['data']['replies'],static fn($row)=>$row['reply_id']===(int)$saved[0]->comment_ID));
+            if($expectedStatus==='unapproved'){$assert(count($projected)===1&&$projected[0]['status']===$expectedStatus,'A fresh review read exposes the held reply status.');}}
+        finally{remove_filter('pre_comment_approved',$retain,PHP_INT_MAX);}
+    }
+    $before=$replyCount();$originalBody='The exact approved public reply.';$changedBody='WordPress policy changed this reply.';$preprocessCalls=0;
+    $mutate=static function($data)use($originalBody,$changedBody,&$preprocessCalls){if($data['comment_content']===$originalBody){$preprocessCalls++;$data['comment_content']=$changedBody;}return $data;};
+    $client->operation=$make('products.reply_review',['content'=>$originalBody]);
+    add_filter('preprocess_comment',$mutate,PHP_INT_MAX);
+    try{$result=$runtime->run_early_access_write_once();$last=end($client->results);$saved=get_comments(['parent'=>$reviewId,'type'=>'comment','status'=>'any','number'=>1,'orderby'=>'comment_ID','order'=>'DESC']);
+        $assert(!is_wp_error($result)&&($last['error']['code']??null)==='local_execution_outcome_unknown'&&$replyCount()===$before+1&&$saved[0]->comment_content===$changedBody,'Preprocessing runs normally; changed persisted content cannot claim the confirmed exact public outcome.');
+        $runtime->run_early_access_write_once();$assert($replyCount()===$before+1&&$preprocessCalls===1,'A policy-modified reply is never repeated by journal replay.');}
+    finally{remove_filter('preprocess_comment',$mutate,PHP_INT_MAX);}
+    $before=$replyCount();$hookBody='The reply persisted before comment_post failed.';$hookCalls=0;
+    $failCommentPost=static function($id,$approved,$data)use($hookBody,&$hookCalls){if($data['comment_content']===$hookBody){$hookCalls++;throw new RuntimeException('Disposable comment_post failure.');}};
+    $client->operation=$make('products.reply_review',['content'=>$hookBody]);
+    add_action('comment_post',$failCommentPost,PHP_INT_MAX,3);
+    try{$result=$runtime->run_early_access_write_once();$last=end($client->results);$assert(!is_wp_error($result)&&($last['error']['code']??null)==='local_execution_outcome_unknown'&&$replyCount()===$before+1,'A comment_post exception after persistence is an unknown outcome, never a known no-effect failure.');
+        $runtime->run_early_access_write_once();$assert($replyCount()===$before+1&&$hookCalls===1,'A persisted reply and its failing comment_post hook are not repeated.');}
+    finally{remove_action('comment_post',$failCommentPost,PHP_INT_MAX);}
+    echo "Product reviews contract passed: product-only keyset reads, safe projection, complete versions/capabilities, explicit public previews, native restore, WordPress reply policy/hooks, fenced runtime journal replay and unknown-stop.\n";
 } finally {
     if($lock!==null){$release->invoke(null,$lock);}
     remove_filter('pre_http_request',$block);remove_filter('pre_wp_mail','__return_true');
+    if(isset($onPosted)){remove_action('comment_post',$onPosted,PHP_INT_MAX);remove_filter('notify_moderator',$onModerator,PHP_INT_MAX);remove_filter('notify_post_author',$onAuthor,PHP_INT_MAX);}
     $wpdb->query('ROLLBACK');wp_cache_flush();wp_set_current_user($original);
 }
