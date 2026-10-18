@@ -35,7 +35,7 @@ final class YoRo_Variable_Product
         }
         if ($action !== self::CreateAction) { self::invalid(); }
 
-        return array_merge(['attributes' => ['type' => 'array', 'minItems' => 1, 'maxItems' => self::MaxAttributes, 'items' => $selection]], array_diff_key(YoRo_Product_Edit::properties(), ['name' => true]));
+        return array_merge(['attributes' => ['type' => 'array', 'minItems' => 1, 'maxItems' => self::MaxAttributes, 'items' => $selection]], array_diff_key(YoRo_Product_Edit::properties(), array_fill_keys(['name','description','short_description','category_ids','tag_ids','image_id','gallery_image_ids'], true)));
     }
 
     public static function text( $value): bool
@@ -154,7 +154,8 @@ final class YoRo_Variable_Product
         }
         $base = ['name' => 'Variation', 'regular_price' => '', 'sale_price' => '', 'date_on_sale_from' => null, 'date_on_sale_to' => null,
             'sku' => '', 'global_unique_id' => '', 'manage_stock' => false, 'stock_quantity' => null, 'stock_status' => 'instock',
-            'backorders' => 'no', 'low_stock_amount' => null];
+            'backorders' => 'no', 'low_stock_amount' => null, 'description' => '', 'short_description' => '',
+            'category_ids' => [], 'tag_ids' => [], 'image_id' => 0, 'gallery_image_ids' => []];
         $meta = $row['extensions']['woocommerce.product'];
         $meta['edit_fields'] = $base;
         $meta['editable_fields'] = array_values(array_diff($meta['editable_fields'], ['name']));

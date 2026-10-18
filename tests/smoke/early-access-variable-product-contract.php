@@ -11,7 +11,7 @@ try {
     wp_set_current_user((int)$admins[0]);
     YoRo_WordPress_Actor::record_access(['assigned'=>true,'status'=>'active','role'=>'store_admin','permissions'=>['yoro_view_store_data','yoro_execute_actions']]);
     $attribute=new WC_Product_Attribute();$attribute->set_name('Size');$attribute->set_options(['Small','Medium','Large']);$attribute->set_visible(true);$attribute->set_variation(true);
-    $parent=new WC_Product_Variable();$parent->set_name('Disposable variable management');$parent->set_status('publish');$parent->set_attributes([$attribute]);$parent->save();
+    $parent=new WC_Product_Variable();$parent->set_name('Disposable variable management');$parent->set_status('publish');$parent->set_description(str_repeat('Parent content ',310));$parent->set_attributes([$attribute]);$parent->save();
     $make=static function($action,$changes,$parent){$version=YoRo_Variable_Product::context(wc_get_product($parent->get_id()))['version'];return [
         'action'=>$action,'params'=>['product_id'=>$parent->get_id(),'changes'=>$changes,'expected_version'=>$version],
         'workflow_id'=>wp_generate_uuid4(),'operation_id'=>'operation_1','authorization'=>['execution_permit'=>'disposable-test-permit'],
@@ -26,6 +26,8 @@ try {
     $assert(!is_wp_error($created),'Creation executes: '.(is_wp_error($created)?$created->get_error_message():wp_json_encode($created)));
     $variationId=$created['data']['variation_id'];$variation=wc_get_product($variationId);
     $assert($variation->get_parent_id()===$parent->get_id()&&$variation->get_attributes()['size']==='Small'&&$variation->get_regular_price()==='25','Creation targets the parent and exact option/price.');
+    $assert($variation->get_description('edit')==='' && (int)$variation->get_image_id('edit')===0 && $variation->get_gallery_image_ids('edit')===[]
+        && wc_get_product($parent->get_id())->get_description('edit')===str_repeat('Parent content ',310),'New variations use their own empty content/media defaults even when parent source is truncated; omitted parent content remains unchanged.');
     $assert(is_wp_error(YoRo_Early_Access_Commerce_Write::execute($operation)),'Stale create cannot execute twice.');
     $duplicate=$make(YoRo_Variable_Product::CreateAction,['attributes'=>[['name'=>'Size','option'=>'Small']],'regular_price'=>'30'],$parent);
     $assert(is_wp_error(YoRo_Early_Access_Commerce_Write::execute($duplicate)),'A fresh preview cannot create an existing combination.');

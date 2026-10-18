@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:2d1197fcd0e143629ca6942b85516941c83dd30077f56f8e47b40468d5611eac';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:a1b10557720f785546466dd2b525f9aadd036e3b8b017f680ee3a4e89664cd6e';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -59,6 +59,9 @@ class YoRo_Commerce_Contract_Builder {
 		if ( yoro_ai_core_has_woocommerce() ) {
 			$extensions['yoro.early_access_commerce_writes'] = YoRo_Early_Access_Commerce_Write::manifest();
             $extensions['yoro.early_access_product_edit'] = YoRo_Product_Edit::manifest();
+            $extensions['yoro.early_access_product_batch'] = YoRo_Product_Batch::manifest();
+            $extensions[YoRo_Coupon_Management::ManifestExtension] = YoRo_Coupon_Management::manifest();
+            $extensions['yoro.early_access_catalog_options'] = YoRo_Product_Catalog_Options::manifest();
             $extensions[YoRo_Variable_Product::Extension] = YoRo_Variable_Product::manifest();
             $extensions['yoro.early_access_customer_service'] = YoRo_Early_Access_Customer_Service_Read::manifest();
             $extensions['yoro.early_access_wordpress_read'] = YoRo_Early_Access_WordPress_Read::manifest();
@@ -421,6 +424,10 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
+        if ($action_name === YoRo_Product_Batch::Action) { return YoRo_Product_Batch::result_schema(); }
+        if (in_array($action_name,array_merge(YoRo_Coupon_Management::ReadActions,YoRo_Coupon_Management::WriteActions),true)) {
+            return YoRo_Coupon_Management::result_schema($action_name);
+        }
         if (in_array($action_name, ['products.update_attributes', 'products.create_variation'], true)) {
             $fields=['product_id'=>['type'=>'integer'],'changes'=>self::closed_object_schema(YoRo_Variable_Product::properties($action_name), []),'current_version'=>['type'=>'string']];
             if($action_name==='products.create_variation'){$fields['variation_id']=['type'=>'integer'];$fields['variation_version']=['type'=>'string'];}
@@ -607,6 +614,17 @@ class YoRo_Commerce_Contract_Builder {
 				[ 'products', 'page_info', 'count' ]
 			);
 		}
+
+        if (YoRo_Product_Catalog_Options::Action === $action_name) {
+            return self::closed_object_schema(['kind' => ['type' => 'string', 'enum' => ['categories','tags','images']],
+                'items' => ['type' => 'array', 'maxItems' => 20, 'items' => self::closed_object_schema([
+                    'id' => ['type' => 'integer', 'minimum' => 1], 'name' => ['type' => 'string', 'maxLength' => 200]], ['id','name'])],
+                'count' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 20],
+                'page_info' => self::closed_object_schema(['page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 1000],
+                    'per_page' => ['type' => 'integer', 'enum' => [20]], 'has_next_page' => ['type' => 'boolean'],
+                    'next_page' => ['type' => ['integer','null'], 'minimum' => 2, 'maximum' => 1000]], ['page','per_page','has_next_page','next_page'])],
+                ['kind','items','count','page_info']);
+        }
 
 		if ( 'products.get_details' === $action_name ) {
 			return self::closed_object_schema(
@@ -1249,7 +1267,7 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_read_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			[ 'products.get_variable_details', 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ],
+			[ 'coupons.search', 'coupons.get_details', 'products.get_catalog_options', 'products.get_variable_details', 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ],
 			true
 		);
 	}
@@ -1257,12 +1275,13 @@ class YoRo_Commerce_Contract_Builder {
 	private static function is_canonical_write_action( $action_name ) {
 		return in_array(
 			sanitize_text_field( $action_name ),
-			array_merge(['products.update_attributes', 'products.create_variation'], [ 'orders.update_status', 'products.update_stock', 'products.update_stock_status', 'products.update_details' ]),
+			array_merge([YoRo_Product_Batch::Action, ...YoRo_Coupon_Management::WriteActions, 'products.update_attributes', 'products.create_variation'], [ 'orders.update_status', 'products.update_stock', 'products.update_stock_status', 'products.update_details' ]),
 			true
 		);
 	}
 
 	private static function canonical_write_data( $action_name, array $execution ) {
+        if ($action_name === YoRo_Product_Batch::Action || in_array($action_name,YoRo_Coupon_Management::WriteActions,true)) { return self::canonical_data_fields($action_name,$execution); }
         if (in_array($action_name,['products.update_attributes', 'products.create_variation'],true)){
             return is_array($execution['data']??null) ? $execution['data'] : array_intersect_key($execution,array_flip(
                 $action_name==='products.create_variation' ? ['product_id','changes','current_version','variation_id','variation_version'] : ['product_id','changes','current_version']));
@@ -1312,8 +1331,21 @@ class YoRo_Commerce_Contract_Builder {
 		return $data;
 	}
 
+    /** Normalize the same closed data fields from local flat or canonical nested results. */
+    private static function canonical_data_fields(string $action_name, array $execution): array
+    {
+        $source = is_array($execution['data'] ?? null) ? $execution['data'] : $execution;
+        $data = [];
+        foreach (self::execution_data_schema($action_name)['required'] ?? [] as $field) {
+            if (array_key_exists($field,$source)) { $data[$field] = $source[$field]; }
+        }
+        return $data;
+    }
+
 	private static function canonical_read_data( $action_name, array $execution ) {
 		$raw_data = is_array( $execution['data'] ?? null ) ? $execution['data'] : [];
+        if(in_array($action_name,YoRo_Coupon_Management::ReadActions,true)){return self::canonical_data_fields($action_name,$execution);}
+        if($action_name===YoRo_Product_Catalog_Options::Action){return self::canonical_data_fields($action_name,$execution);}
         if($action_name==='products.get_variable_details'){return $raw_data ?: array_intersect_key($execution,array_flip(['products','variations','variable','count','page_info']));}
 
 		if ( in_array( $action_name, [ 'content.search', 'comments.list', 'media.search' ], true ) ) {

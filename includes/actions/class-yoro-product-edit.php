@@ -9,7 +9,7 @@ final class YoRo_Product_Edit
 
     public const Extension = 'yoro.early_access_product_edit';
 
-    public const Fields = ['name', 'regular_price', 'sale_price', 'date_on_sale_from', 'date_on_sale_to', 'sku', 'global_unique_id', 'manage_stock', 'stock_quantity', 'stock_status', 'backorders', 'low_stock_amount'];
+    public const Fields = ['name', 'regular_price', 'sale_price', 'date_on_sale_from', 'date_on_sale_to', 'sku', 'global_unique_id', 'manage_stock', 'stock_quantity', 'stock_status', 'backorders', 'low_stock_amount', 'description', 'short_description', 'category_ids', 'tag_ids', 'image_id', 'gallery_image_ids'];
 
     public static function manifest(): array
     {
@@ -29,7 +29,11 @@ final class YoRo_Product_Edit
             'stock_quantity' => ['type' => ['integer', 'null'], 'minimum' => -1000000000, 'maximum' => 1000000000],
             'stock_status' => ['type' => 'string', 'enum' => ['instock', 'outofstock', 'onbackorder']],
             'backorders' => ['type' => 'string', 'enum' => ['no', 'notify', 'yes']],
-            'low_stock_amount' => ['type' => ['integer', 'null'], 'minimum' => 0, 'maximum' => 1000000000]];
+            'low_stock_amount' => ['type' => ['integer', 'null'], 'minimum' => 0, 'maximum' => 1000000000],
+            'description' => ['type' => 'string', 'maxLength' => 4000],
+            'short_description' => ['type' => 'string', 'maxLength' => 1000],
+            'category_ids' => self::idsSchema(20), 'tag_ids' => self::idsSchema(20),
+            'image_id' => ['type' => 'integer', 'minimum' => 0], 'gallery_image_ids' => self::idsSchema(10)];
     }
 
     public static function changes($changes): array
@@ -39,7 +43,16 @@ final class YoRo_Product_Edit
         }
         foreach ($changes as $field => $value) {
             $valid = false;
-            if (in_array($field, ['name','sku','global_unique_id'], true)) {
+            if (in_array($field, ['description','short_description'], true)) {
+                $valid = is_string($value) && strlen($value) <= ($field === 'description' ? 4000 : 1000)
+                    && preg_match('//u', $value) === 1 && preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f<>]/', $value) !== 1;
+            } elseif (in_array($field, ['category_ids','tag_ids','gallery_image_ids'], true)) {
+                $valid = is_array($value) && array_is_list($value) && count($value) <= ($field === 'gallery_image_ids' ? 10 : 20)
+                    && count(array_unique($value, SORT_REGULAR)) === count($value)
+                    && count(array_filter($value, static fn($id) => is_int($id) && $id > 0)) === count($value);
+                if ($valid && $field !== 'gallery_image_ids') { sort($value, SORT_NUMERIC); $changes[$field] = $value; }
+            } elseif ($field === 'image_id') { $valid = is_int($value) && $value >= 0; }
+            elseif (in_array($field, ['name','sku','global_unique_id'], true)) {
                 $valid = is_string($value) && mb_strlen($value) <= ($field === 'name' ? 255 : 100)
                     && ($field !== 'name' || $value !== '') && trim($value) === $value && preg_match('//u', $value) === 1
                     && preg_match('/[\x00-\x1f\x7f<>]|%[a-f0-9]{2}/i', $value) !== 1
@@ -57,6 +70,11 @@ final class YoRo_Product_Edit
         }
 
         return array_replace(array_intersect_key(array_fill_keys(self::Fields, null), $changes), $changes);
+    }
+
+    private static function idsSchema(int $max): array
+    {
+        return ['type' => 'array', 'maxItems' => $max, 'uniqueItems' => true, 'items' => ['type' => 'integer', 'minimum' => 1]];
     }
 
     public static function validDate($value): bool
@@ -79,7 +97,7 @@ final class YoRo_Product_Edit
             self::invalid();
         }
         if (($row['type'] === 'variable' && array_intersect(array_keys($changes), ['regular_price', 'sale_price', 'date_on_sale_from', 'date_on_sale_to']) !== [])
-            || ($row['type'] === 'variation' && array_key_exists('name', $changes))) {
+            || ($row['type'] === 'variation' && array_intersect(array_keys($changes), ['name','short_description','category_ids','tag_ids','gallery_image_ids']) !== [])) {
             self::invalid();
         }
         if (array_diff(array_keys($changes), $meta['editable_fields'] ?? []) !== []) {
@@ -160,11 +178,26 @@ final class YoRo_Product_Edit
         $fields['manage_stock'] = true === $fields['manage_stock'];
         $editable = self::Fields;
         if ('variable' === $product->get_type()) { $editable = array_diff($editable, ['regular_price','sale_price','date_on_sale_from','date_on_sale_to']); }
-        if ('variation' === $product->get_type()) { $editable = array_diff($editable, ['name']); }
+        if ('variation' === $product->get_type()) { $editable = array_diff($editable, ['name','short_description','category_ids','tag_ids','gallery_image_ids']); }
+        $truncated = [];
+        foreach (['description' => 4000, 'short_description' => 1000] as $field => $max) {
+            $raw = (string) $fields[$field];
+            $fields[$field] = mb_strcut($raw, 0, $max, 'UTF-8');
+            if ($fields[$field] !== $raw) { $truncated[] = $field; }
+        }
+        foreach (['category_ids' => 20, 'tag_ids' => 20, 'gallery_image_ids' => 10] as $field => $max) {
+            $fields[$field] = array_values(array_map('intval', (array) $fields[$field]));
+            if ($field !== 'gallery_image_ids') { sort($fields[$field], SORT_NUMERIC); }
+            if (count($fields[$field]) > $max) { $truncated[] = $field; $fields[$field] = array_slice($fields[$field], 0, $max); }
+        }
+        $fields['image_id'] = (int) $fields['image_id'];
+        $editable = array_diff($editable, $truncated);
         if (!method_exists($product, 'set_global_unique_id')) { $editable = array_diff($editable, ['global_unique_id']); }
         $enabled = 'yes' === get_option('woocommerce_manage_stock');
         if (!$enabled) { $editable = array_diff($editable, ['manage_stock','stock_quantity','stock_status','backorders','low_stock_amount']); }
-        return ['sale_timezone' => wp_timezone_string(), 'edit_fields' => $fields, 'editable_fields' => array_values($editable),
+        return ['content_truncated' => $truncated, 'categories' => YoRo_Product_Catalog_Options::terms($fields['category_ids'], 'product_cat'),
+            'tags' => YoRo_Product_Catalog_Options::terms($fields['tag_ids'], 'product_tag'),
+            'sale_timezone' => wp_timezone_string(), 'edit_fields' => $fields, 'editable_fields' => array_values($editable),
             'stock_management_enabled' => $enabled, 'stock_managed_by_parent' => 'parent' === $product->get_manage_stock(),
             'no_stock_amount' => max(0, (int) get_option('woocommerce_notify_no_stock_amount', 0))];
     }
@@ -187,11 +220,30 @@ final class YoRo_Product_Edit
             }
             $facts = self::facts($product);
             $changes = self::effective(self::changes($params['changes'] ?? null), ['type'=>$product->get_type(),'extensions'=>['woocommerce.product'=>$facts]]);
+            self::validate_catalog_changes($changes);
             self::apply_changes($product, $changes);
             return ['product'=>$product,'changes'=>$changes,'before'=>$facts['edit_fields']];
         } catch (Throwable $error) {
             return new WP_Error('product_edit_invalid', 'The product change is invalid or an identifier is already in use. Check the fields and read the product again.');
         }
+    }
+
+    /** Recheck existing classification/media authority for every preview and execution. */
+    private static function validate_catalog_changes(array $changes): void
+    {
+        foreach (['category_ids' => 'product_cat', 'tag_ids' => 'product_tag'] as $field => $taxonomy) {
+            if (!array_key_exists($field, $changes)) { continue; }
+            $definition = get_taxonomy($taxonomy);
+            if (!$definition || !current_user_can($definition->cap->assign_terms)) { self::invalid(); }
+            foreach ($changes[$field] as $id) {
+                $term = get_term($id, $taxonomy);
+                if (!$term instanceof WP_Term || !current_user_can('assign_term', $id)) { self::invalid(); }
+            }
+        }
+        $images = $changes['gallery_image_ids'] ?? [];
+        if (!empty($changes['image_id'])) { $images[] = $changes['image_id']; }
+        if ((array_key_exists('image_id', $changes) || array_key_exists('gallery_image_ids', $changes)) && !current_user_can('upload_files')) { self::invalid(); }
+        foreach ($images as $id) { if (!YoRo_Product_Catalog_Options::image_visible($id)) { self::invalid(); } }
     }
 
     /** Validate setters on an in-memory product before its first save. */

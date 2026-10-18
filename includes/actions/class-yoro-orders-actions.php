@@ -8,6 +8,14 @@ class YoRo_Orders_Actions {
 
 	public static function register() {
         YoRo_Variable_Product::register();
+        YoRo_Action_Registry::register(YoRo_Product_Catalog_Options::Action, [
+            'label' => 'Get catalog options', 'description' => 'Read existing categories, tags or visible image attachment IDs.',
+            'category' => 'products', 'permission' => 'manage_woocommerce', 'callback' => [YoRo_Product_Catalog_Options::class, 'execute'],
+            'risk_level' => 'low', 'write_action' => false, 'max_items' => 20,
+            'input_schema' => ['kind' => 'string', 'query' => 'string', 'page' => 'integer'],
+            'canonical_input_schema' => YoRo_Product_Catalog_Options::properties(), 'required_params' => ['kind'],
+            'ai_description' => 'Read existing catalog IDs before editing product classification or images. Never imports images or creates taxonomy terms.',
+            'capabilities' => ['products', 'read']]);
         YoRo_Action_Registry::register('products.update_details', [
             'label'=>'Edit product', 'description'=>'Edit supported fields of one published product.',
             'category'=>'products','permission'=>'yoro_execute_actions','callback'=>[YoRo_Product_Edit::class,'execute'],
@@ -18,7 +26,7 @@ class YoRo_Orders_Actions {
                 'changes'=>['type'=>'object','properties'=>YoRo_Product_Edit::properties(),'required'=>[],'additionalProperties'=>false],
                 'expected_version'=>['type'=>'string','pattern'=>'^[a-f0-9]{64}$']],
             'required_params'=>['product_id','changes','expected_version'],'concurrency_strategy'=>'optimistic_version',
-            'ai_description'=>'Edit the name, regular/sale price, SKU, global unique ID and stock settings for one product after explicit confirmation. Omitted fields are unchanged.',
+            'ai_description'=>'Edit content, existing classifications/media, name, regular/sale price, SKU, global unique ID and stock settings for one product after explicit confirmation. Omitted fields are unchanged.',
             'capabilities'=>['products','inventory','write']]);
 		YoRo_Action_Registry::register(
 			'orders.search',

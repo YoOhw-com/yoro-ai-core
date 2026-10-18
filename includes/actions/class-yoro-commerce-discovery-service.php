@@ -253,6 +253,9 @@ class YoRo_Commerce_Discovery_Service {
 					$product->get_stock_status(),
 					$product->get_price(),
                     YoRo_Product_Edit::facts($product),
+                    // Hash full source values even when the safe read projection is bounded.
+                    [$product->get_description('edit'), $product->get_short_description('edit'), $product->get_category_ids('edit'),
+                        $product->get_tag_ids('edit'), $product->get_image_id('edit'), $product->get_gallery_image_ids('edit')],
                     ($product->get_date_on_sale_from('edit') ? $product->get_date_on_sale_from('edit')->getTimestamp() : null),
                     ($product->get_date_on_sale_to('edit') ? $product->get_date_on_sale_to('edit')->getTimestamp() : null),
 				]
