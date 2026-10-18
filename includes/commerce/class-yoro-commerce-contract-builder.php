@@ -424,8 +424,8 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
-        if ($action_name === YoRo_Product_Batch::Action) { return YoRo_Product_Batch::result_schema(); }
-        if (in_array($action_name,array_merge(YoRo_Coupon_Management::ReadActions,YoRo_Coupon_Management::WriteActions),true)) {
+        if (class_exists('YoRo_Product_Batch') && $action_name === YoRo_Product_Batch::Action) { return YoRo_Product_Batch::result_schema(); }
+        if (class_exists('YoRo_Coupon_Management') && in_array($action_name,array_merge(YoRo_Coupon_Management::ReadActions,YoRo_Coupon_Management::WriteActions),true)) {
             return YoRo_Coupon_Management::result_schema($action_name);
         }
         if (in_array($action_name, ['products.update_attributes', 'products.create_variation'], true)) {
@@ -615,7 +615,7 @@ class YoRo_Commerce_Contract_Builder {
 			);
 		}
 
-        if (YoRo_Product_Catalog_Options::Action === $action_name) {
+        if (class_exists('YoRo_Product_Catalog_Options') && YoRo_Product_Catalog_Options::Action === $action_name) {
             return self::closed_object_schema(['kind' => ['type' => 'string', 'enum' => ['categories','tags','images']],
                 'items' => ['type' => 'array', 'maxItems' => 20, 'items' => self::closed_object_schema([
                     'id' => ['type' => 'integer', 'minimum' => 1], 'name' => ['type' => 'string', 'maxLength' => 200]], ['id','name'])],
@@ -1273,15 +1273,22 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	private static function is_canonical_write_action( $action_name ) {
+		$actions = [ 'products.update_attributes', 'products.create_variation', 'orders.update_status', 'products.update_stock', 'products.update_stock_status', 'products.update_details' ];
+		if ( class_exists( 'YoRo_Product_Batch' ) ) {
+			$actions[] = YoRo_Product_Batch::Action;
+		}
+		if ( class_exists( 'YoRo_Coupon_Management' ) ) {
+			$actions = array_merge( $actions, YoRo_Coupon_Management::WriteActions );
+		}
 		return in_array(
 			sanitize_text_field( $action_name ),
-			array_merge([YoRo_Product_Batch::Action, ...YoRo_Coupon_Management::WriteActions, 'products.update_attributes', 'products.create_variation'], [ 'orders.update_status', 'products.update_stock', 'products.update_stock_status', 'products.update_details' ]),
+			$actions,
 			true
 		);
 	}
 
 	private static function canonical_write_data( $action_name, array $execution ) {
-        if ($action_name === YoRo_Product_Batch::Action || in_array($action_name,YoRo_Coupon_Management::WriteActions,true)) { return self::canonical_data_fields($action_name,$execution); }
+        if ((class_exists('YoRo_Product_Batch') && $action_name === YoRo_Product_Batch::Action) || (class_exists('YoRo_Coupon_Management') && in_array($action_name,YoRo_Coupon_Management::WriteActions,true))) { return self::canonical_data_fields($action_name,$execution); }
         if (in_array($action_name,['products.update_attributes', 'products.create_variation'],true)){
             return is_array($execution['data']??null) ? $execution['data'] : array_intersect_key($execution,array_flip(
                 $action_name==='products.create_variation' ? ['product_id','changes','current_version','variation_id','variation_version'] : ['product_id','changes','current_version']));
@@ -1344,8 +1351,8 @@ class YoRo_Commerce_Contract_Builder {
 
 	private static function canonical_read_data( $action_name, array $execution ) {
 		$raw_data = is_array( $execution['data'] ?? null ) ? $execution['data'] : [];
-        if(in_array($action_name,YoRo_Coupon_Management::ReadActions,true)){return self::canonical_data_fields($action_name,$execution);}
-        if($action_name===YoRo_Product_Catalog_Options::Action){return self::canonical_data_fields($action_name,$execution);}
+        if(class_exists('YoRo_Coupon_Management') && in_array($action_name,YoRo_Coupon_Management::ReadActions,true)){return self::canonical_data_fields($action_name,$execution);}
+        if(class_exists('YoRo_Product_Catalog_Options') && $action_name===YoRo_Product_Catalog_Options::Action){return self::canonical_data_fields($action_name,$execution);}
         if($action_name==='products.get_variable_details'){return $raw_data ?: array_intersect_key($execution,array_flip(['products','variations','variable','count','page_info']));}
 
 		if ( in_array( $action_name, [ 'content.search', 'comments.list', 'media.search' ], true ) ) {

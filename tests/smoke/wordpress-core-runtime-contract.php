@@ -62,6 +62,9 @@ $assert( ! array_key_exists( 'content_base64', $media_upload['input_schema'] ?? 
 
 if ( ! yoro_ai_core_has_woocommerce() ) {
 	$assert( ! isset( $actions['orders.search'] ), 'WooCommerce actions must not load on plain WordPress.' );
+	foreach ( [ 'products.batch_update', 'products.get_catalog_options', 'coupons.search', 'coupons.get_details', 'coupons.create_managed', 'coupons.update' ] as $commerce_action ) {
+		$assert( ! isset( $actions[ $commerce_action ] ), 'Commerce actions must remain unavailable on plain WordPress: ' . $commerce_action );
+	}
 
 	$runtime = [
 		'connector_key'           => 'wordpress',
