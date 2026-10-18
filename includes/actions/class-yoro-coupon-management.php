@@ -106,7 +106,8 @@ final class YoRo_Coupon_Management
         $object = static fn ($properties, $required = null) => ['type'=>'object','properties'=>$properties,'required'=>$required ?? array_keys($properties),'additionalProperties'=>false];
         $row=$object(['id'=>['type'=>'integer','minimum'=>1],'code'=>['type'=>'string','minLength'=>1,'maxLength'=>100],
             'version'=>['type'=>'string','pattern'=>'^[a-f0-9]{64}$'],'fields'=>$object(self::properties()),
-            'editable_fields'=>['type'=>'array','uniqueItems'=>true,'maxItems'=>count(self::Fields),'items'=>['type'=>'string','enum'=>self::Fields]]]);
+            'editable_fields'=>['type'=>'array','uniqueItems'=>true,'maxItems'=>count(self::Fields),'items'=>['type'=>'string','enum'=>self::Fields]],
+            'truncated_fields'=>['type'=>'array','uniqueItems'=>true,'maxItems'=>count(self::Fields),'items'=>['type'=>'string','enum'=>self::Fields]]]);
         if($action==='coupons.search') {
             return $object(['coupons'=>['type'=>'array','maxItems'=>20,'items'=>$row],
                 'coupon_page'=>$object(['page'=>['type'=>'integer','minimum'=>1,'maximum'=>10000],'has_more'=>['type'=>'boolean']]),
@@ -144,7 +145,7 @@ final class YoRo_Coupon_Management
 
     public static function row(WC_Coupon $coupon): array
     {
-        $fields=[]; $editable=self::Fields;
+        $fields=[]; $editable=self::Fields; $truncated=[];
         foreach(self::Fields as $field) {
             $getter='get_'.$field; $value=$coupon->$getter('edit');
             if(in_array($field,['amount','minimum_amount','maximum_amount'],true)) { $value=YoRo_Product_Edit::normalizedPrice((string)$value); }
@@ -152,15 +153,18 @@ final class YoRo_Coupon_Management
             elseif(in_array($field,['usage_limit','usage_limit_per_user'],true)) { $value=$value ? (int)$value : null; }
             elseif(in_array($field,['product_ids','excluded_product_ids','product_categories','excluded_product_categories'],true)) {
                 $value=array_values(array_map('intval',$value)); sort($value,SORT_NUMERIC);
-                if(count($value)>20) { $editable=array_diff($editable,[$field]); $value=array_slice($value,0,20); }
+                if(count($value)>20) { $editable=array_diff($editable,[$field]); $truncated[]=$field; $value=array_slice($value,0,20); }
             } elseif(in_array($field,['individual_use','free_shipping','exclude_sale_items'],true)) { $value=(bool)$value; }
             elseif($field==='description') {
                 if(strlen($value)>1000 || preg_match('/[<>]|%[a-f0-9]{2}/i',$value)) { $editable=array_diff($editable,[$field]); }
+                $original=$value;
                 $value=mb_strcut(preg_replace('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]|%[a-f0-9]{2}/i','',wp_strip_all_tags($value)),0,1000,'UTF-8');
+                if($original!==$value) { $truncated[]=$field; $editable=array_diff($editable,[$field]); }
             }
             $fields[$field]=$value;
         }
-        return ['id'=>(int)$coupon->get_id(),'code'=>$coupon->get_code('edit'),'version'=>self::version($coupon),'fields'=>$fields,'editable_fields'=>array_values($editable)];
+        sort($truncated,SORT_STRING);
+        return ['id'=>(int)$coupon->get_id(),'code'=>$coupon->get_code('edit'),'version'=>self::version($coupon),'fields'=>$fields,'editable_fields'=>array_values($editable),'truncated_fields'=>$truncated];
     }
 
     public static function version(WC_Coupon $coupon): string

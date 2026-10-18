@@ -43,14 +43,15 @@ final class YoRo_Product_Catalog_Options
         $rows = [];
         foreach (array_slice($ids, 0, 20) as $id) {
             $term = get_term($id, $taxonomy);
-            if ($term instanceof WP_Term) { $rows[] = ['id' => (int) $id, 'name' => self::label($term->name)]; }
+            if ($term instanceof WP_Term) { $rows[] = ['id' => (int) $id, 'name' => self::label($term->name, ($taxonomy === 'product_cat' ? 'Category #' : 'Tag #') . (int) $id)]; }
         }
         return $rows;
     }
 
-    private static function label(string $value): string
+    private static function label(string $value, string $fallback): string
     {
-        return mb_strcut(sanitize_text_field($value), 0, 200, 'UTF-8');
+        $label = mb_strcut(sanitize_text_field($value), 0, 200, 'UTF-8');
+        return preg_match('/[^\s\p{Z}]/u', $label) === 1 ? $label : $fallback;
     }
 
     public static function execute($params)
@@ -72,7 +73,7 @@ final class YoRo_Product_Catalog_Options
             if (!current_user_can('edit_others_posts')) { $args['author'] = get_current_user_id(); }
             $query = new WP_Query($args);
             foreach ($query->posts as $post) {
-                if (self::image_visible((int) $post->ID)) { $items[] = ['id' => (int) $post->ID, 'name' => self::label($post->post_title)]; }
+                if (self::image_visible((int) $post->ID)) { $items[] = ['id' => (int) $post->ID, 'name' => self::label($post->post_title, 'Image #' . (int) $post->ID)]; }
             }
             $has_more = $page < (int) $query->max_num_pages;
         } else {
@@ -85,7 +86,7 @@ final class YoRo_Product_Catalog_Options
             $has_more = count($terms) > 20;
             foreach (array_slice($terms, 0, 20) as $term) {
                 if ($term instanceof WP_Term && current_user_can('assign_term', (int) $term->term_id)) {
-                    $items[] = ['id' => (int) $term->term_id, 'name' => self::label($term->name)];
+                    $items[] = ['id' => (int) $term->term_id, 'name' => self::label($term->name, ($kind === 'categories' ? 'Category #' : 'Tag #') . (int) $term->term_id)];
                 }
             }
         }

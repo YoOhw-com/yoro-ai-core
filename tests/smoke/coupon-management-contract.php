@@ -43,5 +43,13 @@ try {
     $coupon=new WC_Coupon($id);$assert($coupon->get_status()==='publish' && $coupon->get_date_expires()===null && $coupon->get_usage_limit()===0 && $coupon->get_product_ids()===[],'Explicit clear semantics match WooCommerce.');
     $coupon->set_description(str_repeat('<b>legacy</b>',200));$coupon->save();$row=YoRo_Coupon_Management::row(new WC_Coupon($id));
     $assert(strlen($row['fields']['description'])<=1000&&!in_array('description',$row['editable_fields'],true),'Legacy HTML/long descriptions stay readable and independently uneditable.');
+    $assert($row['truncated_fields']===['description'],'Description shortening is explicitly disclosed.');
+    $coupon=new WC_Coupon($id);
+    foreach(['product_ids','excluded_product_ids','product_categories','excluded_product_categories'] as $field) { $setter='set_'.$field;$coupon->$setter(range(1,21)); }
+    $coupon->save();$read=YoRo_Early_Access_Coupon_Read::execute(['action'=>'coupons.get_details','params'=>['coupon_id'=>$id],'workflow_id'=>wp_generate_uuid4(),'operation_id'=>'operation_1']);
+    $assert(!is_wp_error($read),'Bounded oversized restrictions remain readable.');$row=$read['data']['coupon'];
+    $expected=['description','excluded_product_categories','excluded_product_ids','product_categories','product_ids'];
+    $assert($row['truncated_fields']===$expected && array_intersect($row['truncated_fields'],$row['editable_fields'])===[],'Every shortened field is disclosed in sorted order and cannot be edited.');
+    foreach(array_diff($expected,['description']) as $field) { $getter='get_'.$field;$assert(count($row['fields'][$field])===20 && count((new WC_Coupon($id))->$getter())===21,'View bounds preserve the full stored restriction list.'); }
     echo "Coupon management CRUD, source/version, decimal/date, clear, restriction permission and negative contracts passed.\n";
 } finally {$wpdb->query('ROLLBACK');wp_cache_flush();wp_set_current_user($original);remove_filter('pre_wp_mail','__return_true');}

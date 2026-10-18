@@ -66,6 +66,34 @@ try {
     $assert(!is_wp_error($images) && !in_array($image,array_column($images['data']['items'],'id'),true)
         && !in_array($pdf,array_column($images['data']['items'],'id'),true) && !in_array($trashed,array_column($images['data']['items'],'id'),true), 'Image discovery excludes hidden, nonimage and trashed attachments.');
     remove_filter('map_meta_cap',$denied,10);
+    $untitled = wp_insert_attachment(['post_title' => '', 'post_mime_type' => 'image/png', 'post_status' => 'inherit']);
+    $whitespace = wp_insert_attachment(['post_title' => " \t\n\u{2003} ", 'post_mime_type' => 'image/png', 'post_status' => 'inherit']);
+    update_post_meta($untitled, '_wp_attached_file', $key . '-untitled.png');
+    update_post_meta($whitespace, '_wp_attached_file', $key . '-whitespace.png');
+    $only_untitled = static function($query) use ($untitled, $whitespace) {
+        if ($query->get('post_type') === 'attachment') { $query->set('post__in', [$untitled,$whitespace]); }
+    };
+    add_action('pre_get_posts',$only_untitled);
+    try { $untitled_page = $read(['kind' => 'images']); }
+    finally { remove_action('pre_get_posts',$only_untitled); }
+    $assert(!is_wp_error($untitled_page) && $untitled_page['data']['items'] === [
+        ['id' => $untitled, 'name' => 'Image #' . $untitled], ['id' => $whitespace, 'name' => 'Image #' . $whitespace]],
+        'Empty and whitespace image titles receive readable ID labels instead of invalidating the options page.');
+    $empty_terms = static function($terms,$taxonomies) use ($categories,$tag) {
+        foreach ($terms as &$term) {
+            if ($term instanceof WP_Term && in_array((int)$term->term_id,[$categories[0],$tag],true)) {
+                $term = clone $term; $term->name = '   ';
+            }
+        }
+        unset($term);
+        return $terms;
+    };
+    add_filter('get_terms',$empty_terms,10,2);
+    try { $category_labels = $read(['kind' => 'categories','query' => $key]); $tag_labels = $read(['kind' => 'tags','query' => $key]); }
+    finally { remove_filter('get_terms',$empty_terms,10); }
+    $assert(!is_wp_error($category_labels) && $category_labels['data']['items'][0]['name'] === 'Category #' . $categories[0]
+        && !is_wp_error($tag_labels) && $tag_labels['data']['items'][0]['name'] === 'Tag #' . $tag,
+        'Classification labels retain readable IDs when a source name becomes empty after filtering.');
     $first = $read(['kind' => 'categories','query' => $key]); $second = $read(['kind' => 'categories','query' => $key,'page' => 2]);
     $assert(!is_wp_error($first) && $first['data']['count'] === 20 && $first['data']['page_info'] === ['page'=>1,'per_page'=>20,'has_next_page'=>true,'next_page'=>2]
         && $second['data']['count'] === 2 && !$second['data']['page_info']['has_next_page'], 'Selectors page existing term IDs at twenty with explicit next-page metadata.');
