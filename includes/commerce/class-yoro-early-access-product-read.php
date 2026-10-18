@@ -9,9 +9,10 @@ class YoRo_Early_Access_Product_Read {
 	const ACTIONS = [ 'products.search', 'products.get_details', 'products.get_inventory_queue' ];
 
 	public static function valid_params( $action, $params ) {
-		if ( ! in_array( $action, self::ACTIONS, true ) || ! is_array( $params ) ) {
+		if ( ! in_array( $action, [...self::ACTIONS, YoRo_Product_Catalog_Options::Action], true ) || ! is_array( $params ) ) {
 			return false;
 		}
+		if (YoRo_Product_Catalog_Options::Action === $action) { return YoRo_Product_Catalog_Options::valid_params($params); }
 		if ( 'products.get_details' === $action ) {
 			$ids = $params['product_ids'] ?? null;
 			return 1 === count( $params ) && is_array( $ids ) && array_values( $ids ) === $ids
@@ -61,6 +62,13 @@ class YoRo_Early_Access_Product_Read {
 		if ( is_wp_error( $execution ) || ! is_array( $execution ) || empty( $execution['success'] ) ) {
 			return new WP_Error( 'yoro_product_read_failed', 'The local product read did not complete.' );
 		}
+		if (YoRo_Product_Catalog_Options::Action === $action) {
+            $message = 'Catalog options read completed.';
+            return ['success' => true, 'action' => $action, 'message' => $message, 'summary' => $message,
+                'data' => $execution['data'], 'read_only' => true, 'undoable' => false,
+                'result_type' => 'catalog_options', 'display_type' => 'catalog_options',
+                'assistant_summary' => $message, 'extensions' => (object) []];
+        }
 		$inventory = 'products.get_inventory_queue' === $action;
 		$limit = 'products.get_details' === $action ? count( $params['product_ids'] ) : $params['limit'];
 		$products = [];
@@ -135,7 +143,8 @@ class YoRo_Early_Access_Product_Read {
 			$extra = array_merge($extra, YoRo_Product_Edit::facts($product));
 			$target = 'variation' === $product->get_type() ? $product->get_parent_id() : $product->get_id();
 			$extra['admin_edit_url'] = current_user_can( 'edit_post', $target ) ? self::url( get_edit_post_link( $target, 'raw' ) ) : null;
-			$extra['description'] = mb_strcut( sanitize_textarea_field( wp_strip_all_tags( $product->get_short_description() ?: $product->get_description() ) ), 0, 2000, 'UTF-8' );
+			$extra['description'] = $extra['edit_fields']['description'];
+            $extra['short_description'] = $extra['edit_fields']['short_description'];
 		}
 		return [ 'id' => (int) $product->get_id(), 'name' => mb_strcut( sanitize_text_field( $product->get_name() ), 0, 1024, 'UTF-8' ),
 			'sku' => $product->get_sku(), 'status' => 'publish', 'type' => $product->get_type(), 'price' => (string) $product->get_price(),

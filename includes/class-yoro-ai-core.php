@@ -82,7 +82,10 @@ class YoRo_AI_Core {
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-customer-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-fulfillment-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-inventory-service.php';
-		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-product-edit.php';
+		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-product-catalog-options.php';
+        require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-product-edit.php';
+        require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-product-batch.php';
+        require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-coupon-management.php';
         require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-variable-product.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-commerce-discovery-service.php';
 		require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-store-briefing-service.php';
@@ -155,6 +158,8 @@ class YoRo_AI_Core {
 
 		if ( yoro_ai_core_has_woocommerce() ) {
 			YoRo_Orders_Actions::register();
+            YoRo_Product_Batch::register();
+            YoRo_Coupon_Management::register();
 		}
 
 		YoRo_WordPress_Site_Actions::register();
