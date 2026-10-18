@@ -2,7 +2,7 @@
 /** Actual runtime/journal with an in-process delivery client; no business result is mocked. */
 function yoro_native_write_fixture_client() {
 return new class extends YoRo_Connector_Client {
-    public $operation; public $results = []; public $steps = []; public $after_lease = null; public $budget_drop_step = null; public $budget_remaining = null;
+    public $operation; public $results = []; public $operations = []; public $steps = []; public $after_lease = null; public $budget_drop_step = null; public $budget_remaining = null;
     public $next_attempts = 0;
     public function early_access_request( $step, $id = '', $payload = [], $token = '', $generation = 0 ) {
         if ( 'next' !== $step ) { throw new RuntimeException( 'Unexpected read transport in the write fixture.' ); }
@@ -13,7 +13,7 @@ return new class extends YoRo_Connector_Client {
     public function early_access_write_request( $step, $id = '', $payload = [], $token = '', $generation = 0 ) {
         $this->steps[] = $step;
         if ( count( $this->steps ) === $this->budget_drop_step ) { $this->budget_remaining = max( 0, 3 - $this->budget_drop_step ); }
-        if ( 'claim' === $step ) { return [ 'success' => true, 'delivery' => [ 'delivery_id' => 'fixture-delivery', 'claim_token' => str_repeat( 'a', 80 ), 'lease_generation' => 1, 'operations' => [ $this->operation ] ] ]; }
+        if ( 'claim' === $step ) { $this->operations[$this->operation['envelope_id']]=['action'=>$this->operation['action'],'params'=>$this->operation['params']]; return [ 'success' => true, 'delivery' => [ 'delivery_id' => 'fixture-delivery', 'claim_token' => str_repeat( 'a', 80 ), 'lease_generation' => 1, 'operations' => [ $this->operation ] ] ]; }
         if ( str_repeat( 'a', 80 ) !== $token || 1 !== $generation || $id !== $this->operation['envelope_id'] ) { throw new RuntimeException( 'The fenced lease was lost.' ); }
         if ( 'lease' === $step && null !== $this->after_lease ) { ( $this->after_lease )(); }
         if ( 'result' === $step ) { $this->results[] = $payload; }
