@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:a9c3e95b63775ee286246385d1263796d1efc072d9ee84a42ab48df14fbc1f75';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:2d1197fcd0e143629ca6942b85516941c83dd30077f56f8e47b40468d5611eac';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -227,6 +227,7 @@ class YoRo_Commerce_Contract_Builder {
 		if ( 'store.get_daily_briefing' === $name ) {
 			$catalog_input_schema = [
 				'window'       => [ 'type' => 'string', 'maxLength' => 120 ],
+                ...array_fill_keys( array_values( array_diff( YoRo_Store_Report_Period::Fields, [ 'window' ] ) ), [ 'type' => 'string' ] ),
 				'time_window'  => self::resolved_time_window_input_schema(),
 				'answer_shape' => [ 'type' => 'string', 'enum' => [ 'business_overview' ] ],
 				'limit'        => [ 'type' => 'integer', 'minimum' => 1, 'maximum' => 10 ],
