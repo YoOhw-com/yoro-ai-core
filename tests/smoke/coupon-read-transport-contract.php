@@ -42,6 +42,7 @@ try {
     $before=YoRo_Coupon_Management::version(new WC_Coupon($coupon->get_id()));
     add_filter('pre_http_request',$block);$lock=$acquire->invoke(null);$assert($lock!==null,'The existing runner lock is required.');
     $runtime=new YoRo_Connector_Runtime($client);
+    $export=[];
     foreach(['coupons.search'=>['code'=>$coupon->get_code(),'page'=>1],'coupons.get_details'=>['coupon_id'=>$coupon->get_id()]] as $action=>$params){
         $identity=hash('sha256',wp_generate_uuid4());
         $operation=['contract_type'=>'yoro.commerce.operation_envelope','schema_version'=>1,'envelope_id'=>'envelope_'.$identity,
@@ -68,10 +69,14 @@ try {
         $client->operation=$operation;$client->steps=[];$client->results=[];$result=$runtime->run_early_access_once();
         $assert(!is_wp_error($result)&&($result['success']??false),'The claimed coupon read completes the real runner: '.(is_wp_error($result)?$result->get_error_code():''));
         $assert($client->steps===['claim','ack','lease','result']&&count($client->results)===1&&$client->results[0]['status']==='executed','Coupon claim uses the existing fenced transport.');
+        $assert((array)$client->results[0]['result']['extensions']===[],'Coupon publication excludes WordPress execution internals.');
         $data=$client->results[0]['result']['data'];
         $assert(($action==='coupons.search'?$data['coupons'][0]['id']:$data['coupon']['id'])===$coupon->get_id(),'The requested coupon family result reaches publication.');
+        $export[]=['action'=>$action,'params'=>$params,'wire'=>$client->results[0]];
     }
     $assert(YoRo_Coupon_Management::version(new WC_Coupon($coupon->get_id()))===$before,'Coupon read transport leaves business data unchanged.');
+    $export_path=getenv('YORO_COUPON_RESULT_EXPORT');
+    if(is_string($export_path)&&$export_path!==''){file_put_contents($export_path,wp_json_encode($export,JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES));}
     echo "Coupon full-envelope runtime validation, family provenance and fenced claim-ack-lease-result passed.\n";
 } finally {
     remove_filter('pre_http_request',$block);if($lock!==null){$release->invoke(null,$lock);}$wpdb->query('ROLLBACK');wp_cache_flush();wp_set_current_user($original);

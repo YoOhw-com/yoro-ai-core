@@ -135,7 +135,7 @@ final class YoRo_Coupon_Management
         if(!in_array($action,self::ReadActions,true) || !self::valid_params($action,$params) || !current_user_can('manage_woocommerce')) { return new WP_Error('coupon_read_invalid','Coupon read authority is unavailable.'); }
         $execution=YoRo_Action_Executor::execute($action,$params,false,false,['connector_remote_agent'=>true,'workflow_id'=>$operation['workflow_id']??'','operation_id'=>$operation['operation_id']??'']);
         if(is_wp_error($execution) || !is_array($execution) || empty($execution['success'])) { return is_wp_error($execution)?$execution:new WP_Error('coupon_read_unavailable','Coupon settings are unavailable.'); }
-        return YoRo_Commerce_Contract_Builder::canonical_execution_payload($execution,$action);
+        return self::result($action,$execution['data'],true);
     }
 
     private static function invalid(): never
