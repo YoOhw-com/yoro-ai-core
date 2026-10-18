@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 /** Resumable, private-free report aggregation in the authoritative Woo datastore. */
 final class YoRo_Complete_Store_Report {
-    const VERSION = 3;
+    const VERSION = 4;
     const BATCH_SIZE = 100;
     const STATE_OPTION = '_yoro_complete_report_state_v2';
     const GENERATION_OPTION = '_yoro_complete_report_generation_v2';
@@ -201,7 +201,6 @@ final class YoRo_Complete_Store_Report {
         foreach ( $order->get_items( 'fee' ) as $fee ) { self::add( $m['fees'], self::units( (string) $fee->get_total(), true ) ); }
         if ( $p['breakdowns_complete'] ) {
             $day = $order->{ $state['basis'] === 'paid' ? 'get_date_paid' : 'get_date_created' }()->setTimezone( wp_timezone() )->format( 'Y-m-d' );
-            $day = YoRo_Store_Report_Period::bucket( $day, $state['windows'][$phase % 2], $state['period_context'] );
             $p['daily'][$day][$currency] = $p['daily'][$day][$currency] ?? [ 'order_count' => 0, 'order_totals' => 0 ]; $p['daily'][$day][$currency]['order_count']++; self::add( $p['daily'][$day][$currency]['order_totals'], $amount );
             $method = sanitize_key( $order->get_payment_method() ) ?: 'not_set';
             if ( ! isset( $p['payments'][$method] ) && count( $p['payments'] ) >= 32 ) {
@@ -257,9 +256,26 @@ final class YoRo_Complete_Store_Report {
             }
             $p['products'] = $products;
         } unset( $p );
+        $context = $state['period_context']; $context['chart_granularity'] = 'day';
         $result = [ 'version' => 3, 'status' => 'complete', 'generated_at' => gmdate( 'c', $state['as_of'] ), 'completed_at' => gmdate( 'c', $state['completed_at'] ),
             'date_basis' => $state['basis'], 'refund_basis' => 'refund_created_date', 'data_revision' => hash( 'sha256', $state['revision'] ),
-            'windows' => $state['windows'], 'period_context' => $state['period_context'], 'current' => $periods[0], 'previous' => $periods[1], 'backlog' => $state['backlog'], 'batch_size' => self::BATCH_SIZE ];
+            'windows' => $state['windows'], 'period_context' => $context, 'current' => $periods[0], 'previous' => $periods[1], 'backlog' => $state['backlog'], 'batch_size' => self::BATCH_SIZE ];
+        if ( strlen( wp_json_encode( $result ) ) > 38000 ) {
+            $result['period_context']['chart_granularity'] = 'month';
+            foreach ( [ 'current', 'previous' ] as $index => $key ) {
+                $monthly = [];
+                foreach ( $result[$key]['daily'] as $day => $currencies ) {
+                    $bucket = YoRo_Store_Report_Period::bucket( $day, $state['windows'][$index], $result['period_context'] );
+                    foreach ( $currencies as $currency => $row ) {
+                        $monthly[$bucket][$currency] = $monthly[$bucket][$currency] ?? [ 'order_count' => 0, 'order_totals' => 0 ];
+                        $monthly[$bucket][$currency]['order_count'] += $row['order_count'];
+                        self::add( $monthly[$bucket][$currency]['order_totals'], self::units( $row['order_totals'] ) );
+                    }
+                }
+                foreach ( $monthly as &$currencies ) { foreach ( $currencies as &$row ) { $row['order_totals'] = self::decimal( $row['order_totals'] ); } unset( $row ); } unset( $currencies );
+                $result[$key]['daily'] = $monthly;
+            }
+        }
         if ( strlen( wp_json_encode( $result ) ) > 38000 ) {
             foreach ( [ 'current', 'previous' ] as $key ) { $result[$key]['daily'] = []; $result[$key]['payments'] = []; $result[$key]['products'] = []; $result[$key]['product_ranking_complete'] = false; $result[$key]['breakdowns_complete'] = false; }
         }
