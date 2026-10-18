@@ -157,6 +157,7 @@ final class YoRo_Product_Authoring
         }else{if($catalog['truncated']){$reason='bounds_exceeded';}else{$actions=['products.create_global_attribute'];if($attributeId&&!$catalog['terms_truncated']){$actions[]='products.create_attribute_terms';}}}
         $copyFacts=[];foreach($selected as$childId){$child=wc_get_product($childId);if(!$child||!$child->is_type('variation')||$child->get_parent_id()!==$id||!in_array($child->get_status('edit'),['publish','private'],true)){self::invalid();}$copyFacts[$childId]=YoRo_Product_Lifecycle::parent_copy_fingerprint($child);}
         if($parent&&(!defined('EMPTY_TRASH_DAYS')||EMPTY_TRASH_DAYS<=0||!current_user_can('delete_post',$id))){$actions=array_values(array_diff($actions,['products.trash','products.restore']));}
+        if(!current_user_can('publish_products')){$actions=array_values(array_diff($actions,['products.generate_variations']));}
         if(!$parent&&!current_user_can('manage_product_terms')){$actions=array_values(array_diff($actions,['products.create_global_attribute','products.create_attribute_terms']));}
         $data=['target'=>['id'=>$id,'version'=>''],'product_type'=>$parent?$parent->get_type():($params['product_type']??null),'status'=>$parent?$parent->get_status('edit'):null,'restore_status'=>$restore,'initial_details'=>$initial,'sale_timezone'=>wp_timezone_string(),'stock_management_enabled'=>get_option('woocommerce_manage_stock')==='yes','no_stock_amount'=>max(0,(int)get_option('woocommerce_notify_no_stock_amount',0)),
             'editable'=>$reason===null,'reason'=>$reason,'write_actions'=>$actions,'attributes'=>$attributes,'variations'=>$rows,'variations_truncated'=>count($children)>count($rows),'page_info'=>['page'=>$selected?1:$page,'per_page'=>20,'has_next_page'=>($parent?$parent->get_status('edit')!=='trash':true)&&!$selected&&$page*20<count($children),'next_page'=>($parent?$parent->get_status('edit')!=='trash':true)&&!$selected&&$page*20<count($children)?$page+1:null],
@@ -185,6 +186,7 @@ final class YoRo_Product_Authoring
             if(!$data['editable']||!in_array($action,$data['write_actions'],true)||!hash_equals($data['target']['version'],$params['expected_version'])) {self::invalid();}
             $products=[];$storedRows=[];
             if($action==='products.generate_variations') {
+                if(!current_user_can('publish_products')){self::invalid();}
                 if(!$parent->is_type('variable')||count($state['children'])+count($changes['variations'])>500){self::invalid('bounds_exceeded');}$seen=$state['children'];$identifiers=[];
                 foreach($changes['variations']as$i=>$row){$stored=self::stored($row['attributes'],$parent);if(self::duplicate_combination($stored,$seen)){self::invalid();}
                     $child=new WC_Product_Variation();$child->set_parent_id($parent->get_id());$child->set_status('publish');$child->set_attributes($stored);

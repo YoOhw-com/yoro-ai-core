@@ -9,6 +9,23 @@ if (!defined('ABSPATH')) { exit; }
 if(class_exists('WC_Discounts')) {
 final class YoRo_Order_Edit_Discounts extends WC_Discounts
 {
+    private array $recordedUsage;
+    public function __construct(WC_Order $order,array $recordedUsage=[])
+    {
+        parent::__construct($order);$this->recordedUsage=$recordedUsage;
+    }
+    /** Replace one proven recorded source-order use; tentative holds and every other use remain counted. */
+    protected function validate_coupon_usage_limit($coupon)
+    {
+        if(isset($this->recordedUsage[$coupon->get_code()])){$coupon=clone $coupon;$coupon->set_usage_count(max(0,$coupon->get_usage_count()-1));}
+        return parent::validate_coupon_usage_limit($coupon);
+    }
+    protected function validate_coupon_user_usage_limit($coupon,$user_id=0)
+    {
+        $id=$user_id?:$this->get_object()->get_customer_id('edit');$credit=$this->recordedUsage[$coupon->get_code()]??null;
+        if($id&&$credit&&$credit['customer_id']===$id&&$credit['recorded_identity_usage']>0&&$coupon->get_usage_limit_per_user()>0){$coupon=clone $coupon;$coupon->set_usage_limit_per_user($coupon->get_usage_limit_per_user()+1);}
+        return parent::validate_coupon_user_usage_limit($coupon,$user_id);
+    }
     protected function validate_coupon_allowed_emails($coupon)
     {
         $restrictions=$coupon->get_email_restrictions();
@@ -65,6 +82,12 @@ final class YoRo_Order_Edit_Quote
         return get_option('woocommerce_tax_round_at_subtotal')==='yes'?$value:wc_round_tax_total($value);
     }
 
+    private static function guest_credit(array $state,WC_Coupon $coupon): int
+    {
+        $credit=$state['coupon_usage_credit'][$coupon->get_code()]??null;
+        return $credit&&$credit['customer_id']===0&&$credit['email']===strtolower($state['billing']['email'])&&$credit['recorded_identity_usage']>0?1:0;
+    }
+
     /** State is normalized by YoRo_Order_Edit; this method never accepts or loads a live order. */
     public static function calculate(array $state): array
     {
@@ -80,7 +103,7 @@ final class YoRo_Order_Edit_Quote
             $unit=$line['unit_price'];
             if($unit===null) {
                 $unit=$product->get_price('edit');if($unit==='') {throw new RuntimeException('The quoted product has no price.');}
-                if($state['prices_include_tax']&&wc_tax_enabled()&&$product->get_tax_status('edit')==='taxable') {$unit=(float)$unit-array_sum(self::tax(WC_Tax::get_base_tax_rates($class),$unit,true));}
+                $unit=wc_get_price_excluding_tax($product,['qty'=>1,'price'=>$unit,'order'=>$order]);
             }
             $subtotal=wc_format_decimal((float)$unit*$line['quantity']);$item->set_subtotal($subtotal);$item->set_total($subtotal);
             $taxes=self::tax($rates,$subtotal);$item->set_taxes(['total'=>$taxes,'subtotal'=>$taxes]);$order->add_item($item);
@@ -90,11 +113,11 @@ final class YoRo_Order_Edit_Quote
             $subtotals[]=wc_add_number_precision((float)$item->get_subtotal('edit'));$subtotalTax+=array_sum($taxes);
             if($taxable) {$taxClasses[]=$class;}
         }
-        $order->set_cart_tax($subtotalTax);$discounts=new YoRo_Order_Edit_Discounts($order);$discounts->set_items($discountItems);$couponObjects=[];
+        $order->set_cart_tax($subtotalTax);$discounts=new YoRo_Order_Edit_Discounts($order,$state['coupon_usage_credit']??[]);$discounts->set_items($discountItems);$couponObjects=[];
         foreach($state['coupon_codes']as$code) {
             $coupon=new WC_Coupon($code);if(!$coupon->get_id()||$coupon->get_status('edit')!=='publish'||!in_array($coupon->get_discount_type('edit'),['percent','fixed_cart','fixed_product'],true)) {throw new RuntimeException('The selected coupon is unsupported.');}
             if($coupon->get_individual_use('edit')&&count($state['coupon_codes'])>1) {throw new RuntimeException('An individual-use coupon cannot be combined.');}
-            if($state['customer_id']===0&&$coupon->get_usage_limit_per_user('edit')>0&&$coupon->get_data_store()->get_usage_by_email($coupon,$order->get_billing_email('edit'))>=$coupon->get_usage_limit_per_user('edit')) {throw new RuntimeException('The guest coupon usage limit has been reached.');}
+            if($state['customer_id']===0&&$coupon->get_usage_limit_per_user('edit')>0&&$coupon->get_data_store()->get_usage_by_email($coupon,$order->get_billing_email('edit'))-self::guest_credit($state,$coupon)>=$coupon->get_usage_limit_per_user('edit')) {throw new RuntimeException('The guest coupon usage limit has been reached.');}
             $applied=$discounts->apply_coupon($coupon);if(is_wp_error($applied)) {throw new RuntimeException('The selected coupon is invalid for this order.');}$couponObjects[$code]=$coupon;
         }
         $byItem=$discounts->get_discounts_by_item();$allDiscounts=$discounts->get_discounts();$byCoupon=$discounts->get_discounts_by_coupon();$lineRows=[];$cartTaxes=[];$rawSubtotalTax=0;$rawTotalTax=0;$lineTotals=[];

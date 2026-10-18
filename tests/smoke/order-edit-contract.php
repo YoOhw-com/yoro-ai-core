@@ -31,6 +31,16 @@ try{
         $params=$quoted(0,$changes);$preview=YoRo_Order_Edit::preview($params,'orders.create');$saved=$execute('orders.create',$params);$assert(!is_wp_error($saved)&&$saved['data']['quote']===$preview['quote'],'Native confirmed CRUD parity for '.$type.' / inclusive='.(int)$inclusive.' / subtotal-round='.$round.': '.wp_json_encode($saved));
     }}}}
     update_option('woocommerce_price_num_decimals','2');update_option('woocommerce_prices_include_tax','no');update_option('woocommerce_tax_round_at_subtotal','no');
+    // Catalog prices use today's store pricing mode; an existing order retains its historical display flag.
+    foreach([false,true]as$historical){foreach([false,true]as$adjust){
+        update_option('woocommerce_prices_include_tax',$historical?'yes':'no');$historicalOrder=new WC_Order();$historicalOrder->set_status('pending');$historicalOrder->set_prices_include_tax($historical);$historicalOrder->set_billing_country('AQ');$historicalOrder->save();
+        update_option('woocommerce_prices_include_tax',$historical?'no':'yes');$catalogProduct=$product('Changed catalog tax mode');$catalogProduct->set_regular_price('110');$catalogProduct->save();
+        $adjustFilter=static fn()=>$adjust;add_filter('woocommerce_adjust_non_base_location_prices',$adjustFilter);
+        try{$expectedUnit=YoRo_Order_Edit_Quote::decimal(wc_get_price_excluding_tax($catalogProduct,['order'=>$historicalOrder]));$modeParams=$quoted($historicalOrder->get_id(),['line_items'=>[['item_id'=>0,'product_id'=>$catalogProduct->get_id(),'quantity'=>1]]]);$modePreview=YoRo_Order_Edit::preview($modeParams,'orders.update_details');
+            $assert($modePreview['quote']['line_items'][0]['unit_price']===$expectedUnit,'Default unit price follows current native catalog decoding, including the native non-base location policy.');
+            $modeSaved=$execute('orders.update_details',$modeParams);$assert(!is_wp_error($modeSaved)&&wc_get_order($historicalOrder->get_id())->get_prices_include_tax('edit')===$historical,'Confirmed native totals match while the historical order tax-display flag remains unchanged. '.wp_json_encode($modeSaved));
+        }finally{remove_filter('woocommerce_adjust_non_base_location_prices',$adjustFilter);}
+    }}update_option('woocommerce_prices_include_tax','no');
     $items=array_values($order->get_items('line_item'));$lineId=$items[0]->get_id();$shippingIds=array_keys($order->get_items('shipping'));$feeIds=array_keys($order->get_items('fee'));
     $params=$quoted($id,['line_items'=>[['item_id'=>$lineId,'product_id'=>$p->get_id(),'quantity'=>3,'unit_price'=>'15']],'coupon_codes'=>[],'remove_shipping_item_ids'=>$shippingIds,'remove_fee_item_ids'=>$feeIds]);$saved=$execute('orders.update_details',$params);
     $assert(!is_wp_error($saved)&&wc_get_order($id)->get_total()==='49.50'&&wc_get_order($id)->get_items('coupon')===[],'Existing line quantity/net price, coupon removal, shipping removal and fee removal persist natively. '.wp_json_encode($saved));
@@ -38,6 +48,20 @@ try{
     $customerId=wp_insert_user(['user_login'=>'order-edit-'.substr(wp_generate_uuid4(),0,8),'user_email'=>'selected-'.substr(wp_generate_uuid4(),0,8).'@example.invalid','user_pass'=>wp_generate_password(),'role'=>'customer']);$assert(!is_wp_error($customerId),'Create an existing registered customer fixture.');
     $selected=get_user_by('id',$customerId);$restricted=$coupon();$restricted->set_email_restrictions([$selected->user_email]);$restricted->set_usage_limit_per_user(1);$restricted->save();$changes=$base;$changes['customer_id']=$customerId;$changes['coupon_codes']=[$restricted->get_code()];
     $registered=$execute('orders.create',$quoted(0,$changes));$assert(!is_wp_error($registered)&&wc_get_order($registered['data']['order_id'])->get_customer_id()===$customerId,'Customer account email restriction is checked against selected customer independently of operator email.');
+    // A recorded current-order coupon use is replaced, never counted as a second new use.
+    foreach(['pending','on-hold']as$status){foreach([0,$customerId]as$owner){
+        $limited=$coupon();$limited->set_usage_limit(1);$limited->set_usage_limit_per_user(1);$limited->save();$limitedChanges=$base;$limitedChanges['customer_id']=$owner;$limitedChanges['coupon_codes']=[$limited->get_code()];
+        $limitedCreated=$execute('orders.create',$quoted(0,$limitedChanges));$assert(!is_wp_error($limitedCreated),'Create one legitimate limited-coupon use.');$limitedId=$limitedCreated['data']['order_id'];$limitedOrder=wc_get_order($limitedId);$limitedOrder->set_status($status);$limitedOrder->save();
+        $freshCoupon=new WC_Coupon($limited->get_id());$assert($freshCoupon->get_usage_count()===1&&wc_get_order($limitedId)->get_data_store()->get_recorded_coupon_usage_counts(wc_get_order($limitedId)),'Exactly one native usage is recorded on the source order.');
+        $writeQueries=[];$mailBefore=$mail;add_filter('query',$observeQuery,PHP_INT_MAX);
+        try{$retainParams=$quoted($limitedId,['recalculate'=>true]);$retainPreview=YoRo_Order_Edit::preview($retainParams,'orders.update_details');}finally{remove_filter('query',$observeQuery,PHP_INT_MAX);}
+        $assert(!is_wp_error($retainPreview)&&$writeQueries===[]&&$mail===$mailBefore,'Retaining the current recorded use at both limits performs zero preview writes or emails for '.$status.'/customer='.$owner);
+        $assert(is_wp_error(YoRo_Order_Edit::read_context(['order_id'=>0,'changes'=>$limitedChanges])),'A new order cannot borrow the existing order usage allowance.');
+        $foreign=new WC_Order();$foreign->set_status('pending');$foreign->save();$assert(is_wp_error(YoRo_Order_Edit::read_context(['order_id'=>$foreign->get_id(),'changes'=>$limitedChanges])),'A foreign existing order cannot borrow usage allowance.');
+        $retained=$execute('orders.update_details',$retainParams);$assert(!is_wp_error($retained)&&(new WC_Coupon($limited->get_id()))->get_usage_count()===1,'Confirmed retained usage stays exactly one, including per-user or guest use. '.wp_json_encode($retained));
+        $changedUsageParams=$quoted($limitedId,['recalculate'=>true]);$freshCoupon=new WC_Coupon($limited->get_id());$freshCoupon->increase_usage_count($owner?:'buyer@example.invalid');
+        $assert(is_wp_error(YoRo_Order_Edit::prepare($changedUsageParams,'orders.update_details')),'An additional native usage invalidates the quoted source before execution.');
+    }}
     $restricted->set_email_restrictions([wp_get_current_user()->user_email]);$restricted->save();$assert(is_wp_error(YoRo_Order_Edit::read_context(['order_id'=>0,'changes'=>$changes])),'An operator email cannot authorize another customer coupon.');
     $guest=$coupon();$guest->set_usage_limit_per_user(1);$guest->increase_usage_count('buyer@example.invalid');$guest->save();$changes=$base;$changes['coupon_codes']=[$guest->get_code()];$assert(is_wp_error(YoRo_Order_Edit::read_context(['order_id'=>0,'changes'=>$changes])),'Guest email coupon usage limits are checked through native coupon storage.');
     $assign=$quoted($id,['customer_id'=>$customerId]);$saved=$execute('orders.update_details',$assign);$assert(!is_wp_error($saved)&&wc_get_order($id)->get_customer_id()===$customerId,'Assign a registered customer without changing submitted contacts.');

@@ -87,14 +87,14 @@ final class YoRo_Order_Edit
     {
         $items=[];foreach($order->get_items(['line_item','shipping','fee','coupon','tax'])as$id=>$item){$data=$item->get_data();$items[(string)$id]=$data;}
         return ['order'=>[$order->get_id(),$order->get_status('edit'),$order->get_total('edit'),$order->get_currency('edit'),$order->get_date_modified('edit')?->format(DATE_ATOM),$order->get_address('billing'),$order->get_address('shipping'),$order->get_customer_note('edit')],'customer_id'=>$order->get_customer_id('edit'),'prices_include_tax'=>$order->get_prices_include_tax('edit'),
-            'paid'=>$order->get_date_paid('edit')?->getTimestamp(),'transaction_id'=>$order->get_transaction_id('edit'),'refunded'=>$order->get_total_refunded(),'stock_reduced'=>(bool)$order->get_data_store()->get_stock_reduced($order),'items'=>$items];
+            'paid'=>$order->get_date_paid('edit')?->getTimestamp(),'transaction_id'=>$order->get_transaction_id('edit'),'refunded'=>$order->get_total_refunded(),'stock_reduced'=>(bool)$order->get_data_store()->get_stock_reduced($order),'recorded_coupon_usage'=>(bool)$order->get_data_store()->get_recorded_coupon_usage_counts($order),'items'=>$items];
     }
 
     private static function state(?WC_Order $order): array
     {
         $state=['currency'=>$order?$order->get_currency('edit'):get_woocommerce_currency(),'customer_id'=>$order?$order->get_customer_id('edit'):0,
             'billing'=>self::address($order?$order->get_address('billing'):[],'billing'),'shipping'=>self::address($order?$order->get_address('shipping'):[],'shipping'),
-            'line_items'=>[],'coupon_codes'=>[],'shipping_lines'=>[],'fee_lines'=>[],'prices_include_tax'=>$order?$order->get_prices_include_tax('edit'):wc_prices_include_tax(),'vat_exempt'=>false];
+            'line_items'=>[],'coupon_codes'=>[],'coupon_usage_credit'=>[],'shipping_lines'=>[],'fee_lines'=>[],'prices_include_tax'=>$order?$order->get_prices_include_tax('edit'):wc_prices_include_tax(),'vat_exempt'=>false];
         if(!$order){return $state;}
         if(!in_array($order->get_status('edit'),['pending','on-hold'],true)||!$order->is_editable()||$order->is_paid()||$order->get_date_paid('edit')||$order->get_transaction_id('edit')!==''||$order->get_total_refunded()!='0'||$order->get_refunds()){self::invalid('unsupported_order_state');}
         if(!in_array($order->get_payment_method('edit'),['','bacs','cheque','cod'],true)){self::invalid('unsupported_integration');}
@@ -106,7 +106,11 @@ final class YoRo_Order_Edit
         foreach($order->get_items('line_item')as$id=>$item){$product=$item->get_product();$qty=$item->get_quantity('edit');if(!$product||!is_numeric($qty)||(int)$qty!=$qty||$qty<1||$qty>1000000){self::invalid('unsupported_integration');}$state['line_items'][]=['item_id'=>(int)$id,'product_id'=>$product->get_id(),'quantity'=>(int)$qty,'unit_price'=>YoRo_Order_Edit_Quote::decimal((float)$item->get_subtotal('edit')/$qty)];}
         foreach($order->get_items('shipping')as$id=>$item){if(!in_array($item->get_instance_id('edit'),[0,'0',''],true)){self::invalid('unsupported_integration');}$state['shipping_lines'][]=['item_id'=>(int)$id,'method_id'=>$item->get_method_id('edit'),'method_title'=>$item->get_method_title('edit'),'total'=>YoRo_Order_Edit_Quote::decimal($item->get_total('edit'))];}
         foreach($order->get_items('fee')as$id=>$item){if((float)$item->get_total('edit')<=0){self::invalid('unsupported_integration');}$state['fee_lines'][]=['item_id'=>(int)$id,'name'=>$item->get_name('edit'),'total'=>YoRo_Order_Edit_Quote::decimal($item->get_total('edit')),'tax_class'=>$item->get_tax_class('edit'),'tax_status'=>$item->get_tax_status('edit')];}
-        foreach($order->get_items('coupon')as$item){$state['coupon_codes'][]=$item->get_code('edit');}
+        foreach($order->get_items('coupon')as$item){$code=$item->get_code('edit');$state['coupon_codes'][]=$code;
+            if($order->get_data_store()->get_recorded_coupon_usage_counts($order)){$coupon=new WC_Coupon($code);$store=$coupon->get_data_store();$identity=$state['customer_id']?:$state['billing']['email'];$usage=$state['customer_id']?$store->get_usage_by_user_id($coupon,$identity):$store->get_usage_by_email($coupon,$identity);$tentative=$store->get_tentative_usages_for_user($coupon->get_id(),[$identity]);
+                if($coupon->get_usage_count()<1||$usage-$tentative<1){self::invalid('unsupported_integration');}
+                $state['coupon_usage_credit'][$code]=['customer_id'=>$state['customer_id'],'email'=>strtolower($state['billing']['email']),'recorded_identity_usage'=>$usage-$tentative];
+            }}
         $state['vat_exempt']=$order->get_meta('is_vat_exempt',true,'edit')==='yes';return $state;
     }
 
@@ -138,7 +142,7 @@ final class YoRo_Order_Edit
             if(!$manager){self::invalid();}$stock[$manager->get_id()]=['data'=>$manager->get_data(),'held'=>wc_get_held_stock_quantity($manager,$order?$order->get_id():0)];
         }
         foreach(array_unique([$before['customer_id'],$after['customer_id']])as$id){if($id>0){$customer=new WC_Customer($id);if(!$customer->get_id()){self::invalid();}$customers[$id]=$customer->get_data();}}
-        foreach(array_unique(array_merge($before['coupon_codes'],$after['coupon_codes']))as$code){$coupon=new WC_Coupon($code);if(!$coupon->get_id()){self::invalid();}$coupons[$code]=$coupon->get_data();}
+        foreach(array_unique(array_merge($before['coupon_codes'],$after['coupon_codes']))as$code){$coupon=new WC_Coupon($code);if(!$coupon->get_id()){self::invalid();}$store=$coupon->get_data_store();$identities=[];foreach([$before,$after]as$state){$identity=$state['customer_id']?:$state['billing']['email'];$identities[(string)$identity]=['usage'=>$state['customer_id']?$store->get_usage_by_user_id($coupon,$identity):$store->get_usage_by_email($coupon,$identity),'tentative'=>$store->get_tentative_usages_for_user($coupon->get_id(),[$identity])];}$coupons[$code]=['data'=>$coupon->get_data(),'usage_count'=>$coupon->get_usage_count(),'tentative'=>$store->get_tentative_usage_count($coupon->get_id()),'identities'=>$identities];}
         $options=[];foreach(['woocommerce_currency','woocommerce_price_num_decimals','woocommerce_prices_include_tax','woocommerce_calc_taxes','woocommerce_tax_round_at_subtotal','woocommerce_tax_based_on','woocommerce_shipping_tax_class','woocommerce_default_country','woocommerce_store_address','woocommerce_store_address_2','woocommerce_store_city','woocommerce_store_postcode','woocommerce_manage_stock','woocommerce_hold_stock_minutes','woocommerce_tax_classes','timezone_string','gmt_offset']as$key){$options[$key]=get_option($key);}
         global $wpdb;$rates=$wpdb->get_results("SELECT * FROM {$wpdb->prefix}woocommerce_tax_rates ORDER BY tax_rate_id LIMIT 1001",ARRAY_A);if($wpdb->last_error!==''||count($rates)>1000){self::invalid('bounds_exceeded');}
         $locations=$wpdb->get_results("SELECT * FROM {$wpdb->prefix}woocommerce_tax_rate_locations ORDER BY location_id LIMIT 5001",ARRAY_A);if($wpdb->last_error!==''||count($locations)>5000){self::invalid('bounds_exceeded');}
