@@ -14,6 +14,18 @@ try {
     $execute=static fn($action,$params)=>YoRo_Early_Access_Commerce_Write::execute($operation($action,$params));
     $contextParams=static fn($changes)=>['product_id'=>0,'changes'=>$changes,'expected_version'=>YoRo_Product_Lifecycle::context()['target']['version']];
     $params=static fn($id,$changes)=>['product_id'=>$id,'changes'=>$changes,'expected_version'=>YoRo_Commerce_Discovery_Service::product_version(wc_get_product($id))];
+    // WordPress replaces post_modified during wp_update_post, even when WC passes an explicit value.
+    $restoreModified=static function(WC_Product $product,WC_DateTime $original)use($assert): WC_Product {
+        $stamp=clone $original;$timestamp=$stamp->getTimestamp();$id=$product->get_id();
+        $freeze=static function($data,$postarr,$unsanitized,$update)use($id,$stamp){
+            if($update&&(int)($postarr['ID']??0)===$id){$data['post_modified']=gmdate('Y-m-d H:i:s',$stamp->getOffsetTimestamp());$data['post_modified_gmt']=gmdate('Y-m-d H:i:s',$stamp->getTimestamp());}return $data;
+        };
+        add_filter('wp_insert_post_data',$freeze,PHP_INT_MAX,4);
+        try{$product->set_date_modified(clone $stamp);$product->save();}finally{remove_filter('wp_insert_post_data',$freeze,PHP_INT_MAX);}
+        $product=wc_get_product($id);$assert($product->get_date_modified('edit')->getTimestamp()===$timestamp&&$original->getTimestamp()===$timestamp,'The fixture restores the exact immutable modified timestamp through WC CRUD.');
+        $post=get_post($id);$assert($post->post_modified===gmdate('Y-m-d H:i:s',$stamp->getOffsetTimestamp())&&$post->post_modified_gmt===gmdate('Y-m-d H:i:s',$timestamp),'Both local and GMT fixture timestamps match the immutable snapshot exactly.');
+        return $product;
+    };
     $read=YoRo_Product_Lifecycle::execute_read(['action'=>'products.get_creation_context','params'=>[],'workflow_id'=>wp_generate_uuid4(),'operation_id'=>'operation_1']);
     $assert(!$failed($read)&&$read['data']['target']['id']===0&&$read['data']['product_types']===['simple','variable']&&(array)$read['extensions']===[],'Creation context uses canonical empty extensions and no dummy product. '.wp_json_encode($read));
     $assert(YoRo_Product_Lifecycle::context()['target']['version']===$read['data']['target']['version'],'Repeated unchanged contexts have one source version.');
@@ -48,7 +60,8 @@ try {
     $assert($oldVersion!==YoRo_Commerce_Discovery_Service::product_version($simple),'Version hashes include changed lifecycle fields.');
     $assert($failed($execute('products.update_lifecycle',$patch)),'Stale version cannot replay lifecycle changes.');
     $assert(is_wp_error(YoRo_Product_Lifecycle::preview($params($simpleId,['weight'=>'1.25']),'products.update_lifecycle')),'No-op lifecycle changes reject.');
-    $sameSecond=$params($simpleId,['height'=>'8']);$stamp=$simple->get_date_modified('edit');$simple->set_width('7');$simple->set_date_modified($stamp);$simple->save();
+    $sameSecond=$params($simpleId,['height'=>'8']);$stamp=clone $simple->get_date_modified('edit');$simple->set_width('7');$simple->save();$simple=$restoreModified(wc_get_product($simpleId),$stamp);
+    $assert($simple->get_date_modified('edit')->getTimestamp()===$stamp->getTimestamp(),'Same-second lifecycle mutation preserves the exact original timestamp.');
     $assert($failed($execute('products.update_lifecycle',$sameSecond)),'Same-second lifecycle mutation invalidates the fresh source hash.');
     foreach([['weight'=>'-1'],['height'=>'1e3'],['length'=>1],['shipping_class_id'=>PHP_INT_MAX],['upsell_ids'=>[$simpleId]],['upsell_ids'=>[$otherId,$otherId]],['cross_sell_ids'=>array_fill(0,21,$otherId)],['status'=>'private'],['featured'=>1],['unknown'=>true]] as $bad){$assert(is_wp_error(YoRo_Product_Lifecycle::preview($params($simpleId,$bad),'products.update_lifecycle')),'Invalid lifecycle fields reject before mutation: '.wp_json_encode($bad));}
     $deny=static function($caps,$cap,$user,$args)use($simpleId){return $cap==='edit_post'&&($args[0]??null)===$simpleId?['do_not_allow']:$caps;};add_filter('map_meta_cap',$deny,PHP_INT_MAX,4);
@@ -71,9 +84,11 @@ try {
     $mutateAttribute=static function(WC_Product $source,string $field,$value): void {
         $attributes=$source->get_attributes('edit');$key=array_key_first($attributes);$changed=clone $attributes[$key];$setter='set_'.$field;$changed->$setter($value);$attributes[$key]=$changed;$source->set_attributes($attributes);
     };
-    $sameSecondDuplicate=static function(string $field,WC_Product $source,callable $mutate)use($assert,$execute,$params): WC_Product {
+    $sameSecondDuplicate=static function(string $field,WC_Product $source,callable $mutate)use($assert,$execute,$params,$restoreModified): WC_Product {
         $stale=$params($source->get_id(),['name'=>'Reviewed duplicate '.$field]);$stamp=clone $source->get_date_modified('edit');
-        $mutated=$mutate($source);if($mutated instanceof WC_Product){$source=$mutated;}$source->save();$source=wc_get_product($source->get_id());$source->set_date_modified($stamp);$source->save();$source=wc_get_product($source->get_id());
+        $mutated=$mutate($source);if($mutated instanceof WC_Product){$source=$mutated;}$source->save();$source=wc_get_product($source->get_id());
+        if($field==='variable attribute position'){$started=microtime(true);usleep(1100000);$assert(microtime(true)-$started>1,'The timestamp regression deliberately crosses a one-second save boundary.');}
+        $source=$restoreModified($source,$stamp);
         $assert($source->get_date_modified('edit')->getTimestamp()===$stamp->getTimestamp(),'The '.$field.' regression preserves the exact modified timestamp.');
         $assert(YoRo_Commerce_Discovery_Service::product_version($source)!==$stale['expected_version'],'The full duplicate source hash binds '.$field.' independently from modified time.');
         $preview=YoRo_Product_Lifecycle::preview($stale,'products.duplicate');
@@ -106,7 +121,8 @@ try {
     add_filter('woocommerce_product_read_attribute',$rehydrate,10,3);
     $metadata=wc_get_product($metadataId);$assert($metadata->get_attributes('edit')[$key]->get_all_extra_data()!==[],'A supported plugin read hook restores persisted attribute extra data in the source.');
     $sourceVersion=YoRo_Commerce_Discovery_Service::product_version($metadata);$standard=YoRo_Product_Lifecycle::parent_copy_fingerprint($metadata);
-    $attributes=$metadata->get_attributes('edit');$changed=clone $attributes[$key];$changed->set_extra_data('private_fixture_payload',['must_not_copy'=>'changed fixture secret']);$attributes[$key]=$changed;$stamp=clone $metadata->get_date_modified('edit');$metadata->set_attributes($attributes);$metadata->save();$metadata=wc_get_product($metadata->get_id());$metadata->set_date_modified($stamp);$metadata->save();$metadata=wc_get_product($metadata->get_id());
+    $attributes=$metadata->get_attributes('edit');$changed=clone $attributes[$key];$changed->set_extra_data('private_fixture_payload',['must_not_copy'=>'changed fixture secret']);$attributes[$key]=$changed;$stamp=clone $metadata->get_date_modified('edit');$metadata->set_attributes($attributes);$metadata->save();$metadata=$restoreModified(wc_get_product($metadata->get_id()),$stamp);
+    $assert($metadata->get_date_modified('edit')->getTimestamp()===$stamp->getTimestamp(),'Excluded attribute metadata preserves the exact original timestamp.');
     $assert(YoRo_Product_Lifecycle::parent_copy_fingerprint($metadata)===$standard&&YoRo_Commerce_Discovery_Service::product_version($metadata)===$sourceVersion,'Excluded arbitrary attribute metadata cannot alter the targeted standard copy values.');
     $fresh=$execute('products.duplicate',$params($metadata->get_id(),['name'=>'Standard attribute-only duplicate']));$assert(!is_wp_error($fresh),'Supported standard attributes remain duplicable when arbitrary attribute extra data is present.');
     $copy=wc_get_product($fresh['data']['product_id']);$assert($copy->get_attributes('edit')[$key]->get_all_extra_data()===[]&&YoRo_Product_Lifecycle::parent_copy_fingerprint($copy)===$standard,'A draft copies only six native attribute fields and exact defaults, never arbitrary attribute extra data.');
