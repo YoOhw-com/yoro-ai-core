@@ -53,6 +53,68 @@ try{
     foreach([['variations'=>array_fill(0,11,['attributes'=>[['name'=>'Size','option'=>'Extra']],'regular_price'=>'1'])],['variations'=>[['attributes'=>[['name'=>'Size','option'=>'Extra']],'regular_price'=>'1','arbitrary_meta'=>['secret'=>'bad']]]]]as$bad){$assert(!YoRo_Product_Authoring::valid_params('products.generate_variations',['product_id'=>$parentId,'changes'=>$bad,'expected_version'=>str_repeat('a',64)]),'Unbounded batches and arbitrary metadata never enter execution.');}
     $failure=$params('products.generate_variations',$parentId,['variations'=>[['attributes'=>[['name'=>'Size','option'=>'Medium']],'regular_price'=>'5'],['attributes'=>[['name'=>'Size','option'=>'Extra']],'regular_price'=>'6']]]);$client->operation=yoro_native_write_fixture_envelope('products.generate_variations',$failure);$createdCount=0;$fail=static function($id)use(&$createdCount,$parentId){if((int)wp_get_post_parent_id($id)===$parentId){$createdCount++;throw new RuntimeException('Disposable generation failure after first native variation save.');}};add_action('woocommerce_new_product_variation',$fail,PHP_INT_MAX);
     try{$runtime->run_early_access_write_once();}finally{remove_action('woocommerce_new_product_variation',$fail,PHP_INT_MAX);}$last=end($client->results);$assert(($last['error']['code']??null)==='local_execution_outcome_unknown'&&$createdCount===1,'Partial batch persistence stops as unknown.');$count=$context(['product_id'=>$parentId])['children_count'];$runtime->run_early_access_write_once();$assert($context(['product_id'=>$parentId])['children_count']===$count,'Unknown parent journal never repeats a partial batch.');
+    $orderedParent = new WC_Product_Variable();
+    $orderedParent->set_name('Native two attribute hydration fixture');
+    $orderedParent->set_status('draft');
+    $orderedAttributes = [];
+    foreach (['Size' => ['Small', 'Medium', 'Large'], 'Finish' => ['Matte', 'Gloss']] as $name => $options) {
+        $attribute = new WC_Product_Attribute();
+        $attribute->set_name($name);
+        $attribute->set_options($options);
+        $attribute->set_position(count($orderedAttributes));
+        $attribute->set_variation(true);
+        $attribute->set_visible(true);
+        $orderedAttributes[] = $attribute;
+    }
+    $orderedParent->set_attributes($orderedAttributes);
+    $orderedParent->save();
+    $orderedId = $orderedParent->get_id();
+    $orderedSku = 'two-attributes-'.wp_generate_uuid4();
+    $orderedBatch = ['variations' => [
+        ['attributes' => [['name' => 'Size', 'option' => 'Small'], ['name' => 'Finish', 'option' => 'Gloss']], 'regular_price' => '3.25', 'sku' => $orderedSku, 'manage_stock' => true, 'stock_quantity' => 5],
+        ['attributes' => [['name' => 'Size', 'option' => 'Medium'], ['name' => 'Finish', 'option' => 'Matte']], 'regular_price' => '4.5'],
+    ]];
+    $orderedParams = $params('products.generate_variations', $orderedId, $orderedBatch);
+    $prepared = YoRo_Product_Authoring::prepare($orderedParams, 'products.generate_variations');
+    $assert(!is_wp_error($prepared) && array_keys($prepared['products'][0]->get_attributes('edit')) === ['finish', 'size'], 'Reviewed detached attributes use canonical key order before save.');
+    $outcome = $run('products.generate_variations', $orderedParams);
+    $assert($outcome['status'] === 'executed', 'Native two attribute hydration must preserve a valid batch: '.wp_json_encode($outcome));
+    $orderedChildren = array_column($outcome['result']['data']['variations'], 'variation_id');
+    $assert(count($orderedChildren) === 2 && count(array_unique($orderedChildren)) === 2 && $outcome['result']['data']['changes_hash'] === YoRo_Order_Edit::hash($orderedParams['changes']), 'Two distinct new variations bind the exact reviewed changes.');
+    $hydrated = wc_get_product($orderedChildren[0]);
+    $assert(array_keys($hydrated->get_attributes('edit')) === ['size', 'finish'], 'Native variation hydration follows parent order, independently of the detached map order.');
+    $assert($hydrated->get_attributes('edit') === ['size' => 'Small', 'finish' => 'Gloss'] && $hydrated->get_sku('edit') === $orderedSku && $hydrated->get_regular_price('edit') === '3.25' && $hydrated->get_manage_stock('edit') === true && $hydrated->get_stock_quantity('edit') === 5, 'Canonical comparison does not alter attribute values, SKU, price or managed stock.');
+    $prepared['products'][0]->validate_props();
+    $expectation = new ReflectionMethod(YoRo_Product_Authoring::class, 'expectation');
+    $assert($expectation->invoke(null, $prepared['products'][0]) === $expectation->invoke(null, $hydrated), 'Only associative attribute order is normalized in the detached and native fingerprints.');
+    $runtime->run_early_access_write_once();
+    $assert($context(['product_id' => $orderedId])['children_count'] === 2, 'The successful two attribute batch is not repeated on replay.');
+
+    $changedValue = $params('products.generate_variations', $orderedId, ['variations' => [
+        ['attributes' => [['name' => 'Size', 'option' => 'Large'], ['name' => 'Finish', 'option' => 'Matte']], 'regular_price' => '6'],
+    ]]);
+    $client->operation = yoro_native_write_fixture_envelope('products.generate_variations', $changedValue);
+    $valueMutations = 0;
+    $changeAttributeValue = static function ($product) use ($orderedId, &$valueMutations) {
+        if ($product instanceof WC_Product_Variation && $product->get_parent_id('edit') === $orderedId && $product->get_id() === 0) {
+            $valueMutations++;
+            $product->set_attributes(['finish' => 'Gloss', 'size' => 'Large']);
+        }
+    };
+    add_action('woocommerce_before_product_object_save', $changeAttributeValue, PHP_INT_MAX);
+    try {
+        $runtime->run_early_access_write_once();
+    } finally {
+        remove_action('woocommerce_before_product_object_save', $changeAttributeValue, PHP_INT_MAX);
+    }
+    $last = end($client->results);
+    $assert(($last['error']['code'] ?? null) === 'local_execution_outcome_unknown' && $valueMutations === 1, 'A real attribute value changed during native save remains unknown, rather than being normalized away.');
+    $nativeChildren = array_column($context(['product_id' => $orderedId])['variations'], 'variation_id');
+    $unexpectedChildren = array_values(array_diff($nativeChildren, $orderedChildren));
+    $assert(count($unexpectedChildren) === 1 && wc_get_product($unexpectedChildren[0])->get_attributes('edit') === ['size' => 'Large', 'finish' => 'Gloss'], 'The unknown receipt retains the actual partial native state for inspection.');
+    $runtime->run_early_access_write_once();
+    $assert($context(['product_id' => $orderedId])['children_count'] === 3 && $valueMutations === 1, 'Unknown value-conflict replay never saves the batch again.');
+
     wp_set_current_user(0);$assert(is_wp_error(YoRo_Product_Authoring::execute_read(['action'=>'products.get_authoring_context','params'=>['product_id'=>0]])),'Anonymous authoring source read fails closed.');
-    echo "Native product authoring passed: initial detail source, bounded missing combinations, options/enable, selected safe clones, global attributes/terms, owned native trash/restore and journal unknown-stop.\n";
+    echo "Native product authoring passed: initial detail source, bounded missing combinations, options/enable, selected safe clones, global attributes/terms, owned native trash/restore, two-attribute hydration and value-conflict journal unknown-stop.\n";
 }finally{if($lock!==null){$release->invoke(null,$lock);}$wpdb->query('ROLLBACK');wp_cache_flush();wp_set_current_user($old);foreach($registered as$taxonomy){unregister_taxonomy($taxonomy);}remove_filter('pre_wp_mail',$noMail);remove_filter('pre_http_request',$noNetwork);}
