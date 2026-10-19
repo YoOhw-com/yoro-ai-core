@@ -18,6 +18,7 @@ class YoRo_Connector_Runtime {
 
 	private $client;
 	private $wake_request = false;
+    private $execution_metrics = [ 'count' => 0, 'elapsed_ms' => 0 ];
     private $unified_claim_available = true;
 	private $clock;
 	private $sleeper;
@@ -243,6 +244,7 @@ class YoRo_Connector_Runtime {
 			return new WP_Error( 'yoro_connector_cli_required', 'A CLI worker is required.' );
 		}
 		$started = ( $this->clock )();
+		$this->execution_metrics = [ 'count' => 0, 'elapsed_ms' => 0 ];
 		$deadline = $started + max( 1, min( 55, (float) $seconds ) );
 		$summary = [ 'ticks' => 0, 'reads' => 0, 'writes' => 0, 'empty_polls' => 0 ];
 		$idle = 0;
@@ -262,6 +264,7 @@ class YoRo_Connector_Runtime {
 			$active = $round['reads'] + $round['writes'] > 0;
 			$summary['empty_polls'] += $active ? 0 : 1;
             $summary = array_merge( $summary, $this->client->early_access_transport_metrics() );
+            $summary['local_execution'] = $this->execution_metrics;
 			if ( is_callable( $observe ) ) {
 				$observe( $summary );
 			}
@@ -590,6 +593,7 @@ class YoRo_Connector_Runtime {
             if ( ! $owns_lock() || ! $allowed() ) { return self::lock_lost_error(); }
 			$original = get_current_user_id();
 			wp_set_current_user( $valid['user_id'] );
+			$execution_started = ( $this->clock )();
 			try {
                 if ( $commerce_write ) {
                     try { $execution = YoRo_Early_Access_Commerce_Write::execute( $operation, static function() use ( $allowed, $owns_lock ) { return $allowed() && $owns_lock(); } ); }
@@ -632,6 +636,10 @@ class YoRo_Connector_Runtime {
                 }
 			} finally {
 				wp_set_current_user( $original );
+                if ( $ordinary ) {
+                    $this->execution_metrics['count']++;
+                    $this->execution_metrics['elapsed_ms'] += max( 0, (int) round( ( ( $this->clock )() - $execution_started ) * 1000 ) );
+                }
 			}
             $completed = $this->complete_read_journal( $operation, $result, $ordinary );
             if ( $commerce_write && 'completed' !== ( $completed['state'] ?? '' ) ) {
