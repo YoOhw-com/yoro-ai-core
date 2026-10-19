@@ -40,12 +40,14 @@ class YoRo_Connector_Client {
     }
 
     /** Reserve a full claim/ack/lease/result pipeline under the shared 30/minute limit. */
-    public function early_access_has_budget( $requests = 4 ) {
-        return 0 === $this->early_access_retry_after() && min( 24 - $this->early_access_requests, $this->early_access_remaining ) >= $requests;
+    public function early_access_has_budget( $requests = 4, $continuation = false ) {
+        // Another poller's cooldown stops new claims, not an already fenced result.
+        // This client still honors its own 429 and conservative request capacity.
+        return 0 === $this->early_access_retry_after( ! $continuation ) && min( 24 - $this->early_access_requests, $this->early_access_remaining ) >= $requests;
     }
 
-    public function early_access_retry_after() {
-        $persisted = class_exists( 'YoRo_Connector_Wake' ) ? YoRo_Connector_Wake::poll_retry_after() : 0;
+    public function early_access_retry_after( $include_persisted = true ) {
+        $persisted = $include_persisted && class_exists( 'YoRo_Connector_Wake' ) ? YoRo_Connector_Wake::poll_retry_after() : 0;
         return max( 0, $this->early_access_cooldown_until - time(), $persisted );
     }
 

@@ -15,9 +15,12 @@ class YoRo_Connector_Runtime {
 	const MAX_DELIVERIES_PER_TICK = 5;
 	const MAX_TICK_SECONDS = 45;
 	const DEFAULT_RETRY_SECONDS = 5;
+	const SESSION_OPTION = 'yoro_connector_cli_session_v1';
+	const SESSION_FRESH_SECONDS = 15;
 
 	private $client;
 	private $wake_request = false;
+	private $session_owner = null;
     private $execution_metrics = [ 'count' => 0, 'elapsed_ms' => 0 ];
     private $unified_claim_available = true;
 	private $clock;
@@ -72,6 +75,11 @@ class YoRo_Connector_Runtime {
 	}
 
 	public static function tick() {
+		// A recent CLI round owns fast polling. This hint never grants execution
+		// authority and expires after a crash; the fenced runner lock remains final.
+		if ( self::cli_session_recent() && ! self::live_cutover_allowed() ) {
+			return;
+		}
 		$lock = self::acquire_lock();
 
 		if ( null === $lock ) {
@@ -83,12 +91,10 @@ class YoRo_Connector_Runtime {
 			$publisher = new YoRo_Connector_Snapshot_Publisher( $client );
 			$publisher->publish_if_due();
 
-			if ( self::early_access_read_allowed() ) {
-                ( new self( $client ) )->run_early_access_once();
-            }
-            if ( self::early_access_write_allowed() ) {
-                ( new self( $client ) )->run_early_access_write_once();
-            }
+			if ( self::early_access_read_allowed() && ! self::cli_session_recent() ) {
+				$runtime = new self( $client );
+				$runtime->early_access_round_locked( false, ( $runtime->clock )() + self::MAX_TICK_SECONDS );
+			}
 
 			if ( self::live_cutover_allowed() ) {
 				( new self( $client ) )->run_batch();
@@ -248,36 +254,70 @@ class YoRo_Connector_Runtime {
 		$deadline = $started + max( 1, min( 55, (float) $seconds ) );
 		$summary = [ 'ticks' => 0, 'reads' => 0, 'writes' => 0, 'empty_polls' => 0 ];
 		$idle = 0;
-		while ( $summary['ticks'] < 40 && ( $this->clock )() < $deadline ) {
-			if ( is_callable( $before_round ) ) {
-				$before_round();
+		$this->session_owner = function_exists( 'wp_generate_uuid4' ) ? wp_generate_uuid4() : null;
+		try {
+			while ( $summary['ticks'] < 40 && ( $this->clock )() < $deadline ) {
+				if ( is_callable( $before_round ) ) {
+					$before_round();
+				}
+				$round = $this->early_access_session_round( 0 === $summary['ticks'], $deadline );
+				if ( is_wp_error( $round ) ) {
+	                $retry = $this->client->early_access_retry_after();
+	                if ( $retry > 0 ) { ( $this->sleeper )( min( $retry, max( 0, $deadline - ( $this->clock )() ) ) ); }
+					return $round;
+				}
+				$summary['ticks']++;
+				$summary['reads'] += $round['reads'];
+				$summary['writes'] += $round['writes'];
+				$active = $round['reads'] + $round['writes'] > 0;
+				$summary['empty_polls'] += $active ? 0 : 1;
+	            $summary = array_merge( $summary, $this->client->early_access_transport_metrics() );
+	            $summary['local_execution'] = $this->execution_metrics;
+				if ( is_callable( $observe ) ) {
+					$observe( $summary );
+				}
+				// Drain queued work immediately. Back off only when no work was received.
+				$idle = $active ? 0 : min( 4, $idle + 1 );
+				$remaining = $deadline - ( $this->clock )();
+				if ( ! $active && $remaining > 0 ) {
+					$idle_cap = $this->wake_available() ? 5 : 3;
+					( $this->sleeper )( min( $remaining, max( $this->client->early_access_retry_after(), min( $idle_cap, 2 ** $idle ) ) ) );
+				}
 			}
-			$round = $this->early_access_session_round( 0 === $summary['ticks'], $deadline );
-			if ( is_wp_error( $round ) ) {
-                $retry = $this->client->early_access_retry_after();
-                if ( $retry > 0 ) { ( $this->sleeper )( min( $retry, max( 0, $deadline - ( $this->clock )() ) ) ); }
-				return $round;
-			}
-			$summary['ticks']++;
-			$summary['reads'] += $round['reads'];
-			$summary['writes'] += $round['writes'];
-			$active = $round['reads'] + $round['writes'] > 0;
-			$summary['empty_polls'] += $active ? 0 : 1;
-            $summary = array_merge( $summary, $this->client->early_access_transport_metrics() );
-            $summary['local_execution'] = $this->execution_metrics;
-			if ( is_callable( $observe ) ) {
-				$observe( $summary );
-			}
-			// Drain queued work immediately. Back off only when no work was received.
-			$idle = $active ? 0 : min( 4, $idle + 1 );
-			$remaining = $deadline - ( $this->clock )();
-			if ( ! $active && $remaining > 0 ) {
-				$idle_cap = $this->wake_available() ? 10 : 3;
-				( $this->sleeper )( min( $remaining, max( $this->client->early_access_retry_after(), min( $idle_cap, 2 ** $idle ) ) ) );
-			}
+			$summary['elapsed_ms'] = (int) round( ( ( $this->clock )() - $started ) * 1000 );
+			return array_merge( $summary, $this->client->early_access_transport_metrics() );
+		} finally {
+			$this->finish_cli_session();
+			$this->session_owner = null;
 		}
-		$summary['elapsed_ms'] = (int) round( ( ( $this->clock )() - $started ) * 1000 );
-		return array_merge( $summary, $this->client->early_access_transport_metrics() );
+	}
+
+	private static function session_binding() {
+		return hash( 'sha256', YoRo_AI_Settings::get_installation_uuid() . '|' . YoRo_AI_Settings::get_ai_api_url() . '|' . YoRo_AI_Settings::get_ai_api_site_key() );
+	}
+
+	private static function cli_session_recent() {
+		$session = get_option( self::SESSION_OPTION, [] );
+		return is_array( $session ) && is_string( $session['owner'] ?? null )
+			&& is_int( $session['observed_at'] ?? null ) && $session['observed_at'] <= time()
+			&& $session['observed_at'] > time() - self::SESSION_FRESH_SECONDS
+			&& hash_equals( self::session_binding(), (string) ( $session['binding'] ?? '' ) );
+	}
+
+	private function observe_cli_session() {
+		if ( null !== $this->session_owner ) {
+			update_option( self::SESSION_OPTION, [ 'owner' => $this->session_owner, 'observed_at' => time(), 'binding' => self::session_binding() ], false );
+		}
+	}
+
+	private function finish_cli_session() {
+		if ( null === $this->session_owner ) { return; }
+		$session = get_option( self::SESSION_OPTION, [] );
+		if ( is_array( $session ) && ( $session['owner'] ?? null ) === $this->session_owner ) {
+			// Retain the diagnostic record; an expired observation immediately restores cron.
+			$session['observed_at'] = 0;
+			update_option( self::SESSION_OPTION, $session, false );
+		}
 	}
 
 	protected function wake_available() {
@@ -306,10 +346,21 @@ class YoRo_Connector_Runtime {
 			return $this->wake_request ? new WP_Error( 'yoro_wake_busy', 'A connector runner is already active.', [ 'status' => 409 ] ) : [ 'reads' => 0, 'writes' => 0 ];
 		}
 		try {
-			if ( $publish && ( $this->clock )() < $deadline ) {
-				( new YoRo_Connector_Snapshot_Publisher( $this->client ) )->publish_if_due();
-			}
-			$counts = [ 'reads' => 0, 'writes' => 0 ];
+			$this->observe_cli_session();
+			return $this->early_access_round_locked( $publish, $deadline );
+		} finally {
+			$this->observe_cli_session();
+			self::release_lock( $lock );
+		}
+	}
+
+	/** The caller holds the existing database-session runner lock. */
+	protected function early_access_round_locked( $publish, $deadline ) {
+		if ( null === self::$held_lock || ! self::runner_lock_valid() ) { return self::lock_lost_error(); }
+		if ( $publish && ( $this->clock )() < $deadline ) {
+			( new YoRo_Connector_Snapshot_Publisher( $this->client ) )->publish_if_due();
+		}
+		$counts = [ 'reads' => 0, 'writes' => 0 ];
             if ( $this->unified_claim_available && ( $this->clock )() < $deadline ) {
                 $claim = $this->client->early_access_request( 'next' );
                 if ( is_wp_error( $claim ) && in_array( $claim->get_error_data()['status'] ?? null, [ 404, 405 ], true ) ) {
@@ -333,26 +384,23 @@ class YoRo_Connector_Runtime {
                 }
             }
 
-			foreach ( [ 'reads', 'writes' ] as $lane ) {
-				if ( ( $this->clock )() >= $deadline ) {
-					break;
-				}
-				if ( 'writes' === $lane && ! self::early_access_write_allowed() ) {
-					continue;
-				}
-				$result = 'reads' === $lane ? $this->run_early_access_once() : $this->run_early_access_write_once();
-				if ( is_wp_error( $result ) ) {
-					return $result;
-				}
-				if ( ! is_array( $result ) || true !== ( $result['success'] ?? false ) ) {
-					return new WP_Error( 'yoro_connector_worker_result_invalid', 'The worker result is unavailable.' );
-				}
-				$counts[ $lane ] = empty( $result['empty'] ) ? 1 : 0;
+		foreach ( [ 'reads', 'writes' ] as $lane ) {
+			if ( ( $this->clock )() >= $deadline ) {
+				break;
 			}
-			return $counts;
-		} finally {
-			self::release_lock( $lock );
+			if ( 'writes' === $lane && ! self::early_access_write_allowed() ) {
+				continue;
+			}
+			$result = 'reads' === $lane ? $this->run_early_access_once() : $this->run_early_access_write_once();
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
+			if ( ! is_array( $result ) || true !== ( $result['success'] ?? false ) ) {
+				return new WP_Error( 'yoro_connector_worker_result_invalid', 'The worker result is unavailable.' );
+			}
+			$counts[ $lane ] = empty( $result['empty'] ) ? 1 : 0;
 		}
+		return $counts;
 	}
 
 	private static function retry_delay( $hint ) {
@@ -524,7 +572,7 @@ class YoRo_Connector_Runtime {
 		if ( ! $allowed() || ! $owns_lock() ) {
 			return new WP_Error( 'yoro_r2_unavailable', 'A locked R2 operator runner is required.' );
 		}
-		if ( $ordinary && ! $this->client->early_access_has_budget( null === $prefetched_claim ? 4 : 3 ) ) {
+		if ( $ordinary && ! $this->client->early_access_has_budget( null === $prefetched_claim ? 4 : 3, null !== $prefetched_claim ) ) {
 			return [ 'success' => true, 'empty' => true, 'throttled' => true ];
 		}
 		$claim = null === $prefetched_claim ? $request( 'claim' ) : $prefetched_claim;
@@ -540,7 +588,7 @@ class YoRo_Connector_Runtime {
 		if ( is_wp_error( $valid ) ) {
 			return $valid;
 		}
-		if ( $ordinary && ! $this->client->early_access_has_budget( 3 ) ) {
+		if ( $ordinary && ! $this->client->early_access_has_budget( 3, true ) ) {
 			return new WP_Error( 'yoro_connector_transport_budget', 'The delivery must wait for transport capacity.' );
 		}
         $lease_until = strtotime( $claim['delivery']['lease_expires_at'] ?? '' );
@@ -550,7 +598,7 @@ class YoRo_Connector_Runtime {
 			if ( ! $owns_lock() || ! $allowed() ) {
 				return self::lock_lost_error();
 			}
-			if ( $ordinary && ! $this->client->early_access_has_budget( 'ack' === $step ? 3 : 2 ) ) {
+			if ( $ordinary && ! $this->client->early_access_has_budget( 'ack' === $step ? 3 : 2, true ) ) {
 				return new WP_Error( 'yoro_connector_transport_budget', 'The delivery must wait for transport capacity.' );
 			}
 			$response = $request( $step, $operation['envelope_id'], [], $authority['claim_token'], $authority['lease_generation'] );
@@ -563,7 +611,7 @@ class YoRo_Connector_Runtime {
 			return $valid;
 		}
         if ( ! $owns_lock() || ! $allowed() ) { return self::lock_lost_error(); }
-		if ( $ordinary && ! $this->client->early_access_has_budget( 1 ) ) {
+		if ( $ordinary && ! $this->client->early_access_has_budget( 1, true ) ) {
 			return new WP_Error( 'yoro_connector_transport_budget', 'Result transport capacity is required before execution.' );
 		}
         $report = $ordinary && ! $commerce_write && in_array( $operation['action'], [...array_slice( YoRo_Early_Access_Store_Overview_Read::ACTIONS, 0, 4 ), 'customers.get_period_summary'], true );
@@ -651,7 +699,7 @@ class YoRo_Connector_Runtime {
 		}
 
         if ( $conditional_read && $lease_until - time() < 20 ) {
-            if ( ! $this->client->early_access_has_budget( 2 ) ) {
+            if ( ! $this->client->early_access_has_budget( 2, true ) ) {
                 return new WP_Error( 'yoro_connector_transport_budget', 'Lease and result transport capacity are required.' );
             }
             $renewed = $request( 'lease', $operation['envelope_id'], [], $authority['claim_token'], $authority['lease_generation'] );
