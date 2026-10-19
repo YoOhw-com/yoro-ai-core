@@ -95,7 +95,7 @@ $expiring_sleeper = static function( $seconds ) use ( &$now, &$sleeps, &$stale_f
 $stale_fallback = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client(), $clock, $expiring_sleeper );
 $stale_fallback->wake_healthy = true;
 $stale_fallback->run_early_access_session( 25 );
-$assert( [ 2, 4, 5, 5, 3, 3, 3.0 ] === $sleeps, 'Stale registration must restore the existing three-second fallback within the running session.' );
+$assert( [ 2.0, 4.0, 5.0, 5.0, 3.0, 3.0, 3.0 ] === array_map( 'floatval', $sleeps ), 'Stale registration must restore the existing three-second fallback within the running session.' );
 echo "Wake-aware fallback polling contract passed.\n";
 
 // A rate-limited API must not cause a tight retry loop or bypass the session deadline.
