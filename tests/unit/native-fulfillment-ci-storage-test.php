@@ -21,6 +21,8 @@ $wpdb = new class {
 };
 require dirname(__DIR__).'/contracts/helpers/native-fulfillment-ci-storage.php';
 $old_github = getenv('GITHUB_ACTIONS'); $old_runner = getenv('RUNNER_TEMP');
+$old_canary_env = [];
+foreach (['GITHUB_WORKSPACE', 'GITHUB_REPOSITORY', 'GITHUB_WORKFLOW_REF', 'GITHUB_EVENT_NAME'] as $key) { $old_canary_env[$key] = getenv($key); }
 try {
     putenv('GITHUB_ACTIONS=true'); putenv('RUNNER_TEMP='.dirname(__DIR__));
     $GLOBALS['fixture_home'] = 'http://yoro-woocommerce-exact-pair.test';
@@ -41,8 +43,16 @@ try {
             if ($wpdb->marker_queries !== ($valid ? 1 : 0) || ($valid && $error->getMessage() !== 'Existing native test configuration must not be initialized.') || (!$valid && !str_contains($error->getMessage(), 'Isolation: '))) { throw $error; }
         }
     }
-    echo "Native fulfillment storage guard: valid context reaches marker guard; home, host context, path and partial-storage negatives deny initialization.\n";
+    $workspace = dirname(__DIR__);
+    putenv('GITHUB_WORKSPACE='.$workspace); putenv('GITHUB_REPOSITORY=YoOhw-com/yoro-ai-api');
+    putenv('GITHUB_WORKFLOW_REF=YoOhw-com/yoro-ai-api/.github/workflows/release-readiness.yml@refs/heads/main'); putenv('GITHUB_EVENT_NAME=push');
+    if (!yoro_native_fulfillment_ci_path_allowed(false, $workspace.'/wordpress', 'http://yoro-smoke.test/wordpress')) { throw new LogicException('Exact API canary root denied.'); }
+    if (yoro_native_fulfillment_ci_path_allowed(false, $workspace.'/other-wordpress', 'http://yoro-smoke.test/wordpress')) { throw new LogicException('Unowned workspace root admitted.'); }
+    putenv('GITHUB_WORKFLOW_REF=YoOhw-com/yoro-ai-api/.github/workflows/other.yml@refs/heads/main');
+    if (yoro_native_fulfillment_ci_path_allowed(false, $workspace.'/wordpress', 'http://yoro-smoke.test/wordpress')) { throw new LogicException('Wrong workflow admitted.'); }
+    echo "Native fulfillment storage guard: eight storage/context cases and exact API canary root/workflow boundaries passed.\n";
 } finally {
     putenv($old_github === false ? 'GITHUB_ACTIONS' : 'GITHUB_ACTIONS='.$old_github);
     putenv($old_runner === false ? 'RUNNER_TEMP' : 'RUNNER_TEMP='.$old_runner);
+    foreach ($old_canary_env as $key => $value) { putenv($value === false ? $key : $key.'='.$value); }
 }

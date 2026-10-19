@@ -5,6 +5,17 @@
  * is never called on existing/partial storage or any existing fulfillment marker.
  * Created empty native tables remain; DDL is not described as transaction rollback.
  */
+function yoro_native_fulfillment_ci_path_allowed($runner, $wordpress, string $home): bool
+{
+    if($runner!==false&&$wordpress!==false&&str_starts_with($wordpress,$runner.DIRECTORY_SEPARATOR)){return true;}
+    $workspace=realpath((string)getenv('GITHUB_WORKSPACE'));
+    return $workspace!==false&&$wordpress===$workspace.'/wordpress'
+        &&getenv('GITHUB_REPOSITORY')==='YoOhw-com/yoro-ai-api'
+        &&getenv('GITHUB_WORKFLOW_REF')==='YoOhw-com/yoro-ai-api/.github/workflows/release-readiness.yml@refs/heads/main'
+        &&in_array(getenv('GITHUB_EVENT_NAME'),['push','workflow_dispatch'],true)
+        &&in_array(untrailingslashit($home),['http://yoro-smoke.test','http://yoro-smoke.test/wordpress'],true);
+}
+
 function yoro_native_fulfillment_ci_storage(): void
 {
     global $wpdb;$tables=[];
@@ -27,13 +38,13 @@ function yoro_native_fulfillment_ci_storage(): void
         ],true),
         'runner_realpath_exists'=>$runner!==false,
         'wordpress_realpath_exists'=>$wordpress!==false,
-        'wordpress_under_runner'=>$runner!==false&&$wordpress!==false&&str_starts_with($wordpress,$runner.DIRECTORY_SEPARATOR),
+        'wordpress_isolated_root'=>yoro_native_fulfillment_ci_path_allowed($runner,$wordpress,$configuredHome),
         'native_tables_absent'=>count(array_filter($tables))===0,
     ];
     if(in_array(false,$isolation,true)){
         $diagnostic=$isolation+['stored_home_http'=>parse_url($configuredHome,PHP_URL_SCHEME)==='http','stored_home_https'=>parse_url($configuredHome,PHP_URL_SCHEME)==='https','stored_home_known_host'=>in_array(parse_url($configuredHome,PHP_URL_HOST),['yoro-plugin-smoke.test','yoro-woocommerce-exact-pair.test','yoro-smoke.test'],true),'stored_home_root_path'=>in_array(parse_url($configuredHome,PHP_URL_PATH),[null,'','/'],true)];
         $path=parse_url($configuredHome,PHP_URL_PATH);
-        if($diagnostic['stored_home_known_host']&&$isolation['github_actions_exact']&&$isolation['wordpress_under_runner']&&is_string($path)&&preg_match('~\A/[A-Za-z0-9/_-]{0,160}\z~D',$path)){$diagnostic['synthetic_fixture_path']=$path;}
+        if($diagnostic['stored_home_known_host']&&$isolation['github_actions_exact']&&$isolation['wordpress_isolated_root']&&is_string($path)&&preg_match('~\A/[A-Za-z0-9/_-]{0,160}\z~D',$path)){$diagnostic['synthetic_fixture_path']=$path;}
         throw new RuntimeException('Positive native fulfillment fixtures require existing tables or the exact isolated hosted smoke environment. Isolation: '.json_encode($diagnostic,JSON_THROW_ON_ERROR));
     }
     if(!preg_match('/\A[A-Za-z0-9_]+\z/D',$wpdb->prefix)){throw new RuntimeException('Ambiguous test table prefix.');}
