@@ -27,6 +27,8 @@ function yoro_native_fulfillment_ci_storage(): void
     ];
     if(in_array(false,$isolation,true)){
         $diagnostic=$isolation+['stored_home_http'=>parse_url($configuredHome,PHP_URL_SCHEME)==='http','stored_home_https'=>parse_url($configuredHome,PHP_URL_SCHEME)==='https','stored_home_known_host'=>in_array(parse_url($configuredHome,PHP_URL_HOST),['yoro-plugin-smoke.test','yoro-woocommerce-exact-pair.test','yoro-smoke.test'],true),'stored_home_root_path'=>in_array(parse_url($configuredHome,PHP_URL_PATH),[null,'','/'],true)];
+        $path=parse_url($configuredHome,PHP_URL_PATH);
+        if($diagnostic['stored_home_known_host']&&$isolation['github_actions_exact']&&$isolation['wordpress_under_runner']&&is_string($path)&&preg_match('~\A/[A-Za-z0-9/_-]{0,160}\z~D',$path)){$diagnostic['synthetic_fixture_path']=$path;}
         throw new RuntimeException('Positive native fulfillment fixtures require existing tables or the exact isolated hosted smoke environment. Isolation: '.json_encode($diagnostic,JSON_THROW_ON_ERROR));
     }
     if(!preg_match('/\A[A-Za-z0-9_]+\z/D',$wpdb->prefix)){throw new RuntimeException('Ambiguous test table prefix.');}
