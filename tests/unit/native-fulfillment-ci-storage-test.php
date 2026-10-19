@@ -24,14 +24,20 @@ $old_github = getenv('GITHUB_ACTIONS'); $old_runner = getenv('RUNNER_TEMP');
 try {
     putenv('GITHUB_ACTIONS=true'); putenv('RUNNER_TEMP='.dirname(__DIR__));
     $GLOBALS['fixture_home'] = 'http://yoro-woocommerce-exact-pair.test';
-    foreach (['valid_context', 'wrong_home', 'not_hosted', 'outside_runner', 'partial_storage'] as $case) {
+    foreach (['valid_context', 'valid_core_path', 'valid_pair_path', 'wrong_home', 'wrong_path', 'not_hosted', 'outside_runner', 'partial_storage'] as $case) {
         $wpdb->marker_queries = 0; $wpdb->present = $case === 'partial_storage' ? 1 : 0;
-        $GLOBALS['fixture_home'] = $case === 'wrong_home' ? 'https://wp-canary-us.yorohq.com' : 'http://yoro-woocommerce-exact-pair.test';
+        $GLOBALS['fixture_home'] = match ($case) {
+            'valid_core_path' => 'http://yoro-plugin-smoke.test/wordpress',
+            'valid_pair_path' => 'http://yoro-woocommerce-exact-pair.test/wordpress-woo',
+            'wrong_home' => 'https://wp-canary-us.yorohq.com',
+            'wrong_path' => 'http://yoro-woocommerce-exact-pair.test/unowned-directory',
+            default => 'http://yoro-woocommerce-exact-pair.test',
+        };
         putenv('GITHUB_ACTIONS='.($case === 'not_hosted' ? 'false' : 'true'));
         putenv('RUNNER_TEMP='.($case === 'outside_runner' ? dirname(__DIR__).'/contracts' : dirname(__DIR__)));
         try { yoro_native_fulfillment_ci_storage(); throw new LogicException('Unsafe initialization admitted: '.$case); }
         catch (RuntimeException $error) {
-            $valid = $case === 'valid_context';
+            $valid = in_array($case, ['valid_context', 'valid_core_path', 'valid_pair_path'], true);
             if ($wpdb->marker_queries !== ($valid ? 1 : 0) || ($valid && $error->getMessage() !== 'Existing native test configuration must not be initialized.') || (!$valid && !str_contains($error->getMessage(), 'Isolation: '))) { throw $error; }
         }
     }

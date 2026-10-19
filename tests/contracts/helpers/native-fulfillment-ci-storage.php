@@ -19,7 +19,12 @@ function yoro_native_fulfillment_ci_storage(): void
         'db_name_exact'=>defined('DB_NAME')&&DB_NAME==='wordpress',
         'db_host_exact'=>defined('DB_HOST')&&DB_HOST==='127.0.0.1:3306',
         // Read the installer-owned option directly, outside request/option URL filters.
-        'home_allowlisted'=>in_array(untrailingslashit($configuredHome),['http://yoro-plugin-smoke.test','http://yoro-woocommerce-exact-pair.test','http://yoro-smoke.test'],true),
+        // The pinned installer also stores the disposable WordPress directory in home.
+        'home_allowlisted'=>in_array(untrailingslashit($configuredHome),[
+            'http://yoro-plugin-smoke.test','http://yoro-plugin-smoke.test/wordpress',
+            'http://yoro-woocommerce-exact-pair.test','http://yoro-woocommerce-exact-pair.test/wordpress-woo',
+            'http://yoro-smoke.test','http://yoro-smoke.test/wordpress',
+        ],true),
         'runner_realpath_exists'=>$runner!==false,
         'wordpress_realpath_exists'=>$wordpress!==false,
         'wordpress_under_runner'=>$runner!==false&&$wordpress!==false&&str_starts_with($wordpress,$runner.DIRECTORY_SEPARATOR),
