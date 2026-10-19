@@ -16,7 +16,8 @@ function yoro_native_fulfillment_ci_storage(): void
         'github_actions_exact'=>getenv('GITHUB_ACTIONS')==='true',
         'db_name_exact'=>defined('DB_NAME')&&DB_NAME==='wordpress',
         'db_host_exact'=>defined('DB_HOST')&&DB_HOST==='127.0.0.1:3306',
-        'home_allowlisted'=>in_array(untrailingslashit(home_url()),['http://yoro-plugin-smoke.test','http://yoro-woocommerce-exact-pair.test','http://yoro-smoke.test'],true),
+        // Bind the installer-owned root, independent of request scheme and URL filters.
+        'home_allowlisted'=>in_array(untrailingslashit((string)get_option('home')),['http://yoro-plugin-smoke.test','http://yoro-woocommerce-exact-pair.test','http://yoro-smoke.test'],true),
         'runner_realpath_exists'=>$runner!==false,
         'wordpress_realpath_exists'=>$wordpress!==false,
         'wordpress_under_runner'=>$runner!==false&&$wordpress!==false&&str_starts_with($wordpress,$runner.DIRECTORY_SEPARATOR),

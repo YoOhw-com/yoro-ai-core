@@ -4,7 +4,8 @@ define('ABSPATH', __DIR__.'/');
 define('DB_NAME', 'wordpress');
 define('DB_HOST', '127.0.0.1:3306');
 function untrailingslashit($value) { return rtrim($value, '/'); }
-function home_url() { return $GLOBALS['fixture_home']; }
+function home_url() { return 'https://request-context.example.invalid'; }
+function get_option($name, $default = false) { return $name === 'home' ? $GLOBALS['fixture_home'] : $default; }
 $wpdb = new class {
     public $prefix = 'woo_'; public $options = 'woo_options'; public $last_error = ''; public $present = 0; public $marker_queries = 0;
     public function esc_like($value) { return $value; }
