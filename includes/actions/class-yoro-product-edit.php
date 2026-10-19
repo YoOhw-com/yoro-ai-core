@@ -228,6 +228,14 @@ final class YoRo_Product_Edit
         }
     }
 
+    /** New draft models only; the authoring source binds every selected existing reference. */
+    public static function prepare_initial(WC_Product $product,array $changes): array
+    {
+        if($product->get_id()!==0){self::invalid();}
+        $effective=self::effective(self::changes($changes),['type'=>$product->get_type(),'extensions'=>['woocommerce.product'=>self::facts($product)]]);
+        self::validate_catalog_changes($effective);self::apply_changes($product,$effective);return $effective;
+    }
+
     /** Recheck existing classification/media authority for every preview and execution. */
     private static function validate_catalog_changes(array $changes): void
     {

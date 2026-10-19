@@ -23,7 +23,7 @@ final class YoRo_Product_Lifecycle
 
     public static function properties(string $action): array
     {
-        if($action==='products.create') { return ['name'=>['type'=>'string','minLength'=>1,'maxLength'=>255],'type'=>['type'=>'string','enum'=>['simple','variable']]]; }
+        if($action==='products.create') { return ['name'=>['type'=>'string','minLength'=>1,'maxLength'=>255],'type'=>['type'=>'string','enum'=>['simple','variable']], 'initial_details'=>self::object(YoRo_Product_Authoring::initial_properties(),[])]; }
         if($action==='products.duplicate') { return ['name'=>['type'=>'string','minLength'=>1,'maxLength'=>255]]; }
         if(in_array($action,['products.create_category','products.create_tag'],true)) {
             return ['name'=>['type'=>'string','minLength'=>1,'maxLength'=>200],...($action==='products.create_category'?['parent_id'=>['type'=>'integer','minimum'=>0]]:[])];
@@ -61,7 +61,7 @@ final class YoRo_Product_Lifecycle
                 'name'=>['type'=>'string','minLength'=>1,'maxLength'=>200],'parent_id'=>['type'=>'integer','minimum'=>0]]);
         }
         return self::object(['product_id'=>$positive,...(in_array($action,['products.create','products.duplicate'],true)?['source_product_id'=>['type'=>'integer','minimum'=>$action==='products.create'?0:1,...($action==='products.create'?['maximum'=>0]:[])]]:[]),
-            'changes'=>self::object(self::properties($action),$action==='products.update_lifecycle'?[]:array_keys(self::properties($action))), 'current_version'=>$version]);
+            'changes'=>self::object(self::properties($action),$action==='products.update_lifecycle'?[]:($action==='products.create'?['name','type']:array_keys(self::properties($action)))), 'current_version'=>$version]);
     }
 
     public static function register(): void
@@ -96,6 +96,7 @@ final class YoRo_Product_Lifecycle
         foreach($changes as $field=>$value) {
             $valid=match($field) {
                 'name'=>self::plain($value,in_array($action,['products.create_category','products.create_tag'],true)?200:255),
+                'initial_details'=>is_array($value)&&YoRo_Product_Authoring::initial_changes($value),
                 'type'=>in_array($value,['simple','variable'],true),'status'=>in_array($value,['draft','publish'],true),
                 'featured'=>is_bool($value),'catalog_visibility'=>in_array($value,['visible','catalog','search','hidden'],true),
                 'weight','length','width','height'=>is_string($value)&&preg_match('/\A(?:|(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?)\z/D',$value)===1,
@@ -225,7 +226,7 @@ final class YoRo_Product_Lifecycle
         return $values;
     }
 
-    private static function copy_parent(WC_Product $source,string $name): WC_Product
+    public static function copy_parent(WC_Product $source,string $name): WC_Product
     {
         if(!self::copy_supported($source)) {self::invalid();}
         $product=$source->is_type('variable')?new WC_Product_Variable():new WC_Product_Simple();
@@ -256,7 +257,7 @@ final class YoRo_Product_Lifecycle
             $params=array_diff_key($params,array_flip(['_yoro_confirmed','_yoro_preview']));self::permissions(true);
             if(!self::valid_params($action,$params)) {self::invalid();}
             $changes=self::changes($params['changes'],$action);$sourceId=$params['product_id'];$before=[];
-            if($sourceId===0){$version=self::context()['target']['version'];}else{$source=self::product($sourceId);$version=YoRo_Commerce_Discovery_Service::product_version($source);}
+            if($sourceId===0){$version=$action==='products.create'&&isset($changes['initial_details'])?YoRo_Product_Authoring::context(['product_id'=>0,'product_type'=>$changes['type'],'initial_details'=>$changes['initial_details']])['data']['target']['version']:self::context()['target']['version'];}else{$source=self::product($sourceId);$version=YoRo_Commerce_Discovery_Service::product_version($source);}
             if(!hash_equals($version,$params['expected_version'])){return new WP_Error('product_version_conflict','The product or creation context changed. Read it again before previewing.');}
             if(in_array($action,['products.create_category','products.create_tag'],true)) {
                 $taxonomy=$action==='products.create_category'?'product_cat':'product_tag';self::term_permission($taxonomy,true);$parent=$changes['parent_id']??0;
@@ -265,7 +266,7 @@ final class YoRo_Product_Lifecycle
                 return ['product'=>null,'source_id'=>0,'changes'=>$changes,'before'=>[],'taxonomy'=>$taxonomy,'parent_id'=>$parent];
             }
             if(in_array($action,['products.create','products.duplicate'],true)&&!current_user_can('edit_products')) {self::invalid();}
-            if($action==='products.create') {$product=$changes['type']==='variable'?new WC_Product_Variable():new WC_Product_Simple();$product->set_name($changes['name']);$product->set_status('draft');}
+            if($action==='products.create') {$product=$changes['type']==='variable'?new WC_Product_Variable():new WC_Product_Simple();$product->set_name($changes['name']);$product->set_status('draft');if(isset($changes['initial_details'])){$initial=YoRo_Product_Authoring::initial_product($changes['type'],$changes['initial_details']);$product=$initial['product'];$product->set_name($changes['name']);$changes['initial_details']=$initial['changes'];}}
             elseif($action==='products.duplicate') {$product=self::copy_parent($source,$changes['name']);}
             else {
                 $product=$source;$details=self::details($source);if(array_diff(array_keys($changes),$details['editable_fields'])){self::invalid();}
@@ -275,7 +276,7 @@ final class YoRo_Product_Lifecycle
                 if(array_filter($changes,static fn($value,$field)=>$value!==$before[$field],ARRAY_FILTER_USE_BOTH)===[]){self::invalid();}
                 foreach($changes as $field=>$value){$setter='set_'.$field;$product->$setter($value);}
             }
-            $product->validate_props();return ['product'=>$product,'source_id'=>$sourceId,'changes'=>$changes,'before'=>$before];
+            $product->validate_props();return ['product'=>$product,'source_id'=>$sourceId,'changes'=>$changes,'before'=>$before,'initial_expected'=>isset($changes['initial_details'])?array_intersect_key(YoRo_Product_Edit::facts($product)['edit_fields'],array_fill_keys(array_unique([...array_keys($changes['initial_details']),...array_intersect(array_keys($initial['effective']),['stock_status','stock_quantity','backorders','low_stock_amount'])]),true)):null];
         }catch(Throwable $error){return new WP_Error('product_lifecycle_invalid','The product change is invalid or unavailable for this actor and store.');}
     }
 
@@ -301,8 +302,9 @@ final class YoRo_Product_Lifecycle
             $product=$prepared['product'];$product->save();clean_post_cache($product->get_id());wc_delete_product_transients($product->get_id());$fresh=wc_get_product($product->get_id());
             if(!$fresh){throw new RuntimeException('Product outcome unavailable.');}
             if(in_array($action,['products.create','products.duplicate'],true)) {
-                if($fresh->get_name('edit')!==$changes['name']||$fresh->get_status()!=='draft'||$fresh->get_sku('edit')!==''||$fresh->get_global_unique_id('edit')!==''||($fresh->is_type('variable')&&$fresh->get_children()!==[])
+                if($fresh->get_name('edit')!==$changes['name']||$fresh->get_status()!=='draft'||$fresh->get_sku('edit')!==($changes['initial_details']['sku']??'')||$fresh->get_global_unique_id('edit')!==($changes['initial_details']['global_unique_id']??'')||($fresh->is_type('variable')&&$fresh->get_children()!==[])
                     ||($action==='products.create'&&$fresh->get_type()!==$changes['type'])){throw new RuntimeException('Draft outcome mismatch.');}
+                if(isset($changes['initial_details'])){$expected=$prepared['initial_expected'];$actual=YoRo_Product_Edit::facts($fresh)['edit_fields'];foreach(array_keys($expected)as$field){if($actual[$field]!==$expected[$field]){throw new RuntimeException('Initial detail mismatch.');}}}
             } else {
                 $actual=self::fingerprint($fresh);foreach($changes as $field=>$value){if(in_array($field,['upsell_ids','cross_sell_ids'],true)){sort($actual[$field],SORT_NUMERIC);}if($actual[$field]!==$value){throw new RuntimeException('Saved field mismatch.');}}
             }

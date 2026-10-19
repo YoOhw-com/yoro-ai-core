@@ -78,6 +78,15 @@ if ( class_exists( 'YoRo_Order_Management' ) && ! YoRo_Order_Management::trackin
 	$missing_names = array_values( array_diff( $missing_names, $optional ) );
 }
 
+// Native allocation mutations share the same storage gate; their read remains available.
+if ( class_exists( 'YoRo_Fulfillment_Management' ) && ! YoRo_Fulfillment_Management::supported() ) {
+	$optional = YoRo_Fulfillment_Management::WriteActions;
+	$assert( [] === array_values( array_intersect( $optional, $actual_names ) ), 'Unsupported native allocation writes must never be advertised.' );
+	$marker = $manifest['extensions'][ YoRo_Fulfillment_Management::ManifestExtension ] ?? [];
+	$assert( false === ( $marker['native_supported'] ?? null ) && YoRo_Fulfillment_Management::ReadActions === ( $marker['actions'] ?? null ), 'The allocation marker must disclose read-only native storage support.' );
+	$missing_names = array_values( array_diff( $missing_names, $optional ) );
+}
+
 $assert( [] === $missing_names, 'The connector must support every API canonical action in this exact compatibility tranche.' );
 $assert(
 	[] === $extra_names,
