@@ -85,8 +85,8 @@ $healthy_fallback = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client()
 $healthy_fallback->wake_healthy = true;
 $healthy_fallback->rounds = [ [ 'reads' => 1, 'writes' => 0 ], [ 'reads' => 1, 'writes' => 0 ] ];
 $receipt = $healthy_fallback->run_early_access_session( 55 );
-$assert( [ 2, 4, 8, 10, 10 ] === array_slice( $sleeps, 0, 5 ) && 55.0 === $now, 'Healthy wake registration must reduce empty polling while retaining the session deadline.' );
-$assert( 2 === $receipt['reads'] && 10 === $receipt['ticks'], 'Queued work still drains immediately, with eight bounded fallback polls.' );
+$assert( [ 2, 4, 5, 5, 5 ] === array_slice( $sleeps, 0, 5 ) && 55.0 === $now, 'Healthy wake fallback must poll within five seconds while retaining the session deadline.' );
+$assert( 2 === $receipt['reads'] && 14 === $receipt['ticks'], 'Queued work still drains immediately, with twelve bounded fallback polls.' );
 $now = 0.0; $sleeps = [];
 $expiring_sleeper = static function( $seconds ) use ( &$now, &$sleeps, &$stale_fallback ) {
     $now += $seconds; $sleeps[] = $seconds;
@@ -95,7 +95,7 @@ $expiring_sleeper = static function( $seconds ) use ( &$now, &$sleeps, &$stale_f
 $stale_fallback = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client(), $clock, $expiring_sleeper );
 $stale_fallback->wake_healthy = true;
 $stale_fallback->run_early_access_session( 25 );
-$assert( [ 2, 4, 8, 3, 3, 3, 2.0 ] === $sleeps, 'Stale registration must restore the existing three-second fallback within the running session.' );
+$assert( [ 2.0, 4.0, 5.0, 5.0, 3.0, 3.0, 3.0 ] === array_map( 'floatval', $sleeps ), 'Stale registration must restore the existing three-second fallback within the running session.' );
 echo "Wake-aware fallback polling contract passed.\n";
 
 // A rate-limited API must not cause a tight retry loop or bypass the session deadline.
@@ -111,3 +111,21 @@ $limited_session = new YoRo_Connector_Session_Unit( $limited_client, $clock, $sl
 $limited_session->rounds = [ new WP_Error( 'rate_limited', 'Wait' ) ];
 $assert( is_wp_error( $limited_session->run_early_access_session( 55 ) ) && [ 55.0 ] === $sleeps && 1 === $limited_session->calls, 'Rate-limit errors sleep once within the deadline and return without retrying a delivery.' );
 echo "Rate-limited worker session contract passed.\n";
+
+// The coordination contract supplies WordPress doubles and must also run when
+// this scheduler contract is included by the bootstrapped WordPress smoke suite.
+$coordination_pipes = [];
+$coordination_process = proc_open(
+    [ PHP_BINARY, __DIR__ . '/connector-runner-coordination-test.php' ],
+    [ 0 => [ 'pipe', 'r' ], 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ],
+    $coordination_pipes
+);
+$assert( is_resource( $coordination_process ), 'The isolated coordination contract must start.' );
+fclose( $coordination_pipes[0] );
+$coordination_output = stream_get_contents( $coordination_pipes[1] );
+$coordination_errors = stream_get_contents( $coordination_pipes[2] );
+fclose( $coordination_pipes[1] );
+fclose( $coordination_pipes[2] );
+$coordination_exit = proc_close( $coordination_process );
+$assert( 0 === $coordination_exit, 'The isolated coordination contract must pass: ' . $coordination_errors );
+echo $coordination_output;

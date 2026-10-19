@@ -216,7 +216,9 @@ class YoRo_Connector_Wake {
 		if ( true !== $consumed ) { return $consumed; }
 		$result = ( new YoRo_Connector_Runtime() )->run_early_access_wake();
 		if ( is_wp_error( $result ) ) {
-			return self::denied( 'yoro_wake_busy' === $result->get_error_code() ? 409 : 503 );
+			return 'yoro_wake_busy' === $result->get_error_code()
+				? new WP_Error( 'yoro_wake_busy', 'A connector runner is already active.', [ 'status' => 409 ] )
+				: self::denied( 503 );
 		}
 		$response = new WP_REST_Response( [ 'success' => true, 'processed' => (int) ( $result['processed'] ?? 0 ) ], 200 );
 		$response->header( 'Cache-Control', 'no-store, private' );

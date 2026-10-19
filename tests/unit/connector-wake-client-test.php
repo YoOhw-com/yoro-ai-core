@@ -70,6 +70,7 @@ $assert( true === $receipt['throttled'] && $before === count( $GLOBALS['requests
 $replacement_client = new YoRo_Connector_Client();
 $replacement_client->early_access_request( 'next' );
 $assert( $before === count( $GLOBALS['requests'] ), 'A fresh client cannot bypass the persisted retry cooldown.' );
+$assert( $replacement_client->early_access_has_budget( 3, true ) && ! $client->early_access_has_budget( 3, true ), 'Another poller cooldown leaves reserved continuation capacity, but this client must still honor its own 429.' );
 YoRo_Connector_Wake::$retry = 0;
 $GLOBALS['response']['headers']['retry-after'] = 'not-a-number';
 $replacement_client->early_access_request( 'next' );

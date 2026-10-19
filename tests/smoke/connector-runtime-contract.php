@@ -887,11 +887,16 @@ try {
 				return null;
 			}
 		};
+		// This fixture replaces wpdb with a GET_LOCK-only double. Supply the
+		// advisory CLI observation without making unrelated option queries.
+		$no_cli_session = static function() { return []; };
+		add_filter( 'pre_option_' . YoRo_Connector_Runtime::SESSION_OPTION, $no_cli_session );
 		try {
 			$wpdb = $unavailable_db;
 			YoRo_Connector_Runtime::tick();
 		} finally {
 			$wpdb = $real_wpdb;
+			remove_filter( 'pre_option_' . YoRo_Connector_Runtime::SESSION_OPTION, $no_cli_session );
 		}
 		$assert( 1 === $unavailable_db->calls && false === get_option( YoRo_Connector_Runtime::LOCK_KEY ), 'Unavailable GET_LOCK must fail closed before tick work.' );
 

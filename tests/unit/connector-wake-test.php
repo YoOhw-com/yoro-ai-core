@@ -180,7 +180,7 @@ $result = YoRo_Connector_Wake::handle( $req );
 $assert( is_wp_error( $result ) && 409 === $result->data['status'] && 1 === YoRo_Connector_Runtime::$runs, 'An authenticated replay never reaches the runner.' );
 $body['nonce'] = bin2hex( random_bytes( 32 ) ); YoRo_Connector_Runtime::$busy = true;
 $result = YoRo_Connector_Wake::handle( $request( $body ) );
-$assert( is_wp_error( $result ) && 409 === $result->data['status'], 'Busy locks signal retry; they do not pretend to process work.' );
+$assert( is_wp_error( $result ) && 409 === $result->data['status'] && 'yoro_wake_busy' === $result->get_error_code(), 'Busy locks have a distinct authenticated retry code; they do not pretend to process work.' );
 YoRo_Connector_Runtime::$busy = false;
 $GLOBALS['wpdb']->rate = 30; $body['nonce'] = bin2hex( random_bytes( 32 ) );
 $result = YoRo_Connector_Wake::handle( $request( $body ) );

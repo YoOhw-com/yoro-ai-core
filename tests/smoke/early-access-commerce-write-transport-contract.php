@@ -17,7 +17,7 @@ $client = new class extends YoRo_Connector_Client {
         $this->next_attempts++;
         return new WP_Error( 'yoro_http_error', 'Legacy server fixture.', [ 'status' => 404 ] );
     }
-    public function early_access_has_budget( $requests = 4 ) { return null === $this->budget_remaining ? parent::early_access_has_budget( $requests ) : $this->budget_remaining >= $requests; }
+    public function early_access_has_budget( $requests = 4, $continuation = false ) { return null === $this->budget_remaining ? parent::early_access_has_budget( $requests, $continuation ) : $this->budget_remaining >= $requests; }
     public function early_access_write_request( $step, $id = '', $payload = [], $token = '', $generation = 0 ) {
         $this->steps[] = $step;
         if ( count( $this->steps ) === $this->budget_drop_step ) { $this->budget_remaining = max( 0, 3 - $this->budget_drop_step ); }
