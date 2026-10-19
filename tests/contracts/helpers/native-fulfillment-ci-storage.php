@@ -11,8 +11,18 @@ function yoro_native_fulfillment_ci_storage(): void
     foreach(['wc_order_fulfillments','wc_order_fulfillment_meta']as$suffix){$table=$wpdb->prefix.$suffix;$exists=$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s',$wpdb->esc_like($table)));if($wpdb->last_error!==''){throw new RuntimeException('Cannot prove native test storage.');}$tables[$table]=$exists===$table;}
     if(count(array_filter($tables))===2){return;}
     $runner=realpath((string)getenv('RUNNER_TEMP'));$wordpress=realpath(ABSPATH);
-    if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true'||!defined('DB_NAME')||DB_NAME!=='wordpress'||!defined('DB_HOST')||DB_HOST!=='127.0.0.1:3306'||!in_array(untrailingslashit(home_url()),['http://yoro-plugin-smoke.test','http://yoro-woocommerce-exact-pair.test','http://yoro-smoke.test'],true)
-        ||!$runner||!$wordpress||!str_starts_with($wordpress,$runner.DIRECTORY_SEPARATOR)||count(array_filter($tables))!==0){throw new RuntimeException('Positive native fulfillment fixtures require existing tables or the exact isolated hosted smoke environment.');}
+    $isolation=[
+        'cli'=>PHP_SAPI==='cli',
+        'github_actions_exact'=>getenv('GITHUB_ACTIONS')==='true',
+        'db_name_exact'=>defined('DB_NAME')&&DB_NAME==='wordpress',
+        'db_host_exact'=>defined('DB_HOST')&&DB_HOST==='127.0.0.1:3306',
+        'home_allowlisted'=>in_array(untrailingslashit(home_url()),['http://yoro-plugin-smoke.test','http://yoro-woocommerce-exact-pair.test','http://yoro-smoke.test'],true),
+        'runner_realpath_exists'=>$runner!==false,
+        'wordpress_realpath_exists'=>$wordpress!==false,
+        'wordpress_under_runner'=>$runner!==false&&$wordpress!==false&&str_starts_with($wordpress,$runner.DIRECTORY_SEPARATOR),
+        'native_tables_absent'=>count(array_filter($tables))===0,
+    ];
+    if(in_array(false,$isolation,true)){throw new RuntimeException('Positive native fulfillment fixtures require existing tables or the exact isolated hosted smoke environment. Isolation: '.json_encode($isolation,JSON_THROW_ON_ERROR));}
     if(!preg_match('/\A[A-Za-z0-9_]+\z/D',$wpdb->prefix)){throw new RuntimeException('Ambiguous test table prefix.');}
     $marker=$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name=%s",'woocommerce_fulfillments_db_tables_created'));
     if($wpdb->last_error!==''||(int)$marker!==0||!in_array(get_option('woocommerce_feature_fulfillments_enabled','no'),['no',false],true)){throw new RuntimeException('Existing native test configuration must not be initialized.');}

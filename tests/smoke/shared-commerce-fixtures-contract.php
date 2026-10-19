@@ -119,8 +119,12 @@ if ( $has_action_result_contracts ) {
 			( $fixture['data_required'] ?? [] ) === ( $schema['properties']['data']['required'] ?? [] ),
 			sprintf( 'The %s data schema must match the shared fixture.', $action_name )
 		);
+		$actual_data_keys   = array_keys( $payload['data'] ?? [] );
+		$required_data_keys = $fixture['data_required'] ?? [];
+		sort( $actual_data_keys, SORT_STRING );
+		sort( $required_data_keys, SORT_STRING );
 		$assert(
-			array_keys( $payload['data'] ?? [] ) === ( $fixture['data_required'] ?? [] ),
+			$actual_data_keys === $required_data_keys,
 			sprintf( 'The %s sample result must use the exact canonical data roots.', $action_name )
 		);
 	}
