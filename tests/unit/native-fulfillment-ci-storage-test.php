@@ -5,12 +5,13 @@ define('DB_NAME', 'wordpress');
 define('DB_HOST', '127.0.0.1:3306');
 function untrailingslashit($value) { return rtrim($value, '/'); }
 function home_url() { return 'https://request-context.example.invalid'; }
-function get_option($name, $default = false) { return $name === 'home' ? $GLOBALS['fixture_home'] : $default; }
+function get_option($name, $default = false) { return $name === 'home' ? 'https://option-filter.example.invalid' : $default; }
 $wpdb = new class {
     public $prefix = 'woo_'; public $options = 'woo_options'; public $last_error = ''; public $present = 0; public $marker_queries = 0;
     public function esc_like($value) { return $value; }
     public function prepare($sql, ...$args) { return [$sql, $args]; }
     public function get_var($query) {
+        if (($query[1][0] ?? null) === 'home') { return $GLOBALS['fixture_home']; }
         if (str_starts_with($query[0], 'SHOW TABLES')) {
             return $this->present === 2 || ($this->present === 1 && str_ends_with($query[1][0], 'fulfillments')) ? $query[1][0] : null;
         }
