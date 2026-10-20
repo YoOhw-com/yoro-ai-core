@@ -239,7 +239,7 @@ class YoRo_Admin_Page {
             $state = 'unknown';
         }
         $polling = YoRo_Connector_Wake::polling_health();
-        $poll_labels = [ 'healthy' => __( 'Polling worker active', 'yoro-ai-core' ), 'delayed' => __( 'Polling heartbeat delayed', 'yoro-ai-core' ),
+        $poll_labels = [ 'recent' => __( 'Polling checked recently', 'yoro-ai-core' ), 'delayed' => __( 'Polling heartbeat delayed', 'yoro-ai-core' ),
             'error' => __( 'Polling worker needs attention', 'yoro-ai-core' ), 'unverified' => __( 'Polling worker not yet verified', 'yoro-ai-core' ) ];
         $date_format = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
         ?>
@@ -249,14 +249,15 @@ class YoRo_Admin_Page {
             <?php if ( $health['last_success_at'] > 0 ) : ?>
                 <p class="yoro-transport-last-success"><?php echo esc_html( sprintf( __( 'Last successful fast update: %s', 'yoro-ai-core' ), wp_date( $date_format, $health['last_success_at'] ) ) ); ?></p>
             <?php endif; ?>
-            <div class="yoro-polling-status<?php echo 'healthy' === $polling['state'] ? ' yoro-polling-status-healthy' : ''; ?>">
+            <div class="yoro-polling-status<?php echo 'recent' === $polling['state'] ? ' yoro-polling-status-healthy' : ''; ?>">
                 <strong><?php echo esc_html( $poll_labels[ $polling['state'] ] ?? $poll_labels['unverified'] ); ?></strong>
+                <p><?php esc_html_e( 'Status is based on the last successful check.', 'yoro-ai-core' ); ?></p>
                 <?php if ( $polling['last_success_at'] > 0 ) : ?>
                     <p><?php echo esc_html( sprintf( __( '%1$s · Last successful check: %2$s', 'yoro-ai-core' ), 'cli' === $polling['runner'] ? __( 'CLI worker', 'yoro-ai-core' ) : __( 'WordPress cron', 'yoro-ai-core' ), wp_date( $date_format, $polling['last_success_at'] ) ) ); ?></p>
                 <?php elseif ( $polling['last_attempt_at'] > 0 ) : ?>
                     <p><?php echo esc_html( sprintf( __( 'Last connection attempt: %s', 'yoro-ai-core' ), wp_date( $date_format, $polling['last_attempt_at'] ) ) ); ?></p>
                 <?php endif; ?>
-                <?php if ( 'healthy' !== $polling['state'] ) : ?><p><?php esc_html_e( 'No recent successful polling check. Check the site connection and hosting scheduler.', 'yoro-ai-core' ); ?></p><?php endif; ?>
+                <?php if ( 'recent' !== $polling['state'] ) : ?><p><?php esc_html_e( 'No recent successful polling check. Check the site connection and hosting scheduler.', 'yoro-ai-core' ); ?></p><?php endif; ?>
             </div>
         </div>
         <?php

@@ -199,7 +199,7 @@ class YoRo_Connector_Wake {
 			if ( ! is_array( $row ) || ! is_int( $row['last_attempt_at'] ?? null ) || ! is_int( $row['last_success_at'] ?? null ) || ! is_bool( $row['ok'] ?? null )
 				|| $row['last_attempt_at'] <= 0 || $row['last_attempt_at'] > time() || $row['last_success_at'] < 0 || $row['last_success_at'] > $row['last_attempt_at'] ) { continue; }
 			if ( $row['last_attempt_at'] > $latest['last_attempt_at'] || ( $row['last_attempt_at'] === $latest['last_attempt_at'] && ! $row['ok'] ) ) {
-				$latest = [ 'state' => $row['ok'] && $row['last_success_at'] > 0 ? ( $row['last_success_at'] >= time() - 120 ? 'healthy' : 'delayed' ) : 'error',
+				$latest = [ 'state' => $row['ok'] && $row['last_success_at'] > 0 ? ( $row['last_success_at'] >= time() - 120 ? 'recent' : 'delayed' ) : 'error',
 					'runner' => $runner, 'last_success_at' => $row['last_success_at'], 'last_attempt_at' => $row['last_attempt_at'] ];
 			}
 		}
