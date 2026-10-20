@@ -14,6 +14,7 @@ class YoRo_Connector_Wake {
 	const RATE_PREFIX = 'yoro_wake_rate_';
 	const MAX_SKEW = 60;
 	private static $health_write_failed_binding = null;
+	private static $poll_health_write_failed_binding = null;
 
 	public static function init() {
 		add_action( 'rest_api_init', [ __CLASS__, 'register_routes' ] );
@@ -182,20 +183,22 @@ class YoRo_Connector_Wake {
 		$stored = is_array( $stored ) && hash_equals( $binding, (string) ( $stored['binding'] ?? '' ) ) ? $stored : [ 'binding' => $binding ];
 		$previous = $stored[ $runner ] ?? [];
 		$stored[ $runner ] = [ 'last_attempt_at' => time(), 'last_success_at' => $success ? time() : (int) ( $previous['last_success_at'] ?? 0 ), 'ok' => true === $success ];
-		update_option( self::POLL_HEALTH_OPTION, $stored, false );
+		$written = update_option( self::POLL_HEALTH_OPTION, $stored, false );
+		self::$poll_health_write_failed_binding = ! $written && get_option( self::POLL_HEALTH_OPTION, [] ) !== $stored ? $binding : null;
 	}
 
 	public static function polling_health() {
 		$unknown = [ 'state' => 'unverified', 'runner' => '', 'last_success_at' => 0, 'last_attempt_at' => 0 ];
 		$bindings = self::bindings();
 		$stored = get_option( self::POLL_HEALTH_OPTION, [] );
+		if ( null !== $bindings && self::$poll_health_write_failed_binding === self::binding_hash( $bindings ) ) { return $unknown; }
 		if ( null === $bindings || ! is_array( $stored ) || ! hash_equals( self::binding_hash( $bindings ), (string) ( $stored['binding'] ?? '' ) ) ) { return $unknown; }
 		$latest = $unknown;
 		foreach ( [ 'cli', 'scheduled' ] as $runner ) {
 			$row = $stored[ $runner ] ?? null;
 			if ( ! is_array( $row ) || ! is_int( $row['last_attempt_at'] ?? null ) || ! is_int( $row['last_success_at'] ?? null ) || ! is_bool( $row['ok'] ?? null )
 				|| $row['last_attempt_at'] <= 0 || $row['last_attempt_at'] > time() || $row['last_success_at'] < 0 || $row['last_success_at'] > $row['last_attempt_at'] ) { continue; }
-			if ( $row['last_attempt_at'] >= $latest['last_attempt_at'] ) {
+			if ( $row['last_attempt_at'] > $latest['last_attempt_at'] || ( $row['last_attempt_at'] === $latest['last_attempt_at'] && ! $row['ok'] ) ) {
 				$latest = [ 'state' => $row['ok'] && $row['last_success_at'] > 0 ? ( $row['last_success_at'] >= time() - 120 ? 'healthy' : 'delayed' ) : 'error',
 					'runner' => $runner, 'last_success_at' => $row['last_success_at'], 'last_attempt_at' => $row['last_attempt_at'] ];
 			}

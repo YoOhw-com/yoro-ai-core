@@ -19,6 +19,7 @@ function rest_url( $path ) { return 'https://shop.example/wp-json/' . $path; }
 function get_option( $key, $default = false ) { return $GLOBALS['options'][ $key ] ?? $default; }
 function update_option( $key, $value, $autoload = null ) {
     if ( ! empty( $GLOBALS['fail_health_write'] ) && YoRo_Connector_Wake::HEALTH_OPTION === $key ) { return false; }
+    if ( ! empty( $GLOBALS['fail_poll_health_write'] ) && YoRo_Connector_Wake::POLL_HEALTH_OPTION === $key ) { return false; }
     $GLOBALS['options'][ $key ] = $value; $GLOBALS['autoload'][ $key ] = $autoload; return true;
 }
 function register_rest_route( $namespace, $path, $args ) { $GLOBALS['route'] = [ $namespace, $path, $args ]; }
@@ -223,7 +224,19 @@ $assert( 'healthy' === YoRo_Connector_Wake::polling_health()['state'] && 'cli' =
 YoRo_Connector_Wake::record_poll_response( false, 'cli' );
 $assert( 'error' === YoRo_Connector_Wake::polling_health()['state'], 'A later poll failure is not hidden by the last successful heartbeat.' );
 YoRo_Connector_Wake::record_poll_response( true, 'scheduled' );
+$assert( 'error' === YoRo_Connector_Wake::polling_health()['state'], 'Same-second cross-runner ties retain a failure conservatively.' );
+$GLOBALS['options'][ YoRo_Connector_Wake::POLL_HEALTH_OPTION ]['cli']['last_attempt_at']--;
+$GLOBALS['options'][ YoRo_Connector_Wake::POLL_HEALTH_OPTION ]['cli']['last_success_at']--;
 $assert( 'healthy' === YoRo_Connector_Wake::polling_health()['state'] && 'scheduled' === YoRo_Connector_Wake::polling_health()['runner'], 'Successful cron fallback verifies its own worker.' );
+YoRo_Connector_Wake::record_poll_response( false, 'cli' );
+$assert( 'error' === YoRo_Connector_Wake::polling_health()['state'], 'A later same-second CLI failure cannot be hidden by cron iteration order.' );
+YoRo_Connector_Wake::record_poll_response( true, 'cli' );
+$GLOBALS['fail_poll_health_write'] = true;
+YoRo_Connector_Wake::record_poll_response( false, 'cli' );
+$assert( 'unverified' === YoRo_Connector_Wake::polling_health()['state'], 'A failed heartbeat write cannot leave a stale healthy claim active in this request.' );
+$GLOBALS['fail_poll_health_write'] = false;
+YoRo_Connector_Wake::record_poll_response( true, 'cli' );
+$assert( 'healthy' === YoRo_Connector_Wake::polling_health()['state'], 'A later persisted successful poll recovers heartbeat visibility.' );
 foreach ( [ 'cli', 'scheduled' ] as $runner ) {
     $GLOBALS['options'][ YoRo_Connector_Wake::POLL_HEALTH_OPTION ][ $runner ] = [ 'last_attempt_at' => time() - 121, 'last_success_at' => time() - 121, 'ok' => true ];
 }
