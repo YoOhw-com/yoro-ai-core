@@ -61,9 +61,9 @@ class YoRo_Commerce_Contract_Builder {
             $extensions['yoro.early_access_product_edit'] = YoRo_Product_Edit::manifest();
             $extensions[YoRo_Product_Reviews::ManifestExtension] = YoRo_Product_Reviews::manifest();
             $extensions[YoRo_Customer_History_Report::ManifestExtension] = YoRo_Customer_History_Report::manifest();
-            $extensions[YoRo_Commerce_Operations::ManifestExtension]=YoRo_Commerce_Operations::manifest();
-            $extensions[YoRo_Stock_Adjustment::ManifestExtension]=YoRo_Stock_Adjustment::manifest();
-            $extensions[YoRo_Commerce_Insights::ManifestExtension] = YoRo_Commerce_Insights::manifest();
+            $extensions['woocommerce.runtime']['commerce_features'][YoRo_Commerce_Operations::ManifestExtension]=YoRo_Commerce_Operations::manifest();
+            $extensions['woocommerce.runtime']['commerce_features'][YoRo_Stock_Adjustment::ManifestExtension]=YoRo_Stock_Adjustment::manifest();
+            $extensions['woocommerce.runtime']['commerce_features'][YoRo_Commerce_Insights::ManifestExtension] = YoRo_Commerce_Insights::manifest();
             $extensions[YoRo_Product_Lifecycle::ManifestExtension] = YoRo_Product_Lifecycle::manifest();
             $extensions['yoro.early_access_product_batch'] = YoRo_Product_Batch::manifest();
             $extensions[YoRo_Order_Management::ManifestExtension] = YoRo_Order_Management::manifest();
@@ -90,6 +90,7 @@ class YoRo_Commerce_Contract_Builder {
                 'version' => 1, 'actions' => YoRo_Early_Access_Product_Read::ACTIONS, 'max_items' => 50,
             ];
             $extensions['woocommerce.runtime'] = [
+                ...($extensions['woocommerce.runtime']??[]),
 				'active' => true,
 			];
 		}
