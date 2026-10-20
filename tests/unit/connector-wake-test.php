@@ -128,7 +128,7 @@ ob_start(); $render_status->invoke( null, true ); $healthy_markup = ob_get_clean
 $assert( str_contains( $healthy_markup, 'Fast updates available' ) && str_contains( $healthy_markup, 'Last successful fast update:' ) && ! str_contains( $healthy_markup, $secret ), 'Connection UI renders useful success feedback without credentials.' );
 YoRo_Connector_Wake::record_response( $health_response( 'blocked', [ 'x-yoro-wake-last-failure-at' => (string) time(), 'x-yoro-wake-retry-after' => '600' ] ), true );
 ob_start(); $render_status->invoke( null, true ); $blocked_markup = ob_get_clean();
-$assert( str_contains( $blocked_markup, 'Polling fallback enabled' ) && ! str_contains( $blocked_markup, 'blocked' ) && ! str_contains( $blocked_markup, 'raw-error' ), 'Hosting failures render English fallback guidance rather than raw statuses.' );
+$assert( str_contains( $blocked_markup, 'Fast updates delayed by hosting' ) && str_contains( $blocked_markup, 'Polling worker not yet verified' ) && ! str_contains( $blocked_markup, 'raw-error' ), 'Hosting failures and unverified polling render distinct scoped guidance.' );
 YoRo_Connector_Wake::record_response( $health_response( 'healthy', [ 'x-yoro-wake-last-success-at' => (string) time(), 'x-yoro-wake-last-failure-at' => (string) time() ] ), true );
 $GLOBALS['fail_health_write'] = true;
 YoRo_Connector_Wake::record_response( $health_response( 'blocked', [ 'x-yoro-wake-last-failure-at' => (string) time(), 'x-yoro-wake-retry-after' => '600' ] ), true );
@@ -198,4 +198,41 @@ $assert( ! YoRo_Connector_Wake::available(), 'Readiness requires the current cre
 $assert( 0 === YoRo_Connector_Wake::poll_retry_after(), 'Credential rotation cannot inherit another credential’s rate cooldown.' );
 YoRo_Connector_Wake::maybe_register( $client );
 $assert( 3 === count( $client->calls ) && $secret !== $client->calls[2]['secret'], 'A new site credential registers a fresh independent secret.' );
+
+$GLOBALS['options'][ YoRo_Connector_Wake::HEALTH_OPTION ] = [];
+$idle_reply = $health_response( 'unknown', [ 'x-yoro-wake-reason' => 'idle', 'x-yoro-wake-last-success-at' => (string) ( time() - 901 ) ] );
+YoRo_Connector_Wake::record_response( $idle_reply, true );
+$assert( 'idle' === YoRo_Connector_Wake::health()['reason'] && ! YoRo_Connector_Wake::available(), 'Idle presentation never treats an old wake receipt as current transport health.' );
+ob_start(); $render_status->invoke( null, true ); $idle_markup = ob_get_clean();
+$assert( str_contains( $idle_markup, 'Fast updates enabled · Idle' ) && ! str_contains( $idle_markup, 'Fast updates disabled' ), 'Idle and disabled have distinct presentation.' );
+YoRo_Connector_Wake::record_response( $health_response( 'blocked', [ 'x-yoro-wake-reason' => 'blocked', 'x-yoro-wake-last-failure-at' => (string) time(), 'x-yoro-wake-retry-after' => '600' ] ), true );
+YoRo_Connector_Wake::record_response( $idle_reply, true );
+$assert( 'blocked' === YoRo_Connector_Wake::health()['state'], 'A delayed idle response cannot hide a same-second newer failure.' );
+foreach ( [ [ 'healthy', 'idle' ], [ 'unknown', 'verified' ], [ 'disabled', 'idle' ], [ 'unknown', 'untrusted' ] ] as [ $state, $reason ] ) {
+    $GLOBALS['options'][ YoRo_Connector_Wake::HEALTH_OPTION ] = [];
+    YoRo_Connector_Wake::record_response( $health_response( $state, [ 'x-yoro-wake-reason' => $reason ] ), true );
+    $assert( 'unverified' === YoRo_Connector_Wake::health()['reason'] && ! YoRo_Connector_Wake::available(), 'Contradictory or unknown reason cannot upgrade transport health.' );
+}
+YoRo_Connector_Wake::record_response( $health_response( 'disabled', [ 'x-yoro-wake-reason' => 'configuration_disabled' ] ), true );
+ob_start(); $render_status->invoke( null, true ); $disabled_markup = ob_get_clean();
+$assert( str_contains( $disabled_markup, 'Fast updates disabled' ) && ! YoRo_Connector_Wake::available(), 'Configuration-disabled wake stays explicitly disabled.' );
+YoRo_Connector_Wake::record_poll_response( true, 'wake' );
+$assert( 'unverified' === YoRo_Connector_Wake::polling_health()['state'], 'Wake cannot masquerade as an independent polling worker.' );
+YoRo_Connector_Wake::record_poll_response( true, 'cli' );
+$assert( 'healthy' === YoRo_Connector_Wake::polling_health()['state'] && 'cli' === YoRo_Connector_Wake::polling_health()['runner'], 'A real CLI poll verifies the worker independently of disabled wake.' );
+YoRo_Connector_Wake::record_poll_response( false, 'cli' );
+$assert( 'error' === YoRo_Connector_Wake::polling_health()['state'], 'A later poll failure is not hidden by the last successful heartbeat.' );
+YoRo_Connector_Wake::record_poll_response( true, 'scheduled' );
+$assert( 'healthy' === YoRo_Connector_Wake::polling_health()['state'] && 'scheduled' === YoRo_Connector_Wake::polling_health()['runner'], 'Successful cron fallback verifies its own worker.' );
+foreach ( [ 'cli', 'scheduled' ] as $runner ) {
+    $GLOBALS['options'][ YoRo_Connector_Wake::POLL_HEALTH_OPTION ][ $runner ] = [ 'last_attempt_at' => time() - 121, 'last_success_at' => time() - 121, 'ok' => true ];
+}
+$assert( 'delayed' === YoRo_Connector_Wake::polling_health()['state'], 'A heartbeat expires without claiming the worker is disabled.' );
+foreach ( [ 'cli', 'scheduled' ] as $runner ) {
+    $GLOBALS['options'][ YoRo_Connector_Wake::POLL_HEALTH_OPTION ][ $runner ]['last_attempt_at'] = time() + 1;
+}
+$assert( 'unverified' === YoRo_Connector_Wake::polling_health()['state'], 'Future heartbeat timestamps are not trusted.' );
+YoRo_Connector_Wake::record_poll_response( true, 'cli' );
+YoRo_AI_Settings::$key = 'another-rotated-private-site-key';
+$assert( 'unverified' === YoRo_Connector_Wake::polling_health()['state'], 'A rotated credential cannot inherit another connection heartbeat.' );
 echo "Signed connector wake boundary passed ({$assertions} assertions).\n";

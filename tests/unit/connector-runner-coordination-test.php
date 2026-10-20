@@ -7,9 +7,11 @@ class YoRo_AI_Settings {
     public static function get_installation_uuid() { return 'fixture-installation'; }
     public static function get_ai_api_url() { return 'https://api.example/api/v1'; }
     public static function get_ai_api_site_key() { return self::$key; }
+    public static function get_ai_api_status() { return []; }
 }
 class YoRo_Connector_Snapshot_Publisher {
-    public static function runtime() { return [ 'cutover' => [ 'cutover_allowed' => false ] ]; }
+    public static $cutover = false;
+    public static function runtime() { return [ 'cutover' => [ 'cutover_allowed' => self::$cutover ], 'delivery_protocol' => 'pull_v1' ]; }
 }
 function get_option( $key, $default = false ) { return $GLOBALS['options'][ $key ] ?? $default; }
 function update_option( $key, $value, $autoload = null ) { $GLOBALS['options'][ $key ] = $value; $GLOBALS['autoload'][ $key ] = $autoload; return true; }
@@ -46,4 +48,20 @@ $finish->invoke( $runtime );
 $assert( ! $recent->invoke( null ) && isset( $GLOBALS['options'][ YoRo_Connector_Runtime::SESSION_OPTION ] ), 'A finished session restores cron and retains diagnostic history.' );
 $round = new ReflectionMethod( $runtime, 'early_access_round_locked' );
 $assert( 'yoro_connector_runner_lock_lost' === $round->invoke( $runtime, false, 100 )->get_error_code(), 'The shared round never executes without the real runner fence.' );
+YoRo_Connector_Snapshot_Publisher::$cutover = true;
+YoRo_Connector_Runtime::tick( true );
+$assert( ! isset( $GLOBALS['wpdb'] ), 'Ordinary-only fallback refuses the generic cutover lane before taking a lock.' );
+YoRo_Connector_Snapshot_Publisher::$cutover = false;
+class YoRo_Coordination_Fence {
+    public $options = 'fixture_options'; public $attempts = 0;
+    public function prepare( $sql, ...$values ) { return $sql; }
+    public function get_var( $sql ) { $this->attempts++; return 0; }
+}
+$GLOBALS['wpdb'] = new YoRo_Coordination_Fence();
+$owner->setValue( $runtime, 'runner-a' ); $observe->invoke( $runtime );
+YoRo_Connector_Runtime::tick( true );
+$assert( 0 === $GLOBALS['wpdb']->attempts, 'A live CLI observation suppresses the ordinary cron fallback.' );
+$GLOBALS['options'][ YoRo_Connector_Runtime::SESSION_OPTION ]['observed_at'] = time() - 15;
+YoRo_Connector_Runtime::tick( true );
+$assert( 1 === $GLOBALS['wpdb']->attempts, 'A stale CLI observation restores the fallback, which still must acquire the real database fence.' );
 echo "CLI/cron coordination passed ({$assertions} assertions).\n";

@@ -13,6 +13,11 @@ class YoRo_Connector_Client {
     private $early_access_metrics = [];
     private $early_access_deadline = null;
     private $early_access_cooldown_until = 0;
+    private $early_access_runner = 'scheduled';
+
+    public function set_early_access_runner( $runner ) {
+        $this->early_access_runner = in_array( $runner, [ 'cli', 'scheduled', 'wake' ], true ) ? $runner : 'scheduled';
+    }
 
     /** Bound the complete wake transport, including slow or unavailable API hops. */
     public function set_early_access_deadline( $seconds = null ) {
@@ -51,12 +56,15 @@ class YoRo_Connector_Client {
         return max( 0, $this->early_access_cooldown_until - time(), $persisted );
     }
 
-    private function record_wake_response( $response, $success ) {
+    private function record_wake_response( $response, $success, $polling = false ) {
         if ( class_exists( 'YoRo_Connector_Wake' ) ) {
             $type = is_wp_error( $response ) ? '' : wp_remote_retrieve_header( $response, 'content-type' );
             $type = is_string( $type ) ? strtolower( trim( explode( ';', $type )[0] ) ) : '';
             $this_success = $success && ( 'application/json' === $type || ( '' === $type && 204 === (int) wp_remote_retrieve_response_code( $response ) ) );
             YoRo_Connector_Wake::record_response( $response, $this_success );
+            if ( $polling && 'https' === wp_parse_url( YoRo_AI_Settings::get_ai_api_url(), PHP_URL_SCHEME ) && method_exists( 'YoRo_Connector_Wake', 'record_poll_response' ) ) {
+                YoRo_Connector_Wake::record_poll_response( $this_success, $this->early_access_runner );
+            }
         }
     }
 
@@ -150,29 +158,29 @@ class YoRo_Connector_Client {
 		] );
 		$this->record_early_access_budget( $response, 'read.' . $step, ( hrtime( true ) - $transport_started ) / 1e6 );
 		if ( is_wp_error( $response ) ) {
-            if ( in_array( $step, [ 'claim', 'next' ], true ) ) { $this->record_wake_response( $response, false ); }
+            if ( in_array( $step, [ 'claim', 'next' ], true ) ) { $this->record_wake_response( $response, false, true ); }
 			return $response;
 		}
 		$status = (int) wp_remote_retrieve_response_code( $response );
 		if ( 204 === $status && in_array( $step, [ 'claim', 'next' ], true ) ) {
-            $this->record_wake_response( $response, true );
+            $this->record_wake_response( $response, true, true );
 			return [ 'success' => true, 'empty' => true ];
 		}
 		$json = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( $status < 200 || $status >= 300 || ! is_array( $json ) || true !== ( $json['success'] ?? null ) ) {
-            if ( in_array( $step, [ 'claim', 'next' ], true ) ) { $this->record_wake_response( $response, false ); }
+            if ( in_array( $step, [ 'claim', 'next' ], true ) ) { $this->record_wake_response( $response, false, true ); }
 			return new WP_Error( 'yoro_early_access_http_error', 'Early Access read transport was denied.', [ 'status' => $status ] );
 		}
 
         if ( 'next' === $step ) {
             $lane = wp_remote_retrieve_header( $response, 'x-yoro-delivery-lane' );
             if ( ! in_array( $lane, [ 'read', 'write' ], true ) ) {
-                $this->record_wake_response( $response, false );
+                $this->record_wake_response( $response, false, true );
                 return new WP_Error( 'yoro_early_access_invalid_lane', 'An exact delivery lane is required.' );
             }
             $json['transport_lane'] = $lane;
         }
-        if ( in_array( $step, [ 'claim', 'next' ], true ) ) { $this->record_wake_response( $response, true ); }
+        if ( in_array( $step, [ 'claim', 'next' ], true ) ) { $this->record_wake_response( $response, true, true ); }
         if ( 'conditional-v1' === wp_remote_retrieve_header( $response, 'x-yoro-read-lease-policy' ) ) {
             $json['read_lease_policy'] = 'conditional-v1';
         }
@@ -205,21 +213,21 @@ class YoRo_Connector_Client {
 		] );
 		$this->record_early_access_budget( $response, 'write.' . $step, ( hrtime( true ) - $transport_started ) / 1e6 );
 		if ( is_wp_error( $response ) ) {
-            if ( in_array( $step, [ 'claim', 'next' ], true ) ) { $this->record_wake_response( $response, false ); }
+            if ( in_array( $step, [ 'claim', 'next' ], true ) ) { $this->record_wake_response( $response, false, true ); }
 			return $response;
 		}
 		$status = (int) wp_remote_retrieve_response_code( $response );
 		if ( 204 === $status && 'claim' === $step ) {
-            $this->record_wake_response( $response, true );
+            $this->record_wake_response( $response, true, true );
 			return [ 'success' => true, 'empty' => true ];
 		}
 		$json = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( $status < 200 || $status >= 300 || ! is_array( $json ) || true !== ( $json['success'] ?? null ) ) {
-            if ( 'claim' === $step ) { $this->record_wake_response( $response, false ); }
+            if ( 'claim' === $step ) { $this->record_wake_response( $response, false, true ); }
 			return new WP_Error( 'yoro_early_access_http_error', 'Confirmed commerce write transport was denied.', [ 'status' => $status ] );
 		}
 
-        if ( 'claim' === $step ) { $this->record_wake_response( $response, true ); }
+        if ( 'claim' === $step ) { $this->record_wake_response( $response, true, true ); }
 		return $json;
 	}
 
