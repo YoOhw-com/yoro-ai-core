@@ -62,7 +62,7 @@ $assert( ! array_key_exists( 'content_base64', $media_upload['input_schema'] ?? 
 
 if ( ! yoro_ai_core_has_woocommerce() ) {
 	$assert( ! isset( $actions['orders.search'] ), 'WooCommerce actions must not load on plain WordPress.' );
-	foreach ( [ 'products.batch_update', 'products.get_catalog_options', 'coupons.search', 'coupons.get_details', 'coupons.create_managed', 'coupons.update' ] as $commerce_action ) {
+	foreach ( [ 'checkout.get_payment_methods', 'checkout.get_shipping_configuration', 'checkout.get_tax_configuration', 'products.adjust_stock', 'products.get_restock_report', 'products.get_stock_adjustments', 'reports.get_category_sales', 'reports.get_coupon_performance', 'reports.get_product_sales', 'reports.get_refund_analysis', 'products.batch_update', 'products.get_catalog_options', 'coupons.search', 'coupons.get_details', 'coupons.create_managed', 'coupons.update' ] as $commerce_action ) {
 		$assert( ! isset( $actions[ $commerce_action ] ), 'Commerce actions must remain unavailable on plain WordPress: ' . $commerce_action );
 	}
 
