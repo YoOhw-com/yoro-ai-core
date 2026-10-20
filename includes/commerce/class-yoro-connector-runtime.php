@@ -621,7 +621,7 @@ class YoRo_Connector_Runtime {
 		if ( $ordinary && ! $this->client->early_access_has_budget( 1, true ) ) {
 			return new WP_Error( 'yoro_connector_transport_budget', 'Result transport capacity is required before execution.' );
 		}
-        $report = $ordinary && ! $commerce_write && in_array( $operation['action'], [...array_slice( YoRo_Early_Access_Store_Overview_Read::ACTIONS, 0, 4 ), 'customers.get_period_summary'], true );
+        $report = $ordinary && ! $commerce_write && in_array( $operation['action'], [YoRo_Commerce_Operations::ReadActions[0], ...YoRo_Commerce_Insights::ReadActions, ...array_slice( YoRo_Early_Access_Store_Overview_Read::ACTIONS, 0, 4 ), 'customers.get_period_summary'], true );
 		$journal = YoRo_Connector_Execution_Journal::begin( $operation );
         if ( ! in_array( $journal['state'] ?? '', [ 'new', 'executing', 'completed', 'conflict' ], true ) ) {
             return new WP_Error( 'yoro_connector_journal_unavailable', 'A durable execution journal is required.' );
@@ -639,7 +639,13 @@ class YoRo_Connector_Runtime {
                 if ( empty( $result['extensions'] ) ) { unset( $result['extensions'] ); }
             }
 		} elseif ( 'executing' === ( $journal['state'] ?? '' ) && ! $report ) {
-			$result = $this->failed_result( $operation, 'local_execution_outcome_unknown', 'The prior R2 read stopped before its result was journaled.' );
+            $recovered=null;
+            if ($commerce_write && $operation['action']===YoRo_Stock_Adjustment::Action) {
+                $original=get_current_user_id();wp_set_current_user($valid['user_id']);
+                try {$recovered=YoRo_Stock_Adjustment::recover($operation);} finally {wp_set_current_user($original);}
+            }
+            $result=is_array($recovered)?array_merge($this->result_identity($operation),['status'=>'executed','summary'=>$recovered['summary'],'result'=>$recovered,'occurred_at'=>gmdate('c')])
+                :$this->failed_result($operation,'local_execution_outcome_unknown','The prior operation stopped before its result was journaled.');
             $completed = $this->complete_read_journal( $operation, $result, $ordinary );
             if ( $commerce_write && 'completed' !== ( $completed['state'] ?? '' ) ) {
                 return new WP_Error( 'yoro_connector_journal_unavailable', 'The outcome could not be durably journaled. Do not repeat this change.' );
@@ -755,7 +761,8 @@ class YoRo_Connector_Runtime {
 
     private static function expanded_read_executor( $family ) {
         if ( null === $family ) { return YoRo_Early_Access_Product_Read::class; }
-        $classes = [ 'product_authoring' => YoRo_Product_Authoring::class, 'fulfillment_management' => YoRo_Fulfillment_Management::class, 'order_edit' => YoRo_Order_Edit::class, 'product_reviews' => YoRo_Product_Reviews::class, 'customer_history' => YoRo_Customer_History_Report::class, 'product_lifecycle' => YoRo_Product_Lifecycle::class, 'order_management' => YoRo_Order_Management::class, 'coupons' => YoRo_Early_Access_Coupon_Read::class, 'variable_products' => YoRo_Variable_Product::class, 'wordpress_read' => YoRo_Early_Access_WordPress_Read::class, 'customer_service' => YoRo_Early_Access_Customer_Service_Read::class, 'store_overview' => YoRo_Early_Access_Store_Overview_Read::class, 'order_tracking' => YoRo_Early_Access_Order_Tracking_Read::class,
+        $classes = [ 'commerce_operations'=>YoRo_Commerce_Operations::class,
+            'commerce_insights' => YoRo_Commerce_Insights::class, 'product_authoring' => YoRo_Product_Authoring::class, 'fulfillment_management' => YoRo_Fulfillment_Management::class, 'order_edit' => YoRo_Order_Edit::class, 'product_reviews' => YoRo_Product_Reviews::class, 'customer_history' => YoRo_Customer_History_Report::class, 'product_lifecycle' => YoRo_Product_Lifecycle::class, 'order_management' => YoRo_Order_Management::class, 'coupons' => YoRo_Early_Access_Coupon_Read::class, 'variable_products' => YoRo_Variable_Product::class, 'wordpress_read' => YoRo_Early_Access_WordPress_Read::class, 'customer_service' => YoRo_Early_Access_Customer_Service_Read::class, 'store_overview' => YoRo_Early_Access_Store_Overview_Read::class, 'order_tracking' => YoRo_Early_Access_Order_Tracking_Read::class,
             'order_queues' => YoRo_Early_Access_Order_Queue_Read::class, 'orders' => YoRo_Early_Access_Order_Read::class ];
         return is_string( $family ) ? ( $classes[ $family ] ?? null ) : null;
     }

@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_DB {
 
-	const DB_VERSION = '0.1.10';
+	const DB_VERSION = '0.1.11';
 	const DB_VERSION_OPTION = 'yoro_ai_core_db_version';
 
 	const LOGS_TABLE = 'yoro_ai_logs';
@@ -23,6 +23,8 @@ class YoRo_DB {
 
 		return $wpdb->prefix . self::POLICIES_TABLE;
 	}
+
+    public static function stock_adjustments_table_name() { global $wpdb; return $wpdb->prefix . 'yoro_stock_adjustments'; }
 
 	public static function create_tables() {
 		global $wpdb;
@@ -81,6 +83,8 @@ class YoRo_DB {
 		dbDelta( $sql );
 		dbDelta( $sql2 );
 
+        self::create_stock_adjustments_table();
+
 		self::maybe_upgrade_log_columns();
 		self::cleanup_local_history_commands();
 		self::maybe_upgrade_policy_columns();
@@ -92,9 +96,31 @@ class YoRo_DB {
 		update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
 	}
 
+    private static function create_stock_adjustments_table() {
+        global $wpdb;$charset=$wpdb->get_charset_collate();require_once ABSPATH.'wp-admin/includes/upgrade.php';
+        $stock_table=self::stock_adjustments_table_name();
+        dbDelta("CREATE TABLE {$stock_table} (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            adjustment_id CHAR(36) NOT NULL,
+            product_id BIGINT UNSIGNED NOT NULL,
+            actor_id BIGINT UNSIGNED NOT NULL,
+            envelope_hash CHAR(64) NOT NULL,
+            data LONGTEXT NOT NULL,
+            occurred_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY adjustment_id (adjustment_id),
+            KEY product_history (product_id,id)
+        ) ENGINE=InnoDB {$charset};");
+    }
+
 	public static function maybe_upgrade() {
 		$installed_version = get_option( self::DB_VERSION_OPTION, '' );
 
+        if ($installed_version==='0.1.10' && self::table_exists(self::logs_table_name()) && self::table_exists(self::policies_table_name())) {
+            self::create_stock_adjustments_table();
+            if (self::table_exists(self::stock_adjustments_table_name())) {update_option(self::DB_VERSION_OPTION,self::DB_VERSION);}
+            return;
+        }
 		if ( self::DB_VERSION !== $installed_version || ! self::tables_exist() ) {
 			self::create_tables();
 		}
@@ -104,7 +130,7 @@ class YoRo_DB {
 		$logs_table     = self::logs_table_name();
 		$policies_table = self::policies_table_name();
 
-		return self::table_exists( $logs_table ) && self::table_exists( $policies_table );
+		return self::table_exists( $logs_table ) && self::table_exists( $policies_table ) && self::table_exists(self::stock_adjustments_table_name());
 	}
 
 	private static function maybe_upgrade_policy_columns() {
