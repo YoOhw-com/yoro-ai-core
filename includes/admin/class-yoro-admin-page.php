@@ -257,7 +257,8 @@ class YoRo_Admin_Page {
                 <?php elseif ( $polling['last_attempt_at'] > 0 ) : ?>
                     <p><?php echo esc_html( sprintf( __( 'Last connection attempt: %s', 'yoro-ai-core' ), wp_date( $date_format, $polling['last_attempt_at'] ) ) ); ?></p>
                 <?php endif; ?>
-                <?php if ( 'recent' !== $polling['state'] ) : ?><p><?php esc_html_e( 'No recent successful polling check. Check the site connection and hosting scheduler.', 'yoro-ai-core' ); ?></p><?php endif; ?>
+                <?php if ( 'error' === $polling['state'] ) : ?><p><?php esc_html_e( 'The latest polling attempt failed. Check the site connection and hosting scheduler.', 'yoro-ai-core' ); ?></p>
+                <?php elseif ( 'recent' !== $polling['state'] ) : ?><p><?php esc_html_e( 'No recent successful polling check. Check the site connection and hosting scheduler.', 'yoro-ai-core' ); ?></p><?php endif; ?>
             </div>
         </div>
         <?php
