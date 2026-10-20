@@ -218,27 +218,48 @@ class YoRo_Admin_Page {
         if ( ! $connected ) { return; }
         $health = YoRo_Connector_Wake::health();
         $labels = [
-            'healthy' => [ __( 'Fast updates available', 'yoro-ai-core' ), __( 'Scheduled polling remains enabled as a fallback if fast updates are delayed.', 'yoro-ai-core' ) ],
-            'blocked' => [ __( 'Polling fallback enabled', 'yoro-ai-core' ), __( 'Your hosting provider is delaying fast updates. Scheduled polling remains enabled while YoRo retries automatically.', 'yoro-ai-core' ) ],
-            'degraded' => [ __( 'Polling fallback enabled', 'yoro-ai-core' ), __( 'Fast updates are temporarily delayed. Scheduled polling remains enabled while YoRo reconnects automatically.', 'yoro-ai-core' ) ],
-            'unknown' => [ __( 'Polling fallback enabled', 'yoro-ai-core' ), __( 'YoRo will use fast updates once delivery is verified. Scheduled polling remains enabled in the meantime.', 'yoro-ai-core' ) ],
-            'disabled' => [ __( 'Polling fallback enabled', 'yoro-ai-core' ), __( 'Scheduled polling is enabled to receive requests securely from YoRo.', 'yoro-ai-core' ) ],
+            'healthy' => [ __( 'Fast updates available', 'yoro-ai-core' ), __( 'A recent fast update was verified. Polling is checked separately below.', 'yoro-ai-core' ) ],
+            'blocked' => [ __( 'Fast updates delayed by hosting', 'yoro-ai-core' ), __( 'Your hosting provider challenged or denied a fast update. YoRo retries automatically.', 'yoro-ai-core' ) ],
+            'degraded' => [ __( 'Fast updates temporarily unavailable', 'yoro-ai-core' ), __( 'The latest fast update could not be verified. YoRo retries automatically.', 'yoro-ai-core' ) ],
+            'unknown' => [ __( 'Fast updates not yet verified', 'yoro-ai-core' ), __( 'Awaiting a verified delivery. Check the polling worker status below.', 'yoro-ai-core' ) ],
+            'disabled' => [ __( 'Fast updates disabled', 'yoro-ai-core' ), __( 'Fast updates are disabled in the YoRo API configuration. Polling is checked separately below.', 'yoro-ai-core' ) ],
         ];
         $state = isset( $labels[ $health['state'] ] ) ? $health['state'] : 'unknown';
         [ $title, $description ] = $labels[ $state ];
+        if ( 'unknown' === $state && 'idle' === ( $health['reason'] ?? '' ) ) {
+            $title = __( 'Fast updates enabled · Idle', 'yoro-ai-core' );
+            $description = __( 'No recent delivery check. The last verified fast update is shown below.', 'yoro-ai-core' );
+        } elseif ( 'unknown' === $state && 'checking' === ( $health['reason'] ?? '' ) ) {
+            $title = __( 'Checking fast updates', 'yoro-ai-core' );
+            $description = __( 'A fast update is being checked. The polling worker can continue receiving requests.', 'yoro-ai-core' );
+        }
         if ( ! YoRo_Connector_Runtime::early_access_read_allowed() ) {
             $title = __( 'Connection check pending', 'yoro-ai-core' );
             $description = __( 'This store’s connection is not currently verified. Check the YoRo account connection and availability.', 'yoro-ai-core' );
             $state = 'unknown';
         }
+        $polling = YoRo_Connector_Wake::polling_health();
+        $poll_labels = [ 'recent' => __( 'Polling checked recently', 'yoro-ai-core' ), 'delayed' => __( 'Polling heartbeat delayed', 'yoro-ai-core' ),
+            'error' => __( 'Polling worker needs attention', 'yoro-ai-core' ), 'unverified' => __( 'Polling worker not yet verified', 'yoro-ai-core' ) ];
+        $date_format = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
         ?>
         <div class="yoro-transport-status<?php echo 'healthy' === $state ? ' yoro-transport-status-healthy' : ''; ?>">
             <strong><?php echo esc_html( $title ); ?></strong>
             <p><?php echo esc_html( $description ); ?></p>
-            <?php if ( 'healthy' !== $state && YoRo_Connector_Runtime::early_access_read_allowed() ) : ?><p><?php esc_html_e( 'For consistent scheduled checks on low-traffic sites, ask your hosting provider to configure regular WordPress cron checks.', 'yoro-ai-core' ); ?></p><?php endif; ?>
             <?php if ( $health['last_success_at'] > 0 ) : ?>
-                <p class="yoro-transport-last-success"><?php echo esc_html( sprintf( __( 'Last successful fast update: %s', 'yoro-ai-core' ), wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $health['last_success_at'] ) ) ); ?></p>
+                <p class="yoro-transport-last-success"><?php echo esc_html( sprintf( __( 'Last successful fast update: %s', 'yoro-ai-core' ), wp_date( $date_format, $health['last_success_at'] ) ) ); ?></p>
             <?php endif; ?>
+            <div class="yoro-polling-status<?php echo 'recent' === $polling['state'] ? ' yoro-polling-status-healthy' : ''; ?>">
+                <strong><?php echo esc_html( $poll_labels[ $polling['state'] ] ?? $poll_labels['unverified'] ); ?></strong>
+                <p><?php esc_html_e( 'Status is based on the last successful check.', 'yoro-ai-core' ); ?></p>
+                <?php if ( $polling['last_success_at'] > 0 ) : ?>
+                    <p><?php echo esc_html( sprintf( __( '%1$s · Last successful check: %2$s', 'yoro-ai-core' ), 'cli' === $polling['runner'] ? __( 'CLI worker', 'yoro-ai-core' ) : __( 'WordPress cron', 'yoro-ai-core' ), wp_date( $date_format, $polling['last_success_at'] ) ) ); ?></p>
+                <?php elseif ( $polling['last_attempt_at'] > 0 ) : ?>
+                    <p><?php echo esc_html( sprintf( __( 'Last connection attempt: %s', 'yoro-ai-core' ), wp_date( $date_format, $polling['last_attempt_at'] ) ) ); ?></p>
+                <?php endif; ?>
+                <?php if ( 'error' === $polling['state'] ) : ?><p><?php esc_html_e( 'The latest polling attempt failed. Check the site connection and hosting scheduler.', 'yoro-ai-core' ); ?></p>
+                <?php elseif ( 'recent' !== $polling['state'] ) : ?><p><?php esc_html_e( 'No recent successful polling check. Check the site connection and hosting scheduler.', 'yoro-ai-core' ); ?></p><?php endif; ?>
+            </div>
         </div>
         <?php
     }

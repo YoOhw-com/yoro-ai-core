@@ -74,7 +74,10 @@ class YoRo_Connector_Runtime {
 		}
 	}
 
-	public static function tick() {
+	public static function tick( $ordinary_only = false ) {
+		if ( true === $ordinary_only && ( self::live_cutover_allowed() || self::r2_read_allowed() ) ) {
+			return;
+		}
 		// A recent CLI round owns fast polling. This hint never grants execution
 		// authority and expires after a crash; the fenced runner lock remains final.
 		if ( self::cli_session_recent() && ! self::live_cutover_allowed() ) {
@@ -96,7 +99,7 @@ class YoRo_Connector_Runtime {
 				$runtime->early_access_round_locked( false, ( $runtime->clock )() + self::MAX_TICK_SECONDS );
 			}
 
-			if ( self::live_cutover_allowed() ) {
+			if ( true !== $ordinary_only && self::live_cutover_allowed() ) {
 				( new self( $client ) )->run_batch();
 			}
 		} finally {
@@ -250,6 +253,7 @@ class YoRo_Connector_Runtime {
 			return new WP_Error( 'yoro_connector_cli_required', 'A CLI worker is required.' );
 		}
 		$started = ( $this->clock )();
+		$this->client->set_early_access_runner( 'cli' );
 		$this->execution_metrics = [ 'count' => 0, 'elapsed_ms' => 0 ];
 		$deadline = $started + max( 1, min( 55, (float) $seconds ) );
 		$summary = [ 'ticks' => 0, 'reads' => 0, 'writes' => 0, 'empty_polls' => 0 ];
@@ -289,6 +293,7 @@ class YoRo_Connector_Runtime {
 		} finally {
 			$this->finish_cli_session();
 			$this->session_owner = null;
+			$this->client->set_early_access_runner( 'scheduled' );
 		}
 	}
 
@@ -327,6 +332,7 @@ class YoRo_Connector_Runtime {
 	/** One authenticated has-work signal; operation authority is obtained only by claim. */
 	public function run_early_access_wake() {
 		$this->wake_request = true;
+		$this->client->set_early_access_runner( 'wake' );
 		$this->client->set_early_access_deadline( 35 );
 		try {
 			$round = $this->early_access_session_round( false, ( $this->clock )() + 35 );
@@ -334,6 +340,7 @@ class YoRo_Connector_Runtime {
 		} finally {
 			$this->client->set_early_access_deadline();
 			$this->wake_request = false;
+			$this->client->set_early_access_runner( 'scheduled' );
 		}
 	}
 

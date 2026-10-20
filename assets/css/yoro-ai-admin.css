@@ -6674,3 +6674,8 @@ body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant :is(
 .yoro-onboarding .yoro-transport-status-healthy > strong::before { background: #3c7853; }
 .yoro-onboarding .yoro-transport-status p { margin: 8px 0 0; font-size: 13px; line-height: 1.6; }
 .yoro-onboarding .yoro-transport-status .yoro-transport-last-success { color: #66745b; font-size: 12px; }
+.yoro-onboarding .yoro-polling-status { margin-top: 14px; padding-top: 14px; border-top: 1px solid #d4ddca; overflow-wrap: anywhere; }
+.yoro-onboarding .yoro-polling-status > strong { display: flex; align-items: center; gap: 9px; color: #2b3a20; font-size: 13px; }
+.yoro-onboarding .yoro-polling-status > strong::before { content: ""; width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #9a7b32; }
+.yoro-onboarding .yoro-polling-status-healthy > strong::before { background: #3c7853; }
+.yoro-onboarding .yoro-polling-status p { font-size: 12px; color: #66745b; }

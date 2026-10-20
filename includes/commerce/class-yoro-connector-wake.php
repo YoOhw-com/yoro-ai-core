@@ -9,10 +9,12 @@ class YoRo_Connector_Wake {
 	const OPTION = 'yoro_connector_wake_v1';
 	const HEALTH_OPTION = 'yoro_connector_wake_health_v1';
 	const POLL_OPTION = 'yoro_connector_poll_cooldown_v1';
+	const POLL_HEALTH_OPTION = 'yoro_connector_poll_health_v1';
 	const NONCE_PREFIX = 'yoro_wake_nonce_';
 	const RATE_PREFIX = 'yoro_wake_rate_';
 	const MAX_SKEW = 60;
 	private static $health_write_failed_binding = null;
+	private static $poll_health_write_failed_binding = null;
 
 	public static function init() {
 		add_action( 'rest_api_init', [ __CLASS__, 'register_routes' ] );
@@ -96,11 +98,14 @@ class YoRo_Connector_Wake {
 		$bindings = self::bindings();
 		if ( null === $bindings ) { return; }
 		$binding = self::binding_hash( $bindings );
-		$health = [ 'binding' => $binding, 'state' => 'unknown', 'observed_at' => time(), 'last_success_at' => 0, 'last_failure_at' => 0, 'retry_after' => 0 ];
+		$health = [ 'binding' => $binding, 'state' => 'unknown', 'reason' => 'unverified', 'observed_at' => time(), 'last_success_at' => 0, 'last_failure_at' => 0, 'retry_after' => 0 ];
 		$accepted = false;
 		if ( $authorized_success && ! is_wp_error( $response ) ) {
 			$state = wp_remote_retrieve_header( $response, 'x-yoro-wake-state' );
+			$reason = wp_remote_retrieve_header( $response, 'x-yoro-wake-reason' );
+			if ( '' === $reason ) { $reason = self::default_reason( $state ); }
 			$valid = is_string( $state ) && in_array( $state, [ 'healthy', 'blocked', 'degraded', 'unknown', 'disabled' ], true );
+			$valid = $valid && self::valid_reason( $state, $reason );
 			$parsed = [];
 			foreach ( [ 'observed_at' => 'observed-at', 'last_success_at' => 'last-success-at', 'last_failure_at' => 'last-failure-at', 'retry_after' => 'retry-after' ] as $field => $header ) {
 				$value = wp_remote_retrieve_header( $response, 'x-yoro-wake-' . $header );
@@ -109,8 +114,9 @@ class YoRo_Connector_Wake {
 			}
 			if ( $valid && $parsed['observed_at'] > 0 && $parsed['observed_at'] <= time() && $parsed['observed_at'] >= time() - 900
 				&& $parsed['last_success_at'] <= $parsed['observed_at'] && $parsed['last_failure_at'] <= $parsed['observed_at'] && $parsed['retry_after'] <= 600
-				&& ( 'healthy' !== $state || ( $parsed['last_success_at'] > 0 && $parsed['last_success_at'] >= time() - 900 && $parsed['last_success_at'] >= $parsed['last_failure_at'] && 0 === $parsed['retry_after'] ) ) ) {
-				$health = array_merge( $health, $parsed, [ 'state' => $state ] );
+				&& ( 'healthy' !== $state || ( $parsed['last_success_at'] > 0 && $parsed['last_success_at'] >= time() - 900 && $parsed['last_success_at'] >= $parsed['last_failure_at'] && 0 === $parsed['retry_after'] ) )
+				&& ( 'idle' !== $reason || ( $parsed['last_success_at'] > 0 && $parsed['last_success_at'] < time() - 900 && $parsed['last_success_at'] >= $parsed['last_failure_at'] && 0 === $parsed['retry_after'] ) ) ) {
+				$health = array_merge( $health, $parsed, [ 'state' => $state, 'reason' => $reason ] );
 				$accepted = true;
 			}
 		}
@@ -119,8 +125,12 @@ class YoRo_Connector_Wake {
 			&& is_int( $current['observed_at'] ?? null ) && $current['observed_at'] <= time() && $current['observed_at'] >= time() - 900 ) {
 			// Delayed responses must not clear a newer hosting failure or resurrect stale success.
 			if ( $health['observed_at'] < $current['observed_at']
-				|| ( 'healthy' === $health['state'] && $health['last_failure_at'] < ( $current['last_failure_at'] ?? 0 ) )
+				|| ( in_array( $health['reason'], [ 'verified', 'idle' ], true ) && $health['last_failure_at'] < ( $current['last_failure_at'] ?? 0 ) )
 				|| ( ! $accepted && 'blocked' === ( $current['state'] ?? null ) ) ) { return; }
+			if ( ! $accepted ) {
+				$health['last_success_at'] = (int) ( $current['last_success_at'] ?? 0 );
+				$health['last_failure_at'] = (int) ( $current['last_failure_at'] ?? 0 );
+			}
 		}
 		$written = update_option( self::HEALTH_OPTION, $health, false );
 		// WordPress also returns false for unchanged values; verify that case before downgrading.
@@ -129,7 +139,7 @@ class YoRo_Connector_Wake {
 
 	/** Sanitized current telemetry; safe for the scoped connection UI and runtime probes. */
 	public static function health() {
-		$unknown = [ 'state' => 'unknown', 'last_success_at' => 0, 'last_failure_at' => 0, 'retry_after' => 0 ];
+		$unknown = [ 'state' => 'unknown', 'reason' => 'unverified', 'last_success_at' => 0, 'last_failure_at' => 0, 'retry_after' => 0 ];
 		$bindings = self::bindings();
 		$state = get_option( self::HEALTH_OPTION, [] );
 		if ( null !== $bindings && self::$health_write_failed_binding === self::binding_hash( $bindings ) ) { return $unknown; }
@@ -141,14 +151,59 @@ class YoRo_Connector_Wake {
 			|| $state['retry_after'] < 0 || $state['retry_after'] > 600 ) { return $unknown; }
 		if ( 'healthy' === $state['state'] && ( $state['last_success_at'] < time() - 900 || $state['last_success_at'] < $state['last_failure_at'] || 0 !== $state['retry_after'] ) ) {
 			$state['state'] = 'unknown';
+			$state['reason'] = 'unverified';
 		}
-		return [ 'state' => $state['state'] ?? 'unknown', 'last_success_at' => $state['last_success_at'] ?? 0,
+		$reason = $state['reason'] ?? self::default_reason( $state['state'] );
+		if ( ! self::valid_reason( $state['state'], $reason ) ) { return $unknown; }
+		if ( 'idle' === $reason && ( $state['last_success_at'] <= 0 || $state['last_success_at'] >= time() - 900 || $state['last_success_at'] < $state['last_failure_at'] || $state['retry_after'] > 0 ) ) { return $unknown; }
+		return [ 'state' => $state['state'] ?? 'unknown', 'reason' => $reason, 'last_success_at' => $state['last_success_at'] ?? 0,
 			'last_failure_at' => $state['last_failure_at'] ?? 0, 'retry_after' => max( 0, ( $state['observed_at'] + ( $state['retry_after'] ?? 0 ) ) - time() ) ];
 	}
 
 	/** Registration alone is not evidence that the hosting edge delivered a wake. */
 	public static function available() {
 		return 'healthy' === self::health()['state'];
+	}
+
+	private static function default_reason( $state ) {
+		return [ 'healthy' => 'verified', 'disabled' => 'configuration_disabled', 'blocked' => 'blocked', 'degraded' => 'degraded' ][ is_string( $state ) ? $state : '' ] ?? 'unverified';
+	}
+
+	private static function valid_reason( $state, $reason ) {
+		$allowed = [ 'healthy' => [ 'verified' ], 'disabled' => [ 'configuration_disabled' ], 'blocked' => [ 'blocked' ], 'degraded' => [ 'degraded' ], 'unknown' => [ 'idle', 'checking', 'unverified' ] ];
+		return is_string( $state ) && is_string( $reason ) && in_array( $reason, $allowed[ $state ] ?? [], true );
+	}
+
+	/** A real authenticated poll, distinct from a wake receipt or a running-process hint. */
+	public static function record_poll_response( $success, $runner ) {
+		$bindings = self::bindings();
+		if ( null === $bindings || ! in_array( $runner, [ 'cli', 'scheduled', 'wake' ], true ) ) { return; }
+		$binding = self::binding_hash( $bindings );
+		$stored = get_option( self::POLL_HEALTH_OPTION, [] );
+		$stored = is_array( $stored ) && hash_equals( $binding, (string) ( $stored['binding'] ?? '' ) ) ? $stored : [ 'binding' => $binding ];
+		$previous = $stored[ $runner ] ?? [];
+		$stored[ $runner ] = [ 'last_attempt_at' => time(), 'last_success_at' => $success ? time() : (int) ( $previous['last_success_at'] ?? 0 ), 'ok' => true === $success ];
+		$written = update_option( self::POLL_HEALTH_OPTION, $stored, false );
+		self::$poll_health_write_failed_binding = ! $written && get_option( self::POLL_HEALTH_OPTION, [] ) !== $stored ? $binding : null;
+	}
+
+	public static function polling_health() {
+		$unknown = [ 'state' => 'unverified', 'runner' => '', 'last_success_at' => 0, 'last_attempt_at' => 0 ];
+		$bindings = self::bindings();
+		$stored = get_option( self::POLL_HEALTH_OPTION, [] );
+		if ( null !== $bindings && self::$poll_health_write_failed_binding === self::binding_hash( $bindings ) ) { return $unknown; }
+		if ( null === $bindings || ! is_array( $stored ) || ! hash_equals( self::binding_hash( $bindings ), (string) ( $stored['binding'] ?? '' ) ) ) { return $unknown; }
+		$latest = $unknown;
+		foreach ( [ 'cli', 'scheduled' ] as $runner ) {
+			$row = $stored[ $runner ] ?? null;
+			if ( ! is_array( $row ) || ! is_int( $row['last_attempt_at'] ?? null ) || ! is_int( $row['last_success_at'] ?? null ) || ! is_bool( $row['ok'] ?? null )
+				|| $row['last_attempt_at'] <= 0 || $row['last_attempt_at'] > time() || $row['last_success_at'] < 0 || $row['last_success_at'] > $row['last_attempt_at'] ) { continue; }
+			if ( $row['last_attempt_at'] > $latest['last_attempt_at'] || ( $row['last_attempt_at'] === $latest['last_attempt_at'] && ! $row['ok'] ) ) {
+				$latest = [ 'state' => $row['ok'] && $row['last_success_at'] > 0 ? ( $row['last_success_at'] >= time() - 120 ? 'recent' : 'delayed' ) : 'error',
+					'runner' => $runner, 'last_success_at' => $row['last_success_at'], 'last_attempt_at' => $row['last_attempt_at'] ];
+			}
+		}
+		return $latest;
 	}
 
 	public static function record_poll_cooldown( $seconds ) {

@@ -24,10 +24,11 @@ class YoRo_AI_Settings {
     public static function get_ai_api_site_key() { return 'fixture-private-key'; }
 }
 class YoRo_Connector_Wake {
-    public static $responses = []; public static $retry = 0;
+    public static $responses = []; public static $retry = 0; public static $polls = [];
     public static function record_response( $response, $success ) { self::$responses[] = $success; }
     public static function record_poll_cooldown( $seconds ) { self::$retry = $seconds; }
     public static function poll_retry_after() { return self::$retry; }
+    public static function record_poll_response( $success, $runner ) { self::$polls[] = [ $success, $runner ]; }
 }
 require dirname( __DIR__, 2 ) . '/includes/commerce/class-yoro-connector-client.php';
 $assert = static function( $value, $message ) { if ( ! $value ) { throw new RuntimeException( $message ); } };
@@ -40,6 +41,7 @@ $assert( 'https://api.example/api/v1/early-access/wake/register' === $url && wp_
 $assert( 'POST' === $args['method'] && 10 === $args['timeout'] && 0 === $args['redirection'] && true === $args['sslverify'] && 2048 === $args['limit_response_size'], 'Secret registration has bounded, verified HTTPS with no redirects.' );
 $assert( 'Bearer fixture-private-key' === $args['headers']['Authorization'], 'Only the current site credential authenticates registration.' );
 $assert( [ 'transport' => [] ] === $client->early_access_transport_metrics(), 'Registration is separate from the operation-delivery budget.' );
+$assert( [] === YoRo_Connector_Wake::$polls, 'Registration is not a polling heartbeat.' );
 foreach ( [ 302, 401, 403, 503 ] as $status ) {
     $GLOBALS['response']['response']['code'] = $status;
     $assert( is_wp_error( $client->register_early_access_wake( $payload ) ), 'An unsuccessful registration remains unavailable.' );
@@ -54,8 +56,10 @@ YoRo_Connector_Runtime::$allowed = true;
 $assert( true === YoRo_Connector_Wake::$responses[0], 'Authorized successful registration passes its telemetry to the validator.' );
 $GLOBALS['response'] = [ 'response' => [ 'code' => 204 ], 'headers' => [] ];
 $client = new YoRo_Connector_Client();
+$client->set_early_access_runner( 'cli' );
 $receipt = $client->early_access_request( 'next' );
 $assert( true === $receipt['empty'] && true === end( YoRo_Connector_Wake::$responses ), 'Empty204 claims must carry health even without a response body.' );
+$assert( [ true, 'cli' ] === end( YoRo_Connector_Wake::$polls ), 'An actual successful CLI poll records its own heartbeat.' );
 $GLOBALS['response'] = [ 'response' => [ 'code' => 202 ], 'headers' => [ 'content-type' => 'text/html' ], 'body' => '<html>captcha</html>' ];
 $assert( is_wp_error( $client->early_access_request( 'next' ) ) && false === end( YoRo_Connector_Wake::$responses ), 'A hosting challenge cannot be interpreted as healthy transport.' );
 $GLOBALS['response'] = [ 'response' => [ 'code' => 200 ], 'headers' => [ 'content-type' => 'text/html' ], 'body' => '{"success":true}' ];
@@ -65,8 +69,10 @@ $GLOBALS['response'] = [ 'response' => [ 'code' => 429 ], 'headers' => [ 'retry-
 $client = new YoRo_Connector_Client();
 $assert( is_wp_error( $client->early_access_request( 'next' ) ) && 120 === YoRo_Connector_Wake::$retry, '429 responses persist a bounded Retry-After cooldown.' );
 $before = count( $GLOBALS['requests'] );
+$polls_before = count( YoRo_Connector_Wake::$polls );
 $receipt = $client->early_access_request( 'next' );
 $assert( true === $receipt['throttled'] && $before === count( $GLOBALS['requests'] ) && ! $client->early_access_has_budget( 1 ), 'A retry cooldown must prevent another claim or local execution without result capacity.' );
+$assert( $polls_before === count( YoRo_Connector_Wake::$polls ), 'Synthetic throttling cannot refresh a polling heartbeat.' );
 $replacement_client = new YoRo_Connector_Client();
 $replacement_client->early_access_request( 'next' );
 $assert( $before === count( $GLOBALS['requests'] ), 'A fresh client cannot bypass the persisted retry cooldown.' );
@@ -76,3 +82,9 @@ $GLOBALS['response']['headers']['retry-after'] = 'not-a-number';
 $replacement_client->early_access_request( 'next' );
 $assert( 60 === YoRo_Connector_Wake::$retry, 'Malformed Retry-After uses the conservative fallback rather than spinning.' );
 echo "Adaptive health transport and retry contracts passed.\n";
+YoRo_Connector_Wake::$retry = 0;
+$GLOBALS['response'] = [ 'response' => [ 'code' => 200 ], 'headers' => [ 'content-type' => 'application/json', 'x-yoro-delivery-lane' => 'invalid' ], 'body' => '{"success":true}' ];
+$assert( is_wp_error( ( new YoRo_Connector_Client() )->early_access_request( 'next' ) ) && false === end( YoRo_Connector_Wake::$polls )[0], 'Invalid delivery lanes do not report a successful poll.' );
+$GLOBALS['response'] = [ 'response' => [ 'code' => 204 ], 'headers' => [ 'content-type' => 'text/html' ] ];
+( new YoRo_Connector_Client() )->early_access_request( 'next' );
+$assert( false === end( YoRo_Connector_Wake::$polls )[0], 'An HTML204 response cannot report a successful poll.' );
