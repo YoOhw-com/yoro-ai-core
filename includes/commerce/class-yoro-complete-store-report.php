@@ -32,8 +32,14 @@ final class YoRo_Complete_Store_Report {
             'woocommerce_before_delete_order_item', 'woocommerce_new_order_item', 'woocommerce_update_order_item', 'woocommerce_before_product_object_save', 'woocommerce_after_product_object_save' ] as $hook ) {
             add_action( $hook, static function() { self::invalidate(); }, 10, 0 );
         }
+        foreach (['set_object_terms','created_term','edited_term','delete_term'] as $hook) {
+            add_action($hook, static function(...$args) use ($hook) {
+                $taxonomy=$hook==='set_object_terms'?($args[3]??''):($args[2]??'');
+                if (in_array($taxonomy,['product_cat','product_type'],true)) {self::invalidate();}
+            },10,6);
+        }
         add_action( 'updated_option', static function( $name ) {
-            if ( in_array( $name, [ 'timezone_string', 'gmt_offset', 'woocommerce_currency', 'woocommerce_calc_taxes', 'woocommerce_calc_shipping', 'woocommerce_ship_to_countries', 'woocommerce_custom_orders_table_enabled', 'start_of_week' ], true ) ) { self::invalidate(); }
+            if ( in_array( $name, [ 'timezone_string', 'gmt_offset', 'woocommerce_currency', 'woocommerce_calc_taxes', 'woocommerce_calc_shipping', 'woocommerce_ship_to_countries', 'woocommerce_custom_orders_table_enabled', 'start_of_week', 'woocommerce_manage_stock', 'woocommerce_notify_low_stock_amount', 'woocommerce_notify_no_stock_amount' ], true ) ) { self::invalidate(); }
         }, 10, 1 );
     }
 
@@ -61,10 +67,12 @@ final class YoRo_Complete_Store_Report {
     /** Four independent scopes bound storage without evicting another active calculation. */
     public static function run( array $operation, $guard = null, array $selection = [] ) {
         if ( ! current_user_can( 'yoro_view_store_data' ) ) { return new WP_Error( 'report_access_denied', 'Report access is unavailable.' ); }
-        if ($selection && (array_diff(array_keys($selection), ['scope_key','predicate','matches','summary_only','finish'])
+        if ($selection && (array_diff(array_keys($selection), ['scope_key','predicate','matches','summary_only','finish','consume','finalize'])
             || !is_string($selection['scope_key'] ?? null) || !preg_match('/\A[a-f0-9]{64}\z/D',$selection['scope_key'])
             || !is_callable($selection['predicate'] ?? null) || !is_callable($selection['matches'] ?? null)
-            || ($selection['summary_only'] ?? null)!==true || !is_callable($selection['finish'] ?? null))) {
+            || ($selection['summary_only'] ?? null)!==true || !is_callable($selection['finish'] ?? null)
+            || (isset($selection['consume']) && !is_callable($selection['consume']))
+            || (isset($selection['finalize']) && !is_callable($selection['finalize'])))) {
             return new WP_Error('report_selection_invalid','The local report selector is unavailable.');
         }
         $params = $operation['params']; $basis = $params['date_basis'] ?? 'created';
@@ -94,9 +102,13 @@ final class YoRo_Complete_Store_Report {
             if ( self::generation( self::MUTATION_OPTION ) !== $state['mutation'] ) { delete_option( $state_key ); return new WP_Error( 'report_changed', 'Store data changed. Request a current report.' ); }
             if ( $state['complete'] ) { $result = $selection ? ($selection['finish'])($state) : self::finish( $state ); if ( self::generation( self::MUTATION_OPTION ) !== $state['mutation'] ) { return new WP_Error( 'report_changed', 'Store data changed. Request a current report.' ); } return $result; }
             if ($selection && $state['phase']===4) {
-                $state['phase']=5;$state['complete']=true;$state['completed_at']=time();update_option($state_key,$state,false);
+                if (!isset($selection['finalize']) || ($selection['finalize'])($state)) { $state['phase']=5;$state['complete']=true;$state['completed_at']=time(); }
+                if (strlen(maybe_serialize($state))>2097152) {throw new RuntimeException('report_checkpoint_capacity');}
+                if(self::generation(self::MUTATION_OPTION)!==$state['mutation']){delete_option($state_key);return new WP_Error('report_changed','Store data changed. Request a current report.');}
+                update_option($state_key,$state,false);
                 global $wpdb;$saved=$wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",$state_key));
                 if($wpdb->last_error!==''||$saved!==maybe_serialize($state)){throw new RuntimeException('report_checkpoint_unavailable');}
+                if(function_exists('wp_cache_supports')&&wp_cache_supports('flush_runtime')){wp_cache_flush_runtime();}
                 continue;
             }
             if ( $state['period_context']['comparison_mode'] === 'none' && in_array( $state['phase'], [ 1, 3 ], true ) ) { $state['phase']++; $state['cursor'] = 0; continue; }
@@ -106,6 +118,7 @@ final class YoRo_Complete_Store_Report {
                 if ($selection && !($selection['matches'])($order)) {throw new RuntimeException('report_selection_mismatch');}
                 $state['cursor'] = max( $state['cursor'], $order->get_id() );
                 self::consume( $state, $order );
+                if (isset($selection['consume'])) { ($selection['consume'])($state, $order); }
             }
             if ( count( $rows ) < self::BATCH_SIZE ) {
                 $state['phase']++; $state['cursor'] = 0;
