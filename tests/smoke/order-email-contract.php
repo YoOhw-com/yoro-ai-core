@@ -28,7 +28,11 @@ try {
     wp_set_current_user((int)get_users(['role'=>'administrator','number'=>1,'fields'=>'ID'])[0]);
     YoRo_WordPress_Actor::record_access(['assigned'=>true,'status'=>'active','role'=>'store_admin','permissions'=>['yoro_view_store_data','yoro_execute_actions']]);
     YoRo_Order_Email::register();
-    $order=wc_create_order();$order->set_billing_email('buyer@example.invalid');$order->set_status('processing');$order->save();$id=$order->get_id();$capture->captured=[];
+    $order=wc_create_order();$order->set_billing_email('buyer@example.invalid');$order->save();$id=$order->get_id();$capture->captured=[];
+    // Read email context before any status notification can lazily initialize Woo's mailer.
+    $coldContext=YoRo_Order_Email::context($id);
+    $assert($coldContext['recipient']==='buyer@example.invalid'&&$coldContext['html_body']===''&&class_exists('WC_Email',false)&&false!==has_action('woocommerce_email_header')&&false!==has_action('woocommerce_email_footer')&&count($capture->captured)===0,'A pending-order context initializes Woo mail classes and template hooks without sending.');
+    $order->set_status('processing');$order->save();$capture->captured=[];
     $params=static function($action,$changes)use($id){$selectors=array_intersect_key($changes,array_flip(['draft_id','template','note']));if($action==='orders.add_customer_note'){$selectors['template']='customer_note';}$s=YoRo_Order_Email::context($id,$selectors);return ['order_id'=>$id,'changes'=>$changes,'expected_version'=>$s['version'],'recipient'=>$s['recipient'],...(in_array($action,['orders.send_native_email','orders.add_customer_note'],true)?['subject'=>$s['subject'],'html_body'=>$s['html_body']]:[])];};
     $execute=static function($action,$params,$fence=null){$operation=['action'=>$action,'params'=>$params,'user_content_slots'=>YoRo_Order_Email::slots($params),'workflow_id'=>wp_generate_uuid4(),'operation_id'=>'operation_1','authorization'=>['execution_permit'=>'disposable'],'extensions'=>['yoro.mcp_early_access_commerce_write'=>['source_operation_id'=>'envelope_'.str_repeat('a',64),'source_result_hash'=>str_repeat('b',64),'expected_version'=>$params['expected_version']]]];return YoRo_Early_Access_Commerce_Write::execute($operation,$fence);};
     $seed=YoRo_Order_Email::context($id,['subject'=>'Seed subject','body'=>'Seed body']);$assert($seed['composer']['body']==='Seed body'&&$seed['drafts']===[]&&$seed['html_body']==='','Composer seed stays ephemeral and native view is deferred.');

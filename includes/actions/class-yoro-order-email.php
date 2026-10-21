@@ -162,6 +162,8 @@ final class YoRo_Order_Email
     /** Build the exact authored content inside the site's Woo header/footer and inline styles. */
     private static function authored(WC_Order $order, string $subject, string $body, string $format = 'plain_text'): array
     {
+        // Woo loads WC_Email through its official mailer initializer on cold requests.
+        if (!WC()->mailer() || !class_exists('WC_Email', false)) { self::invalid(); }
         $email = new WC_Email(); $email->object = $order; $email->recipient = $order->get_billing_email('edit'); $email->email_type = 'html';
         $email->setup_locale(); $level = ob_get_level();
         try {
