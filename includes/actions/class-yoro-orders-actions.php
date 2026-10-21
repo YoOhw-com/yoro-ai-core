@@ -7,6 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class YoRo_Orders_Actions {
 
 	public static function register() {
+        YoRo_Order_Email::register();
         YoRo_Variable_Product::register();
         YoRo_Action_Registry::register(YoRo_Product_Catalog_Options::Action, [
             'label' => 'Get catalog options', 'description' => 'Read existing categories, tags or visible image attachment IDs.',
