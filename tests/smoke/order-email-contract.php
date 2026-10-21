@@ -12,6 +12,16 @@ if(!class_exists('YoRo_Captured_Order_Mailer')) {
         public function send(){ $this->captured[]=['to'=>$this->getToAddresses(),'subject'=>$this->Subject,'body'=>$this->Body,'cc'=>$this->getCcAddresses(),'bcc'=>$this->getBccAddresses(),'attachments'=>$this->getAttachments()];return true; }
     }
 }
+// Woo email constructors register persistent multipart callbacks on phpmailer_init;
+// snapshot sender and send-guard hooks without treating that native setup as a leak.
+$mailHooks=static function():array{
+    $snapshot=[];
+    foreach(['wp_mail_content_type','wp_mail_from','wp_mail_from_name','wp_mail','woocommerce_mail_callback','woocommerce_email_sent']as$hook){
+        $snapshot[$hook]=$GLOBALS['wp_filter'][$hook]->callbacks??[];
+    }
+    return $snapshot;
+};
+$mailHookSentinels=[];
 global $wpdb,$phpmailer;$oldMailer=$phpmailer;$oldUser=get_current_user_id();$phpmailer=new YoRo_Captured_Order_Mailer(true);$capture=$phpmailer;
 $wpdb->query('START TRANSACTION');
 try {
@@ -26,11 +36,18 @@ try {
     $unconfirmed=$params('orders.send_authored_email',['subject'=>'Exact subject','body'=>'Exact body']);
     $assert(is_wp_error(YoRo_Order_Email::write($unconfirmed,'orders.send_authored_email')),'Direct unconfirmed callback cannot send.');
     $assert(is_wp_error($execute('orders.send_authored_email',$unconfirmed,static fn()=>false)),'Final fence rejects sends.');
+    foreach(['wp_mail_content_type','wp_mail_from','wp_mail_from_name']as$hook){
+        $mailHookSentinels[$hook]=static fn($value)=>$value;
+        add_filter($hook,$mailHookSentinels[$hook],7);
+    }
+    $mailHookBaseline=$mailHooks();
     $send=$params('orders.send_authored_email',['subject'=>'Edited subject','body'=>'Edited body']);$assert(!is_wp_error($execute('orders.send_authored_email',$send)),'Exact authored send accepted.');
     $assert(count($capture->captured)===1&&$capture->captured[0]['to'][0][0]==='buyer@example.invalid'&&$capture->captured[0]['subject']==='Edited subject'&&str_contains($capture->captured[0]['body'],'Edited body')&&str_contains($capture->captured[0]['body'],'template_header')&&str_contains($capture->captured[0]['body'],'template_footer'),'Actual final transport matches the preview exactly.');
+    $assert($mailHooks()===$mailHookBaseline,'Successful authored send restores every pre-existing mail callback.');
     $assert(is_wp_error($execute('orders.send_authored_email',$send))&&count($capture->captured)===1,'Old version cannot resend.');
     $native=$params('orders.send_native_email',['template'=>'processing']);$assert(!is_wp_error($execute('orders.send_native_email',$native)),'Native processing email accepted: '.wp_json_encode($native));
     $assert(count($capture->captured)===2&&$capture->captured[1]['body']===$native['html_body']&&$capture->captured[1]['subject']===$native['subject'],'Native final content equals rendered reviewed content.');
+    $assert($mailHooks()===$mailHookBaseline,'Successful native send restores every pre-existing mail callback.');
     $note=$params('orders.add_customer_note',['note'=>'Customer-visible exact note']);$result=$execute('orders.add_customer_note',$note);$assert(!is_wp_error($result)&&$result['data']['outcome']==='note_created','Native customer-visible note succeeds: '.wp_json_encode($result));
     $assert(count($capture->captured)===3&&$capture->captured[2]['body']===$note['html_body'],'One note creates exactly one captured native notification.');
     $cc=static fn($headers)=>$headers."\r\nCc: other@example.invalid";add_filter('woocommerce_email_headers',$cc);try{$denied=false;try{YoRo_Order_Email::context($id);}catch(Throwable $e){$denied=true;}$assert($denied,'Configured CC makes exact one-recipient path unavailable.');}finally{remove_filter('woocommerce_email_headers',$cc);}
@@ -38,7 +55,10 @@ try {
     $alter=static fn($atts)=>[...$atts,'subject'=>'Altered after review'];add_filter('wp_mail',$alter,10);
     try{$unknown=$execute('orders.send_native_email',$tampered);$assert(is_wp_error($unknown)&&count($capture->captured)===3,'Final content mutation is denied without another dispatch.');}finally{remove_filter('wp_mail',$alter,10);}
     $assert(is_wp_error($execute('orders.send_native_email',$tampered))&&count($capture->captured)===3,'Unknown attempt cannot repeat with its old version.');
-    $assert(false===has_filter('wp_mail_content_type')&&false===has_filter('wp_mail_from')&&false===has_filter('wp_mail_from_name'),'Interrupted native send leaves no mail filter behind.');
+    $assert($mailHooks()===$mailHookBaseline,'Interrupted native send removes only its temporary mail callbacks and preserves the exact pre-existing hooks.');
+    foreach($mailHookSentinels as$hook=>$callback){
+        $assert(7===has_filter($hook,$callback),'Interrupted native send preserves the pre-existing '.$hook.' sentinel.');
+    }
     $history=YoRo_Order_Email::context($id)['history'];$assert($history[0]['outcome']==='unknown'&&count($history)===4&&$history[1]['outcome']==='mailer_accepted','Only observed sends are recorded; inbox delivery is not claimed.');
     $payment=wc_create_order();$payment->set_billing_email('payment@example.invalid');$payment->set_total('25');$payment->set_payment_method('bacs');$payment->save();
     $invoice=YoRo_Order_Email::context($payment->get_id(),['template'=>'order_details']);$assert($invoice['native_eligible']&&str_contains(html_entity_decode($invoice['html_body']),$payment->get_checkout_payment_url()),'Native unpaid order details include the actual order payment link.');
@@ -56,4 +76,4 @@ try {
     try{$assert(is_wp_error($execute('orders.send_authored_email',$stale))&&count($capture->captured)===$richBefore+1,'Changed Woo wrapper invalidates pending content before mail.');}finally{remove_action('woocommerce_email_footer',$changedFooter,99);}
     $assert(wc_get_order($id)->get_status('edit')==='processing','Email and note sends never flip the order status.');
     echo "Native order email smoke passed; ".count($capture->captured)." captured deliveries, 0 real deliveries.\n";
-} finally {$wpdb->query('ROLLBACK');wp_cache_flush();$phpmailer=$oldMailer;wp_set_current_user($oldUser);}
+} finally {foreach($mailHookSentinels as$hook=>$callback){remove_filter($hook,$callback,7);}$wpdb->query('ROLLBACK');wp_cache_flush();$phpmailer=$oldMailer;wp_set_current_user($oldUser);}
