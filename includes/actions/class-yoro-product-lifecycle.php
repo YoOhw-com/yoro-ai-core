@@ -110,8 +110,7 @@ final class YoRo_Product_Lifecycle
             };
             if(!$valid) {self::invalid();}
             if(in_array($field,['weight','length','width','height'],true)) {$changes[$field]=YoRo_Product_Edit::normalizedPrice($value);}
-            if($field==='purchase_note'&&(strlen($value)>2000||preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f<>]/',$value))){$fields[$field]='';$truncated[]=$field;}
-            elseif(in_array($field,['upsell_ids','cross_sell_ids'],true)) {sort($changes[$field],SORT_NUMERIC);}
+            if(in_array($field,['upsell_ids','cross_sell_ids'],true)) {sort($changes[$field],SORT_NUMERIC);}
         }
         return $changes;
     }
@@ -164,7 +163,10 @@ final class YoRo_Product_Lifecycle
     {
         $fields=self::fingerprint($product);$editable=self::Fields;$truncated=[];
         foreach($fields as $field=>$value) {
-            if(in_array($field,['upsell_ids','cross_sell_ids'],true)) {sort($fields[$field],SORT_NUMERIC);if(count($value)>20){$fields[$field]=array_slice($fields[$field],0,20);$truncated[]=$field;}}
+            // Unsupported existing notes stay in storage and the raw version fingerprint.
+            // Only their bounded projection is unavailable to this plain-text editor.
+            if($field==='purchase_note'&&(!is_string($value)||strlen($value)>2000||preg_match('//u',$value)!==1||preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f<>]/',$value))){$fields[$field]='';$truncated[]=$field;}
+            elseif(in_array($field,['upsell_ids','cross_sell_ids'],true)) {sort($fields[$field],SORT_NUMERIC);if(count($value)>20){$fields[$field]=array_slice($fields[$field],0,20);$truncated[]=$field;}}
             elseif(in_array($field,['weight','length','width','height'],true)&&(!is_string($value)||preg_match('/\A(?:|(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?)\z/D',$value)!==1)) {$fields[$field]='';$truncated[]=$field;}
         }
         if(!in_array($product->get_status(),['draft','publish'],true)||!$product->is_type(['simple','variable'])||!current_user_can('edit_post',$product->get_id())) {$editable=[];}

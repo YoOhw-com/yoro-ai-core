@@ -47,6 +47,7 @@ try {
     WC()->payment_gateways()->payment_gateways()['bacs']->instructions='Disposable bank transfer instructions';
     add_filter('woocommerce_email_enabled_customer_on_hold_order','__return_false');try{$payment->set_status('on-hold');$payment->save();}finally{remove_filter('woocommerce_email_enabled_customer_on_hold_order','__return_false');}
     $invoice=YoRo_Order_Email::context($payment->get_id());$assert(str_contains($invoice['html_body'],'Disposable bank transfer instructions'),'Order details use actual native gateway instructions, without returning raw gateway settings.');
+    if(getenv('YR0180_NATIVE_PREVIEW_FILE')){file_put_contents(getenv('YR0180_NATIVE_PREVIEW_FILE'),wp_json_encode(['source'=>'Disposable native WooCommerce order-details preview; not a live recipient or send authority','recipient'=>$invoice['recipient'],'subject'=>$invoice['subject'],'html_body'=>$invoice['html_body'],'order_id'=>$invoice['order_id'],'version'=>$invoice['version']],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES));}
     $assert(wc_get_order($id)->get_status('edit')==='processing','Email and note sends never flip the order status.');
     echo "Native order email smoke passed; 3 captured deliveries, 0 real deliveries.\n";
 } finally {$wpdb->query('ROLLBACK');wp_cache_flush();$phpmailer=$oldMailer;wp_set_current_user($oldUser);}
