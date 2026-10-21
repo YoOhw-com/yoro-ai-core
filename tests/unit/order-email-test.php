@@ -18,7 +18,7 @@ function has_filter($hook) {foreach($GLOBALS['filters'][$hook]??[] as $p=>$rows)
 function apply_filters($hook,$value,...$args) {$rows=$GLOBALS['filters'][$hook]??[];ksort($rows);foreach($rows as $group){foreach($group as [$fn,$argc]){$value=$fn(...array_slice([$value,...$args],0,$argc));}}return $value;}
 function do_action($hook,...$args) {$rows=$GLOBALS['filters'][$hook]??[];ksort($rows);foreach($rows as $group){foreach($group as [$fn,$argc]){$fn(...array_slice($args,0,$argc));}}}
 class FixtureMailer {
- public $Subject; public $Body;
+ public $Subject; public $Body; public string $From="store@example.test"; public string $FromName="Fixture store";
  public function __construct(public array $args) {$this->Subject=$args['subject'];$this->Body=$args['message'];}
  public function getToAddresses() {return array_map(static fn($email)=>[$email,''],(array)$this->args['to']);}
  public function getCcAddresses() {return $GLOBALS['inject_transport_cc']??[];}
@@ -54,7 +54,7 @@ class YoRo_Early_Access_Product_Read {
 }
 class WC_Email {
  public $object;public $recipient;public array $placeholders=[];public string $customer_note='';
- public function __construct(public string $id) {}
+ public string $email_type = "html"; public function __construct(public string $id = "") {}
  public function setup_locale() {} public function restore_locale() {}
  public function is_enabled() {return $GLOBALS['native_enabled']??true;}
  public function get_recipient() {return apply_filters('woocommerce_email_recipient_'.$this->id,$this->recipient);}
@@ -75,21 +75,20 @@ class FixtureWooMailer {
 class FixtureWoo {public $emails;public function __construct(){$this->emails=new FixtureWooMailer;}public function mailer(){return $this->emails;}}
 function WC(){return $GLOBALS['wc'];}
 require dirname(__DIR__,2).'/includes/actions/class-yoro-order-email.php';
-$GLOBALS['filters']=[];$GLOBALS['order']=new WC_Order;$GLOBALS['wc']=new FixtureWoo;$GLOBALS['uuid']=0;$GLOBALS['captured']=[];
+add_action('woocommerce_email_header',static function($subject){echo '<header>'.$subject.'</header>';});add_action('woocommerce_email_footer',static function(){echo '<footer>'.($GLOBALS['wrapper_footer']??'Fixture store').'</footer>';});
+$GLOBALS['order']=new WC_Order;$GLOBALS['wc']=new FixtureWoo;$GLOBALS['uuid']=0;$GLOBALS['captured']=[];
 $checks=0;$assert=static function($condition,$message)use(&$checks){$checks++;if(!$condition){throw new RuntimeException($message);}};
 $make=static function($action,$changes){$selectors=array_intersect_key($changes,array_flip(['draft_id','template','note']));if($action==='orders.add_customer_note'){$selectors['template']='customer_note';}$s=YoRo_Order_Email::context(1,$selectors);return ['_yoro_confirmed'=>true,'_yoro_preview'=>false,'order_id'=>1,'changes'=>YoRo_Order_Email::changes($changes,$action),'expected_version'=>$s['version'],'recipient'=>$s['recipient'],...(in_array($action,['orders.send_native_email','orders.add_customer_note'],true)?['subject'=>$s['subject'],'html_body'=>$s['html_body']]:[])];};
-$save=$make('orders.save_authored_email_draft',['subject'=>'Saved final subject','body'=>"Saved final\nbody"]);
-$r=YoRo_Order_Email::write($save,'orders.save_authored_email_draft');$assert(!is_wp_error($r)&&$r['data']['outcome']==='draft_saved'&&count($GLOBALS['captured'])===0,'Saving the exact draft never sends.');
-$draftId=$r['data']['record_id'];$context=YoRo_Order_Email::context(1,['draft_id'=>$draftId]);
-$assert($context['draft']['body']==="Saved final\nbody"&&$context['draft']['subject']==='Saved final subject','Reopening preserves exact authored subject and body.');
-$oldSend=$make('orders.send_authored_email',['subject'=>'Saved final subject','body'=>"Saved final\nbody"]);
-$update=$make('orders.update_authored_email_draft',['draft_id'=>$draftId,'subject'=>'Edited subject','body'=>'Edited final body']);
-$r=YoRo_Order_Email::write($update,'orders.update_authored_email_draft');$assert(!is_wp_error($r),'Updating a saved draft succeeds.');
-$assert(is_wp_error(YoRo_Order_Email::write($oldSend,'orders.send_authored_email'))&&count($GLOBALS['captured'])===0,'Editing a saved draft invalidates the older send version.');
+$GLOBALS['order']->meta['_yoro_customer_email_drafts']=[['id'=>'legacy','body'=>'Historic data stays untouched']];
+$context=YoRo_Order_Email::context(1,['subject'=>'Seed subject','body'=>"Seed body\nSecond line"]);
+$assert($context['composer']===['subject'=>'Seed subject','body'=>"Seed body\nSecond line",'body_format'=>'plain_text']&&$context['drafts']===[]&&$context['draft']===null&&$context['html_body']==='','Context opens an ephemeral composer and omits native email/drafts.');
+$assert($context['version']===YoRo_Order_Email::context(1)['version'],'Seed content does not fabricate source or send authority.');
+$assert(!YoRo_Order_Email::valid_params('orders.save_authored_email_draft',['order_id'=>1]),'Draft writes are unavailable.');
+$assert($GLOBALS['order']->meta['_yoro_customer_email_drafts'][0]['id']==='legacy','Historical stored records remain untouched.');
 $send=$make('orders.send_authored_email',['subject'=>'Edited subject','body'=>'Edited final body']);
 $r=YoRo_Order_Email::write($send,'orders.send_authored_email');
 $assert(!is_wp_error($r)&&count($GLOBALS['captured'])===1&&$GLOBALS['captured'][0]['to']==='buyer@example.test'&&$GLOBALS['captured'][0]['subject']==='Edited subject','Exactly one authored email reaches the captured transport.');
-$assert($GLOBALS['captured'][0]['message']==='<div style="white-space:pre-wrap">Edited final body</div>'&&!$r['data']['inbox_delivery_verified'],'The dispatched content is exact and never claims inbox delivery.');
+$assert($GLOBALS['captured'][0]['message']==='<header>Edited subject</header><div id="yoro-authored-email-body"><div style="white-space:pre-wrap">Edited final body</div></div><footer>Fixture store</footer>'&&!$r['data']['inbox_delivery_verified'],'The dispatched content is exact and never claims inbox delivery.');
 $assert(is_wp_error(YoRo_Order_Email::write($send,'orders.send_authored_email'))&&count($GLOBALS['captured'])===1,'A stale send cannot be repeated.');
 $wrong=$make('orders.send_authored_email',['subject'=>'No override','body'=>'Exact body']);$wrong['recipient']='other@example.test';
 $assert(is_wp_error(YoRo_Order_Email::write($wrong,'orders.send_authored_email'))&&count($GLOBALS['captured'])===1,'Current billing recipient cannot be overridden.');
@@ -110,6 +109,29 @@ $GLOBALS['throw_after_capture']=false;$GLOBALS['mail_return']=false;
 $failed=$make('orders.send_authored_email',['subject'=>'Rejected mail','body'=>'Mailer refusal']);$r=YoRo_Order_Email::write($failed,'orders.send_authored_email');
 $assert(is_wp_error($r)&&$r->code==='order_mail_failed'&&YoRo_Order_Email::context(1)['history'][0]['outcome']==='failed','Known mailer rejection is available in bounded history without claiming delivery.');
 $assert(is_wp_error(YoRo_Order_Email::write($failed,'orders.send_authored_email'))&&count($GLOBALS['captured'])===5,'A failed attempt cannot silently repeat with its old source version.');
-$GLOBALS['mail_return']=true;$GLOBALS['allowed']=false;
+$GLOBALS['mail_return']=true;
+$rich='<p>Hello <strong>Buyer</strong><br><em>Thanks</em></p><ul><li>One</li></ul><p><a href="https://example.test/order?a=1&amp;b=2">View order</a></p>';
+$richParams=$make('orders.send_authored_email',['subject'=>'Rich mail','body'=>$rich,'body_format'=>'safe_html']);
+$r=YoRo_Order_Email::write($richParams,'orders.send_authored_email');
+$assert(!is_wp_error($r)&&str_contains(end($GLOBALS['captured'])['message'],$rich),'Supported formatting is preserved exactly inside the Woo wrapper.');
+foreach(['<script>x</script>','<p onclick="x">Hi</p>','<a href="http://example.test">Hi</a>','<a href="javascript:alert(1)">Hi</a>','<img src="https://example.test/x">','<p style="color:red">Hi</p>','<P>Hi</P>','<p>Hi</p><!--x-->','<p><strong>Broken</p>']as$bad){
+ $rejected=false;try{YoRo_Order_Email::changes(['subject'=>'Unsafe','body'=>$bad,'body_format'=>'safe_html'],'orders.send_authored_email');}catch(Throwable $e){$rejected=true;}$assert($rejected,'Unsafe/noncanonical rich body fails closed: '.$bad);
+}
+$stale=$make('orders.send_authored_email',['subject'=>'Wrapper-bound','body'=>'Exact body']);$GLOBALS['wrapper_footer']='Changed template';
+$before=count($GLOBALS['captured']);$assert(is_wp_error(YoRo_Order_Email::write($stale,'orders.send_authored_email'))&&count($GLOBALS['captured'])===$before,'Changed Woo template invalidates source before transport.');
+$before=count($GLOBALS['captured']);
+$modified=$make('orders.send_authored_email',['subject'=>'Filtered body','body'=>'Exact approved text']);
+$filter=static fn($html)=>str_replace('Exact approved text','Changed by site hook',$html);add_filter('woocommerce_mail_content',$filter,10);
+try{$assert(is_wp_error(YoRo_Order_Email::write($modified,'orders.send_authored_email'))&&count($GLOBALS['captured'])===$before,'Site styling hooks cannot replace approved body text.');}finally{remove_filter('woocommerce_mail_content',$filter,10);}
+$unicode=<<<'HTML'
+<p>Kính gửi O'Brien &amp; &quot;Buyer&quot;</p><p><a href="https://example.test/order?q=O&#039;Brien">Xem đơn</a></p>
+HTML;
+// Text quotes are literal in the editor canonical dialect.
+$unicode=str_replace('&quot;','"',$unicode);
+$unicodeParams=$make('orders.send_authored_email',['subject'=>'Đơn hàng','body'=>$unicode,'body_format'=>'safe_html']);
+$assert(!is_wp_error(YoRo_Order_Email::write($unicodeParams,'orders.send_authored_email')),'Unicode and apostrophes survive Woo styling without content rewriting.');
+$crlf=$make('orders.send_authored_email',['subject'=>'Plain line endings','body'=>"First line\r\nSecond line"]);
+$assert(!is_wp_error(YoRo_Order_Email::write($crlf,'orders.send_authored_email')),'Plain text CRLF line breaks retain their semantic line boundaries inside Woo.');
+$GLOBALS['allowed']=false;
 $assert(is_wp_error(YoRo_Order_Email::read(['order_id'=>1])),'Revoked local permission denies email context.');
 echo json_encode(['result'=>'passed','assertions'=>$checks,'captured_mail'=>count($GLOBALS['captured']),'real_mail'=>0]),"\n";
