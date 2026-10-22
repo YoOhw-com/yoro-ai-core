@@ -2,7 +2,7 @@
 /** Disposable WordPress/WooCommerce, captured transport only. Never real delivery. */
 if (!defined('ABSPATH') || !class_exists('WooCommerce')) { return; }
 if (str_ends_with((string)wp_parse_url(home_url(), PHP_URL_HOST), 'yorohq.com')) { throw new RuntimeException('Disposable fixture required.'); }
-$assert=static function($ok,$why){if(!$ok){throw new RuntimeException($why);}};
+$checks=0;$assert=static function($ok,$why)use(&$checks){++$checks;if(!$ok){throw new RuntimeException($why);}};
 require_once ABSPATH.WPINC.'/PHPMailer/PHPMailer.php';
 require_once ABSPATH.WPINC.'/PHPMailer/Exception.php';
 require_once ABSPATH.WPINC.'/class-wp-phpmailer.php';
@@ -75,9 +75,40 @@ try {
     $richParams=$params('orders.send_authored_email',['subject'=>'Rich Woo email','body'=>$rich,'body_format'=>'safe_html']);
     $richBefore=count($capture->captured);$richResult=$execute('orders.send_authored_email',$richParams);$assert(!is_wp_error($richResult)&&count($capture->captured)===$richBefore+1,'Rich authored mail uses the actual Woo sender once: '.wp_json_encode($richResult));
     $body=end($capture->captured)['body'];$assert(str_contains($body,'<strong>Buyer</strong>')&&str_contains($body,'template_header')&&str_contains($body,'template_footer'),'Formatting survives inside the actual styled Woo site template.');
+    $runtime=['connector_key'=>'woocommerce','connector_connection_id'=>'connection_email_dialect_smoke','execution_mode'=>'remote_agent','protocol_version'=>1];
+    $manifest=YoRo_Commerce_Contract_Builder::build_capability_manifest($runtime,1);
+    $assert($manifest['extensions']['woocommerce.runtime']['commerce_features'][YoRo_Order_Email::ManifestExtension]===YoRo_Order_Email::manifest()&&YoRo_Order_Email::manifest()['version']===2&&YoRo_Order_Email::manifest()['result_version']===1,'Actual commerce manifest advertises exact email capability version2 without changing result_version.');
+    $headings='<h1>Order update</h1><h2>Next steps</h2><h3>Details</h3><p>☐ Pack item</p><p>☑ Payment recorded</p>';
+    $assert(10===has_filter('wp_mail','wp_staticize_emoji_for_email'),'The stock WordPress emoji mail filter remains enabled at its original priority.');
+    $headingParams=$params('orders.send_authored_email',['subject'=>'Semantic headings and checklist','body'=>$headings,'body_format'=>'safe_html']);
+    $prepared=YoRo_Order_Email::prepare($headingParams,'orders.send_authored_email');$assert(!is_wp_error($prepared),'Actual Woo template prepares the canonical heading and static checklist content.');
+    $checklistScope=static function($atts)use($assert){
+        $unrelated=['to'=>'unrelated@example.invalid','subject'=>'Unrelated notification','message'=>'<p>☑ unrelated</p>','headers'=>[],'attachments'=>[]];$found=false;
+        foreach(($GLOBALS['wp_filter']['wp_mail']->callbacks[9]??[])as$row){if($row['function'] instanceof Closure){
+            foreach([$unrelated,[...$atts,'to'=>'unrelated@example.invalid'],[...$atts,'subject'=>'Different subject'],[...$atts,'message'=>'<p>☑ arbitrary template</p>']]as$other){$assert($row['function']($other)===$other,'Scoped checklist encoding never changes mail with another recipient, subject or message.');}$found=true;
+        }}
+        $assert($found,'Authored send installs its own bounded checklist callback.');return $atts;
+    };add_filter('wp_mail',$checklistScope,8);
+    $headingBefore=count($capture->captured);try{$headingResult=$execute('orders.send_authored_email',$headingParams);}finally{remove_filter('wp_mail',$checklistScope,8);}
+    $assert(!is_wp_error($headingResult)&&count($capture->captured)===$headingBefore+1,'Semantic heading/checklist sends once through the existing confirmed executor: '.wp_json_encode($headingResult));
+    $delivered=end($capture->captured);$assert($delivered['body']===$prepared['authored']['html_body']&&$delivered['subject']===$headingParams['changes']['subject']&&$delivered['to']===[['buyer@example.invalid','']]&&$delivered['cc']===[]&&$delivered['bcc']===[]&&$delivered['attachments']===[],'Final Woo transport retains exact prepared HTML, subject and sole recipient.');
+    $document=new DOMDocument('1.0','UTF-8');$previous=libxml_use_internal_errors(true);
+    try{$document->loadHTML('<?xml encoding="UTF-8">'.$delivered['body'],LIBXML_NONET|LIBXML_NOERROR|LIBXML_NOWARNING);}finally{libxml_clear_errors();libxml_use_internal_errors($previous);}
+    $xpath=new DOMXPath($document);$container=$xpath->query('//*[@id="yoro-authored-email-body"]')->item(0);
+    $actual=[];foreach($container->childNodes as$node){$actual[]=[$node->nodeName,$node->textContent];}
+    $assert($actual===[['h1','Order update'],['h2','Next steps'],['h3','Details'],['p','☐ Pack item'],['p','☑ Payment recorded']]&&$xpath->query('.//input|.//form|.//img|.//script',$container)->length===0,'Actual Woo styling preserves real h1/h2/h3 semantics and literal static checklist paragraphs.');
+    $assert($headingResult['data']['content_hash']===YoRo_Order_Email::content_hash($headingParams,'orders.send_authored_email')&&YoRo_Order_Email::context($id)['history'][0]['content_hash']===$headingResult['data']['content_hash']&&!$headingResult['data']['inbox_delivery_verified'],'Exact content hash and observed history survive heading/checklist send without an inbox claim.');
+    $assert(is_wp_error($execute('orders.send_authored_email',$headingParams))&&count($capture->captured)===$headingBefore+1,'Heading/checklist content cannot resend using the consumed source version.');
+    $assert($mailHooks()===$mailHookBaseline,'Heading/checklist send preserves pre-existing Woo mail callbacks.');
+    if($path=getenv('YR0180_HEADING_CAPTURE_FILE')){file_put_contents($path,wp_json_encode(['manifest'=>YoRo_Order_Email::manifest(),'authored_body'=>$headings,'prepared_html'=>$prepared['authored']['html_body'],'capture'=>$delivered,'result'=>$headingResult],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES));}
+    $attackParams=$params('orders.send_authored_email',['subject'=>'Heading mutation denied','body'=>$headings,'body_format'=>'safe_html']);
+    $alterHeading=static function($atts){$atts['message']=str_replace('Next steps','Tampered heading',$atts['message']);return $atts;};add_filter('wp_mail',$alterHeading,10);$attackHooks=$mailHooks();$before=count($capture->captured);
+    try{$assert(is_wp_error($execute('orders.send_authored_email',$attackParams))&&count($capture->captured)===$before,'A site mail filter cannot change approved heading/checklist content.');$assert($mailHooks()===$attackHooks,'Failed heading/checklist send removes only its own callback and preserves every pre-existing hook.');}finally{remove_filter('wp_mail',$alterHeading,10);}
+    $assert($mailHooks()===$mailHookBaseline,'Heading/checklist failure restores the original hook order.');
     $stale=$params('orders.send_authored_email',['subject'=>'Wrapper-bound','body'=>'Do not send after template changes']);
     $changedFooter=static function(){echo '<p>Changed site footer</p>';};add_action('woocommerce_email_footer',$changedFooter,99);
-    try{$assert(is_wp_error($execute('orders.send_authored_email',$stale))&&count($capture->captured)===$richBefore+1,'Changed Woo wrapper invalidates pending content before mail.');}finally{remove_action('woocommerce_email_footer',$changedFooter,99);}
+    $before=count($capture->captured);
+    try{$assert(is_wp_error($execute('orders.send_authored_email',$stale))&&count($capture->captured)===$before,'Changed Woo wrapper invalidates pending content before mail.');}finally{remove_action('woocommerce_email_footer',$changedFooter,99);}
     $assert(wc_get_order($id)->get_status('edit')==='processing','Email and note sends never flip the order status.');
-    echo "Native order email smoke passed; ".count($capture->captured)." captured deliveries, 0 real deliveries.\n";
+    echo "Native order email smoke passed; ".$checks." assertions, ".count($capture->captured)." captured deliveries, 0 real deliveries.\n";
 } finally {foreach($mailHookSentinels as$hook=>$callback){remove_filter($hook,$callback,7);}$wpdb->query('ROLLBACK');wp_cache_flush();$phpmailer=$oldMailer;wp_set_current_user($oldUser);}

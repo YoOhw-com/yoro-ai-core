@@ -11,7 +11,7 @@ final class YoRo_Order_Email
     public const ManifestExtension = 'yoro.early_access_order_email';
     public static function manifest(): array
     {
-        return ['version' => 1, 'actions' => [...self::Actions, ...self::WriteActions], 'max_targets' => 1,
+        return ['version' => 2, 'actions' => [...self::Actions, ...self::WriteActions], 'max_targets' => 1,
             'requires_source_read' => true, 'requires_confirmation' => true, 'result_version' => 1, 'recipient' => 'current_order_billing', 'composer' => 'yoro_bounded_email'];
     }
 
@@ -180,6 +180,7 @@ final class YoRo_Order_Email
             $raw = ob_get_clean();
             $html = apply_filters('woocommerce_mail_content', $email->style_inline($raw)); $headers = $email->get_headers();
             self::verify_authored_content($html, $body, $format);
+            $html = self::checklist_entities($html);
             if (strlen($html) > 24000 || !str_contains($raw, $content) || $email->get_content_type() !== 'text/html'
                 || $email->get_recipient() !== $order->get_billing_email('edit') || preg_match('/(?:^|[\r\n])(?:Cc|Bcc):/i', $headers)
                 || $email->get_attachments() !== [] || apply_filters('woocommerce_defer_transactional_emails', false)
@@ -189,6 +190,12 @@ final class YoRo_Order_Email
             while (ob_get_level() > $level) { ob_end_clean(); }
             $email->restore_locale();
         }
+    }
+
+    /** Keep checklist glyphs as text when WordPress's mail filter staticizes emoji. */
+    private static function checklist_entities(string $html): string
+    {
+        return str_replace(['☐','☑'], ['&#9744;','&#9745;'], $html);
     }
 
     /** Site filters may style the content, but cannot replace the approved authored text or formatting. */
@@ -424,7 +431,7 @@ final class YoRo_Order_Email
         $serialize = function ($node, int $depth = 0) use (&$serialize, &$nodes): string {
             if (++$nodes > 2000 || $depth > 20) { self::invalid(); }
             if ($node instanceof \DOMText) { return htmlspecialchars($node->data, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
-            if (!$node instanceof \DOMElement || !in_array($node->tagName, ['p','br','strong','em','ul','ol','li','a'], true)) { self::invalid(); }
+            if (!$node instanceof \DOMElement || !in_array($node->tagName, ['p','h1','h2','h3','br','strong','em','ul','ol','li','a'], true)) { self::invalid(); }
             $attributes = '';
             if ($node->tagName === 'a') {
                 $url = $node->getAttribute('href'); $parts = parse_url($url);
@@ -511,7 +518,13 @@ final class YoRo_Order_Email
         };
         $sent=static function($success,$id,$email)use(&$observed,$prepared){if($id==='customer_note'&&$email->object instanceof WC_Order&&$email->object->get_id()===$prepared['order']->get_id()){$observed=$success;}};
         $callbackGuard=static function($callback){if($callback!=='wp_mail'){throw new RuntimeException('The native mail callback changed after review.');}return $callback;};
+        $checklist=static function($atts)use($recipient,$subject,$html){
+            if((($atts['to']??null)===[$recipient]||($atts['to']??null)===$recipient)&&($atts['subject']??null)===$subject
+                &&is_string($atts['message']??null)&&self::checklist_entities($atts['message'])===$html){$atts['message']=$html;}
+            return $atts;
+        };
         if(has_filter('pre_wp_mail')!==false){self::invalid();}
+        if($authored){add_filter('wp_mail',$checklist,9);}
         add_filter('woocommerce_mail_callback',$callbackGuard,PHP_INT_MAX);
         add_filter('wp_mail',$guard,PHP_INT_MAX);add_action('phpmailer_init',$transport,PHP_INT_MAX);if($note){add_action('woocommerce_email_sent',$sent,PHP_INT_MAX,3);}
         try {
@@ -519,6 +532,7 @@ final class YoRo_Order_Email
             if($calls!==1||!is_bool($ok)){throw new RuntimeException('The mail outcome is unknown.');}
             return $ok;
         } finally {
+            if($authored){remove_filter('wp_mail',$checklist,9);}
             remove_filter('woocommerce_mail_callback',$callbackGuard,PHP_INT_MAX);
             remove_filter('wp_mail',$guard,PHP_INT_MAX);remove_action('phpmailer_init',$transport,PHP_INT_MAX);
             if($note){remove_action('woocommerce_email_sent',$sent,PHP_INT_MAX);}
