@@ -2,7 +2,7 @@
 /** Actual disposable Woo records; no network or real mail. */
 if (!defined('ABSPATH') || !class_exists('WooCommerce')) { return; }
 $fixtureHost=(string)wp_parse_url(home_url(),PHP_URL_HOST);
-if (!str_ends_with($fixtureHost,'.invalid') && $fixtureHost!=='yoro-plugin-smoke.test') {throw new RuntimeException('Disposable local .invalid fixture required.');}
+if (PHP_SAPI!=='cli' || (!str_ends_with($fixtureHost,'.invalid') && !in_array($fixtureHost,['yoro-plugin-smoke.test','yoro-woocommerce-exact-pair.test'],true))) {throw new RuntimeException('Disposable local .invalid fixture required.');}
 require_once ABSPATH.WPINC.'/PHPMailer/PHPMailer.php';require_once ABSPATH.WPINC.'/PHPMailer/Exception.php';require_once ABSPATH.WPINC.'/class-wp-phpmailer.php';
 if(!class_exists('YoRo_Facts_Captured_Mailer')){class YoRo_Facts_Captured_Mailer extends WP_PHPMailer {public int $captured=0;public function send(){++$this->captured;return true;}}}
 $checks=0;$assert=static function($ok,$why)use(&$checks){++$checks;if(!$ok){throw new RuntimeException($why);}};
