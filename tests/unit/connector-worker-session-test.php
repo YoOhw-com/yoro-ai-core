@@ -127,18 +127,20 @@ echo "Rate-limited worker session contract passed.\n";
 
 // The coordination contract supplies WordPress doubles and must also run when
 // this scheduler contract is included by the bootstrapped WordPress smoke suite.
-$coordination_pipes = [];
-$coordination_process = proc_open(
-    [ PHP_BINARY, __DIR__ . '/connector-runner-coordination-test.php' ],
-    [ 0 => [ 'pipe', 'r' ], 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ],
-    $coordination_pipes
-);
-$assert( is_resource( $coordination_process ), 'The isolated coordination contract must start.' );
-fclose( $coordination_pipes[0] );
-$coordination_output = stream_get_contents( $coordination_pipes[1] );
-$coordination_errors = stream_get_contents( $coordination_pipes[2] );
-fclose( $coordination_pipes[1] );
-fclose( $coordination_pipes[2] );
-$coordination_exit = proc_close( $coordination_process );
-$assert( 0 === $coordination_exit, 'The isolated coordination contract must pass: ' . $coordination_errors );
-echo $coordination_output;
+foreach ( [ 'connector-runner-coordination-test.php', 'connector-maintenance-test.php', 'connector-maintenance-compatibility-test.php' ] as $contract ) {
+    $contract_pipes = [];
+    $contract_process = proc_open(
+        [ PHP_BINARY, __DIR__ . '/' . $contract ],
+        [ 0 => [ 'pipe', 'r' ], 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ],
+        $contract_pipes
+    );
+    $assert( is_resource( $contract_process ), 'The isolated runtime contract must start: ' . $contract );
+    fclose( $contract_pipes[0] );
+    $contract_output = stream_get_contents( $contract_pipes[1] );
+    $contract_errors = stream_get_contents( $contract_pipes[2] );
+    fclose( $contract_pipes[1] );
+    fclose( $contract_pipes[2] );
+    $contract_exit = proc_close( $contract_process );
+    $assert( 0 === $contract_exit, 'The isolated runtime contract must pass: ' . $contract . ': ' . $contract_errors );
+    echo $contract_output;
+}

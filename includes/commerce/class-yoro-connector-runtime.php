@@ -90,7 +90,7 @@ class YoRo_Connector_Runtime {
 		}
 
 		try {
-			if ( class_exists( 'YoRo_AI_API_Client' ) ) { ( new YoRo_AI_API_Client() )->handshake_if_due(); }
+			self::maintain_api_connection();
 			$client = new YoRo_Connector_Client();
 			$publisher = new YoRo_Connector_Snapshot_Publisher( $client );
 			$publisher->publish_if_due();
@@ -346,8 +346,15 @@ class YoRo_Connector_Runtime {
 		}
 	}
 
+	private static function maintain_api_connection() {
+		if ( ! class_exists( 'YoRo_AI_API_Client' ) ) { return null; }
+		$client = new YoRo_AI_API_Client();
+		// An in-flight request may have loaded the old client before an atomic file replacement.
+		return method_exists( $client, 'handshake_if_due' ) ? $client->handshake_if_due() : $client->handshake();
+	}
+
 	protected function maintain_connection() {
-		return class_exists( 'YoRo_AI_API_Client' ) ? ( new YoRo_AI_API_Client() )->handshake_if_due() : null;
+		return self::maintain_api_connection();
 	}
 
 	protected function wake_available() {
