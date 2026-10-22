@@ -99,7 +99,7 @@ try {
     $round_method = new ReflectionMethod( YoRo_Connector_Runtime::class, 'early_access_session_round' );
     $round_result = $round_method->invoke( $deadline_runtime, false, 55.0 );
     $assert( 1 === $client->next_attempts, 'A legacy server is probed once before falling back to the lane deadline guard.' );
-    $assert( [ 'reads' => 0, 'writes' => 0 ] === $round_result && 60.0 === $virtual_time, 'A late read finishes safely but cannot start another lane.' );
+    $assert( [ 'reads' => 0, 'writes' => 0, 'empty_polls' => 1 ] === $round_result && 60.0 === $virtual_time, 'A late read finishes safely but cannot start another lane.' );
     $lock = $acquire->invoke( null );
     for ( $attempt = 0; $attempt < 2; $attempt++ ) {
         $r = $runtime->run_early_access_write_once();

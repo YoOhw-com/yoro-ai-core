@@ -90,6 +90,7 @@ class YoRo_Connector_Runtime {
 		}
 
 		try {
+			if ( class_exists( 'YoRo_AI_API_Client' ) ) { ( new YoRo_AI_API_Client() )->handshake_if_due(); }
 			$client = new YoRo_Connector_Client();
 			$publisher = new YoRo_Connector_Snapshot_Publisher( $client );
 			$publisher->publish_if_due();
@@ -253,39 +254,59 @@ class YoRo_Connector_Runtime {
 			return new WP_Error( 'yoro_connector_cli_required', 'A CLI worker is required.' );
 		}
 		$started = ( $this->clock )();
+		$cpu_started = function_exists( 'getrusage' ) ? getrusage() : null;
 		$this->client->set_early_access_runner( 'cli' );
 		$this->execution_metrics = [ 'count' => 0, 'elapsed_ms' => 0 ];
 		$deadline = $started + max( 1, min( 55, (float) $seconds ) );
-		$summary = [ 'ticks' => 0, 'reads' => 0, 'writes' => 0, 'empty_polls' => 0 ];
+		$summary = [ 'ticks' => 0, 'reads' => 0, 'writes' => 0, 'empty_polls' => 0, 'busy_rounds' => 0, 'throttled_rounds' => 0, 'skipped_rounds' => 0 ];
 		$idle = 0;
+		$had_activity = false;
 		$this->session_owner = function_exists( 'wp_generate_uuid4' ) ? wp_generate_uuid4() : null;
 		try {
 			while ( $summary['ticks'] < 40 && ( $this->clock )() < $deadline ) {
 				if ( is_callable( $before_round ) ) {
 					$before_round();
 				}
+				$refreshed = $this->maintain_connection();
+				if ( is_wp_error( $refreshed ) ) { return $refreshed; }
 				$round = $this->early_access_session_round( 0 === $summary['ticks'], $deadline );
 				if ( is_wp_error( $round ) ) {
-	                $retry = $this->client->early_access_retry_after();
-	                if ( $retry > 0 ) { ( $this->sleeper )( min( $retry, max( 0, $deadline - ( $this->clock )() ) ) ); }
 					return $round;
 				}
 				$summary['ticks']++;
 				$summary['reads'] += $round['reads'];
 				$summary['writes'] += $round['writes'];
 				$active = $round['reads'] + $round['writes'] > 0;
-				$summary['empty_polls'] += $active ? 0 : 1;
+				$summary['empty_polls'] += (int) ( $round['empty_polls'] ?? 0 );
+				foreach ( [ 'busy', 'throttled', 'skipped' ] as $reason ) {
+					$summary[ $reason . '_rounds' ] += empty( $round[ $reason ] ) ? 0 : 1;
+				}
 	            $summary = array_merge( $summary, $this->client->early_access_transport_metrics() );
 	            $summary['local_execution'] = $this->execution_metrics;
 				if ( is_callable( $observe ) ) {
 					$observe( $summary );
 				}
-				// Drain queued work immediately. Back off only when no work was received.
-				$idle = $active ? 0 : min( 4, $idle + 1 );
+				if ( $active ) {
+					$had_activity = true;
+					$idle = 0;
+					continue;
+				}
+				// Idle sessions leave after one real empty claim. Only completed work
+				// earns two one-second drain rechecks; wake history grants no hot loop.
+				$idle++;
+				if ( ! $had_activity || $idle >= 3 || empty( $round['empty_polls'] )
+					|| ! empty( $round['throttled'] ) || ! empty( $round['busy'] ) || ! empty( $round['skipped'] )
+					|| $this->client->early_access_retry_after() > 0 ) {
+					break;
+				}
 				$remaining = $deadline - ( $this->clock )();
-				if ( ! $active && $remaining > 0 ) {
-					$idle_cap = $this->wake_available() ? 5 : 3;
-					( $this->sleeper )( min( $remaining, max( $this->client->early_access_retry_after(), min( $idle_cap, 2 ** $idle ) ) ) );
+				if ( $remaining > 0 ) { ( $this->sleeper )( min( 1, $remaining ) ); }
+			}
+			$cpu_finished = function_exists( 'getrusage' ) ? getrusage() : null;
+			if ( is_array( $cpu_started ) && is_array( $cpu_finished ) ) {
+				foreach ( [ 'user' => 'utime', 'system' => 'stime' ] as $label => $field ) {
+					$summary[ 'cpu_' . $label . '_ms' ] = max( 0, ( $cpu_finished[ 'ru_' . $field . '.tv_sec' ] - $cpu_started[ 'ru_' . $field . '.tv_sec' ] ) * 1000
+						+ ( $cpu_finished[ 'ru_' . $field . '.tv_usec' ] - $cpu_started[ 'ru_' . $field . '.tv_usec' ] ) / 1000 );
 				}
 			}
 			$summary['elapsed_ms'] = (int) round( ( ( $this->clock )() - $started ) * 1000 );
@@ -325,6 +346,10 @@ class YoRo_Connector_Runtime {
 		}
 	}
 
+	protected function maintain_connection() {
+		return class_exists( 'YoRo_AI_API_Client' ) ? ( new YoRo_AI_API_Client() )->handshake_if_due() : null;
+	}
+
 	protected function wake_available() {
 		return class_exists( 'YoRo_Connector_Wake' ) && YoRo_Connector_Wake::available();
 	}
@@ -350,7 +375,7 @@ class YoRo_Connector_Runtime {
 		}
 		$lock = self::acquire_lock();
 		if ( null === $lock ) {
-			return $this->wake_request ? new WP_Error( 'yoro_wake_busy', 'A connector runner is already active.', [ 'status' => 409 ] ) : [ 'reads' => 0, 'writes' => 0 ];
+			return $this->wake_request ? new WP_Error( 'yoro_wake_busy', 'A connector runner is already active.', [ 'status' => 409 ] ) : [ 'reads' => 0, 'writes' => 0, 'busy' => true ];
 		}
 		try {
 			$this->observe_cli_session();
@@ -367,7 +392,7 @@ class YoRo_Connector_Runtime {
 		if ( $publish && ( $this->clock )() < $deadline ) {
 			( new YoRo_Connector_Snapshot_Publisher( $this->client ) )->publish_if_due();
 		}
-		$counts = [ 'reads' => 0, 'writes' => 0 ];
+		$counts = [ 'reads' => 0, 'writes' => 0, 'empty_polls' => 0 ];
             if ( $this->unified_claim_available && ( $this->clock )() < $deadline ) {
                 $claim = $this->client->early_access_request( 'next' );
                 if ( is_wp_error( $claim ) && in_array( $claim->get_error_data()['status'] ?? null, [ 404, 405 ], true ) ) {
@@ -375,7 +400,9 @@ class YoRo_Connector_Runtime {
                     $this->unified_claim_available = false;
                 } else {
                     if ( is_wp_error( $claim ) || ! empty( $claim['empty'] ) ) {
-                        return is_wp_error( $claim ) ? $claim : $counts;
+                        if ( is_wp_error( $claim ) ) { return $claim; }
+                        $counts[ ! empty( $claim['throttled'] ) ? 'throttled' : 'empty_polls' ] = ! empty( $claim['throttled'] ) ? true : 1;
+                        return $counts;
                     }
                     $lane = $claim['transport_lane'] ?? null;
                     if ( ! in_array( $lane, [ 'read', 'write' ], true ) ) {
@@ -406,7 +433,10 @@ class YoRo_Connector_Runtime {
 				return new WP_Error( 'yoro_connector_worker_result_invalid', 'The worker result is unavailable.' );
 			}
 			$counts[ $lane ] = empty( $result['empty'] ) ? 1 : 0;
+			if ( ! empty( $result['throttled'] ) ) { $counts['throttled'] = true; }
+			elseif ( ! empty( $result['empty'] ) ) { $counts['empty_polls']++; }
 		}
+		if ( 0 === $counts['reads'] + $counts['writes'] && 0 === $counts['empty_polls'] && empty( $counts['throttled'] ) ) { $counts['skipped'] = true; }
 		return $counts;
 	}
 

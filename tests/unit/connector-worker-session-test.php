@@ -20,11 +20,12 @@ class YoRo_Connector_Session_Unit extends YoRo_Connector_Runtime {
     public $calls = 0;
     public $publish_flags = [];
     public $wake_healthy = false;
+    protected function maintain_connection() { return null; }
     protected function wake_available() { return $this->wake_healthy; }
     protected function early_access_session_round( $publish, $deadline ) {
         $this->calls++;
         $this->publish_flags[] = $publish;
-        return array_shift( $this->rounds ) ?? [ 'reads' => 0, 'writes' => 0 ];
+        return array_shift( $this->rounds ) ?? [ 'reads' => 0, 'writes' => 0, 'empty_polls' => 1 ];
     }
 }
 $now = 0.0;
@@ -32,12 +33,12 @@ $sleeps = [];
 $clock = static function () use ( &$now ) { return $now; };
 $sleeper = static function ( $seconds ) use ( &$now, &$sleeps ) { $now += $seconds; $sleeps[] = $seconds; };
 $session = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client(), $clock, $sleeper );
-$session->rounds = [ [ 'reads' => 1, 'writes' => 0 ], [ 'reads' => 1, 'writes' => 1 ], [ 'reads' => 0, 'writes' => 0 ] ];
+$session->rounds = [ [ 'reads' => 1, 'writes' => 0 ], [ 'reads' => 1, 'writes' => 1 ], [ 'reads' => 0, 'writes' => 0, 'empty_polls' => 1 ] ];
 $observed = [];
 $receipt = $session->run_early_access_session( 55, static function ( $value ) use ( &$observed, &$now ) { $observed[] = [ $now, $value ]; } );
 $assert( 2 === $receipt['reads'] && 1 === $receipt['writes'], 'The session must drain reads and writes without losing counts.' );
 $assert( 0.0 === $observed[0][0] && 0.0 === $observed[1][0] && 0.0 === $observed[2][0], 'Queued work must drain without an inter-operation sleep.' );
-$assert( 55.0 === $now && [ 2, 3, 3, 3 ] === array_slice( $sleeps, 0, 4 ), 'Idle polling must back off and stop at the bounded deadline.' );
+$assert( 2.0 === $now && [ 1, 1 ] === $sleeps, 'Activity earns exactly two one-second rechecks and then exits.' );
 $assert( [ true ] === array_values( array_filter( $session->publish_flags ) ), 'Publication may run only on the first round.' );
 $now = 0.0; $sleeps = [];
 $session->rounds = array_fill( 0, 41, [ 'reads' => 1, 'writes' => 0 ] );
@@ -80,36 +81,48 @@ $budget_client->set_early_access_deadline();
 $assert( 20 === $timeout->invoke( $budget_client ), 'The existing fallback transport timeout remains unchanged.' );
 echo "Bounded single-round wake runtime contract passed.\n";
 
+foreach ( [ true, false ] as $wake_healthy ) {
+    $now = 0.0; $sleeps = [];
+    $idle_session = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client(), $clock, $sleeper );
+    $idle_session->wake_healthy = $wake_healthy;
+    $receipt = $idle_session->run_early_access_session( 55 );
+    $assert( 1 === $receipt['ticks'] && 1 === $receipt['empty_polls'] && [] === $sleeps && 0.0 === $now,
+        'Idle CLI must leave after one empty poll regardless of recent wake history.' );
+    $assert( isset( $receipt['cpu_user_ms'], $receipt['cpu_system_ms'] ) && $receipt['cpu_user_ms'] >= 0 && $receipt['cpu_system_ms'] >= 0,
+        'Optional CPU metrics measure user/system time independently of the virtual wall clock.' );
+}
 $now = 0.0; $sleeps = [];
-$healthy_fallback = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client(), $clock, $sleeper );
-$healthy_fallback->wake_healthy = true;
-$healthy_fallback->rounds = [ [ 'reads' => 1, 'writes' => 0 ], [ 'reads' => 1, 'writes' => 0 ] ];
-$receipt = $healthy_fallback->run_early_access_session( 55 );
-$assert( [ 2, 4, 5, 5, 5 ] === array_slice( $sleeps, 0, 5 ) && 55.0 === $now, 'Healthy wake fallback must poll within five seconds while retaining the session deadline.' );
-$assert( 2 === $receipt['reads'] && 14 === $receipt['ticks'], 'Queued work still drains immediately, with twelve bounded fallback polls.' );
+$arrival = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client(), $clock, $sleeper );
+$arrival->rounds = [ [ 'reads' => 1, 'writes' => 0 ], [ 'reads' => 0, 'writes' => 0, 'empty_polls' => 1 ], [ 'reads' => 1, 'writes' => 0 ] ];
+$receipt = $arrival->run_early_access_session( 55 );
+$assert( 2 === $receipt['reads'] && 3.0 === $now, 'An arrival during activity grace drains and resets the two-recheck grace.' );
+foreach ( [ 'busy', 'throttled', 'skipped' ] as $reason ) {
+    $now = 0.0; $sleeps = [];
+    $skipped = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client(), $clock, $sleeper );
+    $skipped->rounds = [ [ 'reads' => 0, 'writes' => 0, $reason => true ] ];
+    $receipt = $skipped->run_early_access_session( 55 );
+    $assert( 0 === $receipt['empty_polls'] && 1 === $receipt[ $reason . '_rounds' ] && [] === $sleeps,
+        'Busy, skipped and throttled rounds are never reported as actual empty HTTP polls.' );
+}
 $now = 0.0; $sleeps = [];
-$expiring_sleeper = static function( $seconds ) use ( &$now, &$sleeps, &$stale_fallback ) {
-    $now += $seconds; $sleeps[] = $seconds;
-    if ( $now >= 14 ) { $stale_fallback->wake_healthy = false; }
-};
-$stale_fallback = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client(), $clock, $expiring_sleeper );
-$stale_fallback->wake_healthy = true;
-$stale_fallback->run_early_access_session( 25 );
-$assert( [ 2.0, 4.0, 5.0, 5.0, 3.0, 3.0, 3.0 ] === array_map( 'floatval', $sleeps ), 'Stale registration must restore the existing three-second fallback within the running session.' );
-echo "Wake-aware fallback polling contract passed.\n";
+$finishing = new YoRo_Connector_Session_Unit( new YoRo_Connector_Client(), $clock, $sleeper );
+$finishing->rounds = [ [ 'reads' => 1, 'writes' => 0 ] ];
+$receipt = $finishing->run_early_access_session( 1, static function() use ( &$now ) { $now = 2.0; } );
+$assert( 1 === $receipt['reads'] && 1 === $receipt['ticks'], 'A completed fenced operation is retained when it crosses the admission deadline.' );
+echo "Idle exit and activity-only bounded drain contract passed.\n";
 
 // A rate-limited API must not cause a tight retry loop or bypass the session deadline.
 $now = 0.0; $sleeps = [];
 $limited_client = new YoRo_Connector_Client();
 $record_budget->invoke( $limited_client, [ 'response' => [ 'code' => 429 ], 'headers' => [ 'retry-after' => '120' ] ] );
 $limited_session = new YoRo_Connector_Session_Unit( $limited_client, $clock, $sleeper );
-$limited_session->rounds = [ [ 'reads' => 0, 'writes' => 0 ] ];
+$limited_session->rounds = [ [ 'reads' => 0, 'writes' => 0, 'empty_polls' => 1 ] ];
 $limited_session->run_early_access_session( 55 );
-$assert( [ 55.0 ] === $sleeps && 1 === $limited_session->calls, 'A long Retry-After consumes the remaining session in one bounded sleep.' );
+$assert( [] === $sleeps && 1 === $limited_session->calls, 'A long Retry-After exits without occupying an idle process.' );
 $now = 0.0; $sleeps = [];
 $limited_session = new YoRo_Connector_Session_Unit( $limited_client, $clock, $sleeper );
 $limited_session->rounds = [ new WP_Error( 'rate_limited', 'Wait' ) ];
-$assert( is_wp_error( $limited_session->run_early_access_session( 55 ) ) && [ 55.0 ] === $sleeps && 1 === $limited_session->calls, 'Rate-limit errors sleep once within the deadline and return without retrying a delivery.' );
+$assert( is_wp_error( $limited_session->run_early_access_session( 55 ) ) && [] === $sleeps && 1 === $limited_session->calls, 'Rate-limit errors exit without sleeping or retrying a delivery.' );
 echo "Rate-limited worker session contract passed.\n";
 
 // The coordination contract supplies WordPress doubles and must also run when

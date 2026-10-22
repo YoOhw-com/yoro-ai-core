@@ -6,6 +6,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 
+	/** Scheduled maintenance only; explicit connect/test handshakes always use fresh HTTP. */
+	public function handshake_if_due() {
+		$status = YoRo_AI_Settings::get_ai_api_status();
+		$projection = YoRo_AI_Settings::get_early_access_onboarding( $status );
+		$expires = strtotime( $projection['expires_at'] ?? '' );
+		if ( 'unknown' !== ( $projection['status'] ?? 'unknown' ) && false !== $expires && $expires > time() + 5
+			&& YoRo_AI_Settings::is_ai_api_account_connected( $status ) && ! $this->should_rotate_credential( $status ) ) {
+			return $status;
+		}
+		return $this->handshake();
+	}
+
 	public function handshake() {
 		$api_url  = YoRo_AI_Settings::get_ai_api_url();
 		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
