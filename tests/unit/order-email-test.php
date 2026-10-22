@@ -9,6 +9,10 @@ function get_current_user_id() {return 1;}
 function wp_generate_uuid4() {return sprintf('00000000-0000-4000-8000-%012d',++$GLOBALS['uuid']);}
 function wp_json_encode($v,...$args) {return json_encode($v,...$args);}
 function wp_specialchars_decode($v) {return htmlspecialchars_decode($v,ENT_QUOTES);}
+function wp_timezone(){return new DateTimeZone($GLOBALS['test_timezone']??'UTC');}
+function wc_get_order_status_name($status){return $status;}
+function get_option($key,$default=''){return $key==='blogname'?'Fixture store':$default;}
+function get_locale(){return 'en_US';}
 function wc_format_datetime($v) {return '2026-10-21';}
 function add_filter($hook,$fn,$priority=10,$argc=1) {$GLOBALS['filters'][$hook][$priority][]=[$fn,$argc];}
 function add_action(...$args) {add_filter(...$args);}
@@ -34,6 +38,12 @@ function wp_mail($to,$subject,$message,$headers=[],$attachments=[]) {
 }
 class WC_Order {
  public array $meta=[];public string $recipient='buyer@example.test';public string $status='processing';public array $notes=[];
+ public function get_billing_phone(...$args){return $GLOBALS['billing_phone']??'';}public function get_shipping_phone(...$args){return '';}
+ public function get_items(...$args){return [];} public function get_refunds(){return [];}
+ public function get_customer_id(...$args){return 0;} public function get_date_paid(...$args){return null;} public function get_date_completed(...$args){return null;}
+ public function get_currency(...$args){return 'USD';} public function get_payment_method(...$args){return '';} public function get_payment_method_title(...$args){return '';}
+ public function get_billing_first_name(...$args){return 'Buyer';} public function get_billing_last_name(...$args){return '';}
+ public function get_discount_total(...$args){return '0';}public function get_shipping_total(...$args){return '0';}public function get_total_tax(...$args){return '0';}public function get_total(...$args){return '0';}
  public function get_id() {return 1;}
  public function get_type() {return 'shop_order';}
  public function get_billing_email(...$args) {return $this->recipient;}
@@ -46,7 +56,7 @@ class WC_Order {
  public function read_meta_data(...$args) {}
  public function add_order_note($note,$customer,$byUser) {$id=count($this->notes)+1;$this->notes[$id]=['content'=>$note,'customer'=>$customer];$email=WC()->mailer()->emails['WC_Email_Customer_Note'];$email->object=$this;$email->recipient=$this->recipient;$email->customer_note=$note;$email->send($email->get_recipient(),$email->get_subject(),$email->get_content(),$email->get_headers(),[]);return $id;}
 }
-function wc_get_order($id) {return $id===1?$GLOBALS['order']:false;}
+function wc_get_order($id) {$GLOBALS['order_reads']=($GLOBALS['order_reads']??0)+1;return $id===1?$GLOBALS['order']:false;}
 class YoRo_Order_Presenter {public static function order_version($order){return hash('sha256',$order->recipient.'|'.$order->status);}}
 class YoRo_Early_Access_Product_Read {
  public static function params_hash(array $params) {return hash('sha256',json_encode(self::sort($params),JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRESERVE_ZERO_FRACTION));}
@@ -78,6 +88,7 @@ require dirname(__DIR__,2).'/includes/actions/class-yoro-order-email.php';
 add_action('woocommerce_email_header',static function($subject){echo '<header>'.$subject.'</header>';});add_action('woocommerce_email_footer',static function(){echo '<footer>'.($GLOBALS['wrapper_footer']??'Fixture store').'</footer>';});
 $GLOBALS['order']=new WC_Order;$GLOBALS['wc']=new FixtureWoo;$GLOBALS['uuid']=0;$GLOBALS['captured']=[];
 $checks=0;$assert=static function($condition,$message)use(&$checks){$checks++;if(!$condition){throw new RuntimeException($message);}};
+$assert(YoRo_Order_Email::manifest()===['version'=>2,'actions'=>[...YoRo_Order_Email::ReadActions,...YoRo_Order_Email::WriteActions],'max_targets'=>1,'requires_source_read'=>true,'requires_confirmation'=>true,'result_version'=>1,'recipient'=>'current_order_billing','composer'=>'yoro_bounded_email'],'Only the existing email capability version advertises the expanded HTML dialect.');
 $make=static function($action,$changes){$selectors=array_intersect_key($changes,array_flip(['draft_id','template','note']));if($action==='orders.add_customer_note'){$selectors['template']='customer_note';}$s=YoRo_Order_Email::context(1,$selectors);return ['_yoro_confirmed'=>true,'_yoro_preview'=>false,'order_id'=>1,'changes'=>YoRo_Order_Email::changes($changes,$action),'expected_version'=>$s['version'],'recipient'=>$s['recipient'],...(in_array($action,['orders.send_native_email','orders.add_customer_note'],true)?['subject'=>$s['subject'],'html_body'=>$s['html_body']]:[])];};
 $GLOBALS['order']->meta['_yoro_customer_email_drafts']=[['id'=>'legacy','body'=>'Historic data stays untouched']];
 $context=YoRo_Order_Email::context(1,['subject'=>'Seed subject','body'=>"Seed body\nSecond line"]);
@@ -114,9 +125,31 @@ $rich='<p>Hello <strong>Buyer</strong><br><em>Thanks</em></p><ul><li>One</li></u
 $richParams=$make('orders.send_authored_email',['subject'=>'Rich mail','body'=>$rich,'body_format'=>'safe_html']);
 $r=YoRo_Order_Email::write($richParams,'orders.send_authored_email');
 $assert(!is_wp_error($r)&&str_contains(end($GLOBALS['captured'])['message'],$rich),'Supported formatting is preserved exactly inside the Woo wrapper.');
-foreach(['<script>x</script>','<p onclick="x">Hi</p>','<a href="http://example.test">Hi</a>','<a href="javascript:alert(1)">Hi</a>','<img src="https://example.test/x">','<p style="color:red">Hi</p>','<P>Hi</P>','<p>Hi</p><!--x-->','<p><strong>Broken</p>']as$bad){
+$headings='<h1>Order update</h1><h2>Next steps</h2><h3>Details</h3><p>☐ Pack item</p><p>☑ Payment recorded</p>';
+$headingParams=$make('orders.send_authored_email',['subject'=>'Heading mail','body'=>$headings,'body_format'=>'safe_html']);
+$before=count($GLOBALS['captured']);$unconfirmed=$headingParams;unset($unconfirmed['_yoro_confirmed']);
+$assert(is_wp_error(YoRo_Order_Email::write($unconfirmed,'orders.send_authored_email'))&&count($GLOBALS['captured'])===$before,'Headings and static checklists grant no confirmation authority.');
+$r=YoRo_Order_Email::write($headingParams,'orders.send_authored_email');
+$assert(!is_wp_error($r)&&count($GLOBALS['captured'])===$before+1&&str_contains(html_entity_decode(end($GLOBALS['captured'])['message'],ENT_QUOTES|ENT_HTML5,'UTF-8'),$headings),'All three semantic heading levels and literal checklist text survive the exact captured wrapper.');
+$assert($r['data']['content_hash']===YoRo_Order_Email::content_hash($headingParams,'orders.send_authored_email')&&YoRo_Order_Email::context(1)['history'][0]['content_hash']===$r['data']['content_hash'],'Heading/checklist bytes bind the unchanged content hash and durable observed record.');
+$different=$headingParams;$different['changes']['body']=str_replace(['<h2>','</h2>'],['<p>','</p>'],$headings);
+$assert(YoRo_Order_Email::content_hash($different,'orders.send_authored_email')!==$r['data']['content_hash'],'Changing a semantic heading changes the exact confirmed content hash.');
+$different['changes']['body']=str_replace('☐','☑',$headings);
+$assert(YoRo_Order_Email::content_hash($different,'orders.send_authored_email')!==$r['data']['content_hash'],'Changing a static checklist marker changes the exact confirmed content hash.');
+$extra=$headingParams;$extra['changes']['checklist']=true;
+$assert(!YoRo_Order_Email::valid_params('orders.send_authored_email',array_diff_key($extra,array_flip(['_yoro_confirmed','_yoro_preview']))),'Heading/checklist formatting adds no new wire fields.');
+$bounded='<p>'.str_repeat('é',5996).'x</p>';
+$assert(strlen($bounded)===12000&&YoRo_Order_Email::safeHtml($bounded)===$bounded,'The existing 12000-byte UTF-8 boundary is inclusive.');
+$depth=str_repeat('<strong>',20).'x'.str_repeat('</strong>',20);
+$assert(YoRo_Order_Email::safeHtml($depth)===$depth,'The existing depth20 boundary remains inclusive.');
+$nodes='<p>'.str_repeat('<br>',1998).'x</p>';
+$assert(YoRo_Order_Email::safeHtml($nodes)===$nodes,'The existing 2000-node boundary remains inclusive.');
+foreach(['<script>x</script>','<p onclick="x">Hi</p>','<a href="http://example.test">Hi</a>','<a href="javascript:alert(1)">Hi</a>','<img src="https://example.test/x">','<p style="color:red">Hi</p>','<P>Hi</P>','<p>Hi</p><!--x-->','<p><strong>Broken</p>','<h1 class="title">Hi</h1>','<h2 style="color:red">Hi</h2>','<h3 data-check="true">Hi</h3>','<h1 onclick="x">Hi</h1>','<h4>Hi</h4>','<H1>Hi</H1>','<h2>Hi','<form><p>☐ item</p></form>','<p><input type="checkbox">item</p>','<p>&#x2610; item</p>','<h1>Hi'.chr(0).'</h1>','<h1>'.chr(0xff).'</h1>',substr($bounded,0,-4).'x</p>',str_repeat('<strong>',21).'x'.str_repeat('</strong>',21),'<p>'.str_repeat('<br>',1999).'x</p>']as$bad){
  $rejected=false;try{YoRo_Order_Email::changes(['subject'=>'Unsafe','body'=>$bad,'body_format'=>'safe_html'],'orders.send_authored_email');}catch(Throwable $e){$rejected=true;}$assert($rejected,'Unsafe/noncanonical rich body fails closed: '.$bad);
 }
+$restyled=$make('orders.send_authored_email',['subject'=>'Semantic heading','body'=>$headings,'body_format'=>'safe_html']);$before=count($GLOBALS['captured']);
+$filter=static fn($html)=>str_replace(['<h2>','</h2>'],['<p>','</p>'],$html);add_filter('woocommerce_mail_content',$filter,10);
+try{$assert(is_wp_error(YoRo_Order_Email::write($restyled,'orders.send_authored_email'))&&count($GLOBALS['captured'])===$before,'Site hooks cannot flatten an approved heading into a paragraph.');}finally{remove_filter('woocommerce_mail_content',$filter,10);}
 $stale=$make('orders.send_authored_email',['subject'=>'Wrapper-bound','body'=>'Exact body']);$GLOBALS['wrapper_footer']='Changed template';
 $before=count($GLOBALS['captured']);$assert(is_wp_error(YoRo_Order_Email::write($stale,'orders.send_authored_email'))&&count($GLOBALS['captured'])===$before,'Changed Woo template invalidates source before transport.');
 $before=count($GLOBALS['captured']);
