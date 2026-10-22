@@ -9,6 +9,10 @@ function get_current_user_id() {return 1;}
 function wp_generate_uuid4() {return sprintf('00000000-0000-4000-8000-%012d',++$GLOBALS['uuid']);}
 function wp_json_encode($v,...$args) {return json_encode($v,...$args);}
 function wp_specialchars_decode($v) {return htmlspecialchars_decode($v,ENT_QUOTES);}
+function wp_timezone(){return new DateTimeZone($GLOBALS['test_timezone']??'UTC');}
+function wc_get_order_status_name($status){return $status;}
+function get_option($key,$default=''){return $key==='blogname'?'Fixture store':$default;}
+function get_locale(){return 'en_US';}
 function wc_format_datetime($v) {return '2026-10-21';}
 function add_filter($hook,$fn,$priority=10,$argc=1) {$GLOBALS['filters'][$hook][$priority][]=[$fn,$argc];}
 function add_action(...$args) {add_filter(...$args);}
@@ -34,6 +38,12 @@ function wp_mail($to,$subject,$message,$headers=[],$attachments=[]) {
 }
 class WC_Order {
  public array $meta=[];public string $recipient='buyer@example.test';public string $status='processing';public array $notes=[];
+ public function get_billing_phone(...$args){return $GLOBALS['billing_phone']??'';}public function get_shipping_phone(...$args){return '';}
+ public function get_items(...$args){return [];} public function get_refunds(){return [];}
+ public function get_customer_id(...$args){return 0;} public function get_date_paid(...$args){return null;} public function get_date_completed(...$args){return null;}
+ public function get_currency(...$args){return 'USD';} public function get_payment_method(...$args){return '';} public function get_payment_method_title(...$args){return '';}
+ public function get_billing_first_name(...$args){return 'Buyer';} public function get_billing_last_name(...$args){return '';}
+ public function get_discount_total(...$args){return '0';}public function get_shipping_total(...$args){return '0';}public function get_total_tax(...$args){return '0';}public function get_total(...$args){return '0';}
  public function get_id() {return 1;}
  public function get_type() {return 'shop_order';}
  public function get_billing_email(...$args) {return $this->recipient;}
@@ -46,7 +56,7 @@ class WC_Order {
  public function read_meta_data(...$args) {}
  public function add_order_note($note,$customer,$byUser) {$id=count($this->notes)+1;$this->notes[$id]=['content'=>$note,'customer'=>$customer];$email=WC()->mailer()->emails['WC_Email_Customer_Note'];$email->object=$this;$email->recipient=$this->recipient;$email->customer_note=$note;$email->send($email->get_recipient(),$email->get_subject(),$email->get_content(),$email->get_headers(),[]);return $id;}
 }
-function wc_get_order($id) {return $id===1?$GLOBALS['order']:false;}
+function wc_get_order($id) {$GLOBALS['order_reads']=($GLOBALS['order_reads']??0)+1;return $id===1?$GLOBALS['order']:false;}
 class YoRo_Order_Presenter {public static function order_version($order){return hash('sha256',$order->recipient.'|'.$order->status);}}
 class YoRo_Early_Access_Product_Read {
  public static function params_hash(array $params) {return hash('sha256',json_encode(self::sort($params),JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_PRESERVE_ZERO_FRACTION));}
