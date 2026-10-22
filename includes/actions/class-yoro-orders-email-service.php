@@ -4,6 +4,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+require_once __DIR__ . '/class-yoro-order-email.php';
+
 class YoRo_Orders_Email_Service {
 
 	public static function email_customer_preview( $params ) {

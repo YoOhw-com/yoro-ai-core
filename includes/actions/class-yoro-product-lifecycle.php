@@ -2,13 +2,15 @@
 
 if (!defined('ABSPATH')) { exit; }
 
+require_once __DIR__ . '/class-yoro-catalog-management.php';
+
 /** Explicit WooCommerce fields only; new products and parent-only copies are drafts. */
 final class YoRo_Product_Lifecycle
 {
     public const ReadActions = ['products.get_creation_context'];
     public const WriteActions = ['products.create','products.duplicate','products.update_lifecycle','products.create_category','products.create_tag'];
     public const ManifestExtension = 'yoro.early_access_product_lifecycle';
-    public const Fields = ['status','featured','catalog_visibility','weight','length','width','height','shipping_class_id','upsell_ids','cross_sell_ids'];
+    public const Fields = ['status','featured','catalog_visibility','weight','length','width','height','shipping_class_id','upsell_ids','cross_sell_ids','purchase_note','sold_individually'];
     private const ParentCopyFields = ['description','short_description','virtual','downloadable','regular_price','sale_price','date_on_sale_from','date_on_sale_to','tax_status','tax_class','manage_stock','stock_quantity','stock_status','backorders','low_stock_amount','sold_individually','weight','length','width','height','shipping_class_id','upsell_ids','cross_sell_ids','category_ids','tag_ids','image_id','gallery_image_ids','purchase_note','reviews_allowed','catalog_visibility','featured','attributes','default_attributes'];
     private const AttributeFields = ['id','name','options','position','visible','variation'];
 
@@ -31,7 +33,7 @@ final class YoRo_Product_Lifecycle
         if($action!=='products.update_lifecycle') { return []; }
         $decimal=['type'=>'string','pattern'=>'^(?:|(?:0|[1-9][0-9]{0,11})(?:\\.[0-9]{1,6})?)$'];
         $ids=['type'=>'array','maxItems'=>20,'uniqueItems'=>true,'items'=>['type'=>'integer','minimum'=>1]];
-        return ['status'=>['type'=>'string','enum'=>['draft','publish']],'featured'=>['type'=>'boolean'],
+        return ['purchase_note'=>['type'=>'string','maxLength'=>2000],'sold_individually'=>['type'=>'boolean'],'status'=>['type'=>'string','enum'=>['draft','publish']],'featured'=>['type'=>'boolean'],
             'catalog_visibility'=>['type'=>'string','enum'=>['visible','catalog','search','hidden']],
             'weight'=>$decimal,'length'=>$decimal,'width'=>$decimal,'height'=>$decimal,'shipping_class_id'=>['type'=>'integer','minimum'=>0],
             'upsell_ids'=>$ids,'cross_sell_ids'=>$ids];
@@ -66,6 +68,7 @@ final class YoRo_Product_Lifecycle
 
     public static function register(): void
     {
+        YoRo_Catalog_Management::register();
         foreach([...self::ReadActions,...self::WriteActions] as $action) {
             $write=in_array($action,self::WriteActions,true);$properties=self::input_properties($action);$input=[];
             foreach($properties as $field=>$property) { $input[$field]=$property['type']; }
@@ -98,7 +101,8 @@ final class YoRo_Product_Lifecycle
                 'name'=>self::plain($value,in_array($action,['products.create_category','products.create_tag'],true)?200:255),
                 'initial_details'=>is_array($value)&&YoRo_Product_Authoring::initial_changes($value),
                 'type'=>in_array($value,['simple','variable'],true),'status'=>in_array($value,['draft','publish'],true),
-                'featured'=>is_bool($value),'catalog_visibility'=>in_array($value,['visible','catalog','search','hidden'],true),
+                'featured','sold_individually'=>is_bool($value),
+                'purchase_note'=>is_string($value)&&strlen($value)<=2000&&preg_match('//u',$value)===1&&preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f<>]/',$value)!==1,'catalog_visibility'=>in_array($value,['visible','catalog','search','hidden'],true),
                 'weight','length','width','height'=>is_string($value)&&preg_match('/\A(?:|(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?)\z/D',$value)===1,
                 'shipping_class_id','parent_id'=>is_int($value)&&$value>=0,
                 'upsell_ids','cross_sell_ids'=>is_array($value)&&array_is_list($value)&&count($value)<=20&&count(array_unique($value,SORT_REGULAR))===count($value)
@@ -159,7 +163,10 @@ final class YoRo_Product_Lifecycle
     {
         $fields=self::fingerprint($product);$editable=self::Fields;$truncated=[];
         foreach($fields as $field=>$value) {
-            if(in_array($field,['upsell_ids','cross_sell_ids'],true)) {sort($fields[$field],SORT_NUMERIC);if(count($value)>20){$fields[$field]=array_slice($fields[$field],0,20);$truncated[]=$field;}}
+            // Unsupported existing notes stay in storage and the raw version fingerprint.
+            // Only their bounded projection is unavailable to this plain-text editor.
+            if($field==='purchase_note'&&(!is_string($value)||strlen($value)>2000||preg_match('//u',$value)!==1||preg_match('/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f<>]/',$value))){$fields[$field]='';$truncated[]=$field;}
+            elseif(in_array($field,['upsell_ids','cross_sell_ids'],true)) {sort($fields[$field],SORT_NUMERIC);if(count($value)>20){$fields[$field]=array_slice($fields[$field],0,20);$truncated[]=$field;}}
             elseif(in_array($field,['weight','length','width','height'],true)&&(!is_string($value)||preg_match('/\A(?:|(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?)\z/D',$value)!==1)) {$fields[$field]='';$truncated[]=$field;}
         }
         if(!in_array($product->get_status(),['draft','publish'],true)||!$product->is_type(['simple','variable'])||!current_user_can('edit_post',$product->get_id())) {$editable=[];}
