@@ -132,6 +132,10 @@ class YoRo_Connector_Wake {
 				$health['last_failure_at'] = (int) ( $current['last_failure_at'] ?? 0 );
 			}
 		}
+		$comparable = $current;
+		if ( is_array( $comparable ) ) { $comparable['observed_at'] = $health['observed_at']; }
+		if ( $comparable === $health && ( $current['observed_at'] ?? 0 ) > time() - 30
+			&& 0 === $health['retry_after'] && self::$health_write_failed_binding !== $binding ) { return; }
 		$written = update_option( self::HEALTH_OPTION, $health, false );
 		// WordPress also returns false for unchanged values; verify that case before downgrading.
 		self::$health_write_failed_binding = ! $written && get_option( self::HEALTH_OPTION, [] ) !== $health ? $binding : null;

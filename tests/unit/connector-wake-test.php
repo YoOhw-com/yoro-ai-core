@@ -18,6 +18,7 @@ function wp_parse_url( $url, $part ) { return parse_url( $url, $part ); }
 function rest_url( $path ) { return 'https://shop.example/wp-json/' . $path; }
 function get_option( $key, $default = false ) { return $GLOBALS['options'][ $key ] ?? $default; }
 function update_option( $key, $value, $autoload = null ) {
+    $GLOBALS['option_attempts'][ $key ] = 1 + ( $GLOBALS['option_attempts'][ $key ] ?? 0 );
     if ( ! empty( $GLOBALS['fail_health_write'] ) && YoRo_Connector_Wake::HEALTH_OPTION === $key ) { return false; }
     if ( ! empty( $GLOBALS['fail_poll_health_write'] ) && YoRo_Connector_Wake::POLL_HEALTH_OPTION === $key ) { return false; }
     $GLOBALS['options'][ $key ] = $value; $GLOBALS['autoload'][ $key ] = $autoload; return true;
@@ -253,3 +254,14 @@ YoRo_Connector_Wake::record_poll_response( true, 'cli' );
 YoRo_AI_Settings::$key = 'another-rotated-private-site-key';
 $assert( 'unverified' === YoRo_Connector_Wake::polling_health()['state'], 'A rotated credential cannot inherit another connection heartbeat.' );
 echo "Signed connector wake boundary passed ({$assertions} assertions).\n";
+
+// Repeated unchanged advisory snapshots may coalesce, while real-poll timestamps stay exact.
+$GLOBALS['options'][ YoRo_Connector_Wake::HEALTH_OPTION ] = [];
+YoRo_Connector_Wake::record_response( $health_response(), true );
+$GLOBALS['options'][ YoRo_Connector_Wake::HEALTH_OPTION ]['observed_at'] = time() - 1;
+$attempts = $GLOBALS['option_attempts'][ YoRo_Connector_Wake::HEALTH_OPTION ];
+YoRo_Connector_Wake::record_response( $health_response(), true );
+$assert( $attempts === $GLOBALS['option_attempts'][ YoRo_Connector_Wake::HEALTH_OPTION ], 'Identical advisory health avoids repetitive persistence attempts within thirty seconds.' );
+YoRo_Connector_Wake::record_response( $health_response( 'degraded', [ 'x-yoro-wake-last-failure-at' => (string) time(), 'x-yoro-wake-retry-after' => '60' ] ), true );
+$assert( $attempts + 1 === $GLOBALS['option_attempts'][ YoRo_Connector_Wake::HEALTH_OPTION ] && 'degraded' === YoRo_Connector_Wake::health()['state'], 'A failure is persisted immediately instead of being coalesced with healthy telemetry.' );
+echo "Bounded advisory diagnostic persistence contract passed.\n";
