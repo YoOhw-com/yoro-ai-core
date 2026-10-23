@@ -68,6 +68,17 @@ final class YoRo_Early_Access_WordPress_Read {
             'extensions' => [ 'yoro.wordpress_read' => $meta ] ];
     }
 
+    /** Explicit same-site IDs only; reuse the canonical published-content permission predicate. */
+    public static function policy_excerpt( int $id ): ?array {
+        if ( ! current_user_can( 'yoro_view_store_data' ) || ! current_user_can( 'read' ) ) { return null; }
+        $post = get_post( $id );
+        if ( ! self::readable_content( $post ) ) { return null; }
+        $row = self::content( $post, true );
+        return [ 'content_id' => $id, 'title' => mb_substr( $row['title'], 0, 200, 'UTF-8' ), 'version' => $row['version'],
+            'modified_at' => $row['modified_at'], 'excerpt' => mb_substr( $row['content'], 0, 2000, 'UTF-8' ),
+            'truncated' => mb_strlen( $row['content'], 'UTF-8' ) > 2000 || $row['extensions']['yoro.wordpress_read']['content_truncated'] ];
+    }
+
     private static function readable_content( $post ) {
         return $post instanceof WP_Post && in_array( $post->post_type, [ 'post', 'page' ], true )
             && in_array( $post->post_type, YoRo_WordPress_Content_Actions::allowed_post_types(), true )

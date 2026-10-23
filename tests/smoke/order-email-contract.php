@@ -77,7 +77,7 @@ try {
     $body=end($capture->captured)['body'];$assert(str_contains($body,'<strong>Buyer</strong>')&&str_contains($body,'template_header')&&str_contains($body,'template_footer'),'Formatting survives inside the actual styled Woo site template.');
     $runtime=['connector_key'=>'woocommerce','connector_connection_id'=>'connection_email_dialect_smoke','execution_mode'=>'remote_agent','protocol_version'=>1];
     $manifest=YoRo_Commerce_Contract_Builder::build_capability_manifest($runtime,1);
-    $assert($manifest['extensions']['woocommerce.runtime']['commerce_features'][YoRo_Order_Email::ManifestExtension]===YoRo_Order_Email::manifest()&&YoRo_Order_Email::manifest()['version']===2&&YoRo_Order_Email::manifest()['result_version']===1,'Actual commerce manifest advertises exact email capability version2 without changing result_version.');
+    $assert($manifest['extensions']['woocommerce.runtime']['commerce_features'][YoRo_Order_Email::ManifestExtension]===YoRo_Order_Email::manifest()&&YoRo_Order_Email::manifest()['version']===3&&YoRo_Order_Email::manifest()['result_version']===1,'Actual commerce manifest advertises exact email capability version3 without changing result_version.');
     $headings='<h1>Order update</h1><h2>Next steps</h2><h3>Details</h3><p>☐ Pack item</p><p>☑ Payment recorded</p>';
     $assert(10===has_filter('wp_mail','wp_staticize_emoji_for_email'),'The stock WordPress emoji mail filter remains enabled at its original priority.');
     $headingParams=$params('orders.send_authored_email',['subject'=>'Semantic headings and checklist','body'=>$headings,'body_format'=>'safe_html']);

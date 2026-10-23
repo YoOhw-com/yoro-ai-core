@@ -11,7 +11,7 @@ final class YoRo_Order_Email
     public const ManifestExtension = 'yoro.early_access_order_email';
     public static function manifest(): array
     {
-        return ['version' => 2, 'actions' => [...self::Actions, ...self::WriteActions], 'max_targets' => 1,
+        return ['version' => 3, 'context_profiles' => ['email_facts_v1','customer_service_v1'], 'actions' => [...self::Actions, ...self::WriteActions], 'max_targets' => 1,
             'requires_source_read' => true, 'requires_confirmation' => true, 'result_version' => 1, 'recipient' => 'current_order_billing', 'composer' => 'yoro_bounded_email'];
     }
 
@@ -25,7 +25,7 @@ final class YoRo_Order_Email
         $authored = ['subject' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 200], 'body' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 12000], 'body_format' => ['type' => 'string', 'enum' => ['plain_text', 'safe_html']]];
 
         return match ($action) {
-            self::Actions[0] => ['context_profile' => ['type' => 'string', 'enum' => ['email_facts_v1']], ...$authored, 'template' => ['type' => 'string', 'enum' => ['order_details', 'processing', 'completed', 'customer_note']], 'note' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 2000]],
+            self::Actions[0] => ['history_access'=>['type'=>'string','enum'=>['authorized','unavailable']], 'policy_content_ids'=>['type'=>'array','maxItems'=>3,'items'=>['type'=>'integer','minimum'=>1]], 'policy_access'=>['type'=>'string','enum'=>['authorized','unavailable_authority','not_selected']], 'context_profile' => ['type' => 'string', 'enum' => ['email_facts_v1','customer_service_v1']], ...$authored, 'template' => ['type' => 'string', 'enum' => ['order_details', 'processing', 'completed', 'customer_note']], 'note' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 2000]],
             'orders.send_authored_email' => $authored,
             'orders.send_native_email' => ['template' => ['type' => 'string', 'enum' => ['order_details', 'processing', 'completed']]],
             'orders.add_customer_note' => ['note' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 2000]],
@@ -41,6 +41,10 @@ final class YoRo_Order_Email
             self::invalid();
         }
         foreach ($changes as $field => $value) {
+            if ($field === 'policy_content_ids') {
+                if (!is_array($value)||!array_is_list($value)||count($value)>3||count(array_unique($value,SORT_REGULAR))!==count($value)||count(array_filter($value,static fn($id)=>is_int($id)&&$id>0))!==count($value)) {self::invalid();}
+                continue;
+            }
             $property = $properties[$field];
             if (! is_string($value) || trim($value) === '' || strlen($value) > ($property['maxLength'] ?? 200)
                 || preg_match('//u', $value) !== 1 || preg_match($field === 'body' && ($changes['body_format'] ?? 'plain_text') === 'safe_html' ? '/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/' : (in_array($field, ['body', 'note'], true) ? '/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f<>]/' : '/[\x00-\x1f\x7f<>]/'), $value)
@@ -55,6 +59,8 @@ final class YoRo_Order_Email
         if ($action === self::Actions[0] && (isset($changes['subject']) !== isset($changes['body']) || (isset($changes['body_format']) && !isset($changes['body'])))) {
             self::invalid();
         }
+        if ((isset($changes['policy_content_ids'])||isset($changes['policy_access'])||isset($changes['history_access']))&&($changes['context_profile']??null)!=='customer_service_v1') {self::invalid();}
+        if (($changes['context_profile']??null)==='customer_service_v1' && (!isset($changes['policy_access'],$changes['policy_content_ids'],$changes['history_access']) || (($changes['policy_access']==='authorized')!==($changes['policy_content_ids']!==[])))) {self::invalid();}
         if (isset($changes['context_profile']) && (isset($changes['template']) || isset($changes['note']))) { self::invalid(); }
         ksort($changes, SORT_STRING);
 
@@ -84,7 +90,7 @@ final class YoRo_Order_Email
                 'outcome' => ['type' => 'string', 'enum' => ['attempting', 'mailer_accepted', 'failed', 'unknown']], 'content_hash' => $version, 'occurred_at' => $date])],
             'settings' => $object(['from_name' => $text, 'from_address' => ['type' => 'string', 'maxLength' => 254], 'enabled' => ['type' => 'boolean'],
                 'content_type' => ['type' => 'string', 'enum' => ['text/html', 'text/plain', 'multipart/alternative']], 'configured_not_deliverability' => ['type' => 'boolean', 'enum' => [true]]])]);
-        $profile = $object([...$legacy['properties'], 'context_profile' => ['type'=>'string','enum'=>['email_facts_v1']], 'facts' => self::facts_schema()]);
+        $profile = $object([...$legacy['properties'], 'context_profile' => ['type'=>'string','enum'=>['email_facts_v1','customer_service_v1']], 'facts' => self::facts_schema(), 'service_context'=>self::service_schema()]);
         // Existing Commerce schema keywords describe both strict shapes; the negotiated
         // params/result correspondence is additionally enforced by the consuming API.
         return [...$profile, 'required'=>$legacy['required']];
@@ -258,6 +264,67 @@ final class YoRo_Order_Email
             'policy'=>$o(['wording'=>$unknown,'estimated_delivery_at'=>$unknown])]);
     }
 
+    public static function service_schema(): array
+    {
+        $o=self::object(...);$id=['type'=>'integer','minimum'=>1];$text=['type'=>'string','maxLength'=>200];
+        $date=['type'=>['string','null'],'format'=>'date-time'];$version=['type'=>'string','pattern'=>'^[a-f0-9]{64}$'];
+        return $o(['profile'=>['type'=>'string','enum'=>['customer_service_v1']],'source_version'=>$version,'context_digest'=>$version,'observed_at'=>['type'=>'string','format'=>'date-time'],
+            'text_trust'=>['type'=>'string','enum'=>['untrusted_data']],
+            'related_orders'=>['type'=>'array','maxItems'=>5,'items'=>$o(['order_id'=>$id,'status'=>$text,'currency'=>['type'=>'string','maxLength'=>10],
+                'total'=>['type'=>'string','maxLength'=>80],'created_at'=>$date])],
+            'history_coverage'=>$o(['availability'=>['type'=>'string','enum'=>['available','unavailable']],
+                'match_basis'=>['type'=>'string','enum'=>['customer_id','email','unavailable']],'complete'=>['type'=>'boolean'],
+                'identity_verified'=>['type'=>'boolean','enum'=>[false]],'lifetime_total'=>['type'=>'null']]),
+            'refunds'=>['type'=>'array','maxItems'=>5,'items'=>$o(['refund_id'=>$id,'amount'=>['type'=>['string','null'],'maxLength'=>80],'created_at'=>$date])],
+            'refund_coverage'=>$o(['returned'=>['type'=>'integer','minimum'=>0,'maximum'=>5],'total'=>['type'=>'integer','minimum'=>0],
+                'truncated'=>['type'=>'boolean'],'settlement_verified'=>['type'=>'boolean','enum'=>[false]]]),
+            'communication_coverage'=>$o(['source'=>['type'=>'string','enum'=>['current_order_yoro_history']],
+                'returned'=>['type'=>'integer','minimum'=>0,'maximum'=>20],'limit'=>['type'=>'integer','enum'=>[20]],
+                'complete'=>['type'=>'boolean','enum'=>[false]],'inbox_verified'=>['type'=>'boolean','enum'=>[false]]]),
+            'policies'=>['type'=>'array','maxItems'=>3,'items'=>$o(['content_id'=>$id,'title'=>$text,'version'=>$version,
+                'modified_at'=>$date,'excerpt'=>['type'=>'string','maxLength'=>2000],'truncated'=>['type'=>'boolean']])],
+            'policy_coverage'=>$o(['availability'=>['type'=>'string','enum'=>['available','not_selected','unavailable_authority','unavailable']],
+                'complete'=>['type'=>'boolean'],'wording_inferred'=>['type'=>'boolean','enum'=>[false]]])]);
+    }
+
+    private static function service_context(WC_Order $order,array $selectors,string $version,array $history): array
+    {
+        $orders=[];$coverage=['availability'=>'unavailable','match_basis'=>'unavailable','complete'=>false,'identity_verified'=>false,'lifetime_total'=>null];
+        if ($selectors['history_access']==='authorized' && class_exists('YoRo_Customer_History_Report')) {
+            $customer=(int)$order->get_customer_id('edit');
+            $selector=$customer>0?['customer_id'=>$customer]:['guest_order_id'=>$order->get_id(),'match'=>'email'];
+            $read=YoRo_Customer_History_Report::execute_read(['action'=>'customers.get_order_history','params'=>['selector'=>$selector,'limit'=>5]]);
+            if (!is_wp_error($read)&&($read['success']??false)===true&&isset($read['data']['coverage'],$read['data']['orders'])) {
+                foreach (array_slice($read['data']['orders'],0,5) as $row) {
+                    $orders[]=['order_id'=>$row['id'],'status'=>self::fact_text($row['status']),'currency'=>self::fact_text($row['currency'],10),
+                        'total'=>$row['total'],'created_at'=>$row['created_at']??null];
+                }
+                $coverage=['availability'=>'available','match_basis'=>$read['data']['coverage']['match_basis'],
+                    'complete'=>$read['data']['coverage']['complete']===true,'identity_verified'=>false,'lifetime_total'=>null];
+            }
+        }
+        $refunds=$order->get_refunds();$recorded=[];
+        foreach (array_slice($refunds,0,5) as $refund) {
+            $created=$refund->get_date_created('edit');
+            $recorded[]=['refund_id'=>$refund->get_id(),'amount'=>self::fact_decimal($refund->get_amount('edit')),
+                'created_at'=>$created instanceof DateTimeInterface?$created->format('c'):null];
+        }
+        $policies=[];$access=$selectors['policy_access'];$complete=$access==='authorized';
+        if ($access==='authorized') {
+            foreach ($selectors['policy_content_ids'] as $id) {
+                $excerpt=class_exists('YoRo_Early_Access_WordPress_Read')?YoRo_Early_Access_WordPress_Read::policy_excerpt($id):null;
+                if ($excerpt===null) {$complete=false;continue;}
+                $policies[]=$excerpt;
+            }
+        }
+        $context=['profile'=>'customer_service_v1','source_version'=>$version,'observed_at'=>gmdate('c'),'text_trust'=>'untrusted_data',
+            'related_orders'=>$orders,'history_coverage'=>$coverage,'refunds'=>$recorded,
+            'refund_coverage'=>['returned'=>count($recorded),'total'=>count($refunds),'truncated'=>count($refunds)>5,'settlement_verified'=>false],
+            'communication_coverage'=>['source'=>'current_order_yoro_history','returned'=>count($history),'limit'=>20,'complete'=>false,'inbox_verified'=>false],
+            'policies'=>$policies,'policy_coverage'=>['availability'=>$access==='authorized'?($complete?'available':'unavailable'):$access,'complete'=>$complete,'wording_inferred'=>false]];
+        return [...$context,'context_digest'=>YoRo_Early_Access_Product_Read::params_hash($context)];
+    }
+
     private static function fact_text(mixed $value, int $max=200): string
     {
         if (!is_scalar($value)) { return ''; }
@@ -395,7 +462,8 @@ final class YoRo_Order_Email
         }
         $data['version']=YoRo_Early_Access_Product_Read::params_hash(['order'=>YoRo_Order_Presenter::order_version($order),'data'=>$data,
             'authored_wrapper'=>$wrapper['html_body'],'authored_headers'=>$wrapper['headers'],'template_sources'=>$templateSources,...($facts===null?[]:['email_facts'=>$facts])]);
-        if (($selectors['context_profile']??null)==='email_facts_v1') { $data['context_profile']='email_facts_v1';$data['facts']=[...$facts,'observed_at'=>gmdate('c')]; }
+        if (in_array($selectors['context_profile']??null,['email_facts_v1','customer_service_v1'],true)) { $data['context_profile']=$selectors['context_profile'];$data['facts']=[...$facts,'observed_at'=>gmdate('c')]; }
+        if (($selectors['context_profile']??null)==='customer_service_v1') { $data['service_context']=self::service_context($order,$selectors,$data['version'],$history); }
         $data['composer']=['subject'=>$selectors['subject']??'','body'=>$selectors['body']??'','body_format'=>$selectors['body_format']??'plain_text'];
         if(strlen(wp_json_encode($data))>55000){self::invalid();}
         return $data;
