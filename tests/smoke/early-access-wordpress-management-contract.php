@@ -2,11 +2,17 @@
 /** Run only in a disposable WordPress installation; native callbacks and durable runner are exercised. */
 if ( ! defined( 'ABSPATH' ) ) { throw new RuntimeException( 'A disposable WordPress installation is required.' ); }
 $fixture_host = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+$fixture_root = realpath( ABSPATH );
+$runner_temp = getenv( 'RUNNER_TEMP' );
+$runner_root = is_string( $runner_temp ) && '' !== $runner_temp ? realpath( $runner_temp ) : false;
 $ci_disposable = 'true' === getenv( 'GITHUB_ACTIONS' ) && in_array( $fixture_host, [ 'yoro-plugin-smoke.test', 'yoro-wordpress-smoke.test', 'yoro-wordpress-exact-pair.test', 'yoro-woocommerce-exact-pair.test' ], true )
-    && is_string( getenv( 'RUNNER_TEMP' ) ) && '' !== getenv( 'RUNNER_TEMP' ) && str_starts_with( (string) realpath( ABSPATH ), rtrim( (string) realpath( getenv( 'RUNNER_TEMP' ) ), DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR );
+    && false !== $fixture_root && false !== $runner_root && str_starts_with( $fixture_root, rtrim( $runner_root, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR );
 if ( ! str_ends_with( $fixture_host, '.invalid' ) && ! $ci_disposable ) { throw new RuntimeException( 'An exact disposable test installation is required.' ); }
 
 require_once __DIR__ . '/../contracts/helpers/native-write-runtime.php';
+$fixture_admins = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ] );
+if ( [] === $fixture_admins ) { throw new RuntimeException( 'A disposable administrator fixture is required.' ); }
+wp_set_current_user( (int) $fixture_admins[0] );
 $assert = static function( $condition, $why ) { if ( ! $condition ) { throw new RuntimeException( $why ); } };
 $admin = get_current_user_id();
 YoRo_WordPress_Actor::record_access( [ 'assigned' => true, 'status' => 'active', 'role' => 'store_admin', 'permissions' => [ 'yoro_view_store_data', 'yoro_execute_actions' ] ] );

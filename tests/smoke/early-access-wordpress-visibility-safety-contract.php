@@ -2,10 +2,16 @@
 /** Ordinary visibility and deletion safety, only against owned disposable WordPress fixtures. */
 if ( ! defined( 'ABSPATH' ) ) { throw new RuntimeException( 'A disposable WordPress installation is required.' ); }
 $fixture_host = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+$fixture_root = realpath( ABSPATH );
+$runner_temp = getenv( 'RUNNER_TEMP' );
+$runner_root = is_string( $runner_temp ) && '' !== $runner_temp ? realpath( $runner_temp ) : false;
 $ci_disposable = 'true' === getenv( 'GITHUB_ACTIONS' ) && in_array( $fixture_host, [ 'yoro-plugin-smoke.test', 'yoro-wordpress-smoke.test', 'yoro-wordpress-exact-pair.test', 'yoro-woocommerce-exact-pair.test' ], true )
-    && is_string( getenv( 'RUNNER_TEMP' ) ) && '' !== getenv( 'RUNNER_TEMP' ) && str_starts_with( (string) realpath( ABSPATH ), rtrim( (string) realpath( getenv( 'RUNNER_TEMP' ) ), DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR );
+    && false !== $fixture_root && false !== $runner_root && str_starts_with( $fixture_root, rtrim( $runner_root, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR );
 if ( ! str_ends_with( $fixture_host, '.invalid' ) && ! $ci_disposable ) { throw new RuntimeException( 'An exact disposable test installation is required.' ); }
 require_once __DIR__ . '/../contracts/helpers/native-write-runtime.php';
+$fixture_admins = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ] );
+if ( [] === $fixture_admins ) { throw new RuntimeException( 'A disposable administrator fixture is required.' ); }
+wp_set_current_user( (int) $fixture_admins[0] );
 require_once __DIR__ . '/../contracts/helpers/wordpress-management-runtime.php';
 $assertions = 0;
 $assert = static function( $condition, $why ) use ( &$assertions ) { $assertions++; if ( ! $condition ) { throw new RuntimeException( $why ); } };
@@ -14,7 +20,9 @@ yoro_native_write_fixture_setup();
 YoRo_Early_Access_WordPress_Management::register();
 add_filter( 'pre_wp_mail', '__return_true' );
 $preview_path = getenv( 'G013_TRASH_PREVIEW' );
-$assert( is_string( $preview_path ) && '' !== $preview_path, 'An explicit disposable cross-process preview file is required.' );
+$owns_preview = ( ! is_string( $preview_path ) || '' === $preview_path ) && EMPTY_TRASH_DAYS;
+if ( $owns_preview ) { $preview_path = tempnam( sys_get_temp_dir(), 'yoro-visibility-preview-' ); }
+$assert( is_string( $preview_path ) && '' !== $preview_path, 'A disposable preview file is required; disabled-trash replay must supply the prior preview.' );
 $prepare = static fn( $action, $id ) => YoRo_Early_Access_WordPress_Management::prepare( 'wordpress.management.' . $action, [ 'content_id' => $id ] );
 $native_calls = 0;
 $count_native = static function() use ( &$native_calls ) { $native_calls++; };
@@ -83,5 +91,5 @@ try {
         remove_filter( 'wp_untrash_post_status', 'wp_untrash_post_set_previous_status', 10 ); update_option( 'timezone_string', $old_timezone );
         echo "Visibility safety: future-date publish, past-date future restore, date drift at fence and real stale clock denied before native mutation; site-local schedule bound and compatible future restore executed.\n";
     }
-} finally { $release->invoke( null, $lock ); }
+} finally { $release->invoke( null, $lock ); if ( $owns_preview && is_file( $preview_path ) ) { unlink( $preview_path ); } }
 echo 'Safety assertions passed: ' . $assertions . ".\n";

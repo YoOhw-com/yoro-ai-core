@@ -23,6 +23,8 @@ $cases = [
     [ 'yoro-woocommerce-exact-pair.test.example.com', 'true', '/runner/wordpress', false ],
     [ 'yoro-wordpress-exact-pair.test', '', '/runner/wordpress', false ],
     [ 'yoro-wordpress-exact-pair.test', 'true', '/outside', false ],
+    [ 'yoro-woocommerce-exact-pair.test', 'true', '/runner/wordpress', false, '/missing' ],
+    [ 'yoro-woocommerce-exact-pair.test', 'true', '/missing', false ],
 ];
 $passed = 0;
 try {
@@ -30,12 +32,14 @@ try {
         $path = $root . '/tests/smoke/early-access-wordpress-' . $contract . '-contract.php';
         $source = file_get_contents( $path );
         $guard = substr( $source, 5, strpos( $source, 'require_once' ) - 5 );
-        foreach ( $cases as [ $host, $actions, $wordpress, $allowed ] ) {
+        foreach ( $cases as $case ) {
+            [ $host, $actions, $wordpress, $allowed ] = $case;
+            $runner = $case[4] ?? '/runner';
             $program = 'define("ABSPATH", ' . var_export( $fixture . $wordpress . '/', true ) . ');'
                 . 'function home_url() { return ' . var_export( 'http://' . $host, true ) . '; }'
                 . 'function wp_parse_url($url, $component) { return parse_url($url, $component); }'
                 . 'putenv(' . var_export( 'GITHUB_ACTIONS=' . $actions, true ) . ');'
-                . 'putenv(' . var_export( 'RUNNER_TEMP=' . $fixture . '/runner', true ) . ');'
+                . 'putenv(' . var_export( 'RUNNER_TEMP=' . $fixture . $runner, true ) . ');'
                 . 'try {' . $guard . '} catch (RuntimeException $error) { exit(23); }';
             $pipes = [];
             $process = proc_open( [ PHP_BINARY, '-r', $program ], [ 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ], $pipes );
