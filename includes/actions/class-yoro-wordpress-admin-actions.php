@@ -84,6 +84,14 @@ class YoRo_WordPress_Admin_Actions {
 	}
 
 	public static function activate_plugin( $params ) {
+		return self::activate_plugin_native( $params, true );
+	}
+
+	public static function activate_plugin_with_hooks( $params ) {
+		return self::activate_plugin_native( $params, false );
+	}
+
+	private static function activate_plugin_native( $params, $silent ) {
 		$guard = self::guard( 'activate_plugins' );
 		if ( is_wp_error( $guard ) ) {
 			return $guard;
@@ -97,7 +105,7 @@ class YoRo_WordPress_Admin_Actions {
 			return new WP_Error( 'yoro_plugin_version_conflict', 'The plugin is missing or its installed version changed.' );
 		}
 
-		$result = activate_plugin( $plugin, '', false, true );
+		$result = activate_plugin( $plugin, '', false, $silent );
 
 		return is_wp_error( $result ) ? $result : self::success( [ 'plugin' => $plugin, 'active' => true ], 'Plugin activated.' );
 	}

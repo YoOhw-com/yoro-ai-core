@@ -459,7 +459,9 @@ final class YoRo_Early_Access_WordPress_Management {
         $journal = YoRo_Connector_Execution_Journal::begin( $operation );
         if ( 'executing' !== ( $journal['state'] ?? null ) || ! $fence() ) { return self::denied( 'The durable marker and current execution fence are required.' ); }
         if ( 'content.bulk_update_status' === $action ) { return self::execute_batch( $operation, $source, $fence ); }
-        $callback = YoRo_Action_Registry::get( $action )['callback'] ?? null;
+        $callback = 'plugins.activate' === $action
+            ? [ YoRo_WordPress_Admin_Actions::class, 'activate_plugin_with_hooks' ]
+            : ( YoRo_Action_Registry::get( $action )['callback'] ?? null );
         if ( ! is_callable( $callback ) ) { return self::denied(); }
         if ( 'content.trash' === $action && ( ! defined( 'EMPTY_TRASH_DAYS' ) || ! EMPTY_TRASH_DAYS ) ) { return self::denied( 'WordPress trash is disabled; permanent deletion is not authorized.' ); }
         if ( in_array( $action, [ 'content.publish', 'content.schedule', 'content.restore', 'content.restore_revision' ], true ) ) {

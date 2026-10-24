@@ -10,6 +10,7 @@ $ci_disposable = 'true' === getenv( 'GITHUB_ACTIONS' ) && in_array( $fixture_hos
 if ( ! str_ends_with( $fixture_host, '.invalid' ) && ! $ci_disposable ) { throw new RuntimeException( 'An exact disposable test installation is required.' ); }
 
 require_once __DIR__ . '/../contracts/helpers/native-write-runtime.php';
+require_once __DIR__ . '/../contracts/helpers/wordpress-management-runtime.php';
 $fixture_admins = get_users( [ 'role' => 'administrator', 'number' => 1, 'fields' => 'ID' ] );
 if ( [] === $fixture_admins ) { throw new RuntimeException( 'A disposable administrator fixture is required.' ); }
 wp_set_current_user( (int) $fixture_admins[0] );
@@ -19,7 +20,21 @@ YoRo_WordPress_Actor::record_access( [ 'assigned' => true, 'status' => 'active',
 yoro_native_write_fixture_setup();
 add_filter( 'pre_wp_mail', '__return_true' );
 $plugin = WP_PLUGIN_DIR . '/g012-fixture/g012-fixture.php';
-wp_mkdir_p( dirname( $plugin ) ); file_put_contents( $plugin, "<?php\n/* Plugin Name: G012 disposable fixture\nVersion: 1.0\n*/\n" );
+wp_mkdir_p( dirname( $plugin ) );
+file_put_contents( $plugin, <<<'PHP'
+<?php
+/* Plugin Name: G012 disposable fixture
+Version: 1.0
+*/
+register_activation_hook( __FILE__, static function() {
+    update_option( 'g014_activation_setup_count', (int) get_option( 'g014_activation_setup_count', 0 ) + 1, false );
+    update_option( 'g014_activation_initialized', 'installed', false );
+} );
+register_deactivation_hook( __FILE__, static function() {
+    update_option( 'g014_deactivation_count', (int) get_option( 'g014_deactivation_count', 0 ) + 1, false );
+} );
+PHP
+);
 $theme = WP_CONTENT_DIR . '/themes/g012-fixture'; wp_mkdir_p( $theme ); file_put_contents( $theme . '/style.css', "/* Theme Name: G012 disposable theme\nVersion: 1.0\n*/\n" ); file_put_contents( $theme . '/index.php', '<?php // Disposable theme.' );
 register_theme_directory( WP_CONTENT_DIR . '/themes' ); wp_clean_themes_cache();
 $target_user = wp_insert_user( [ 'user_login' => 'g012_' . wp_generate_password( 8, false ), 'user_pass' => wp_generate_password( 32 ), 'user_email' => 'g012-' . wp_generate_password( 8, false ) . '@example.invalid', 'role' => 'administrator' ] );
@@ -59,6 +74,21 @@ foreach ( [ 0, time() - DAY_IN_SECONDS - 1, time() + 60 ] as $backup ) {
 }
 update_option( YoRo_WordPress_Admin_Actions::POLICY_OPTION, 'yes' ); update_option( YoRo_WordPress_Admin_Actions::BACKUP_ATTESTED_OPTION, time() );
 YoRo_Early_Access_WordPress_Management::register();
+$activation_events = [ 'activate_plugin' => 0, 'activate_g012-fixture/g012-fixture.php' => 0, 'activated_plugin' => 0 ];
+foreach ( array_keys( $activation_events ) as $hook ) {
+ add_action( $hook, static function( $activated = '' ) use ( &$activation_events, $hook ) {
+  if ( 'activate_g012-fixture/g012-fixture.php' === $hook || 'g012-fixture/g012-fixture.php' === $activated ) { ++$activation_events[$hook]; }
+ } );
+}
+deactivate_plugins( 'g012-fixture/g012-fixture.php' );
+delete_option( 'g014_activation_setup_count' ); delete_option( 'g014_activation_initialized' );
+$managed_activation = YoRo_Action_Registry::get( 'plugins.activate' )['callback'];
+$assert( [ YoRo_WordPress_Admin_Actions::class, 'activate_plugin' ] === $managed_activation, 'The managed activation registration remains unchanged.' );
+$managed_result = call_user_func( $managed_activation, [ 'plugin' => 'g012-fixture/g012-fixture.php', 'expected_version' => '1.0' ] );
+$assert( ! is_wp_error( $managed_result ) && is_plugin_active( 'g012-fixture/g012-fixture.php' ), 'The existing managed callback still activates its exact installed target.' );
+$assert( false === get_option( 'g014_activation_initialized', false ) && 0 === array_sum( $activation_events ), 'Managed activation retains its existing silent native-hook behavior.' );
+$activation_proof = [ 'managed' => [ 'active' => true, 'initialized' => false, 'native_events' => $activation_events ] ];
+deactivate_plugins( 'g012-fixture/g012-fixture.php' );
 foreach ( $intents as $public => $intent ) {
  $action = YoRo_Early_Access_WordPress_Management::wire_action( $public );
  $assert( YoRo_Early_Access_WordPress_Management::valid_intent( $action, $intent ), 'Typed intent: ' . $public );
@@ -92,6 +122,11 @@ try {
   if ( 'plugins.activate' === $public ) { deactivate_plugins( 'g012-fixture/g012-fixture.php' ); }
   if ( 'plugins.deactivate' === $public ) { activate_plugin( 'g012-fixture/g012-fixture.php' ); }
   if ( 'themes.activate' === $public ) { update_option( 'stylesheet', 'missing-fixture' ); }
+  if ( 'plugins.activate' === $public ) {
+   delete_option( 'g014_activation_setup_count' ); delete_option( 'g014_activation_initialized' );
+   $activation_events = array_fill_keys( array_keys( $activation_events ), 0 );
+  }
+  if ( 'plugins.deactivate' === $public ) { delete_option( 'g014_deactivation_count' ); }
   $action = YoRo_Early_Access_WordPress_Management::wire_action( $public ); $source = YoRo_Early_Access_WordPress_Management::prepare( $action, $intent );
   $assert( ! is_wp_error( $source ), 'Write source: ' . $public );
   $client = yoro_native_write_fixture_client(); $client->operation = yoro_native_write_fixture_envelope( $action, $source['params'] + [ 'expected_version' => $source['version'] ] );
@@ -102,7 +137,16 @@ try {
   $assert( ! is_wp_error( $run ), 'Runner: ' . $public . ' ' . ( is_wp_error( $run ) ? $run->get_error_message() : '' ) );
   $wire = end( $client->results );
   $assert( 'executed' === ( $wire['status'] ?? null ), 'Native mutation completed: ' . $public . ' ' . wp_json_encode( $wire ) );
+  if ( 'plugins.activate' === $public ) {
+   $assert( 'installed' === get_option( 'g014_activation_initialized' ) && 1 === (int) get_option( 'g014_activation_setup_count' ), 'Ordinary activation must run register_activation_hook initialization exactly once.' );
+   $assert( [ 1, 1, 1 ] === array_values( $activation_events ), 'Ordinary activation must run activate_plugin, activate_<plugin> and activated_plugin once.' );
+  }
+  if ( 'plugins.deactivate' === $public ) { $assert( 1 === (int) get_option( 'g014_deactivation_count' ), 'Ordinary deactivation retains its normal native deactivation hook.' ); }
   $before = $wire; $runtime->run_early_access_write_once(); $replay = end( $client->results ); $assert( wp_json_encode( $replay['result'] ?? null ) === wp_json_encode( $before['result'] ?? null ) && 'executed' === ( $replay['status'] ?? null ), 'Durable exact replay: ' . $public . ' ' . wp_json_encode( $replay ) );
+  if ( 'plugins.activate' === $public ) { $assert( 1 === (int) get_option( 'g014_activation_setup_count' ) && [ 1, 1, 1 ] === array_values( $activation_events ), 'Durable activation replay cannot repeat initialization or native hooks.' ); }
+  if ( 'plugins.deactivate' === $public ) { $assert( 1 === (int) get_option( 'g014_deactivation_count' ), 'Durable deactivation replay cannot repeat its native hook.' ); }
+  if ( 'plugins.activate' === $public ) { $activation_proof['ordinary'] = [ 'active' => is_plugin_active( 'g012-fixture/g012-fixture.php' ), 'initialized' => get_option( 'g014_activation_initialized' ), 'setup_count_after_replay' => (int) get_option( 'g014_activation_setup_count' ), 'native_events_after_replay' => $activation_events ]; }
+  if ( 'plugins.deactivate' === $public ) { $activation_proof['deactivation'] = [ 'active' => is_plugin_active( 'g012-fixture/g012-fixture.php' ), 'hook_count_after_replay' => (int) get_option( 'g014_deactivation_count' ) ]; }
   // Export the exact pre-mutation source paired with this actual native result.
   $records[$public]['intent'] = $intent; $records[$public]['source'] = $source;
   $records[$public]['params'] = [ 'intent' => $intent ]; $records[$public]['result']['data'] = $source;
@@ -122,3 +166,43 @@ try {
  }
 } finally { remove_filter( 'user_has_cap', $deny_native ); }
 echo "All 32 native-permission negative cases passed.\n";
+
+// Activation hooks may initialize a plugin and then throw. The durable boundary must prevent repetition.
+$throwing_plugin = WP_PLUGIN_DIR . '/g014-activation-throws/g014-activation-throws.php';
+wp_mkdir_p( dirname( $throwing_plugin ) );
+file_put_contents( $throwing_plugin, <<<'PHP'
+<?php
+/* Plugin Name: G014 interrupted activation fixture
+Version: 1.0
+*/
+register_activation_hook( __FILE__, static function() {
+    update_option( 'g014_interrupted_activation_count', (int) get_option( 'g014_interrupted_activation_count', 0 ) + 1, false );
+    throw new RuntimeException( 'Injected interruption after activation initialization.' );
+} );
+PHP
+);
+wp_clean_plugins_cache();
+delete_option( 'g014_interrupted_activation_count' );
+$lock = $acquire->invoke( null ); $assert( null !== $lock, 'Own the existing runtime lock for activation fault tests.' );
+try {
+ $client = yoro_native_write_fixture_client();
+ $client->operation = yoro_wordpress_management_fixture_operation( 'plugins.activate', [ 'plugin' => 'g014-activation-throws/g014-activation-throws.php' ] );
+ $runtime = new YoRo_Connector_Runtime( $client ); $runtime->run_early_access_write_once(); $runtime->run_early_access_write_once();
+ $unknown = end( $client->results );
+ $assert( 1 === (int) get_option( 'g014_interrupted_activation_count' ), 'An interrupted activation hook runs once even when the delivery is replayed.' );
+ $assert( 'local_execution_outcome_unknown' === ( $unknown['error']['code'] ?? null ), 'An interrupted activation cannot report executed or offer an automatic retry.' );
+ $activation_proof['interrupted'] = [ 'setup_count_after_replay' => (int) get_option( 'g014_interrupted_activation_count' ), 'result' => $unknown ];
+
+ delete_option( 'g014_activation_setup_count' ); delete_option( 'g014_activation_initialized' );
+ $activation_events = array_fill_keys( array_keys( $activation_events ), 0 );
+ $client = yoro_native_write_fixture_client();
+ $client->operation = yoro_wordpress_management_fixture_operation( 'plugins.activate', [ 'plugin' => 'g012-fixture/g012-fixture.php' ] );
+ $client->after_lease = static fn() => update_option( YoRo_WordPress_Admin_Actions::POLICY_OPTION, 'no' );
+ ( new YoRo_Connector_Runtime( $client ) )->run_early_access_write_once();
+ $revoked = end( $client->results );
+ $assert( ! is_plugin_active( 'g012-fixture/g012-fixture.php' ) && 0 === (int) get_option( 'g014_activation_setup_count', 0 ) && 0 === array_sum( $activation_events ), 'Policy revocation at the lease fence prevents activation and every initialization hook.' );
+ $assert( 'executed' !== ( $revoked['status'] ?? null ), 'Revoked native policy cannot produce an executed activation.' );
+ $activation_proof['revoked_policy'] = [ 'active' => false, 'setup_count' => 0, 'native_events' => $activation_events, 'result' => $revoked ];
+} finally { update_option( YoRo_WordPress_Admin_Actions::POLICY_OPTION, 'yes' ); $release->invoke( null, $lock ); }
+if ( $path = getenv( 'G014_CORE_ACTIVATION_RESULT' ) ) { file_put_contents( $path, wp_json_encode( $activation_proof ) ); }
+echo "Native activation initialization and three lifecycle hooks execute once; deactivation and durable replay preserve hooks, managed silence, policy fences and interrupted-unknown no-repeat.\n";
