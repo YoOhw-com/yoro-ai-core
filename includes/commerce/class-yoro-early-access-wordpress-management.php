@@ -289,6 +289,8 @@ final class YoRo_Early_Access_WordPress_Management {
                 if ( ! $object || ! current_user_can( $object->cap->publish_posts ) || ! in_array( $source['status'], [ 'draft', 'pending', 'private', 'future', 'publish' ], true ) ) { return self::denied(); }
                 $after['status'] = 'content.publish' === $action ? 'publish' : 'future';
                 if ( 'content.publish' === $action ) {
+                    if ( ! self::native_visibility_matches( $id, 'publish' ) ) { return self::denied( 'The stored publication date would schedule this content instead of publishing it.' ); }
+                    self::bind_publication_date( $id, $before, $after );
                     $preview = YoRo_WordPress_Content_Actions::preview_changes( [ 'content_id' => $id, 'expected_version' => $source['version'] ] );
                     if ( is_wp_error( $preview ) || ( $preview['data']['content'] ?? null ) !== $source['content'] ) { return self::denied(); }
                     $params['expected_preview_hash'] = $preview['data']['preview_hash'];
@@ -301,7 +303,7 @@ final class YoRo_Early_Access_WordPress_Management {
                 }
                 $effects = 'content.publish' === $action ? 'Publishes this exact content publicly. Normal publication hooks and configured notifications may run.' : 'Schedules public publication at the shown time in the site time zone. Normal scheduled publication hooks may run.';
             } elseif ( 'content.trash' === $action ) {
-                if ( ! current_user_can( 'delete_post', $id ) || 'trash' === $source['status'] ) { return self::denied(); }
+                if ( ! defined( 'EMPTY_TRASH_DAYS' ) || ! EMPTY_TRASH_DAYS || ! current_user_can( 'delete_post', $id ) || 'trash' === $source['status'] ) { return self::denied(); }
                 $after['status'] = 'trash';
                 $effects = 'Moves this content to trash and removes its current public visibility. This does not permanently delete it.';
             } elseif ( 'content.restore' === $action ) {
@@ -313,9 +315,13 @@ final class YoRo_Early_Access_WordPress_Management {
                     $object = get_post_type_object( $source['post_type'] );
                     if ( ! $object || ! current_user_can( $object->cap->publish_posts ) ) { return self::denied(); }
                 }
+                if ( ! self::native_visibility_matches( $id, $restored ) ) { return self::denied( 'The stored publication date would change the restored visibility. Read the target again before choosing another action.' ); }
+                if ( in_array( $restored, [ 'publish', 'future' ], true ) ) { self::bind_publication_date( $id, $before, $after ); }
                 $after['status'] = $restored;
                 $effects = 'Restores this content with actual resulting status: ' . $restored . '. Public visibility follows that status.';
             } elseif ( 'content.restore_revision' === $action ) {
+                if ( ! self::native_visibility_matches( $id, $source['status'] ) ) { return self::denied( 'The stored publication date would change visibility while restoring this revision.' ); }
+                if ( in_array( $source['status'], [ 'publish', 'future' ], true ) ) { self::bind_publication_date( $id, $before, $after ); }
                 $revision = YoRo_WordPress_Content_Actions::preview_revision( $intent );
                 if ( is_wp_error( $revision ) ) { return $revision; }
                 $before['revision_id'] = $intent['revision_id'];
@@ -372,6 +378,31 @@ final class YoRo_Early_Access_WordPress_Management {
         $data['version'] = YoRo_Early_Access_Product_Read::params_hash( $data );
         return $data;
     }
+    /** Match WordPress' publish/future date normalization before any ordinary mutation. */
+    private static function native_visibility_matches( $id, $status ) {
+        if ( ! in_array( $status, [ 'publish', 'future' ], true ) ) { return true; }
+        $post = get_post( $id );
+        if ( ! $post instanceof WP_Post ) { return false; }
+        // wp_update_post assigns the current date to an undated draft/pending post.
+        if ( in_array( $post->post_status, [ 'draft', 'pending', 'auto-draft' ], true ) && '0000-00-00 00:00:00' === $post->post_date_gmt ) { return 'publish' === $status; }
+        $gmt = $post->post_date_gmt;
+        if ( '' === $gmt || '0000-00-00 00:00:00' === $gmt ) { $gmt = get_gmt_from_date( $post->post_date ); }
+        $timestamp = strtotime( $gmt . ' UTC' );
+        if ( false === $timestamp ) { return false; }
+        return 'future' === $status ? $timestamp > time() + MINUTE_IN_SECONDS : $timestamp < time() + MINUTE_IN_SECONDS;
+    }
+
+    private static function bind_publication_date( $id, array &$before, array &$after ) {
+        $post = get_post( $id );
+        if ( $post instanceof WP_Post ) {
+            if ( in_array( $post->post_status, [ 'draft', 'pending', 'auto-draft' ], true ) && '0000-00-00 00:00:00' === $post->post_date_gmt ) { return; }
+            $gmt = $post->post_date_gmt;
+            if ( '' === $gmt || '0000-00-00 00:00:00' === $gmt ) { $gmt = get_gmt_from_date( $post->post_date ); }
+            $timestamp = strtotime( $gmt . ' UTC' );
+            if ( false !== $timestamp ) { $before['publish_at'] = $after['publish_at'] = wp_date( DATE_ATOM, $timestamp, wp_timezone() ); }
+        }
+    }
+
     public static function ordinary_operation( array $operation ) {
         $write = in_array( $operation['action'] ?? '', self::WriteActions, true );
         $facts = $operation['extensions'][$write ? 'yoro.mcp_early_access_commerce_write' : 'yoro.mcp_early_access_product_read'] ?? null;
@@ -432,6 +463,11 @@ final class YoRo_Early_Access_WordPress_Management {
         if ( 'content.bulk_update_status' === $action ) { return self::execute_batch( $operation, $source, $fence ); }
         $callback = YoRo_Action_Registry::get( $action )['callback'] ?? null;
         if ( ! is_callable( $callback ) ) { return self::denied(); }
+        if ( 'content.trash' === $action && ( ! defined( 'EMPTY_TRASH_DAYS' ) || ! EMPTY_TRASH_DAYS ) ) { return self::denied( 'WordPress trash is disabled; permanent deletion is not authorized.' ); }
+        if ( in_array( $action, [ 'content.publish', 'content.schedule', 'content.restore', 'content.restore_revision' ], true ) ) {
+            $current = self::prepare( $wire, $facts['wordpress_intent'] );
+            if ( is_wp_error( $current ) || ! hash_equals( $source['version'], $current['version'] ) ) { return self::denied( 'The confirmed publication date or visibility is no longer current.' ); }
+        }
         // The durable marker exists before the first native side effect. No result after this boundary is replayable.
         try { $result = 'media.upload' === $action ? YoRo_Connector_Media_Client::with_ordinary_binding( $params['media_reference_id'], $facts['media_download_url'] ?? null, static fn() => call_user_func( $callback, $params ) ) : call_user_func( $callback, $params ); }
         catch ( Throwable $error ) { return new WP_Error( 'local_execution_outcome_unknown', 'The local outcome is unknown. Do not repeat this change.' ); }
