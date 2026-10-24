@@ -290,7 +290,6 @@ final class YoRo_Early_Access_WordPress_Management {
                 $after['status'] = 'content.publish' === $action ? 'publish' : 'future';
                 if ( 'content.publish' === $action ) {
                     if ( ! self::native_visibility_matches( $id, 'publish' ) ) { return self::denied( 'The stored publication date would schedule this content instead of publishing it.' ); }
-                    self::bind_publication_date( $id, $before, $after );
                     $preview = YoRo_WordPress_Content_Actions::preview_changes( [ 'content_id' => $id, 'expected_version' => $source['version'] ] );
                     if ( is_wp_error( $preview ) || ( $preview['data']['content'] ?? null ) !== $source['content'] ) { return self::denied(); }
                     $params['expected_preview_hash'] = $preview['data']['preview_hash'];
@@ -316,12 +315,10 @@ final class YoRo_Early_Access_WordPress_Management {
                     if ( ! $object || ! current_user_can( $object->cap->publish_posts ) ) { return self::denied(); }
                 }
                 if ( ! self::native_visibility_matches( $id, $restored ) ) { return self::denied( 'The stored publication date would change the restored visibility. Read the target again before choosing another action.' ); }
-                if ( in_array( $restored, [ 'publish', 'future' ], true ) ) { self::bind_publication_date( $id, $before, $after ); }
                 $after['status'] = $restored;
                 $effects = 'Restores this content with actual resulting status: ' . $restored . '. Public visibility follows that status.';
             } elseif ( 'content.restore_revision' === $action ) {
                 if ( ! self::native_visibility_matches( $id, $source['status'] ) ) { return self::denied( 'The stored publication date would change visibility while restoring this revision.' ); }
-                if ( in_array( $source['status'], [ 'publish', 'future' ], true ) ) { self::bind_publication_date( $id, $before, $after ); }
                 $revision = YoRo_WordPress_Content_Actions::preview_revision( $intent );
                 if ( is_wp_error( $revision ) ) { return $revision; }
                 $before['revision_id'] = $intent['revision_id'];
@@ -371,6 +368,7 @@ final class YoRo_Early_Access_WordPress_Management {
             if ( is_wp_error( $source ) ) { return $source; }
             $before = $source['before']; $after = $source['after']; $params = $source['params']; $name = $source['name']; $effects = $source['effects'];
         }
+        if ( in_array( $action, [ 'content.publish', 'content.restore', 'content.restore_revision' ], true ) && in_array( $after['status'] ?? '', [ 'publish', 'future' ], true ) ) { self::bind_publication_date( $id, $effects ); }
         $data = [ 'action' => $wire, 'intent_hash' => YoRo_Early_Access_Product_Read::params_hash( $intent ), 'target_id' => $id,
             'target_name' => sanitize_text_field( $name ), 'params' => $params, 'before' => $before, 'after' => $after,
             'effects' => $effects, 'timezone' => wp_timezone_string() ];
@@ -392,14 +390,14 @@ final class YoRo_Early_Access_WordPress_Management {
         return 'future' === $status ? $timestamp > time() + MINUTE_IN_SECONDS : $timestamp < time() + MINUTE_IN_SECONDS;
     }
 
-    private static function bind_publication_date( $id, array &$before, array &$after ) {
+    private static function bind_publication_date( $id, string &$effects ) {
         $post = get_post( $id );
         if ( $post instanceof WP_Post ) {
             if ( in_array( $post->post_status, [ 'draft', 'pending', 'auto-draft' ], true ) && '0000-00-00 00:00:00' === $post->post_date_gmt ) { return; }
             $gmt = $post->post_date_gmt;
             if ( '' === $gmt || '0000-00-00 00:00:00' === $gmt ) { $gmt = get_gmt_from_date( $post->post_date ); }
             $timestamp = strtotime( $gmt . ' UTC' );
-            if ( false !== $timestamp ) { $before['publish_at'] = $after['publish_at'] = wp_date( DATE_ATOM, $timestamp, wp_timezone() ); }
+            if ( false !== $timestamp ) { $effects .= ' Stored publication time: ' . wp_date( DATE_ATOM, $timestamp, wp_timezone() ) . ' (site time zone).'; }
         }
     }
 

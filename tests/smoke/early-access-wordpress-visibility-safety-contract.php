@@ -52,7 +52,14 @@ try {
         $future_restore = $make( 'trash', time() + DAY_IN_SECONDS ); update_post_meta( $future_restore, '_wp_trash_meta_status', 'future' );
         $old_timezone = get_option( 'timezone_string' ); update_option( 'timezone_string', 'Asia/Ho_Chi_Minh' );
         $source = $prepare( 'content.restore', $future_restore );
-        $assert( ! is_wp_error( $source ) && 'future' === $source['after']['status'] && str_ends_with( $source['after']['publish_at'], '+07:00' ), 'A compatible restore binds the scheduled time in the site timezone.' );
+        $assert( ! is_wp_error( $source ) && 'future' === $source['after']['status'] && str_contains( $source['effects'], '+07:00 (site time zone)' ), 'A compatible restore binds the scheduled time in the site timezone.' );
+        if ( $path = getenv( 'G013_VISIBILITY_SOURCE' ) ) {
+            $source_action = YoRo_Early_Access_WordPress_Management::source_action( 'content.restore' );
+            file_put_contents( $path, wp_json_encode( [ 'action' => $source_action, 'params' => [ 'intent' => [ 'content_id' => $future_restore ] ], 'result' => YoRo_Early_Access_WordPress_Management::execute( [ 'action' => $source_action, 'params' => [ 'intent' => [ 'content_id' => $future_restore ] ] ] ) ] ) );
+        }
+        $wpdb->update( $wpdb->posts, [ 'post_date' => get_date_from_gmt( gmdate( 'Y-m-d H:i:s', time() + 2 * DAY_IN_SECONDS ) ), 'post_date_gmt' => gmdate( 'Y-m-d H:i:s', time() + 2 * DAY_IN_SECONDS ) ], [ 'ID' => $future_restore ] ); clean_post_cache( $future_restore );
+        $changed_date = $prepare( 'content.restore', $future_restore );
+        $assert( ! is_wp_error( $changed_date ) && $source['version'] !== $changed_date['version'], 'A changed future date changes the exact source version even when visibility and modified time stay the same.' );
         $positive = $make( 'trash', time() + 2 * DAY_IN_SECONDS ); update_post_meta( $positive, '_wp_trash_meta_status', 'future' );
         $positive_operation = yoro_wordpress_management_fixture_operation( 'content.restore', [ 'content_id' => $positive ] );
         $assert( 'new' === YoRo_Connector_Execution_Journal::begin( $positive_operation )['state'], 'The compatible scheduled restore owns its durable marker.' );
