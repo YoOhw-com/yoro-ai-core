@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:d335ca7b49599c1228d6ea96d1ff5bb4fe10f148e7ba4723cfffebf05e120935';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:cdbc427de039c23f37e2c85b5a86c3ade51931feb991046649c2b07de20d93fa';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -78,6 +78,8 @@ class YoRo_Commerce_Contract_Builder {
             $extensions[YoRo_Variable_Product::Extension] = YoRo_Variable_Product::manifest();
             $extensions['yoro.early_access_customer_service'] = YoRo_Early_Access_Customer_Service_Read::manifest();
             $extensions['yoro.early_access_wordpress_read'] = YoRo_Early_Access_WordPress_Read::manifest();
+            $extensions['woocommerce.runtime']['commerce_features'][YoRo_Early_Access_WordPress_Management::Extension] = YoRo_Early_Access_WordPress_Management::manifest();
+            $extensions['woocommerce.runtime']['wordpress_management_policy'] = [ 'administration_enabled' => YoRo_WordPress_Admin_Actions::connector_policy_ready(), 'backup_max_age_seconds' => DAY_IN_SECONDS ];
             $extensions['yoro.early_access_order_reads'] = [ 'version' => 1, 'actions' => YoRo_Early_Access_Order_Read::ACTIONS, 'max_items' => 20,
                 'customer_data' => 'redacted', 'pagination' => 'page_v1', 'timeline' => 'milestones_only' ];
             $extensions['yoro.early_access_order_details'] = YoRo_Early_Access_Order_Read::details_manifest();
@@ -416,6 +418,7 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	private static function execution_data_schema( $action_name ) {
+        if ( class_exists( 'YoRo_Early_Access_WordPress_Management' ) && YoRo_Early_Access_WordPress_Management::owns( $action_name ) ) { return YoRo_Early_Access_WordPress_Management::data_schema( $action_name ); }
 		$action_name = sanitize_text_field( $action_name );
 
 		if ( 'orders.update_status' === $action_name ) {
@@ -1292,6 +1295,7 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	private static function is_canonical_read_action( $action_name ) {
+        if ( class_exists( 'YoRo_Early_Access_WordPress_Management' ) && ( in_array( $action_name, YoRo_Early_Access_WordPress_Management::ReadActions, true ) || YoRo_Early_Access_WordPress_Management::source_write( $action_name ) ) ) { return true; }
 		return in_array(
 			sanitize_text_field( $action_name ),
 			[ ...(class_exists('YoRo_Commerce_Operations') ? YoRo_Commerce_Operations::ReadActions : []), ...(class_exists('YoRo_Commerce_Insights') ? YoRo_Commerce_Insights::ReadActions : []), 'products.search_reviews', 'products.get_review', 'customers.get_order_history', 'customers.get_period_summary', 'products.get_creation_context', 'orders.get_refunds', 'coupons.search', 'coupons.get_details', 'products.get_catalog_options', 'products.get_variable_details', 'orders.search', 'orders.get_details', 'orders.find_by_customer', 'customers.lookup', 'store.get_daily_briefing', 'operations.get_attention_queue', 'products.get_inventory_queue', 'content.search', 'content.get', 'comments.list', 'media.search', 'media.get', 'site.get_info', 'site.get_health', 'site.get_update_status', 'products.search', 'products.get_details', 'orders.get_timeline', 'fulfillment.get_tracking' ],
@@ -1300,6 +1304,7 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	private static function is_canonical_write_action( $action_name ) {
+        if ( class_exists( 'YoRo_Early_Access_WordPress_Management' ) && in_array( $action_name, YoRo_Early_Access_WordPress_Management::WriteActions, true ) ) { return true; }
 		$actions = [ 'products.moderate_review', 'products.reply_review', 'orders.batch_update_status', 'orders.update_contacts', 'orders.update_customer_note', 'fulfillment.set_tracking', 'fulfillment.remove_tracking', 'products.update_attributes', 'products.create_variation', 'orders.update_status', 'products.update_stock', 'products.update_stock_status', 'products.update_details' ];
         if (class_exists('YoRo_Stock_Adjustment')) { $actions[]=YoRo_Stock_Adjustment::Action; }
         if (class_exists('YoRo_Product_Lifecycle')) { $actions = array_merge($actions,YoRo_Product_Lifecycle::WriteActions); }
@@ -1317,6 +1322,7 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	private static function canonical_write_data( $action_name, array $execution ) {
+        if ( class_exists( 'YoRo_Early_Access_WordPress_Management' ) && in_array( $action_name, YoRo_Early_Access_WordPress_Management::WriteActions, true ) ) { return self::canonical_data_fields( $action_name, $execution ); }
         if(class_exists('YoRo_Product_Authoring')&&in_array($action_name,YoRo_Product_Authoring::WriteActions,true)){return self::canonical_data_fields($action_name,$execution);}
         if(class_exists('YoRo_Fulfillment_Management')&&in_array($action_name,YoRo_Fulfillment_Management::WriteActions,true)){return self::canonical_data_fields($action_name,$execution);}
         if(class_exists('YoRo_Order_Edit')&&in_array($action_name,YoRo_Order_Edit::WriteActions,true)){return self::canonical_data_fields($action_name,$execution);}
