@@ -21,16 +21,17 @@ yoro_native_write_fixture_setup();
 add_filter( 'pre_wp_mail', '__return_true' );
 $plugin = WP_PLUGIN_DIR . '/g012-fixture/g012-fixture.php';
 wp_mkdir_p( dirname( $plugin ) );
+// WP-CLI eval-file also rewrites path constants inside generated nowdoc source.
 file_put_contents( $plugin, <<<'PHP'
 <?php
 /* Plugin Name: G012 disposable fixture
 Version: 1.0
 */
-register_activation_hook( __FILE__, static function() {
+register_activation_hook( WP_PLUGIN_DIR . '/g012-fixture/g012-fixture.php', static function() {
     update_option( 'g014_activation_setup_count', (int) get_option( 'g014_activation_setup_count', 0 ) + 1, false );
     update_option( 'g014_activation_initialized', 'installed', false );
 } );
-register_deactivation_hook( __FILE__, static function() {
+register_deactivation_hook( WP_PLUGIN_DIR . '/g012-fixture/g012-fixture.php', static function() {
     update_option( 'g014_deactivation_count', (int) get_option( 'g014_deactivation_count', 0 ) + 1, false );
 } );
 PHP
@@ -175,7 +176,7 @@ file_put_contents( $throwing_plugin, <<<'PHP'
 /* Plugin Name: G014 interrupted activation fixture
 Version: 1.0
 */
-register_activation_hook( __FILE__, static function() {
+register_activation_hook( WP_PLUGIN_DIR . '/g014-activation-throws/g014-activation-throws.php', static function() {
     update_option( 'g014_interrupted_activation_count', (int) get_option( 'g014_interrupted_activation_count', 0 ) + 1, false );
     throw new RuntimeException( 'Injected interruption after activation initialization.' );
 } );
