@@ -56,7 +56,7 @@ class YoRo_Commerce_Contract_Builder {
 				'admin_actions_ready' => false,
 			],
 		];
-		$extensions['yoro.early_access_settings_read'] = YoRo_Early_Access_Settings_Read::manifest();
+		$extensions['wordpress.runtime']['read_features']['yoro.early_access_settings_read'] = YoRo_Early_Access_Settings_Read::manifest();
 		if ( yoro_ai_core_has_woocommerce() ) {
 			$extensions['yoro.early_access_commerce_writes'] = YoRo_Early_Access_Commerce_Write::manifest();
             $extensions['yoro.early_access_product_edit'] = YoRo_Product_Edit::manifest();

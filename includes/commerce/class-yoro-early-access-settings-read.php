@@ -17,7 +17,7 @@ final class YoRo_Early_Access_Settings_Read {
             if ( str_starts_with($action, 'commerce.') && ! yoro_ai_core_has_woocommerce() ) { continue; }
             YoRo_Action_Registry::register($action, [ 'label' => 'Selected settings snapshot', 'description' => 'Read only a closed allowlist of settings or its schema. Does not prove effective storefront behavior.',
                 'category' => 'site', 'permission' => 'yoro_view_store_data', 'callback' => static function($params) use ($action) { return self::execute(['action' => $action, 'params' => $params]); },
-                'canonical_input_schema' => ['type'=>'object','properties'=>[], 'required'=>[], 'additionalProperties'=>false],
+                'canonical_input_schema' => [],
                 'input_schema' => [], 'output_schema' => self::definition()['output_schema'], 'effect'=>'read', 'write_action'=>false, 'max_targets'=>1 ]);
         }
     }
