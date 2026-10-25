@@ -718,6 +718,35 @@ class YoRo_WordPress_Content_Actions {
 		return self::hash( [ $comment->comment_ID, $comment->comment_date_gmt, $comment->comment_approved, $comment->comment_content ] );
 	}
 
+    /** Internal editor source only; public Early Access reads retain their separate published-only projection. */
+    public static function management_source( $kind, $id ) {
+        if ( ! current_user_can( 'yoro_execute_actions' ) ) {
+            return new WP_Error( 'wordpress_editor_forbidden', 'Current editor authority is required.' );
+        }
+        if ( 'comment' === $kind ) {
+            $comment = get_comment( $id );
+            if ( ! $comment instanceof WP_Comment || ! current_user_can( 'moderate_comments' )
+                || ! current_user_can( 'edit_comment', $id ) || ! current_user_can( 'edit_post', $comment->comment_post_ID ) ) {
+                return new WP_Error( 'wordpress_comment_forbidden', 'This comment is not editable.' );
+            }
+            return self::present_comment( $comment );
+        }
+        $post = get_post( $id );
+        if ( ! $post instanceof WP_Post || ! current_user_can( 'edit_post', $id ) ) {
+            return new WP_Error( 'wordpress_editor_forbidden', 'This target is not editable.' );
+        }
+        if ( 'media' === $kind ) {
+            if ( 'attachment' !== $post->post_type || ! current_user_can( 'upload_files' ) ) {
+                return new WP_Error( 'wordpress_media_forbidden', 'This media item is not editable.' );
+            }
+            return array_diff_key( self::present_media( $post ), [ 'extensions' => true, 'url' => true ] );
+        }
+        if ( ! in_array( $post->post_type, [ 'post', 'page' ], true ) || ! self::is_allowed_post_type( $post->post_type ) ) {
+            return new WP_Error( 'wordpress_editor_forbidden', 'This post type is unavailable.' );
+        }
+        return array_diff_key( self::present_post( $post ), [ 'url' => true ] );
+    }
+
 	private static function hash( $value ) {
 		return hash( 'sha256', wp_json_encode( $value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
 	}

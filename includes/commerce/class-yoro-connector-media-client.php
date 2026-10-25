@@ -6,6 +6,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class YoRo_Connector_Media_Client implements YoRo_Connector_Media_Client_Interface {
 
+    private static $ordinary_binding;
+
+    public static function with_ordinary_binding( $reference, $url, Closure $callback ) {
+        if ( ! is_string( $reference ) || ! is_string( $url ) ) { return new WP_Error( 'yoro_media_binding_invalid', 'The signed ordinary media binding is unavailable.' ); }
+        $previous = self::$ordinary_binding;
+        self::$ordinary_binding = [ 'reference' => $reference, 'url' => $url ];
+        try { return $callback(); } finally { self::$ordinary_binding = $previous; }
+    }
+
 	public function download_media_reference( $reference_id, $destination ) {
 		$api_url  = YoRo_AI_Settings::get_ai_api_url();
 		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
@@ -15,8 +24,19 @@ class YoRo_Connector_Media_Client implements YoRo_Connector_Media_Client_Interfa
 			return new WP_Error( 'yoro_media_reference_missing', __( 'The staged YoRo media reference is unavailable.', 'yoro-ai-core' ) );
 		}
 
+        $download_url = $this->build_media_reference_endpoint_url( $api_url, $reference_id );
+        if ( null !== self::$ordinary_binding ) {
+            if ( self::$ordinary_binding['reference'] !== $reference_id ) { return new WP_Error( 'yoro_media_binding_invalid', 'The media reference does not match this operation.' ); }
+            $bound = wp_parse_url( self::$ordinary_binding['url'] ); $expected = wp_parse_url( $download_url );
+            $query = []; parse_str( $bound['query'] ?? '', $query );
+            if ( ! is_array( $bound ) || 'https' !== ( $bound['scheme'] ?? '' ) || isset( $bound['user'] ) || isset( $bound['pass'] ) || isset( $bound['fragment'] )
+                || ( $bound['host'] ?? null ) !== ( $expected['host'] ?? null ) || ( $bound['port'] ?? 443 ) !== ( $expected['port'] ?? 443 ) || ( $bound['path'] ?? null ) !== ( $expected['path'] ?? null )
+                || count( $query ) !== 2 || ! isset( $query['expires'], $query['signature'] ) || ! ctype_digit( (string) $query['expires'] ) || (int) $query['expires'] <= time()
+                || ! is_string( $query['signature'] ) || ! preg_match( '/\A[a-f0-9]{64}\z/D', $query['signature'] ) ) { return new WP_Error( 'yoro_media_binding_invalid', 'The signed download origin, path or expiry is invalid.' ); }
+            $download_url = self::$ordinary_binding['url'];
+        }
 		$response = wp_remote_get(
-			$this->build_media_reference_endpoint_url( $api_url, $reference_id ),
+            $download_url,
 			[
 				'timeout'             => 30,
 				'redirection'         => 0,

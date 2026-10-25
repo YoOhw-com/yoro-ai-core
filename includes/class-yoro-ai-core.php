@@ -141,6 +141,7 @@ class YoRo_AI_Core {
         YoRo_Complete_Store_Report::init();
         require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-early-access-customer-service-read.php';
         require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-early-access-wordpress-read.php';
+        require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-early-access-wordpress-management.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-early-access-order-queue-read.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-runtime.php';
 		require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-connector-wake.php';
@@ -188,6 +189,7 @@ class YoRo_AI_Core {
 		YoRo_WordPress_Site_Actions::register();
 		YoRo_WordPress_Admin_Actions::register();
 		YoRo_WordPress_Content_Actions::register();
+        YoRo_Early_Access_WordPress_Management::register();
 
 		do_action( 'yoro_register_actions' );
 

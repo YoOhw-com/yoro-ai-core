@@ -2,16 +2,19 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+require_once __DIR__ . '/class-yoro-early-access-wordpress-management.php';
+
 /** Single-target, versioned writes. Called only by the locked, fenced connector runner. */
 final class YoRo_Early_Access_Commerce_Write {
-    const ACTIONS = [ ...YoRo_Catalog_Management::WriteActions,...YoRo_Order_Email::WriteActions, YoRo_Stock_Adjustment::Action, ...YoRo_Product_Authoring::WriteActions, ...YoRo_Fulfillment_Management::WriteActions, ...YoRo_Order_Edit::WriteActions, ...YoRo_Product_Reviews::WriteActions, ...YoRo_Product_Lifecycle::WriteActions, YoRo_Order_Batch::Action, ...YoRo_Order_Management::WriteActions, YoRo_Product_Batch::Action, ...YoRo_Coupon_Management::WriteActions, YoRo_Variable_Product::AttributeAction, YoRo_Variable_Product::CreateAction, 'products.update_details', 'products.update_stock', 'products.update_stock_status', 'orders.update_status', 'orders.add_note' ];
+    const ACTIONS = [ ...YoRo_Early_Access_WordPress_Management::WriteActions, ...YoRo_Catalog_Management::WriteActions,...YoRo_Order_Email::WriteActions, YoRo_Stock_Adjustment::Action, ...YoRo_Product_Authoring::WriteActions, ...YoRo_Fulfillment_Management::WriteActions, ...YoRo_Order_Edit::WriteActions, ...YoRo_Product_Reviews::WriteActions, ...YoRo_Product_Lifecycle::WriteActions, YoRo_Order_Batch::Action, ...YoRo_Order_Management::WriteActions, YoRo_Product_Batch::Action, ...YoRo_Coupon_Management::WriteActions, YoRo_Variable_Product::AttributeAction, YoRo_Variable_Product::CreateAction, 'products.update_details', 'products.update_stock', 'products.update_stock_status', 'orders.update_status', 'orders.add_note' ];
 
     public static function manifest() {
-        return [ 'version' => 1, 'actions' => array_values(array_diff(self::ACTIONS, array_merge([...YoRo_Catalog_Management::WriteActions,...YoRo_Order_Email::WriteActions,YoRo_Stock_Adjustment::Action,'products.update_details',YoRo_Product_Batch::Action,YoRo_Order_Batch::Action],YoRo_Order_Management::WriteActions,YoRo_Product_Authoring::WriteActions,YoRo_Fulfillment_Management::WriteActions,YoRo_Order_Edit::WriteActions,YoRo_Product_Lifecycle::WriteActions,YoRo_Product_Reviews::WriteActions,YoRo_Variable_Product::WriteActions,YoRo_Coupon_Management::WriteActions))), 'max_targets' => 1, 'requires_source_read' => true,
+        return [ 'version' => 1, 'actions' => array_values(array_diff(self::ACTIONS, array_merge([...YoRo_Early_Access_WordPress_Management::WriteActions,...YoRo_Catalog_Management::WriteActions,...YoRo_Order_Email::WriteActions,YoRo_Stock_Adjustment::Action,'products.update_details',YoRo_Product_Batch::Action,YoRo_Order_Batch::Action],YoRo_Order_Management::WriteActions,YoRo_Product_Authoring::WriteActions,YoRo_Fulfillment_Management::WriteActions,YoRo_Order_Edit::WriteActions,YoRo_Product_Lifecycle::WriteActions,YoRo_Product_Reviews::WriteActions,YoRo_Variable_Product::WriteActions,YoRo_Coupon_Management::WriteActions))), 'max_targets' => 1, 'requires_source_read' => true,
             'requires_confirmation' => true, 'result_version' => 1 ];
     }
 
     public static function valid_params( $action, $params, $facts ) {
+        if ( in_array( $action, YoRo_Early_Access_WordPress_Management::WriteActions, true ) ) { return YoRo_Early_Access_WordPress_Management::valid_write_params( $action, $params, $facts ); }
         if ( ! in_array( $action, self::ACTIONS, true ) || ! is_array( $params ) || ! is_array( $facts )
             || ! is_string( $facts['source_operation_id'] ?? null ) || ! preg_match( '/\Aenvelope_[a-f0-9]{64}\z/D', $facts['source_operation_id'] )
             || ! is_string( $facts['source_result_hash'] ?? null ) || ! preg_match( '/\A[a-f0-9]{64}\z/D', $facts['source_result_hash'] )
@@ -71,6 +74,7 @@ final class YoRo_Early_Access_Commerce_Write {
     }
 
     public static function execute( array $operation, ?Closure $fence = null ) {
+        if ( in_array( $operation['action'] ?? '', YoRo_Early_Access_WordPress_Management::WriteActions, true ) ) { return YoRo_Early_Access_WordPress_Management::execute_write( $operation, $fence ); }
         $action = $operation['action'] ?? '';
         $params = $operation['params'] ?? [];
         $facts = $operation['extensions']['yoro.mcp_early_access_commerce_write'] ?? [];

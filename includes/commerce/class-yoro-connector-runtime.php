@@ -798,7 +798,7 @@ class YoRo_Connector_Runtime {
 
     private static function expanded_read_executor( $family ) {
         if ( null === $family ) { return YoRo_Early_Access_Product_Read::class; }
-        $classes = [ 'catalog_management'=>YoRo_Catalog_Management::class, 'order_email'=>YoRo_Order_Email::class, 'commerce_operations'=>YoRo_Commerce_Operations::class,
+        $classes = [ 'wordpress_management' => YoRo_Early_Access_WordPress_Management::class, 'catalog_management'=>YoRo_Catalog_Management::class, 'order_email'=>YoRo_Order_Email::class, 'commerce_operations'=>YoRo_Commerce_Operations::class,
             'commerce_insights' => YoRo_Commerce_Insights::class, 'product_authoring' => YoRo_Product_Authoring::class, 'fulfillment_management' => YoRo_Fulfillment_Management::class, 'order_edit' => YoRo_Order_Edit::class, 'product_reviews' => YoRo_Product_Reviews::class, 'customer_history' => YoRo_Customer_History_Report::class, 'product_lifecycle' => YoRo_Product_Lifecycle::class, 'order_management' => YoRo_Order_Management::class, 'coupons' => YoRo_Early_Access_Coupon_Read::class, 'variable_products' => YoRo_Variable_Product::class, 'wordpress_read' => YoRo_Early_Access_WordPress_Read::class, 'customer_service' => YoRo_Early_Access_Customer_Service_Read::class, 'store_overview' => YoRo_Early_Access_Store_Overview_Read::class, 'order_tracking' => YoRo_Early_Access_Order_Tracking_Read::class,
             'order_queues' => YoRo_Early_Access_Order_Queue_Read::class, 'orders' => YoRo_Early_Access_Order_Read::class ];
         return is_string( $family ) ? ( $classes[ $family ] ?? null ) : null;
@@ -1004,6 +1004,15 @@ class YoRo_Connector_Runtime {
 			return new WP_Error( 'connector_operation_authority_invalid', 'The connector operation authority is invalid or stale.' );
 		}
 
+        if ( class_exists( 'YoRo_Early_Access_WordPress_Management' ) ) {
+            $management = YoRo_Early_Access_WordPress_Management::source_write( $action_name ) ?: $action_name;
+            if ( YoRo_Early_Access_WordPress_Management::owns( $action_name ) ) {
+                if ( ! YoRo_Early_Access_WordPress_Management::ordinary_operation( $operation ) ) { return new WP_Error( 'wordpress_management_ordinary_required', 'Exact ordinary WordPress management authority is required.' ); }
+                $original = get_current_user_id(); wp_set_current_user( $user_id );
+                try { $management_guard = YoRo_Early_Access_WordPress_Management::operation_guard( $operation ); } finally { wp_set_current_user( $original ); }
+                if ( is_wp_error( $management_guard ) ) { return $management_guard; }
+            }
+        }
 		$permission = sanitize_key( $action['permission'] ?? '' );
 		$actor_permissions = array_values( array_filter( array_map( 'sanitize_key', (array) ( $operation['actor']['permissions'] ?? [] ) ) ) );
 		$allowed_params = array_keys( (array) ( $action['input_schema'] ?? [] ) );

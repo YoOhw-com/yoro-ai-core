@@ -87,7 +87,21 @@ if ( class_exists( 'YoRo_Fulfillment_Management' ) && ! YoRo_Fulfillment_Managem
 	$missing_names = array_values( array_diff( $missing_names, $optional ) );
 }
 
-$assert( [] === $missing_names, 'The connector must support every API canonical action in this exact compatibility tranche.' );
+// Ordinary WordPress administration remains unavailable until policy and a fresh backup permit it.
+if ( class_exists( 'YoRo_Early_Access_WordPress_Management' ) && ! YoRo_WordPress_Admin_Actions::connector_policy_ready() ) {
+	$optional = [];
+	foreach ( YoRo_Early_Access_WordPress_Management::definition()['actions'] as $public => $definition ) {
+		if ( ! empty( $definition['admin'] ) ) {
+			$optional[] = YoRo_Early_Access_WordPress_Management::wire_action( $public );
+		}
+	}
+	$assert( [] !== $optional && [] === array_values( array_intersect( $optional, $actual_names ) ), 'Unavailable WordPress administration must never be advertised.' );
+	$marker = $manifest['extensions']['woocommerce.runtime']['wordpress_management_policy'] ?? [];
+	$assert( false === ( $marker['administration_enabled'] ?? null ), 'The marker must disclose unavailable WordPress administration.' );
+	$missing_names = array_values( array_diff( $missing_names, $optional ) );
+}
+
+$assert( [] === $missing_names, 'The connector must support every API canonical action in this exact compatibility tranche: ' . implode( ', ', $missing_names ) );
 $assert(
 	[] === $extra_names,
 	'Every externally executable connector action must have an API canonical definition: ' . implode( ', ', $extra_names )
