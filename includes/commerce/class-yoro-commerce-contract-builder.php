@@ -10,7 +10,7 @@ class YoRo_Commerce_Contract_Builder {
 	const SCHEMA_VERSION = 1;
 	const EXECUTION_PAYLOAD_VERSION = 1;
 	const CAPABILITY_AUTHORITY_CATALOG_VERSION = 'yoro.capability_authority@v1';
-	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:cdbc427de039c23f37e2c85b5a86c3ade51931feb991046649c2b07de20d93fa';
+	const CAPABILITY_AUTHORITY_CATALOG_DIGEST = 'sha256:d8182569f1ea08dd496a55734372ceb975adf712d25ba418dbfd39e2d0ce2a03';
 	const MANIFEST_TTL = 30 * DAY_IN_SECONDS;
 	const CONTEXT_TTL = 20 * MINUTE_IN_SECONDS;
 
@@ -56,6 +56,7 @@ class YoRo_Commerce_Contract_Builder {
 				'admin_actions_ready' => false,
 			],
 		];
+		$extensions['yoro.early_access_settings_read'] = YoRo_Early_Access_Settings_Read::manifest();
 		if ( yoro_ai_core_has_woocommerce() ) {
 			$extensions['yoro.early_access_commerce_writes'] = YoRo_Early_Access_Commerce_Write::manifest();
             $extensions['yoro.early_access_product_edit'] = YoRo_Product_Edit::manifest();
@@ -368,6 +369,7 @@ class YoRo_Commerce_Contract_Builder {
 		$stable_keys = [ 'success', 'action', 'message', 'summary', 'data', 'read_only', 'undoable', 'result_type', 'display_type', 'assistant_summary', 'meta', 'processed', 'skipped', 'errors', 'count', 'undo_plan', 'extensions' ];
 		$action_name = sanitize_text_field( $action_name ?: ( $execution['action'] ?? '' ) );
 		$data = is_array( $execution['data'] ?? null ) ? $execution['data'] : [];
+        if ( class_exists('YoRo_Early_Access_Settings_Read') && in_array($action_name, YoRo_Early_Access_Settings_Read::ACTIONS, true) ) { return array_intersect_key($execution,array_flip(['success','action','message','summary','data','read_only','undoable','result_type','display_type','assistant_summary','extensions'])); }
 
 		if ( self::is_list_array( $data ) && [] !== $data ) {
 			$data = [ 'items' => $data ];
@@ -418,6 +420,7 @@ class YoRo_Commerce_Contract_Builder {
 	}
 
 	private static function execution_data_schema( $action_name ) {
+        if ( class_exists('YoRo_Early_Access_Settings_Read') && in_array($action_name, YoRo_Early_Access_Settings_Read::ACTIONS, true) ) { return YoRo_Early_Access_Settings_Read::definition()['output_schema']['properties']['data']; }
         if ( class_exists( 'YoRo_Early_Access_WordPress_Management' ) && YoRo_Early_Access_WordPress_Management::owns( $action_name ) ) { return YoRo_Early_Access_WordPress_Management::data_schema( $action_name ); }
 		$action_name = sanitize_text_field( $action_name );
 

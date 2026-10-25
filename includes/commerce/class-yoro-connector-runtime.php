@@ -798,7 +798,7 @@ class YoRo_Connector_Runtime {
 
     private static function expanded_read_executor( $family ) {
         if ( null === $family ) { return YoRo_Early_Access_Product_Read::class; }
-        $classes = [ 'wordpress_management' => YoRo_Early_Access_WordPress_Management::class, 'catalog_management'=>YoRo_Catalog_Management::class, 'order_email'=>YoRo_Order_Email::class, 'commerce_operations'=>YoRo_Commerce_Operations::class,
+        $classes = [ 'settings_read' => YoRo_Early_Access_Settings_Read::class, 'wordpress_management' => YoRo_Early_Access_WordPress_Management::class, 'catalog_management'=>YoRo_Catalog_Management::class, 'order_email'=>YoRo_Order_Email::class, 'commerce_operations'=>YoRo_Commerce_Operations::class,
             'commerce_insights' => YoRo_Commerce_Insights::class, 'product_authoring' => YoRo_Product_Authoring::class, 'fulfillment_management' => YoRo_Fulfillment_Management::class, 'order_edit' => YoRo_Order_Edit::class, 'product_reviews' => YoRo_Product_Reviews::class, 'customer_history' => YoRo_Customer_History_Report::class, 'product_lifecycle' => YoRo_Product_Lifecycle::class, 'order_management' => YoRo_Order_Management::class, 'coupons' => YoRo_Early_Access_Coupon_Read::class, 'variable_products' => YoRo_Variable_Product::class, 'wordpress_read' => YoRo_Early_Access_WordPress_Read::class, 'customer_service' => YoRo_Early_Access_Customer_Service_Read::class, 'store_overview' => YoRo_Early_Access_Store_Overview_Read::class, 'order_tracking' => YoRo_Early_Access_Order_Tracking_Read::class,
             'order_queues' => YoRo_Early_Access_Order_Queue_Read::class, 'orders' => YoRo_Early_Access_Order_Read::class ];
         return is_string( $family ) ? ( $classes[ $family ] ?? null ) : null;

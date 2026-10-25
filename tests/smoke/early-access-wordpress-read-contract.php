@@ -76,3 +76,5 @@ try {
 } finally {
     $wpdb->query( 'ROLLBACK' ); wp_cache_flush(); wp_set_current_user( $original ); remove_shortcode( 'yr0178_secret_shortcode' ); remove_filter( 'pre_wp_mail', '__return_true' ); remove_filter( 'pre_http_request', $block );
 }
+
+require_once __DIR__.'/early-access-settings-read-contract.php';
