@@ -1,0 +1,333 @@
+{
+    "version": 1,
+    "actions": [
+        "site.get_settings",
+        "site.get_settings_schema",
+        "commerce.settings.get",
+        "commerce.settings.get_schema"
+    ],
+    "wordpress_keys": [
+        "blogname",
+        "blogdescription",
+        "timezone_string",
+        "date_format",
+        "time_format",
+        "start_of_week",
+        "posts_per_page",
+        "default_comment_status"
+    ],
+    "woocommerce_keys": [
+        "woocommerce_currency_pos",
+        "woocommerce_price_thousand_sep",
+        "woocommerce_price_decimal_sep",
+        "woocommerce_currency",
+        "woocommerce_price_num_decimals"
+    ],
+    "fields": {
+        "blogname": [
+            "Site Title",
+            "string",
+            256,
+            null,
+            null,
+            []
+        ],
+        "blogdescription": [
+            "Tagline",
+            "string",
+            500,
+            null,
+            null,
+            []
+        ],
+        "timezone_string": [
+            "Timezone",
+            "string",
+            80,
+            null,
+            null,
+            []
+        ],
+        "date_format": [
+            "Date Format",
+            "string",
+            80,
+            null,
+            null,
+            []
+        ],
+        "time_format": [
+            "Time Format",
+            "string",
+            80,
+            null,
+            null,
+            []
+        ],
+        "start_of_week": [
+            "Week Starts On",
+            "integer",
+            null,
+            0,
+            6,
+            [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+            ]
+        ],
+        "posts_per_page": [
+            "Blog pages show at most",
+            "integer",
+            null,
+            1,
+            10000,
+            []
+        ],
+        "default_comment_status": [
+            "Allow comments on new posts",
+            "string",
+            6,
+            null,
+            null,
+            [
+                "open",
+                "closed"
+            ]
+        ],
+        "woocommerce_currency_pos": [
+            "Currency position",
+            "string",
+            11,
+            null,
+            null,
+            [
+                "left",
+                "right",
+                "left_space",
+                "right_space"
+            ]
+        ],
+        "woocommerce_price_thousand_sep": [
+            "Thousand separator",
+            "string",
+            8,
+            null,
+            null,
+            []
+        ],
+        "woocommerce_price_decimal_sep": [
+            "Decimal separator",
+            "string",
+            8,
+            null,
+            null,
+            []
+        ],
+        "woocommerce_currency": [
+            "Currency (context)",
+            "string",
+            3,
+            null,
+            null,
+            []
+        ],
+        "woocommerce_price_num_decimals": [
+            "Number of decimals (context)",
+            "integer",
+            null,
+            0,
+            20,
+            []
+        ]
+    },
+    "output_schema": {
+        "type": "object",
+        "properties": {
+            "success": {
+                "type": "boolean"
+            },
+            "action": {
+                "type": "string"
+            },
+            "message": {
+                "type": "string"
+            },
+            "summary": {
+                "type": "string"
+            },
+            "data": {
+                "type": "object",
+                "properties": {
+                    "version": {
+                        "type": "integer",
+                        "enum": [
+                            1
+                        ]
+                    },
+                    "provider": {
+                        "type": "string",
+                        "enum": [
+                            "wordpress",
+                            "woocommerce"
+                        ]
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "values",
+                            "schema"
+                        ]
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "supported",
+                            "not_installed",
+                            "unsupported"
+                        ]
+                    },
+                    "settings": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "key": {
+                                    "type": "string"
+                                },
+                                "label": {
+                                    "type": "string"
+                                },
+                                "type": {
+                                    "type": "string",
+                                    "enum": [
+                                        "string",
+                                        "integer"
+                                    ]
+                                },
+                                "value": {
+                                    "type": [
+                                        "string",
+                                        "integer",
+                                        "null"
+                                    ]
+                                },
+                                "provenance": {
+                                    "type": "string",
+                                    "enum": [
+                                        "wordpress_option_api",
+                                        "schema_only"
+                                    ]
+                                },
+                                "enum": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": [
+                                            "string",
+                                            "integer"
+                                        ]
+                                    },
+                                    "maxItems": 7
+                                },
+                                "minimum": {
+                                    "type": [
+                                        "integer",
+                                        "null"
+                                    ]
+                                },
+                                "maximum": {
+                                    "type": [
+                                        "integer",
+                                        "null"
+                                    ]
+                                },
+                                "max_length": {
+                                    "type": [
+                                        "integer",
+                                        "null"
+                                    ]
+                                },
+                                "read_only": {
+                                    "type": "boolean",
+                                    "enum": [
+                                        true
+                                    ]
+                                }
+                            },
+                            "required": [
+                                "key",
+                                "label",
+                                "type",
+                                "value",
+                                "provenance",
+                                "enum",
+                                "minimum",
+                                "maximum",
+                                "max_length",
+                                "read_only"
+                            ],
+                            "additionalProperties": false
+                        },
+                        "maxItems": 8
+                    },
+                    "component_version": {
+                        "type": "string"
+                    },
+                    "captured_at": {
+                        "type": "string"
+                    },
+                    "snapshot_version": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "version",
+                    "provider",
+                    "kind",
+                    "status",
+                    "settings",
+                    "component_version",
+                    "captured_at",
+                    "snapshot_version"
+                ],
+                "additionalProperties": false
+            },
+            "read_only": {
+                "type": "boolean"
+            },
+            "undoable": {
+                "type": "boolean"
+            },
+            "result_type": {
+                "type": "string"
+            },
+            "display_type": {
+                "type": "string"
+            },
+            "assistant_summary": {
+                "type": "string"
+            },
+            "extensions": {
+                "type": "object"
+            }
+        },
+        "required": [
+            "success",
+            "action",
+            "message",
+            "summary",
+            "data",
+            "read_only",
+            "undoable",
+            "result_type",
+            "display_type",
+            "assistant_summary",
+            "extensions"
+        ],
+        "additionalProperties": false
+    }
+}
