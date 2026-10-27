@@ -48,12 +48,37 @@ try {
     $disabled = $read( 'operations.get_fulfillment_queue' );
     $assert( 0 === $disabled['data']['count'] && ! $disabled['extensions']['yoro.order_queue']['applicable'], 'Shipping-disabled stores must report not applicable.' );
     update_option( 'woocommerce_ship_to_countries', '' );
+    $extra_ids = [];
     for ( $i = 0; $i < 102; $i++ ) {
-        $extra = new WC_Order(); $extra->set_status( 'pending' ); $extra->set_date_created( time() - 30 * HOUR_IN_SECONDS ); $extra->save();
+        $extra = new WC_Order(); $extra->set_status( 'pending' ); $extra->set_date_created( time() - 30 * HOUR_IN_SECONDS ); $extra->save(); $extra_ids[] = $extra->get_id();
     }
     $bounded = $read( 'operations.get_attention_queue' );
     $assert( 100 === $bounded['extensions']['yoro.order_queue']['scanned'] && $bounded['extensions']['yoro.order_queue']['has_more_candidates'], 'Candidate scan stays bounded and discloses omitted candidates.' );
     $assert( count( $bounded['data']['items'] ) <= 20 && $bounded['data']['total_matches'] <= 100, 'Counts cover scanned sample only.' );
+    $shift = [ 'action' => 'operations.get_attention_queue', 'params' => [ 'limit' => 20 ],
+        'extensions' => [ 'yoro.mcp_early_access_product_read' => [ 'site_id' => 1, 'installation_uuid' => 'isolated-queue-fixture',
+            'wordpress_identity_id' => get_current_user_id(), 'profile' => 'early_access', 'oauth_client_id' => 'isolated-fixture-client',
+            'user_id' => 1, 'order_attention_shift' => [ 'version' => 1, 'cursor' => '' ] ] ] ];
+    $shift_found = []; $shift_pages = 0; $initial_cursor = null;
+    do {
+        $segment = YoRo_Early_Access_Order_Queue_Read::execute( $shift );
+        $assert( is_array( $segment ), 'Actual WooCommerce datastore must apply the negotiated keyset predicate.' );
+        $assert( $segment['data']['count'] <= 20 && $segment['extensions']['yoro.order_queue']['scanned'] <= 100, 'Every actual datastore segment stays bounded.' );
+        $assert( $segment['data']['total_matches'] === $segment['data']['count'] && ! $segment['extensions']['yoro.order_queue']['returned_truncated'], 'Continuation never discards matched records at the display limit.' );
+        $shift_found = array_merge( $shift_found, array_column( $segment['data']['items'], 'order_id' ) );
+        $cursor = $segment['data']['page_info']['next_cursor'];
+        if ( null === $initial_cursor ) { $initial_cursor = $cursor; }
+        $assert( ++$shift_pages <= 50, 'Queue continuation must advance to a finite boundary.' );
+        $shift['extensions']['yoro.mcp_early_access_product_read']['order_attention_shift']['cursor'] = $cursor;
+    } while ( null !== $cursor );
+    foreach ( $extra_ids as $extra_id ) { $assert( in_array( $extra_id, $shift_found, true ), 'All 102 additional matches must be reachable beyond display and scan limits.' ); }
+    $assert( count( $shift_found ) === count( array_unique( $shift_found ) ) && $shift_pages > 1, 'Actual keyset continuation has no duplicate observations.' );
+    $assert( is_string( $initial_cursor ) && $initial_cursor !== '', 'The first actual segment must offer continuation.' );
+    $shift['extensions']['yoro.mcp_early_access_product_read']['order_attention_shift']['cursor'] = substr( $initial_cursor, 0, -1 ) . 'x';
+    $assert( is_wp_error( YoRo_Early_Access_Order_Queue_Read::execute( $shift ) ), 'Actual WordPress rejects tampered signed continuation.' );
+    $shift['extensions']['yoro.mcp_early_access_product_read']['order_attention_shift']['cursor'] = $initial_cursor;
+    $shift['extensions']['yoro.mcp_early_access_product_read']['profile'] = 'public';
+    $assert( is_wp_error( YoRo_Early_Access_Order_Queue_Read::execute( $shift ) ), 'Actual WordPress rejects cross-profile continuation.' );
     foreach ( [ [ 'orders.update_status', [ 'limit' => 10 ] ], [ 'operations.get_attention_queue', [ 'limit' => '10' ] ],
         [ 'operations.get_attention_queue', [ 'limit' => 21 ] ], [ 'operations.get_fulfillment_queue', [ 'limit' => 10, 'email' => 'private' ] ] ] as $bad ) {
         $assert( ! YoRo_Early_Access_Order_Queue_Read::valid_params( $bad[0], $bad[1] ), 'Writes and widened queue selectors must fail closed.' );
@@ -63,5 +88,5 @@ try {
     wp_set_current_user( (int) $admins[0] );
     $after = array_map( static function( $id ) { return wp_json_encode( wc_get_order( $id )->get_data() ); }, $ids );
     $assert( $before === $after, 'Queue reads do not mutate order data.' );
-    echo "YoRo bounded attention/fulfillment queue, privacy, shipping applicability and no-write contracts passed.\n";
+    echo "YoRo bounded attention/fulfillment queue, signed actual-datastore continuation beyond 100/20, privacy, shipping applicability and no-write contracts passed.\n";
 } finally { update_option( 'woocommerce_ship_to_countries', $shipping ); $wpdb->query( 'ROLLBACK' ); wp_set_current_user( $original_user ); wp_cache_flush(); }
