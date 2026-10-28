@@ -614,6 +614,14 @@ final class YoRo_Order_Email
         if(($params['_yoro_confirmed']??null)!==true||($params['_yoro_preview']??false)!==false){return new WP_Error('confirmation_required','Execute through the confirmed commerce executor.');}
         $params=array_diff_key($params,array_flip(['_yoro_confirmed','_yoro_preview']));
         $prepared=self::prepare($params,$action);if(is_wp_error($prepared)){return $prepared;}$order=$prepared['order'];$hash=self::content_hash($params,$action);
+        if (class_exists('YoRo_Connector_Runtime')) {
+            try {
+                $captured = YoRo_Connector_Runtime::canary_capture($params, $action, $prepared);
+                if ($captured !== null) { return self::result($action, $captured, false); }
+            } catch (Throwable $error) { return new WP_Error('yr0196_capture_denied', 'Private capture is unavailable. No mail was attempted.'); }
+        } elseif ($order->get_meta('_yoro_yr0196_fixture', true) !== '') {
+            return new WP_Error('yr0196_capture_denied', 'A validated runner is required. No mail was attempted.');
+        }
         $recordId='mail_'.wp_generate_uuid4();$outcome='mailer_accepted';
         try {
                 $record=['id'=>$recordId,'subject'=>$params['subject']??$params['changes']['subject']??'Customer-visible order note','outcome'=>'attempting','content_hash'=>$hash,'occurred_at'=>gmdate('c')];
@@ -629,7 +637,7 @@ final class YoRo_Order_Email
 
     private static function result(string $action,array $data,bool $read): array
     {
-        $message=$read?'Current order-bound email context.':'Confirmed order email operation completed. Inbox delivery is not verified.';
+        $message=$read?'Current order-bound email context.':(($data['outcome']??null)==='captured_not_delivered'?'Private test capture stored. No mail was sent.':'Confirmed order email operation completed. Inbox delivery is not verified.');
         return ['success'=>true,'action'=>$action,'message'=>$message,'summary'=>$message,'data'=>$data,'read_only'=>$read,'undoable'=>false,'result_type'=>'order_email','display_type'=>'order_email','assistant_summary'=>$message,'extensions'=>(object)[]];
     }
 }

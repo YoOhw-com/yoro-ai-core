@@ -82,6 +82,7 @@ final class YoRo_Early_Access_Commerce_Write {
             || empty( $operation['authorization']['execution_permit'] ) ) {
             return new WP_Error( 'confirmed_commerce_denied', 'Confirmed change authority is unavailable.' );
         }
+        if (class_exists('YoRo_Connector_Runtime')) { YoRo_Connector_Runtime::canary_before_effect($operation); }
         if ($action === YoRo_Order_Batch::Action) { return YoRo_Order_Batch::execute_operation($operation,$fence); }
         if ($action === YoRo_Product_Batch::Action) { return YoRo_Product_Batch::execute_operation($operation,$fence); }
         if ( 'orders.add_note' === $action && ( $operation['user_content_slots'] ?? null ) !== [ [
@@ -159,6 +160,7 @@ final class YoRo_Early_Access_Commerce_Write {
         foreach ( [ 'message', 'summary', 'assistant_summary' ] as $field ) { $result[$field] = $message; }
         $result['undoable'] = false;
         $result['extensions'] = (object) [];
+        if (class_exists('YoRo_Connector_Runtime')) { YoRo_Connector_Runtime::canary_after_effect($operation, $result); }
         return $result;
     }
 }
