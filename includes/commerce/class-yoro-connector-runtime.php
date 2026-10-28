@@ -4,7 +4,26 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+require_once __DIR__ . '/class-yoro-yr0196-canary-context.php';
+
 class YoRo_Connector_Runtime {
+
+    private static ?YoRo_YR0196_Canary_Context $canary_context = null;
+
+    public static function canary_before_effect(array $operation): void {
+        if (self::$canary_context !== null) { self::$canary_context->before($operation); }
+        elseif (YoRo_YR0196_Canary_Context::owned($operation)) { throw new RuntimeException('A validated runner context is required for a task-owned effect.'); }
+    }
+
+    public static function canary_after_effect(array $operation, array $result): void {
+        if (self::$canary_context !== null) { self::$canary_context->after($operation, $result); }
+    }
+
+    public static function canary_capture(array $params, string $action, array $prepared): ?array {
+        if (self::$canary_context !== null) { return self::$canary_context->capture($params, $action, $prepared); }
+        if (YoRo_YR0196_Canary_Context::owned(['action'=>$action,'params'=>$params])) { throw new RuntimeException('A validated runner context is required for task-owned mail.'); }
+        return null;
+    }
 
 	const CRON_HOOK = 'yoro_connector_runtime_tick';
 	const CRON_SCHEDULE = 'yoro_connector_minute';
@@ -694,7 +713,13 @@ class YoRo_Connector_Runtime {
 			$execution_started = ( $this->clock )();
 			try {
                 if ( $commerce_write ) {
-                    try { $execution = YoRo_Early_Access_Commerce_Write::execute( $operation, static function() use ( $allowed, $owns_lock ) { return $allowed() && $owns_lock(); } ); }
+                    try {
+                        if (self::$canary_context !== null) { throw new RuntimeException('Nested canary execution is forbidden.'); }
+                        $canary_fence = static function() use ($allowed, $owns_lock, $validate, $operation) { return $allowed() && $owns_lock() && !is_wp_error($validate($operation)); };
+                        self::$canary_context = YoRo_YR0196_Canary_Context::admit($operation, $valid['user_id'], $canary_fence);
+                        try { $execution = YoRo_Early_Access_Commerce_Write::execute($operation, $canary_fence); }
+                        finally { self::$canary_context = null; }
+                    }
                     catch ( Throwable $error ) { $execution = new WP_Error( 'local_execution_outcome_unknown', 'Read the target again; do not repeat this change.' ); }
                     $result = is_wp_error( $execution )
                         ? $this->failed_result( $operation, $execution->get_error_code(), 'The confirmed change did not complete.' )
