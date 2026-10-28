@@ -7,7 +7,7 @@ final class YoRo_Preview_Download {
     const VERSION = '0.2.0';
     const RESOURCE = 'https://r2-api.yorohq.com/mcp/early-access';
     const FILENAME = 'yoro-preview-public-0.2.0.zip';
-    const SHA256 = '344465bb3807b6c40292e69a26891cb1c333e87663373c04f48b256799d940dd';
+    const SHA256 = '6ea3782b25fcb22bdaf8303914d808e347f4faa32cd5bdb6931d37bdb69b8b57';
 
     public static function current( $server_url ) {
         $directory = YORO_AI_CORE_PATH . 'assets/downloads';
