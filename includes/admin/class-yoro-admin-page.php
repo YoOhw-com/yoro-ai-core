@@ -4,6 +4,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+require_once __DIR__ . '/class-yoro-preview-download.php';
+
 class YoRo_Admin_Page {
 
 	const MENU_SLUG = 'yoro-ai-core';
@@ -161,6 +163,8 @@ class YoRo_Admin_Page {
         $onboarding = YoRo_AI_Settings::get_early_access_onboarding( $status );
         $can_manage = current_user_can( YoRo_Capabilities::MANAGE_CONNECTION );
         $url = YoRo_AI_Settings::get_early_access_server_url();
+        $download = YoRo_Preview_Download::current( $url );
+        $file_available = ! empty( $download );
         $user = wp_get_current_user();
         $grant_labels = [ 'not_granted' => __( 'Sign in from ChatGPT', 'yoro-ai-core' ), 'granted' => __( 'Connected', 'yoro-ai-core' ), 'revoked' => __( 'Disconnected', 'yoro-ai-core' ), 'unknown' => __( 'Not yet verified', 'yoro-ai-core' ) ];
         $grant_label = $grant_labels[ $onboarding['grant_status'] ?? 'unknown' ] ?? $grant_labels['unknown'];
@@ -195,14 +199,25 @@ class YoRo_Admin_Page {
                             <?php else : ?><p><?php esc_html_e( 'Ask your WordPress administrator to manage this connection.', 'yoro-ai-core' ); ?></p><?php endif; ?>
                             <?php self::render_transport_status( ! empty( $account['connected'] ) ); ?>
                         </div></li>
-                        <li><div><h3><?php esc_html_e( 'Copy the Early Access Server URL', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'In ChatGPT, add a custom MCP connection and paste this Server URL.', 'yoro-ai-core' ); ?></p>
+                        <li><div><h3><?php esc_html_e( 'Add YoRo Preview to ChatGPT', 'yoro-ai-core' ); ?></h3>
+                            <fieldset class="yoro-connection-methods"><legend><?php esc_html_e( 'Choose a connection method', 'yoro-ai-core' ); ?></legend>
+                                <label><input type="radio" name="yoro-connection-method" value="file" data-yoro-connection-method <?php checked( $file_available ); ?> <?php disabled( ! $file_available ); ?> /><?php esc_html_e( 'File', 'yoro-ai-core' ); ?></label>
+                                <label><input type="radio" name="yoro-connection-method" value="url" data-yoro-connection-method <?php checked( ! $file_available ); ?> /><?php esc_html_e( 'Server URL', 'yoro-ai-core' ); ?></label>
+                            </fieldset>
+                            <?php if ( ! $file_available ) : ?><p class="yoro-connection-status"><?php esc_html_e( 'Plugin download is not available for this connection yet. Use the Server URL option.', 'yoro-ai-core' ); ?></p><?php endif; ?>
+                            <div data-yoro-connection-panel="file" <?php if ( ! $file_available ) { echo 'hidden'; } ?>>
+                                <?php if ( $file_available ) : ?><p><?php esc_html_e( 'Download the plugin ZIP, then upload it in ChatGPT Plugins.', 'yoro-ai-core' ); ?></p><a class="button button-primary" href="<?php echo esc_url( $download['url'] ); ?>" download><?php esc_html_e( 'Download YoRo Preview', 'yoro-ai-core' ); ?></a><?php endif; ?>
+                            </div>
+                            <div data-yoro-connection-panel="url" <?php if ( $file_available ) { echo 'hidden'; } ?>>
+                            <p><?php esc_html_e( 'In ChatGPT, add a custom MCP connection and paste this Server URL.', 'yoro-ai-core' ); ?></p>
                             <div class="yoro-server-url" data-yoro-server-url><label class="screen-reader-text" for="yoro-server-url"><?php esc_html_e( 'Early Access Server URL', 'yoro-ai-core' ); ?></label><input id="yoro-server-url" type="text" readonly spellcheck="false" value="<?php echo esc_attr( $url ); ?>" placeholder="<?php echo esc_attr__( 'Configure your YoRo account connection first', 'yoro-ai-core' ); ?>" /><button type="button" class="button button-primary" data-yoro-copy-url <?php disabled( '' === $url ); ?>><?php esc_html_e( 'Copy URL', 'yoro-ai-core' ); ?></button></div>
                             <?php if ( '' === $url ) : ?><p class="yoro-connection-status"><?php esc_html_e( 'Configure the HTTPS YoRo API address to show your Server URL.', 'yoro-ai-core' ); ?></p>
                             <?php elseif ( true !== ( $onboarding['runtime_enabled'] ?? false ) ) : ?><p class="yoro-connection-status"><?php esc_html_e( 'Store access is not yet verified. Sign in from ChatGPT to check available access.', 'yoro-ai-core' ); ?></p><?php endif; ?>
+                            </div>
                         </div></li>
                         <li><div><h3><?php esc_html_e( 'Sign in from ChatGPT', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'Sign in to your YoRo account when ChatGPT opens the connection. YoRo automatically enables read access to eligible connected stores according to your account and WordPress permissions. No separate site grant is required.', 'yoro-ai-core' ); ?></p>
                             <p class="yoro-connection-status" data-yoro-grant-status data-unverified-label="<?php echo esc_attr__( 'ChatGPT connection: Not yet verified', 'yoro-ai-core' ); ?>" data-expires="<?php echo esc_attr( $onboarding['expires_at'] ?? '' ); ?>"><?php echo esc_html( sprintf( __( 'ChatGPT connection: %s', 'yoro-ai-core' ), $grant_label ) ); ?></p>
-                            <div class="yoro-notice yoro-notice-warning" data-yoro-feedback role="status" aria-live="polite" hidden></div>
+                            <div class="yoro-notice yoro-notice-warning" data-yoro-feedback data-expired-label="<?php echo esc_attr__( 'Connection status needs refreshing. This does not mean your ChatGPT sign-in has expired.', 'yoro-ai-core' ); ?>" role="status" aria-live="polite" hidden></div>
                             <?php if ( $can_manage ) : ?><a class="button" href="<?php echo esc_url( YoRo_AI_Settings::get_ai_api_account_url() ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Open YoRo account', 'yoro-ai-core' ); ?></a><?php endif; ?>
                             <p><?php esc_html_e( 'Disconnect ChatGPT access in YoRo without disconnecting WordPress. Disconnecting WordPress also stops ChatGPT reads.', 'yoro-ai-core' ); ?></p>
                         </div></li>

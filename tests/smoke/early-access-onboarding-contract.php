@@ -32,6 +32,10 @@ try {
     $assert( false !== strpos( $html, 'id="yoro-tab-early-access" role="tab" aria-selected="true"' ), 'Early Access must be default.' );
     $assert( false === strpos( $html, 'Kết nối ChatGPT' ) && false !== strpos( $html, 'assets/images/yoro-logo.png' ), 'The English plugin tab and supplied YoRo logo must be present.' );
     $assert( false === strpos( $html, 'data-yoro-refresh' ), 'Copying the public address must not require a Refresh connection button.' );
+    $assert( 1 === preg_match( '/value="file"[^>]*disabled/', $html ) && 1 === preg_match( '/value="url"[^>]*checked/', $html ), 'Missing public artifact must disable File and select the URL fallback.' );
+    $assert( false !== strpos( $html, 'data-yoro-connection-panel="file" hidden' ) && false !== strpos( $html, 'data-yoro-connection-panel="url" >' ), 'Only the selected connection method may be visible.' );
+    $assert( false === strpos( $html, 'Download YoRo Preview' ) && false !== strpos( $html, 'Plugin download is not available for this connection yet.' ), 'An unavailable public artifact cannot advertise a private ZIP or invented link.' );
+    $assert( false !== strpos( $html, 'This does not mean your ChatGPT sign-in has expired.' ) && false === strpos( $html, 'Connection status expired.' ), 'Snapshot freshness copy must not claim that OAuth sign-in expired.' );
     $assert( false !== strpos( $html, 'No separate site grant is required.' ) && false === strpos( $html, 'explicitly grant product read access' ), 'Account sign-in must replace the separate grant step.' );
     $assert( false === strpos( $html, 'yoro-chat-thread' ) && false === strpos( $html, 'yoro-ai-command' ), 'The connection page must not render native chat.' );
     $assert( false !== strpos( $html, 'value="https://fixture-api.test/mcp/early-access"' ) && false !== strpos( $html, 'Sign in from ChatGPT' ) && false === strpos( $html, 'not_granted' ), 'URL availability must be separate from OAuth site consent.' );

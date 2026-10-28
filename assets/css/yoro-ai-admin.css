@@ -6659,6 +6659,10 @@ body.toplevel_page_yoro-ai-core .yoro-chat-message-assistant :is(
 .yoro-onboarding button.button-primary:hover, .yoro-onboarding button.button-primary:focus { background: #1f2b17; border-color: #1f2b17; color: #fff; }
 .yoro-onboarding button.button:disabled { background: #edf0e7 !important; border-color: #d5ddcc !important; color: #6c7863 !important; cursor: not-allowed; text-shadow: none; }
 .yoro-server-url { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.yoro-connection-methods { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 12px 0; padding: 0; border: 0; }
+.yoro-connection-methods legend { margin-bottom: 8px; font-weight: 600; }
+.yoro-connection-methods label { display: inline-flex; align-items: center; gap: 6px; }
+.yoro-onboarding [data-yoro-connection-panel][hidden] { display: none; }
 .yoro-onboarding input[type="url"], .yoro-server-url input[type="text"] { min-height: 44px; border: 1px solid #c9d5bf; border-radius: 14px; padding: 10px 14px; background: #f2f6ed; color: #25301e; font: inherit; font-size: 14px; line-height: 1.5; box-shadow: none; }
 .yoro-onboarding input[type="url"]:focus, .yoro-server-url input[type="text"]:focus { border-color: #71875f; box-shadow: none; }
 .yoro-onboarding input::placeholder { color: #6c7863; opacity: 1; }

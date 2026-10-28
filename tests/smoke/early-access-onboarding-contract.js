@@ -18,13 +18,15 @@ class Element {
     let now = Date.now(); let copied = ''; let timer; let clipboardAvailable = true; let copyReset; let pendingWrites;
     const tabs = ['chatgpt', 'early-access'].map(name => new Element({ 'aria-controls': `panel-${name}` }));
     const panels = Object.fromEntries(tabs.map(tab => [`#${tab.getAttribute('aria-controls')}`, new Element()]));
+    const methods = ['file', 'url'].map(value => { const element = new Element(); element.value = value; element.checked = value === 'file'; return element; });
+    const methodPanels = ['file', 'url'].map(value => { const element = new Element(); element.dataset = { yoroConnectionPanel: value }; return element; });
     const grant = new Element(); grant.textContent = 'ChatGPT connection: Connected'; grant.dataset = { expires: new Date(now + 1000).toISOString() };
     const feedback = new Element(); feedback.hidden = true; const copy = new Element();
     const notice = new Element(); const dismiss = new Element(); dismiss.hidden = true; dismiss.notice = notice;
     copy.textContent = 'Copy URL';
     const input = new Element(); input.value = 'https://fixture-api.test/mcp/early-access';
     const root = {
-        querySelectorAll: selector => ({ '[data-yoro-tab]': tabs, '[data-yoro-notice-dismiss]': [dismiss] })[selector] || [],
+        querySelectorAll: selector => ({ '[data-yoro-tab]': tabs, '[data-yoro-notice-dismiss]': [dismiss], '[data-yoro-connection-method]': methods, '[data-yoro-connection-panel]': methodPanels })[selector] || [],
         querySelector: selector => selector === '[data-yoro-tab][aria-selected="true"]' ? tabs.find(tab => tab.attrs['aria-selected'] === 'true') : ({ ...panels, '[data-yoro-feedback]': feedback, '[data-yoro-copy-url]': copy, '#yoro-server-url': input, '[data-yoro-grant-status]': grant })[selector]
     };
     const context = { document: { querySelector: () => root }, navigator: { clipboard: { writeText: async value => {
@@ -36,6 +38,11 @@ class Element {
         fetch: async () => { throw new Error('The public URL UI must not require a network refresh.'); },
         Date: class extends Date { static now() { return now; } }, Number };
     vm.runInNewContext(source, context);
+    assert.equal(methodPanels[0].hidden, false); assert.equal(methodPanels[1].hidden, true);
+    methods[1].checked = true; methods[1].events.change();
+    assert.equal(methods[0].checked, false); assert.equal(methodPanels[0].hidden, true); assert.equal(methodPanels[1].hidden, false);
+    methods[0].checked = true; methods[0].events.change();
+    assert.equal(methods[1].checked, false); assert.equal(methodPanels[0].hidden, false); assert.equal(methodPanels[1].hidden, true);
     let prevented = false;
     tabs[1].events.keydown({ key: 'ArrowLeft', preventDefault() { prevented = true; } });
     assert.equal(prevented, true); assert.equal(tabs[0].attrs['aria-selected'], 'true'); assert.equal(tabs[0].focused, true); assert.equal(panels['#panel-early-access'].hidden, true);
@@ -46,7 +53,9 @@ class Element {
     assert.equal(feedback.textContent, ''); assert.equal(feedback.hidden, true);
     copyReset(); assert.equal(copy.textContent, 'Copy URL');
     now += 2000; timer(); assert.equal(input.value, 'https://fixture-api.test/mcp/early-access'); assert.equal(copy.disabled, false); assert.equal(grant.textContent, 'ChatGPT connection: Not yet verified');
-    assert.equal(feedback.hidden, false); assert.match(feedback.textContent, /Connection status expired/);
+    assert.equal(feedback.hidden, false); assert.match(feedback.textContent, /Connection status needs refreshing/);
+    assert.match(feedback.textContent, /does not mean your ChatGPT sign-in has expired/);
+    assert.equal(methodPanels[0].hidden, false); assert.equal(methodPanels[1].hidden, true);
     const expiryWarning = feedback.textContent;
     copied = ''; await copy.events.click(); assert.equal(copied, input.value);
     assert.equal(feedback.textContent, expiryWarning);
@@ -67,5 +76,11 @@ class Element {
     pendingWrites[0].resolve(); await staleClick;
     assert.equal(copy.textContent, 'Select and copy'); assert.equal(copyReset, undefined);
     input.value = ''; copied = ''; await copy.events.click(); assert.equal(copied, '');
+    methods[0].disabled = true; methods[0].checked = true; methods[1].checked = false;
+    vm.runInNewContext(source, context);
+    assert.equal(methods[0].checked, false); assert.equal(methods[1].checked, true);
+    assert.equal(methodPanels[0].hidden, true); assert.equal(methodPanels[1].hidden, false);
+    methods[0].checked = true; methods[0].events.change();
+    assert.equal(methodPanels[0].hidden, true); assert.equal(methodPanels[1].hidden, false);
     console.log('YoRo Early Access keyboard/public URL copy/status expiry JS contract passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
