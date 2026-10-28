@@ -52,6 +52,7 @@ if (($argv[1] ?? '') === 'worker') {
     $operation=['action'=>$action,'params'=>$params,'envelope_id'=>'envelope_'.str_repeat('b',64),'workflow_id'=>'fixture-workflow','operation_id'=>'operation_1','idempotency_key'=>'fixture-idempotency',
         'preview_hash'=>str_repeat('c',64),'authorization'=>['execution_permit'=>'fixture-permit'],
         'extensions'=>['yoro.mcp_early_access_commerce_write'=>[...$authority,'source_operation_id'=>'envelope_'.str_repeat('d',64),'source_result_hash'=>str_repeat('e',64)]]];
+    $operation['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_preview']=['version'=>1,'task_id'=>'YR-0196','run_id'=>$run,'mode'=>'capture','expires_at'=>$expiry,'params_hash'=>YoRo_Early_Access_Product_Read::params_hash($params)];
     $hash=YoRo_YR0196_Canary_Context::operation_hash($operation);
     $permit=['id'=>str_repeat('f',64),'operation_hash'=>$hash,'target_ids'=>[1],'mode'=>'capture','mail'=>$mail];
     $config=['version'=>1,'enabled'=>true,'task_id'=>'YR-0196','run_id'=>$run,'expires_at'=>$expiry,'authority'=>$authority,'permits'=>[$permit]];
@@ -66,6 +67,7 @@ if (($argv[1] ?? '') === 'worker') {
     elseif($mutation==='target'){$config['permits'][0]['target_ids']=[2];}
     elseif($mutation==='content'){$config['permits'][0]['mail']['body_hash']=str_repeat('0',64);}
     elseif($mutation==='sender'){$config['permits'][0]['mail']['from_address']='foreign@example.invalid';}
+    elseif($mutation==='unbound_runner'){unset($operation['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_canary']);}
     elseif($mutation==='operation'){$operation['operation_id']='foreign';}
     elseif($mutation==='source'){$operation['extensions']['yoro.mcp_early_access_commerce_write']['source_result_hash']=str_repeat('0',64);}
     elseif($mutation==='preview'){$operation['preview_hash']=str_repeat('0',64);}
@@ -83,7 +85,7 @@ if (($argv[1] ?? '') === 'worker') {
     } catch(Throwable $error){$denied=true;if(getenv("YR0196_DEBUG")){fwrite(STDERR,$error->getMessage()."\n".$error->getTraceAsString()."\n");}}
     finally{$slot->setValue(null,null);}
     echo json_encode(['denied'=>$denied,'outcome'=>is_array($result)?$result['data']['outcome']:null,'mail_calls'=>count($GLOBALS['captured']),
-        'history'=>array_column(YoRo_Order_Email::context(1)['history'],'outcome'),'context_cleared'=>$slot->getValue()===null]),"\n";
+        'private_ready'=>isset(YoRo_Order_Email::manifest()['private_canary']),'history'=>array_column(YoRo_Order_Email::context(1)['history'],'outcome'),'context_cleared'=>$slot->getValue()===null]),"\n";
     exit;
 }
 $root=sys_get_temp_dir().'/yr0196-store-'.bin2hex(random_bytes(8));mkdir($root,0700);$path=$root.'/options.sqlite';
@@ -94,12 +96,12 @@ $start=static function($mode,$mutation='')use($path,$expiry){$pipes=[];$process=
 $finish=static function($job){[$process,$pipes]=$job;$stdout=stream_get_contents($pipes[1]);$stderr=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$code=proc_close($process);if($code!==0&&$code!==77){throw new RuntimeException($stderr.$stdout);}return [$code,json_decode(trim($stdout),true)];};
 $run=static fn($mode,$mutation='')=>$finish($start($mode,$mutation));
 $clear=static fn()=>$pdo->exec('DELETE FROM options');
-foreach(['profile','resource','binding_version','oauth_client_id','grant_id','grant_version','token_id','user_id','site_id','wordpress_identity_id','connection_id','installation_uuid','site_key_id','site_key_hash','manifest_id','manifest_revision','manifest_hash','actor_role','actor_capabilities_hash','resource_scopes_hash','private_version','disabled','expired','ambiguous','owner_marker','target','content','sender','operation','source','preview','fence','no_runner']as$mutation){
+foreach(['profile','resource','binding_version','oauth_client_id','grant_id','grant_version','token_id','user_id','site_id','wordpress_identity_id','connection_id','installation_uuid','site_key_id','site_key_hash','manifest_id','manifest_revision','manifest_hash','actor_role','actor_capabilities_hash','resource_scopes_hash','private_version','disabled','expired','ambiguous','owner_marker','target','content','sender','operation','source','preview','fence','no_runner','unbound_runner']as$mutation){
     [$code,$r]=$run('authored',$mutation);$assert($r['denied']&&$r['mail_calls']===0&&$r['history']===[]&&$r['context_cleared'],'Denial before effect: '.$mutation);
     $assert((int)$pdo->query('SELECT COUNT(*) FROM options')->fetchColumn()===0,'Denial consumes no capture: '.$mutation);
 }
 foreach(['authored','native']as$mode){
-    $clear();[$code,$r]=$run($mode);$assert(!$r['denied']&&$r['outcome']==='captured_not_delivered'&&$r['mail_calls']===0&&$r['history']===[],'Both lanes capture truthfully without transport: '.$mode);
+    $clear();[$code,$r]=$run($mode);$assert(!$r['denied']&&$r['private_ready']&&$r['outcome']==='captured_not_delivered'&&$r['mail_calls']===0&&$r['history']===[],'Both lanes capture truthfully without transport: '.$mode);
     [$code,$r]=$run($mode);$assert($r['denied']&&$r['mail_calls']===0&&(int)$pdo->query('SELECT COUNT(*) FROM options')->fetchColumn()===1,'Restart cannot recapture or send: '.$mode);
 }
 $clear();$a=$start('authored');$b=$start('authored');[, $one]=$finish($a);[, $two]=$finish($b);

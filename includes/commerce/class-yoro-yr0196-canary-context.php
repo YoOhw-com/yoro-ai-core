@@ -97,6 +97,8 @@ final class YoRo_YR0196_Canary_Context
         }
         if (self::targets($operation) !== ($permit['target_ids'] ?? null)) { self::deny(); }
         $mail = in_array($operation['action'], ['orders.send_authored_email','orders.send_native_email'], true);
+        if ($mail && ($facts['yr0196_preview'] ?? null) !== ['version'=>1,'task_id'=>'YR-0196','run_id'=>$this->config['run_id'],'mode'=>'capture',
+            'expires_at'=>$this->config['expires_at'],'params_hash'=>YoRo_Early_Access_Product_Read::params_hash($operation['params'])]) { self::deny(); }
         if (($permit['mode'] === 'capture') !== $mail || ($permit['mode'] === 'batch') !== ($operation['action'] === 'orders.batch_update_status')) { self::deny(); }
         return $permit;
     }

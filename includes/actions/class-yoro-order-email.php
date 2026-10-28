@@ -11,8 +11,15 @@ final class YoRo_Order_Email
     public const ManifestExtension = 'yoro.early_access_order_email';
     public static function manifest(): array
     {
-        return ['version' => 3, 'context_profiles' => ['email_facts_v1','customer_service_v1'], 'actions' => [...self::Actions, ...self::WriteActions], 'max_targets' => 1,
+        $manifest = ['version' => 3, 'context_profiles' => ['email_facts_v1','customer_service_v1'], 'actions' => [...self::Actions, ...self::WriteActions], 'max_targets' => 1,
             'requires_source_read' => true, 'requires_confirmation' => true, 'result_version' => 1, 'recipient' => 'current_order_billing', 'composer' => 'yoro_bounded_email'];
+        $private = defined('YORO_YR0196_CANARY') && is_array(YORO_YR0196_CANARY) ? YORO_YR0196_CANARY : [];
+        if (($private['enabled'] ?? null) === true && ($private['version'] ?? null) === 1 && ($private['task_id'] ?? null) === 'YR-0196'
+            && is_string($private['run_id'] ?? null) && preg_match('/\A[a-f0-9]{32}\z/D', $private['run_id'])
+            && is_int($private['expires_at'] ?? null) && $private['expires_at'] > time() && $private['expires_at'] <= time()+3600) {
+            $manifest['private_canary'] = ['version'=>1,'task_id'=>'YR-0196','run_id'=>$private['run_id'],'expires_at'=>$private['expires_at']];
+        }
+        return $manifest;
     }
 
     public static function object(array $properties, ?array $required = null): array

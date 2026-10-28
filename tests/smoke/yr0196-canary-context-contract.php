@@ -56,7 +56,7 @@ $acquire=new ReflectionMethod(YoRo_Connector_Runtime::class,'acquire_lock');$rel
 try {
     wp_set_current_user((int)get_users(['role'=>'administrator','number'=>1,'fields'=>'ID'])[0]);
     YoRo_WordPress_Actor::record_access(['assigned'=>true,'status'=>'active','role'=>'store_admin','permissions'=>['yoro_view_store_data','yoro_execute_actions']]);
-    $subject=YoRo_WordPress_Actor::current_payload()['subject'];$installation=YoRo_AI_Settings::get_installation_uuid();$expires=gmdate('c',time()+600);$run=bin2hex(random_bytes(16));
+    $subject=YoRo_WordPress_Actor::current_payload()['subject'];$installation=YoRo_AI_Settings::get_installation_uuid();$expires=gmdate('c',time()+300);$run=bin2hex(random_bytes(16));
     $encrypt=new ReflectionMethod(YoRo_AI_Settings::class,'encrypt_ai_api_site_key');$key='yr0196-disposable-key';
     update_option(YoRo_AI_Settings::OPTION_AI_API_URL,'https://r2-api.yorohq.com/api/v1',false);
     update_option(YoRo_AI_Settings::OPTION_AI_API_SITE_KEY,$encrypt->invoke(null,$key),false);
@@ -106,7 +106,9 @@ try {
         $prepared=YoRo_Order_Email::prepare($params,$action);$assert(!is_wp_error($prepared),'Both final renderings pass existing content guards.');
         $mail=['recipient'=>$source['recipient'],'subject_hash'=>hash('sha256',$params['subject']??$params['changes']['subject']),'body_hash'=>hash('sha256',$index===1?$source['html_body']:$prepared['authored']['html_body']),
             'from_address'=>$source['settings']['from_address'],'from_name_hash'=>hash('sha256',$source['settings']['from_name']),'content_type'=>'text/html'];
-        $mailOperations[]=$bind($make($action,$params),'capture',[$orders[$index]],$mail);
+        $mailOperation=$make($action,$params);
+        $mailOperation['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_preview']=['version'=>1,'task_id'=>'YR-0196','run_id'=>$run,'mode'=>'capture','expires_at'=>$deadline,'params_hash'=>YoRo_Early_Access_Product_Read::params_hash($params)];
+        $mailOperations[]=$bind($mailOperation,'capture',[$orders[$index]],$mail);
     }
     $items=[];foreach(array_slice($orders,2,3)as$id){$items[]=['order_id'=>$id,'expected_version'=>YoRo_Order_Presenter::order_version(wc_get_order($id)),'status'=>'pending'];}
     $batch=$bind($make(YoRo_Order_Batch::Action,['items'=>$items]),'batch',array_column($items,'order_id'));
@@ -114,6 +116,7 @@ try {
     $deniedId=$orders[5];$deniedParams=['order_ids'=>[$deniedId],'status'=>'pending','expected_versions'=>[['order_id'=>$deniedId,'expected_version'=>YoRo_Order_Presenter::order_version(wc_get_order($deniedId))]]];
     $deniedOperation=$make('orders.update_status',$deniedParams);
     define('YORO_YR0196_CANARY',['version'=>1,'enabled'=>true,'task_id'=>'YR-0196','run_id'=>$run,'expires_at'=>$deadline,'authority'=>$authority,'permits'=>$permits]);
+    $assert((YoRo_Order_Email::manifest()['private_canary']??null)===['version'=>1,'task_id'=>'YR-0196','run_id'=>$run,'expires_at'=>$deadline],'Only an enabled private v1 task publishes its exact readiness marker.');
     $client=new class extends YoRo_Connector_Client {
         public array $operation=[];public array $results=[];
         public function early_access_has_budget($requests=4,$continuation=false){return true;}
