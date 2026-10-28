@@ -30,7 +30,7 @@ if (($argv[1] ?? '') === 'mysql-worker') {
     }
     $GLOBALS['wpdb']=new YoRo_Yr0196_Disposable_Mysqli($input);
     require dirname(__DIR__,2).'/includes/commerce/class-yoro-yr0196-canary-context.php';
-    try{(new ReflectionMethod(YoRo_YR0196_Canary_Context::class,'consume'))->invoke(null,['id'=>$input['permit_id']],['fixture'=>'process-durable-proof']);echo 'stored';}
+    try{(new ReflectionMethod(YoRo_YR0196_Canary_Context::class,'consume'))->invoke(null,['id'=>$input['permit_id'],'approval_id'=>$input['approval_id']],['run_id'=>$input['run_id'],'approval_id'=>$input['approval_id'],'fixture'=>'process-durable-proof']);echo 'stored';}
     catch(Throwable $error){echo 'denied';}
     exit;
 }
@@ -93,9 +93,10 @@ try {
     };
     $permits=[];$mailOperations=[];$deadline=time()+600;
     $bind=static function(array $op,string $mode,array $targets,?array $mail=null)use(&$permits,&$permitIds,$run,$deadline){
-        $hash=YoRo_YR0196_Canary_Context::operation_hash($op);$id=hash('sha256',$hash.'|'.$run);$permit=['id'=>$id,'operation_hash'=>$hash,'target_ids'=>$targets,'mode'=>$mode];if($mail!==null){$permit['mail']=$mail;}
-        $permits[]=$permit;$permitIds[]=$id;
-        $op['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_canary']=['version'=>1,'task_id'=>'YR-0196','run_id'=>$run,'permit_id'=>$id,'operation_hash'=>$hash,'mode'=>$mode,'expires_at'=>$deadline,'permit_hash'=>YoRo_Early_Access_Product_Read::params_hash($permit),
+        $hash=YoRo_YR0196_Canary_Context::approval_hash($op,$run);$approvalId=YoRo_YR0196_Canary_Context::approval_id($op,$run);$id=hash('sha256',$hash.'|'.$run);$permit=['id'=>$id,'approval_id'=>$approvalId,'approval_hash'=>$hash,'target_ids'=>$targets,'mode'=>$mode];if($mail!==null){$permit['mail']=$mail;}
+        $permits[]=$permit;$permitIds[]=YoRo_YR0196_Canary_Context::approval_key($run,$approvalId);
+        $op['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_approval']=['version'=>1,'id'=>$approvalId,'hash'=>$hash];
+        $op['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_canary']=['version'=>1,'task_id'=>'YR-0196','run_id'=>$run,'permit_id'=>$id,'approval_id'=>$approvalId,'approval_hash'=>$hash,'mode'=>$mode,'expires_at'=>$deadline,'permit_hash'=>YoRo_Early_Access_Product_Read::params_hash($permit),
             'envelope_id'=>$op['envelope_id'],'params_hash'=>YoRo_Early_Access_Product_Read::params_hash($op['params'])];
         return $op;
     };
@@ -112,7 +113,7 @@ try {
     }
     $items=[];foreach(array_slice($orders,2,3)as$id){$items[]=['order_id'=>$id,'expected_version'=>YoRo_Order_Presenter::order_version(wc_get_order($id)),'status'=>'pending'];}
     $batch=$bind($make(YoRo_Order_Batch::Action,['items'=>$items]),'batch',array_column($items,'order_id'));
-    foreach($items as$index=>$item){$child=YoRo_Order_Batch::child_operation($batch,$index);$hash=YoRo_YR0196_Canary_Context::operation_hash($child);$id=hash('sha256',$hash.'|'.$run);$permitIds[]=$id;$permits[]=['id'=>$id,'operation_hash'=>$hash,'target_ids'=>[$item['order_id']],'mode'=>$index===1?'fault':'observe'];}
+    foreach($items as$index=>$item){$child=YoRo_Order_Batch::child_operation($batch,$index);$hash=YoRo_YR0196_Canary_Context::approval_hash($child,$run);$approvalId=YoRo_YR0196_Canary_Context::approval_id($child,$run);$id=hash('sha256',$hash.'|'.$run);$permitIds[]=YoRo_YR0196_Canary_Context::approval_key($run,$approvalId);$permits[]=['id'=>$id,'approval_id'=>$approvalId,'approval_hash'=>$hash,'target_ids'=>[$item['order_id']],'mode'=>$index===1?'fault':'observe'];}
     $deniedId=$orders[5];$deniedParams=['order_ids'=>[$deniedId],'status'=>'pending','expected_versions'=>[['order_id'=>$deniedId,'expected_version'=>YoRo_Order_Presenter::order_version(wc_get_order($deniedId))]]];
     $deniedOperation=$make('orders.update_status',$deniedParams);
     define('YORO_YR0196_CANARY',['version'=>1,'enabled'=>true,'task_id'=>'YR-0196','run_id'=>$run,'expires_at'=>$deadline,'authority'=>$authority,'permits'=>$permits]);
@@ -132,43 +133,53 @@ try {
         $assert(!is_wp_error($r)&&($last['result']['data']['outcome']??null)==='captured_not_delivered','Actual runner stores truthful private capture: '.wp_json_encode($last));
         $captureId=$last['result']['data']['record_id'];$row=$wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",'yoro_yr0196_permit_'.substr($captureId,8)));
         $saved=json_decode($row,true);$assert(($saved['mail']['recipient']??null)==='buyer@example.invalid'&&$saved['operation_hash']===YoRo_YR0196_Canary_Context::operation_hash($op),'Native database contains exact private capture and consumed permit together.');
-        $runtime->run_early_access_write_once();$assert(end($client->results)===$last,'Completed journal replays without recapture.');
+        $publications=count($client->results);$replayed=$runtime->run_early_access_write_once();
+        $unchanged=$wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",'yoro_yr0196_permit_'.substr($captureId,8)));
+        $assert(!is_wp_error($replayed)&&count($client->results)===$publications+1&&wp_json_encode(end($client->results))===wp_json_encode($last)&&$unchanged===$row,'Completed journal republishes the exact complete wire result and never recaptures.');
+        $reissued=$op;$reissued['authorization']['execution_permit']='permit_'.hash('sha256',$run.'different-issuance');
+        $assert(YoRo_YR0196_Canary_Context::approval_hash($reissued,$run)===YoRo_YR0196_Canary_Context::approval_hash($op,$run)&&YoRo_YR0196_Canary_Context::operation_hash($reissued)!==YoRo_YR0196_Canary_Context::operation_hash($op),'Stable approval excludes issuance bytes while the complete receipt hash retains them.');
+        $client->operation=$reissued;$publications=count($client->results);$conflict=$runtime->run_early_access_write_once();
+        $assert(is_wp_error($conflict)&&$conflict->get_error_code()==='yoro_r2_journal_conflict'&&count($client->results)===$publications,'Changing issuance bytes never bypasses the full ordinary journal binding or repeats an effect.');
+        $expired=$op;$expired['authorization']['permit_expires_at']=gmdate('c',time()-60);$client->operation=$expired;
+        $assert(is_wp_error($runtime->run_early_access_write_once())&&count($client->results)===$publications,'The ordinary runtime still rejects expired authorization before private execution.');
+
     }
     $client->operation=$batch;$journalOperations[]=$batch;foreach($items as$i=>$item){$journalOperations[]=YoRo_Order_Batch::child_operation($batch,$i);}
     $runtime->run_early_access_write_once();$last=end($client->results);$rows=$last['result']['data']['items']??[];
     $assert(array_column($rows,'status')===['updated','unknown','not_attempted'],'A genuine second child effect interrupts before completion, preserving partial results: '.wp_json_encode($last));
     $assert(wc_get_order($items[0]['order_id'])->get_status()==='pending'&&wc_get_order($items[1]['order_id'])->get_status()==='pending'&&wc_get_order($items[2]['order_id'])->get_status()==='on-hold','Native effects actually persisted before the fault; later child stayed untouched.');
-    $runtime->run_early_access_write_once();$assert(end($client->results)===$last,'Unknown child and parent journal replay never repeats the effect.');
+    $publications=count($client->results);$replayed=$runtime->run_early_access_write_once();$assert(!is_wp_error($replayed)&&count($client->results)===$publications+1&&wp_json_encode(end($client->results))===wp_json_encode($last),'Unknown child and parent journal republishes the exact complete wire result without another effect.');
     $client->operation=$deniedOperation;$journalOperations[]=$deniedOperation;$runtime->run_early_access_write_once();
     $assert((end($client->results)['error']['code']??null)==='local_execution_outcome_unknown'&&wc_get_order($deniedId)->get_status()==='on-hold','Owned marker without a permit cannot fall through to the mutator.');
     $slot=new ReflectionProperty(YoRo_Connector_Runtime::class,'canary_context');$assert($slot->getValue()===null,'Runner always clears private context after success and exceptions.');
     // Exercise the actual MySQL transaction guard independently of journals (which must never be reset).
     $context=YoRo_YR0196_Canary_Context::admit($mailOperations[0],get_current_user_id(),static fn()=>true);$context->before($mailOperations[0]);
-    $capture=new ReflectionMethod(YoRo_YR0196_Canary_Context::class,'consume');$fresh=['id'=>hash('sha256',$run.'outer-transaction')];$permitIds[]=$fresh['id'];
+    $capture=new ReflectionMethod(YoRo_YR0196_Canary_Context::class,'consume');$fresh=['id'=>hash('sha256',$run.'outer-transaction'),'approval_id'=>'approval_'.hash('sha256',$run.'outer-transaction')];$outerKey=YoRo_YR0196_Canary_Context::approval_key($run,$fresh['approval_id']);$permitIds[]=$outerKey;
     $wpdb->query('START TRANSACTION');$outerDenied=false;$callerKey='yoro_yr0196_caller_'.$run;
     $wpdb->query($wpdb->prepare("INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')",$callerKey,'uncommitted')); 
-    try{$capture->invoke(null,$fresh,['fixture'=>'outer-transaction']);}catch(Throwable $error){$outerDenied=true;}finally{$wpdb->query('ROLLBACK');}
+    try{$capture->invoke(null,$fresh,['run_id'=>$run,'approval_id'=>$fresh['approval_id'],'fixture'=>'outer-transaction']);}catch(Throwable $error){$outerDenied=true;}finally{$wpdb->query('ROLLBACK');}
     $assert($wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",$callerKey))===null,'The guard never committed unrelated caller transaction data.');
-    $assert($outerDenied&&$wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",'yoro_yr0196_permit_'.$fresh['id']))===null,'Native MySQL outer transaction is rejected without inserting a permit or committing caller data.');
+    $assert($outerDenied&&$wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s",'yoro_yr0196_permit_'.$outerKey))===null,'Native MySQL outer transaction is rejected without inserting a permit or committing caller data.');
 
     $workerPath=dirname((new ReflectionClass(YoRo_Order_Email::class))->getFileName(),3).'/tests/smoke/yr0196-canary-context-contract.php';
-    $startWorker=static function(string $id,string $mode='normal')use($wpdb,$workerPath){
+    $GLOBALS['yr0196_native_run']=$run;
+    $startWorker=static function(string $id,string $mode='normal',?string $approvalId=null)use($wpdb,$workerPath){
         $pipes=[];$process=proc_open([PHP_BINARY,$workerPath,'mysql-worker'],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);
         if(!is_resource($process)){throw new RuntimeException('Disposable process execution is unavailable.');}
-        fwrite($pipes[0],json_encode(['host'=>DB_HOST,'user'=>DB_USER,'password'=>DB_PASSWORD,'database'=>DB_NAME,'table'=>$wpdb->options,'permit_id'=>$id,'mode'=>$mode],JSON_THROW_ON_ERROR));fclose($pipes[0]);
+        fwrite($pipes[0],json_encode(['host'=>DB_HOST,'user'=>DB_USER,'password'=>DB_PASSWORD,'database'=>DB_NAME,'table'=>$wpdb->options,'permit_id'=>$id,'approval_id'=>$approvalId??'approval_'.$id,'mode'=>$mode,'run_id'=>$GLOBALS['yr0196_native_run']],JSON_THROW_ON_ERROR));fclose($pipes[0]);
         return [$process,$pipes];
     };
     $finishWorker=static function(array $job){[$process,$pipes]=$job;$output=stream_get_contents($pipes[1]);$errors=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$code=proc_close($process);if($code!==0&&$code!==77){throw new RuntimeException('Disposable MySQL worker failed: '.$code.' '.$errors);}return [$code,$output];};
-    $contended=hash('sha256',$run.'native-contention');$permitIds[]=$contended;
+    $contended=hash('sha256',$run.'native-contention');$permitIds[]=YoRo_YR0196_Canary_Context::approval_key($run,'approval_'.$contended);
     $first=$startWorker($contended);$second=$startWorker($contended);[, $one]=$finishWorker($first);[, $two]=$finishWorker($second);
     $assert(($one==='stored'&&$two==='denied')||($one==='denied'&&$two==='stored'),'Native MySQL connections contend for exactly one durable insert.');
-    [, $again]=$finishWorker($startWorker($contended));$assert($again==='denied','New MySQL process cannot reuse consumed permission.');
-    $interrupted=hash('sha256',$run.'native-crash');$permitIds[]=$interrupted;
+    [, $again]=$finishWorker($startWorker(hash('sha256',$contended.'alias'),'normal','approval_'.$contended));$assert($again==='denied','New MySQL process and changed permit ID cannot reset the same run/approval budget.');
+    $interrupted=hash('sha256',$run.'native-crash');$permitIds[]=YoRo_YR0196_Canary_Context::approval_key($run,'approval_'.$interrupted);
     [$crashCode]=$finishWorker($startWorker($interrupted,'crash'));$assert($crashCode===77,'Native process exits immediately after committed insert, before source readback.');
     [, $again]=$finishWorker($startWorker($interrupted));$assert($again==='denied','Native committed consumption survives process crash and restart.');
 
     $assert($sentinel->attempts===0&&false===has_filter('pre_wp_mail'),'Neither authored nor native capture used transport or a pre-mail interception hook.');
-    echo 'YR-0196 native MySQL/WP/Woo runner passed ('.$checks.' assertions, zero mail/network).'."\n";
+    echo 'YR-0196 native MySQL/WP/Woo runner passed ('.$checks.' assertions, zero mail/external HTTP).'."\n";
 } finally {
     if($lock!==null){$release->invoke(null,$lock);}remove_filter('pre_http_request',$block);
     add_filter('pre_wp_mail','__return_true');foreach($orders as$id){$order=wc_get_order($id);if($order){$order->delete(true);}}remove_filter('pre_wp_mail','__return_true');

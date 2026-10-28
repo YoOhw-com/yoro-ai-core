@@ -50,16 +50,18 @@ if (($argv[1] ?? '') === 'worker') {
         'body_hash'=>hash('sha256',$action==='orders.send_native_email'?$source['html_body']:$prepared['authored']['html_body']),
         'from_address'=>$source['settings']['from_address'],'from_name_hash'=>hash('sha256',$source['settings']['from_name']),'content_type'=>'text/html'];
     $operation=['action'=>$action,'params'=>$params,'envelope_id'=>'envelope_'.str_repeat('b',64),'workflow_id'=>'fixture-workflow','operation_id'=>'operation_1','idempotency_key'=>'fixture-idempotency',
-        'preview_hash'=>str_repeat('c',64),'authorization'=>['execution_permit'=>'fixture-permit'],
+        'plan_hash'=>str_repeat('1',64),'preview_hash'=>str_repeat('c',64),'authorization'=>['execution_permit'=>'fixture-permit'],
         'extensions'=>['yoro.mcp_early_access_commerce_write'=>[...$authority,'source_operation_id'=>'envelope_'.str_repeat('d',64),'source_result_hash'=>str_repeat('e',64)]]];
     $operation['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_preview']=['version'=>1,'task_id'=>'YR-0196','run_id'=>$run,'mode'=>'capture','expires_at'=>$expiry,'params_hash'=>YoRo_Early_Access_Product_Read::params_hash($params)];
-    $hash=YoRo_YR0196_Canary_Context::operation_hash($operation);
-    $permit=['id'=>str_repeat('f',64),'operation_hash'=>$hash,'target_ids'=>[1],'mode'=>'capture','mail'=>$mail];
+    $hash=YoRo_YR0196_Canary_Context::approval_hash($operation,$run);$approvalId=YoRo_YR0196_Canary_Context::approval_id($operation,$run);
+    $operation['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_approval']=['version'=>1,'id'=>$approvalId,'hash'=>$hash];
+    $permit=['id'=>str_repeat('f',64),'approval_id'=>$approvalId,'approval_hash'=>$hash,'target_ids'=>[1],'mode'=>'capture','mail'=>$mail];
     $config=['version'=>1,'enabled'=>true,'task_id'=>'YR-0196','run_id'=>$run,'expires_at'=>$expiry,'authority'=>$authority,'permits'=>[$permit]];
-    $binding=['version'=>1,'task_id'=>'YR-0196','run_id'=>$run,'permit_id'=>$permit['id'],'operation_hash'=>$hash,'mode'=>'capture','expires_at'=>$expiry,'permit_hash'=>YoRo_Early_Access_Product_Read::params_hash($permit),
+    $binding=['version'=>1,'task_id'=>'YR-0196','run_id'=>$run,'permit_id'=>$permit['id'],'approval_id'=>$approvalId,'approval_hash'=>$hash,'mode'=>'capture','expires_at'=>$expiry,'permit_hash'=>YoRo_Early_Access_Product_Read::params_hash($permit),
         'envelope_id'=>$operation['envelope_id'],'params_hash'=>YoRo_Early_Access_Product_Read::params_hash($params)];
     $operation['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_canary']=$binding;
     if($mutation==='private_version'){$config['version']=2;}
+    elseif($mutation==='permit_alias'){$config['permits'][0]['id']=str_repeat('e',64);$operation['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_canary']['permit_id']=str_repeat('e',64);$operation['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_canary']['permit_hash']=YoRo_Early_Access_Product_Read::params_hash($config['permits'][0]);}
     elseif($mutation==='disabled'){$config['enabled']=false;}
     elseif($mutation==='expired'){$config['expires_at']=time()-1;}
     elseif($mutation==='ambiguous'){$config['permits'][]=$permit;}
@@ -102,7 +104,7 @@ foreach(['profile','resource','binding_version','oauth_client_id','grant_id','gr
 }
 foreach(['authored','native']as$mode){
     $clear();[$code,$r]=$run($mode);$assert(!$r['denied']&&$r['private_ready']&&$r['outcome']==='captured_not_delivered'&&$r['mail_calls']===0&&$r['history']===[],'Both lanes capture truthfully without transport: '.$mode);
-    [$code,$r]=$run($mode);$assert($r['denied']&&$r['mail_calls']===0&&(int)$pdo->query('SELECT COUNT(*) FROM options')->fetchColumn()===1,'Restart cannot recapture or send: '.$mode);
+    [$code,$r]=$run($mode,'permit_alias');$assert($r['denied']&&$r['mail_calls']===0&&(int)$pdo->query('SELECT COUNT(*) FROM options')->fetchColumn()===1,'Restart cannot recapture or send: '.$mode);
 }
 $clear();$a=$start('authored');$b=$start('authored');[, $one]=$finish($a);[, $two]=$finish($b);
 $assert((int)$one['denied']+(int)$two['denied']===1&&$one['mail_calls']===0&&$two['mail_calls']===0&&(int)$pdo->query('SELECT COUNT(*) FROM options')->fetchColumn()===1,'Separate processes contend for exactly one durable capture.');

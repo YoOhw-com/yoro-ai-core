@@ -22,8 +22,36 @@ final class YoRo_YR0196_Canary_Context
 
     public static function operation_hash(array $operation): string
     {
-        unset($operation['extensions']['yoro.mcp_early_access_commerce_write'][self::Extension]);
         return YoRo_Early_Access_Product_Read::params_hash($operation);
+    }
+
+    /** STABLE_APPROVAL_V1 keeps every pre-confirmation fact; ordinary issuance is validated by the runner. */
+    public static function approval_projection(array $operation, string $run): array
+    {
+        unset($operation['requested_at'], $operation['expires_at']);
+        unset($operation['authorization']['confirmed_at'], $operation['authorization']['execution_permit'], $operation['authorization']['permit_expires_at']);
+        unset($operation['actor']['authenticated_at'], $operation['actor']['assertion_id']);
+        unset($operation['extensions']['yoro.mcp_early_access_commerce_write'][self::Extension], $operation['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_approval']);
+        // The runner still verifies the complete child against the actual admitted parent.
+        unset($operation['extensions']['yoro.local_order_batch']['parent_hash']);
+        return ['schema'=>'yoro.yr0196.stable-approval/v1','task_id'=>'YR-0196','run_id'=>$run,'operation'=>$operation];
+    }
+
+    public static function approval_hash(array $operation, string $run): string
+    {
+        return YoRo_Early_Access_Product_Read::params_hash(self::approval_projection($operation,$run));
+    }
+
+    public static function approval_id(array $operation, string $run): string
+    {
+        return 'approval_'.YoRo_Early_Access_Product_Read::params_hash(['task_id'=>'YR-0196','run_id'=>$run,
+            'workflow_id'=>$operation['workflow_id'],'envelope_id'=>$operation['envelope_id'],'operation_id'=>$operation['operation_id'],
+            'plan_hash'=>$operation['plan_hash'],'preview_hash'=>$operation['preview_hash']]);
+    }
+
+    public static function approval_key(string $run, string $approvalId): string
+    {
+        return hash('sha256','YR-0196|'.$run.'|'.$approvalId);
     }
 
     private static function targets(array $operation): array
@@ -71,12 +99,13 @@ final class YoRo_YR0196_Canary_Context
             || !is_string($facts['source_operation_id'] ?? null) || !preg_match('/\Aenvelope_[a-f0-9]{64}\z/D', $facts['source_operation_id'])
             || !is_string($facts['source_result_hash'] ?? null) || !preg_match('/\A[a-f0-9]{64}\z/D', $facts['source_result_hash'])
             || empty($operation['preview_hash']) || empty($operation['authorization']['execution_permit'])) { self::deny(); }
-        $hash = self::operation_hash($operation);
-        $matches = array_values(array_filter($this->config['permits'], static fn($permit) => is_array($permit) && ($permit['operation_hash'] ?? null) === $hash));
+        $hash = self::approval_hash($operation,$this->config['run_id']);
+        $approvalId = self::approval_id($operation,$this->config['run_id']);
+        $matches = array_values(array_filter($this->config['permits'], static fn($permit) => is_array($permit) && ($permit['approval_hash'] ?? null) === $hash && ($permit['approval_id'] ?? null) === $approvalId));
         if (count($matches) !== 1) { self::deny(); }
         $permit = $matches[0];
         $binding = ['version'=>1,'task_id'=>'YR-0196','run_id'=>$this->config['run_id'],'permit_id'=>$permit['id'] ?? null,
-            'operation_hash'=>$hash,'mode'=>$permit['mode'] ?? null,'expires_at'=>$this->config['expires_at'],'permit_hash'=>YoRo_Early_Access_Product_Read::params_hash($permit),
+            'approval_id'=>$approvalId,'approval_hash'=>$hash,'mode'=>$permit['mode'] ?? null,'expires_at'=>$this->config['expires_at'],'permit_hash'=>YoRo_Early_Access_Product_Read::params_hash($permit),
             'envelope_id'=>$operation['envelope_id'],'params_hash'=>YoRo_Early_Access_Product_Read::params_hash($operation['params'])];
         // Children retain the parent binding on the wire; derive their identity only from the admitted parent.
         $child = ($operation['extensions']['yoro.local_order_batch'] ?? null) !== null;
@@ -84,6 +113,7 @@ final class YoRo_YR0196_Canary_Context
         if (($facts[self::Extension] ?? null) !== ($child ? $parentBinding : $binding)
             || !is_string($permit['id'] ?? null) || !preg_match('/\A[a-f0-9]{64}\z/D', $permit['id'])
             || !in_array($permit['mode'] ?? null, ['capture','fault','observe','batch'], true)) { self::deny(); }
+        if (($facts['yr0196_approval'] ?? null) !== ($child ? ($this->parent['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_approval'] ?? null) : ['version'=>1,'id'=>$approvalId,'hash'=>$hash])) { self::deny(); }
         if ($child) {
             $index = $operation['extensions']['yoro.local_order_batch']['index'] ?? null;
             if (!is_int($index) || !isset($this->parent['params']['items'][$index])
@@ -109,7 +139,7 @@ final class YoRo_YR0196_Canary_Context
         $this->current = $operation;
         $this->armed = null;
         if (in_array($permit['mode'], ['fault','observe'], true)) {
-            self::consume($permit, ['version'=>1,'task_id'=>'YR-0196','run_id'=>$this->config['run_id'],'operation_hash'=>self::operation_hash($operation),'mode'=>$permit['mode']]);
+            self::consume($permit, ['version'=>1,'task_id'=>'YR-0196','run_id'=>$this->config['run_id'],'approval_id'=>$permit['approval_id'],'approval_hash'=>$permit['approval_hash'],'operation_hash'=>self::operation_hash($operation),'mode'=>$permit['mode']]);
             $this->armed = $permit;
         }
     }
@@ -136,8 +166,8 @@ final class YoRo_YR0196_Canary_Context
             'from_address'=>$mail['from_address'],'from_name_hash'=>hash('sha256',$mail['from_name']),'content_type'=>'text/html'];
         if (($permit['mail'] ?? null) !== $expected || !str_ends_with(strtolower($mail['recipient']), '@example.invalid')
             || strlen($mail['body']) > 24000 || strlen($mail['subject']) > 200) { self::deny(); }
-        $id = 'capture_'.substr($permit['id'], 0, 64);
-        self::consume($permit, ['version'=>1,'task_id'=>'YR-0196','run_id'=>$this->config['run_id'],'operation_hash'=>self::operation_hash($this->current),
+        $id = 'capture_'.self::approval_key($this->config['run_id'],$permit['approval_id']);
+        self::consume($permit, ['version'=>1,'task_id'=>'YR-0196','run_id'=>$this->config['run_id'],'approval_id'=>$permit['approval_id'],'approval_hash'=>$permit['approval_hash'],'operation_hash'=>self::operation_hash($this->current),
             'mode'=>'capture','record_id'=>$id,'envelope_id'=>$this->current['envelope_id'],'operation_id'=>$this->current['operation_id'],
             'action'=>$action,'order_id'=>$params['order_id'],'content_hash'=>YoRo_Order_Email::content_hash($params,$action),'mail'=>$mail,'occurred_at'=>gmdate('c')]);
         return ['order_id'=>$params['order_id'],'record_id'=>$id,'outcome'=>'captured_not_delivered',
@@ -148,7 +178,10 @@ final class YoRo_YR0196_Canary_Context
     private static function consume(array $permit, array $record): void
     {
         global $wpdb;
-        $key = 'yoro_yr0196_permit_'.$permit['id'];
+        if (!is_string($record['run_id'] ?? null) || !preg_match('/\A[a-f0-9]{32}\z/D',$record['run_id'])
+            || !is_string($record['approval_id'] ?? null) || !preg_match('/\Aapproval_[a-f0-9]{64}\z/D',$record['approval_id'])
+            || ($permit['approval_id'] ?? null) !== $record['approval_id']) { self::deny(); }
+        $key = 'yoro_yr0196_permit_'.self::approval_key($record['run_id'],$record['approval_id']);
         $value = wp_json_encode($record);
         if (!is_string($value) || strlen($value) > 40000 || !isset($wpdb->options)) { self::deny(); }
         $suppressed = $wpdb->suppress_errors(true);
