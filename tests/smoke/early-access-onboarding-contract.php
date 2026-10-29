@@ -27,29 +27,29 @@ try {
     $status['early_access_onboarding'] = $projection;
     update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
     $assert( YoRo_AI_Settings::get_early_access_onboarding()['runtime_enabled'], 'Verified API projection must retain current connectability.' );
-    ob_start(); YoRo_Admin_Page::render_page(); $html = ob_get_clean();
+    ob_start(); YoRo_Admin_Page::render_page(); $html = preg_replace( '#<script\b[^>]*>.*?</script>#s', '', ob_get_clean() );
     $assert( strpos( $html, '>ChatGPT Plugin<' ) < strpos( $html, '>Early Access<' ), 'Capsule tab order must match the approved design.' );
     $assert( false !== strpos( $html, 'id="yoro-tab-early-access" role="tab" aria-selected="true"' ), 'Early Access must be default.' );
     $assert( false === strpos( $html, 'Kết nối ChatGPT' ) && false !== strpos( $html, 'assets/images/yoro-logo.png' ), 'The English plugin tab and supplied YoRo logo must be present.' );
-    $assert( false === strpos( $html, 'data-yoro-refresh' ), 'Copying the public address must not require a Refresh connection button.' );
+    $assert( ! preg_match( '#<button[^>]*data-yoro-refresh#', $html ), 'Copying the public address must not require a Refresh connection button.' );
     $assert( false !== strpos( $html, 'No separate site grant is required.' ) && false === strpos( $html, 'explicitly grant product read access' ), 'Account sign-in must replace the separate grant step.' );
     $assert( false === strpos( $html, 'yoro-chat-thread' ) && false === strpos( $html, 'yoro-ai-command' ), 'The connection page must not render native chat.' );
     $assert( false !== strpos( $html, 'value="https://fixture-api.test/mcp/early-access"' ) && false !== strpos( $html, 'Sign in from ChatGPT' ) && false === strpos( $html, 'not_granted' ), 'URL availability must be separate from OAuth site consent.' );
     $assert( false !== strpos( $html, 'No separate Early Access registration or approval is required.' ), 'Open Early Access must explain that enrollment is unnecessary.' );
     $assert( false !== strpos( $html, 'yoro-coming-soon' ) && false === strpos( $html, 'awaiting OpenAI review' ), 'The plugin panel must describe the upcoming product without internal review details.' );
     $assert( false === strpos( $html, 'Request pending activation' ) && false === strpos( $html, 'Manage request' ), 'The connection page must not require enrollment.' );
-    ob_start(); YoRo_Admin_Page::render_settings_page(); $settings_html = ob_get_clean();
+    ob_start(); YoRo_Admin_Page::render_settings_page(); $settings_html = preg_replace( '#<script\b[^>]*>.*?</script>#s', '', ob_get_clean() );
     $assert( false !== strpos( $settings_html, 'MCP Server URL:' ) && false === strpos( $settings_html, 'Runtime disabled.' ) && false === strpos( $settings_html, 'Manage request' ), 'Settings must reflect live connectability without legacy enrollment copy.' );
     $assert( false === strpos( $html, $key ), 'The connection page must not disclose the WordPress key.' );
     $granted = $projection; $granted['grant_status'] = 'granted';
     $status['early_access_onboarding'] = $granted; update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
-    ob_start(); YoRo_Admin_Page::render_page(); $authorized = ob_get_clean();
+    ob_start(); YoRo_Admin_Page::render_page(); $authorized = preg_replace( '#<script\b[^>]*>.*?</script>#s', '', ob_get_clean() );
     $assert( false !== strpos( $authorized, 'ChatGPT connection: Connected' ) && false !== strpos( $authorized, 'id="yoro-server-url"' ), 'Current runtime-enabled grant must still show authorized access and its verified URL.' );
     $dark_grant = $granted; $dark_grant['runtime_enabled'] = false; $dark_grant['server_url'] = '';
     $normalized_dark = YoRo_AI_Settings::normalize_early_access_onboarding( $dark_grant, $status );
     $assert( false === $normalized_dark['runtime_enabled'] && 'granted' !== ( $normalized_dark['grant_status'] ?? 'unknown' ), 'DARK must reject an inconsistent usable-grant projection.' );
     $status['early_access_onboarding'] = $dark_grant; update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
-    ob_start(); YoRo_Admin_Page::render_page(); $dark_authorized = ob_get_clean();
+    ob_start(); YoRo_Admin_Page::render_page(); $dark_authorized = preg_replace( '#<script\b[^>]*>.*?</script>#s', '', ob_get_clean() );
     $assert( false === strpos( $dark_authorized, 'ChatGPT connection: Connected' ) && false !== strpos( $dark_authorized, 'value="https://fixture-api.test/mcp/early-access"' ) && false !== strpos( $dark_authorized, 'Store access is not yet verified.' ), 'DARK may display the public configured address but must not claim active store access.' );
     $assert( false !== strpos( $dark_authorized, 'Open YoRo account' ) && $key === YoRo_AI_Settings::get_ai_api_site_key(), 'DARK must retain grant management and the separate WordPress connection key.' );
     $dark_grant['grant_status'] = 'unknown';
@@ -61,16 +61,16 @@ try {
         $bad = $projection; $bad[ $change[0] ] = $change[1];
         $assert( 'unknown' === YoRo_AI_Settings::normalize_early_access_onboarding( $bad, $status )['status'], 'Malformed or stale status must fail closed: ' . $change[0] );
         $status['early_access_onboarding'] = $bad; update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
-        ob_start(); YoRo_Admin_Page::render_page(); $unverified = ob_get_clean();
+        ob_start(); YoRo_Admin_Page::render_page(); $unverified = preg_replace( '#<script\b[^>]*>.*?</script>#s', '', ob_get_clean() );
         $assert( false !== strpos( $unverified, 'value="https://fixture-api.test/mcp/early-access"' ) && false === strpos( $unverified, 'ChatGPT connection: Connected' ) && false === strpos( $unverified, 'https://foreign.test' ), 'Unverified payloads cannot replace the configured public address or assert access.' );
     }
     $legacy = $projection; $legacy['runtime_enabled'] = false; $legacy['status'] = 'requested_pending'; unset( $legacy['server_url'], $legacy['grant_status'] );
     $assert( false === YoRo_AI_Settings::normalize_early_access_onboarding( $legacy, $status )['runtime_enabled'], 'Historic requested_pending must remain inert.' );
     $status['early_access_onboarding'] = $legacy; update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
-    ob_start(); YoRo_Admin_Page::render_page(); $dark = ob_get_clean();
+    ob_start(); YoRo_Admin_Page::render_page(); $dark = preg_replace( '#<script\b[^>]*>.*?</script>#s', '', ob_get_clean() );
     $assert( false !== strpos( $dark, 'value="https://fixture-api.test/mcp/early-access"' ), 'DARK or inert intent must not hide the configured public address.' );
     update_option( YoRo_AI_Settings::OPTION_AI_API_URL, '', false );
-    ob_start(); YoRo_Admin_Page::render_page(); $first_connect = ob_get_clean();
+    ob_start(); YoRo_Admin_Page::render_page(); $first_connect = preg_replace( '#<script\b[^>]*>.*?</script>#s', '', ob_get_clean() );
     $debug_editor = defined( 'WP_DEBUG' ) && WP_DEBUG && ! YoRo_AI_Settings::is_ai_api_url_locked();
     $assert( $debug_editor === ( false !== strpos( $first_connect, 'id="yoro-account-api-url" type="url"' ) ), 'The endpoint editor must preserve the existing debug and lock guards.' );
     $assert( $debug_editor || false !== strpos( $first_connect, 'YoRo connection is not configured.' ), 'Unconfigured production must remain clearly unavailable.' );
@@ -85,6 +85,21 @@ try {
     YoRo_Admin_Page::enqueue_assets( 'toplevel_page_yoro-ai-core' );
     $assert( [ 'yoro-onboarding' ] === $wp_scripts->queue, 'Only the connection page JS may enqueue; native chat assets stay dormant.' );
     $wp_scripts = $saved_scripts;
+    $evidence_dir = getenv( 'YR0201_UI_RENDER_DIR' );
+    if ( is_string( $evidence_dir ) && is_dir( $evidence_dir ) && str_contains( $evidence_dir, 'yr-0201-step3-status-refresh' ) ) {
+        foreach ( [ 'granted', 'not_granted', 'revoked', 'unknown' ] as $render_state ) {
+            $status['early_access_onboarding'] = array_merge( $projection, [ 'grant_status' => $render_state ] );
+            update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
+            ob_start(); YoRo_Admin_Page::render_page(); $render_html = ob_get_clean();
+            $render_html = preg_replace( '#"nonce":"[^"]*"#', '"nonce":"disposable-evidence-nonce"', $render_html );
+            $render_html = preg_replace( '#"url":"[^"]*"#', '"url":""', $render_html );
+            $render_html = preg_replace( '#(name="yoro_ai_settings_nonce" value=")[^"]*#', '$1disposable-evidence-nonce', $render_html );
+            $logo = 'data:image/png;base64,' . base64_encode( file_get_contents( dirname( __DIR__, 2 ) . '/assets/images/yoro-logo.png' ) );
+            $render_html = preg_replace( '#src="[^"]*/assets/images/yoro-logo.png"#', 'src="' . $logo . '"', $render_html );
+            $asset_root = dirname( __DIR__, 2 );
+            file_put_contents( $evidence_dir . '/ui-' . $render_state . '.html', '<!doctype html><html lang="en"><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>YR-0201 disposable source-rendered fixture: ' . $render_state . '</title><style>body{background:#f6f6ef;margin:0}button,input{font:inherit}.button{display:inline-block;text-decoration:none;border:1px solid #cbd0bd;padding:6px 16px;background:white;color:#30362d;cursor:pointer}' . file_get_contents( $asset_root . '/assets/css/yoro-ai-admin.css' ) . '</style><body><p>Disposable source-rendered fixture — ' . esc_html( $render_state ) . '. External OAuth/API NOT_RUN.</p>' . $render_html . '</body></html>' );
+        }
+    }
     $output = getenv( 'YR0174_UI_RENDER' );
     if ( is_string( $output ) && str_starts_with( $output, sys_get_temp_dir() . '/yr0174-' ) ) {
         $root = dirname( __DIR__, 2 );

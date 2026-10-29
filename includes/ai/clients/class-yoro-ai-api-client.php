@@ -44,6 +44,33 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 		return is_wp_error( $saved ) ? $status : $saved;
 	}
 
+	/** Passive status reads never use the credential-changing handshake or record local authority. */
+	public function onboarding_status() {
+		$api_url = YoRo_AI_Settings::get_ai_api_url();
+		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
+		$uuid = strtolower( sanitize_text_field( (string) get_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID, '' ) ) );
+		if ( '' === $api_url || '' === $site_key || ! preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $uuid ) ) {
+			return new WP_Error( 'yoro_onboarding_unavailable', __( 'Connection status is unavailable.', 'yoro-ai-core' ) );
+		}
+		$response = wp_remote_get( add_query_arg( [ 'site_url' => home_url(), 'installation_uuid' => $uuid ],
+			$this->build_api_base_url( $api_url ) . '/sites/onboarding-status' ), [
+			'timeout' => 15, 'redirection' => 0, 'headers' => $this->authenticated_headers( $site_key ),
+		] );
+		if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
+			return new WP_Error( 'yoro_onboarding_unavailable', __( 'Connection status is unavailable.', 'yoro-ai-core' ) );
+		}
+		$json = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $json ) || true !== ( $json['success'] ?? null ) ) {
+			return new WP_Error( 'yoro_onboarding_unavailable', __( 'Connection status is unavailable.', 'yoro-ai-core' ) );
+		}
+		// Validate raw context before projection selection; no cached authority or handshake normalization.
+		$json['early_access_credential_fingerprint'] = hash( 'sha256', $site_key );
+		$json['early_access_onboarding'] = YoRo_AI_Settings::normalize_early_access_onboarding(
+			$json['early_access_onboarding'] ?? null, $json, $api_url, $site_key
+		);
+		return $json;
+	}
+
 	public function handshake_with_credentials( $api_url, $site_key, $record_status = true ) {
 		if ( '' === $api_url || '' === $site_key ) {
 			$error = new WP_Error(
