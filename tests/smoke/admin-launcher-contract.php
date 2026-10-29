@@ -72,12 +72,17 @@ try {
 	$assert( false !== strpos( $html, 'Hi, I’m YoRo! Let’s connect your account and get started.' ), 'The connection hint must use the approved natural greeting.' );
 	$links = $xpath->query( '//a' );
 	$assert( 2 === $links->length, 'Disconnected site gets an icon and a connection hint.' );
+	$message = $xpath->query( '//div[@class="yoro-admin-launcher__message"]' )->item( 0 );
+	$expected_key = 'yoro-launcher-dismiss:' . get_current_blog_id() . ':' . get_current_user_id() . ':' . hash( 'sha256', home_url( '/' ) );
+	$assert( $message && $expected_key === $message->getAttribute( 'data-dismiss-key' ), 'Dismiss preference must be isolated by authenticated user and site, including the site URL.' );
+	$assert( 1 === $xpath->query( '//div[@class="yoro-admin-launcher__message"]/button[@class="yoro-admin-launcher__dismiss" and @type="button" and string-length(@aria-label)>0 and not(ancestor::a)]/span[@aria-hidden="true"]' )->length, 'Dismiss must be an accessible separate button, not nested in the navigation link.' );
 	foreach ( $links as $link ) {
 		$assert( admin_url( 'admin.php?page=yoro-ai-core' ) === $link->getAttribute( 'href' ) && ! $link->hasAttribute( 'target' ), 'Both links must navigate in the same tab to this site, including subdirectories.' );
 	}
 	$assert( 1 === $xpath->query( '//a[@aria-label and string-length(@aria-label)>0]/picture/img[@width="64" and @height="64" and @alt="" and @aria-hidden="true"]' )->length, '64px icon must have an accessible link name and decorative image.' );
 	$assert( 1 === $xpath->query( '//source[@media="(prefers-reduced-motion: reduce)"]' )->length && false !== strpos( $html, 'yoro-c-64-static.svg' ), 'Reduced motion must select the static asset.' );
 	$assert( false !== strpos( $html, 'yoro-c-64-2x-3-cycles.svg' ) && false === strpos( $html, '<script' ) && false === strpos( $html, '<form' ), 'The inert launcher template must contain no inline script or connection form.' );
+	$assert( 1 === $xpath->query( '//picture/img[@data-animation-src and contains(@data-animation-src, "yoro-c-64-2x-3-cycles.svg") and contains(@src, "yoro-c-64-static.svg")]' )->length, 'Keep the original animation URL inert and a static image fallback; JS must create a fresh playback after full load.' );
 	$unsafe_text = static fn( $text, $original, $domain ) => 'yoro-ai-core' === $domain ? '<script>fixture</script> & "label"' : $text;
 	$unsafe_url = static fn( $url ) => $url . '&fixture=" onmouseover="fixture';
 	add_filter( 'gettext', $unsafe_text, 10, 3 );
@@ -103,7 +108,7 @@ try {
 	update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
 	$assert( YoRo_AI_Settings::is_ai_api_account_connected(), 'Fixture must satisfy the actual connection predicate.' );
 	$connected = $render();
-	$assert( false === strpos( $connected, 'yoro-admin-launcher__hint' ) && false !== strpos( $connected, 'yoro-admin-launcher__icon' ), 'Connected site retains the icon and hides the connection hint.' );
+	$assert( false === strpos( $connected, 'yoro-admin-launcher__hint' ) && false === strpos( $connected, 'data-dismiss-key' ) && false === strpos( $connected, 'yoro-admin-launcher__dismiss' ) && false !== strpos( $connected, 'yoro-admin-launcher__icon' ), 'Connected site retains the icon and hides the connection hint and dismiss control.' );
 	$status['credential']['expires_at'] = gmdate( 'c', time() - 60 );
 	update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
 	$assert( false !== strpos( $render(), 'yoro-admin-launcher__hint' ), 'Expired credentials must follow the existing disconnected predicate.' );

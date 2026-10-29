@@ -10,8 +10,67 @@
 	pointer-events: none;
 }
 
-.yoro-admin-launcher a {
+.yoro-admin-launcher a,
+.yoro-admin-launcher button {
 	pointer-events: auto;
+}
+
+.yoro-admin-launcher__message {
+	position: relative;
+	min-width: 0;
+	max-width: 240px;
+}
+
+.yoro-admin-launcher__dismiss {
+	position: absolute;
+	top: -12px;
+	left: -12px;
+	z-index: 1;
+	display: grid;
+	place-items: center;
+	box-sizing: border-box;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 1px solid #d1d6ba;
+	border-radius: 50%;
+	background: #fffef8;
+	color: #303b19;
+	box-shadow: 0 2px 6px #1823001a;
+	cursor: pointer;
+	animation: yoro-launcher-speak 800ms ease-out 1s both;
+}
+
+.yoro-admin-launcher__dismiss span {
+	position: absolute;
+	width: 12px;
+	height: 12px;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	font-size: 0;
+}
+
+.yoro-admin-launcher__dismiss span::before,
+.yoro-admin-launcher__dismiss span::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 14px;
+	height: 2px;
+	border-radius: 1px;
+	background: currentColor;
+	transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.yoro-admin-launcher__dismiss span::after {
+	transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.yoro-admin-launcher__dismiss:hover {
+	background: #f2f5df;
+	color: #182300;
 }
 
 .yoro-admin-launcher__hint {
@@ -99,13 +158,15 @@
 	height: 64px;
 }
 
-.yoro-admin-launcher a:focus-visible {
+.yoro-admin-launcher a:focus-visible,
+.yoro-admin-launcher button:focus-visible {
 	outline: 3px solid #385b0a;
 	outline-offset: 3px;
 	box-shadow: 0 0 0 2px #fff;
 }
 
-.yoro-admin-launcher__hint:focus-visible {
+.yoro-admin-launcher__message:focus-within .yoro-admin-launcher__hint,
+.yoro-admin-launcher__message:focus-within .yoro-admin-launcher__dismiss {
 	animation: none;
 	opacity: 1;
 	transform: none;
@@ -119,8 +180,8 @@
 		gap: 8px;
 	}
 
-	.yoro-admin-launcher__hint {
-		max-width: min(240px, calc(100vw - 32px));
+	.yoro-admin-launcher__message {
+		max-width: min(240px, calc(100vw - 56px));
 	}
 
 	.yoro-admin-launcher__hint::after {
@@ -132,7 +193,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.yoro-admin-launcher__hint {
+	.yoro-admin-launcher__hint,
+	.yoro-admin-launcher__dismiss {
 		animation: none;
 	}
 }
