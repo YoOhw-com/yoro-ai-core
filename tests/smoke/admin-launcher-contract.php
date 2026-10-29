@@ -32,8 +32,9 @@ $render = static function () {
 };
 $denied = static function ( $label ) use ( $assert, $render ) {
 	$GLOBALS['wp_styles'] = new WP_Styles();
+	$GLOBALS['wp_scripts'] = new WP_Scripts();
 	YoRo_Admin_Page::enqueue_launcher_assets();
-	$assert( '' === $render() && ! wp_style_is( 'yoro-admin-launcher', 'enqueued' ), 'No launcher markup or style for ' . $label );
+	$assert( '' === $render() && ! wp_style_is( 'yoro-admin-launcher', 'enqueued' ) && ! wp_script_is( 'yoro-admin-launcher', 'enqueued' ), 'No launcher markup, style or script for ' . $label );
 };
 
 try {
@@ -55,9 +56,11 @@ try {
 		$GLOBALS['wp_styles'] = new WP_Styles();
 		$GLOBALS['wp_scripts'] = new WP_Scripts();
 		YoRo_Admin_Page::enqueue_launcher_assets();
-		$assert( [ 'yoro-admin-launcher' ] === $GLOBALS['wp_styles']->queue && [] === $GLOBALS['wp_scripts']->queue, 'Authorized site admin gets only the launcher CSS: ' . $screen );
+		$assert( [ 'yoro-admin-launcher' ] === $GLOBALS['wp_styles']->queue && [ 'yoro-admin-launcher' ] === $GLOBALS['wp_scripts']->queue, 'Authorized site admin gets only the launcher CSS and load controller: ' . $screen );
 		$style = $GLOBALS['wp_styles']->registered['yoro-admin-launcher'];
 		$assert( YORO_AI_CORE_URL . 'assets/css/yoro-admin-launcher.css' === $style->src && [] === $style->deps, 'Launcher assets must remain local and dependency-free.' );
+		$script = $GLOBALS['wp_scripts']->registered['yoro-admin-launcher'];
+		$assert( YORO_AI_CORE_URL . 'assets/js/yoro-admin-launcher.js' === $script->src && [] === $script->deps && 1 === $GLOBALS['wp_scripts']->get_data( 'yoro-admin-launcher', 'group' ), 'The local dependency-free controller must load in the footer after the inert template.' );
 	}
 
 	update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, [], false );
@@ -65,6 +68,8 @@ try {
 	$dom = new DOMDocument();
 	@$dom->loadHTML( $html );
 	$xpath = new DOMXPath( $dom );
+	$assert( 1 === $xpath->query( '//template[@id="yoro-admin-launcher-template"]//*[@id="yoro-admin-launcher"]' )->length && 0 === $xpath->query( '//*[@id="yoro-admin-launcher" and not(ancestor::template)]' )->length, 'Launcher and image markup must remain inert inside a template until page load.' );
+	$assert( false !== strpos( $html, 'Hi, I’m YoRo! Let’s connect your account and get started.' ), 'The connection hint must use the approved natural greeting.' );
 	$links = $xpath->query( '//a' );
 	$assert( 2 === $links->length, 'Disconnected site gets an icon and a connection hint.' );
 	foreach ( $links as $link ) {
@@ -72,7 +77,7 @@ try {
 	}
 	$assert( 1 === $xpath->query( '//a[@aria-label and string-length(@aria-label)>0]/picture/img[@width="64" and @height="64" and @alt="" and @aria-hidden="true"]' )->length, '64px icon must have an accessible link name and decorative image.' );
 	$assert( 1 === $xpath->query( '//source[@media="(prefers-reduced-motion: reduce)"]' )->length && false !== strpos( $html, 'yoro-c-64-static.svg' ), 'Reduced motion must select the static asset.' );
-	$assert( false !== strpos( $html, 'yoro-c-64-2x-3-cycles.svg' ) && false === strpos( $html, '<script' ) && false === strpos( $html, '<form' ), 'The supplied finite animation requires no script or connection form.' );
+	$assert( false !== strpos( $html, 'yoro-c-64-2x-3-cycles.svg' ) && false === strpos( $html, '<script' ) && false === strpos( $html, '<form' ), 'The inert launcher template must contain no inline script or connection form.' );
 	$unsafe_text = static fn( $text, $original, $domain ) => 'yoro-ai-core' === $domain ? '<script>fixture</script> & "label"' : $text;
 	$unsafe_url = static fn( $url ) => $url . '&fixture=" onmouseover="fixture';
 	add_filter( 'gettext', $unsafe_text, 10, 3 );
