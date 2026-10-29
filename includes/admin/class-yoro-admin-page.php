@@ -148,7 +148,10 @@ class YoRo_Admin_Page {
 		<template id="yoro-admin-launcher-template">
 		<div id="yoro-admin-launcher" class="yoro-admin-launcher">
 			<?php if ( ! YoRo_AI_Settings::is_ai_api_account_connected() ) : ?>
-				<a class="yoro-admin-launcher__hint" href="<?php echo esc_url( $url ); ?>"><?php esc_html_e( 'Hi, I’m YoRo! Let’s connect your account and get started.', 'yoro-ai-core' ); ?></a>
+				<div class="yoro-admin-launcher__message" data-dismiss-key="<?php echo esc_attr( 'yoro-launcher-dismiss:' . get_current_blog_id() . ':' . get_current_user_id() . ':' . hash( 'sha256', home_url( '/' ) ) ); ?>">
+					<a class="yoro-admin-launcher__hint" href="<?php echo esc_url( $url ); ?>"><?php esc_html_e( 'Hi, I’m YoRo! Let’s connect your account and get started.', 'yoro-ai-core' ); ?></a>
+					<button class="yoro-admin-launcher__dismiss" type="button" aria-label="<?php esc_attr_e( 'Hide this message for one hour', 'yoro-ai-core' ); ?>"><span aria-hidden="true">×</span></button>
+				</div>
 			<?php endif; ?>
 			<a class="yoro-admin-launcher__icon" href="<?php echo esc_url( $url ); ?>" aria-label="<?php echo esc_attr__( 'Open YoRo connection settings', 'yoro-ai-core' ); ?>">
 				<picture>
