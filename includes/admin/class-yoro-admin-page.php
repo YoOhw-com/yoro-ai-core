@@ -129,6 +129,13 @@ class YoRo_Admin_Page {
 			[],
 			self::asset_version( 'assets/css/yoro-admin-launcher.css' )
 		);
+		wp_enqueue_script(
+			'yoro-admin-launcher',
+			YORO_AI_CORE_URL . 'assets/js/yoro-admin-launcher.js',
+			[],
+			self::asset_version( 'assets/js/yoro-admin-launcher.js' ),
+			true
+		);
 	}
 
 	public static function render_launcher() {
@@ -138,9 +145,10 @@ class YoRo_Admin_Page {
 
 		$url = admin_url( 'admin.php?page=' . self::MENU_SLUG );
 		?>
-		<div class="yoro-admin-launcher">
+		<template id="yoro-admin-launcher-template">
+		<div id="yoro-admin-launcher" class="yoro-admin-launcher">
 			<?php if ( ! YoRo_AI_Settings::is_ai_api_account_connected() ) : ?>
-				<a class="yoro-admin-launcher__hint" href="<?php echo esc_url( $url ); ?>"><?php esc_html_e( 'Connect your YoRo account', 'yoro-ai-core' ); ?></a>
+				<a class="yoro-admin-launcher__hint" href="<?php echo esc_url( $url ); ?>"><?php esc_html_e( 'Hi, I’m YoRo! Let’s connect your account and get started.', 'yoro-ai-core' ); ?></a>
 			<?php endif; ?>
 			<a class="yoro-admin-launcher__icon" href="<?php echo esc_url( $url ); ?>" aria-label="<?php echo esc_attr__( 'Open YoRo connection settings', 'yoro-ai-core' ); ?>">
 				<picture>
@@ -149,6 +157,7 @@ class YoRo_Admin_Page {
 				</picture>
 			</a>
 		</div>
+		</template>
 		<?php
 	}
 
