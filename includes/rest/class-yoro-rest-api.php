@@ -95,6 +95,16 @@ class YoRo_REST_API {
 
 		register_rest_route(
 			self::REST_NAMESPACE,
+			'/ai-api/onboarding-status',
+			[
+				'methods' => 'POST',
+				'callback' => [ __CLASS__, 'refresh_early_access_onboarding' ],
+				'permission_callback' => [ __CLASS__, 'onboarding_refresh_permission_check' ],
+			]
+		);
+
+		register_rest_route(
+			self::REST_NAMESPACE,
 			'/ai-api/handshake',
 			[
 				'methods'             => 'POST',
@@ -268,6 +278,38 @@ class YoRo_REST_API {
 
 	public static function settings_permission_check() {
 		return current_user_can( YoRo_Capabilities::MANAGE_CONNECTION );
+	}
+
+	public static function onboarding_refresh_permission_check( WP_REST_Request $request ) {
+		// Application passwords and anonymous requests cannot use this browser-only seam.
+		return is_user_logged_in() && get_current_user_id() === wp_validate_auth_cookie( '', 'logged_in' )
+			&& current_user_can( YoRo_Capabilities::MANAGE_CONNECTION )
+			&& (bool) wp_verify_nonce( $request->get_header( 'X-WP-Nonce' ), 'wp_rest' );
+	}
+
+	public static function refresh_early_access_onboarding( WP_REST_Request $request ) {
+		$context = YoRo_AI_Settings::get_early_access_refresh_context();
+		$requested = $request->get_param( 'context' );
+		$state = 'unverified';
+		$projection = [];
+		if ( ! is_string( $requested ) || ! hash_equals( $context, $requested ) ) {
+			$state = 'connection_changed';
+		} elseif ( '' === YoRo_AI_Settings::get_ai_api_site_key() || '' === YoRo_AI_Settings::get_ai_api_url()
+			|| '' === (string) get_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID, '' ) || ! YoRo_AI_Settings::is_ai_api_enabled() ) {
+			$state = 'connection_required';
+		} else {
+			$result = ( new YoRo_AI_API_Client() )->onboarding_status();
+			if ( ! hash_equals( $context, YoRo_AI_Settings::get_early_access_refresh_context( true ) ) ) {
+				$state = 'connection_changed';
+			} elseif ( is_wp_error( $result ) ) {
+				$state = 'unavailable';
+			} else {
+				$projection = YoRo_AI_Settings::get_early_access_browser_projection( $result );
+			}
+		}
+		$response = new WP_REST_Response( [ 'state' => $state, 'context' => $context, 'projection' => $projection ] );
+		$response->header( 'Cache-Control', 'no-store, private' );
+		return $response;
 	}
 
 	public static function ai_status_permission_check() {

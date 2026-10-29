@@ -197,6 +197,26 @@ class YoRo_AI_Settings {
 		return self::normalize_early_access_onboarding( $status['early_access_onboarding'] ?? null, $status );
 	}
 
+	/** Opaque page binding: changing credentials, endpoint or installation invalidates pending refreshes. */
+	public static function get_early_access_refresh_context( $fresh = false ) {
+		if ( $fresh ) {
+			// A concurrent settings request may have changed options during the status read.
+			wp_cache_delete( 'alloptions', 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
+			foreach ( [ self::OPTION_AI_API_URL, self::OPTION_AI_API_SITE_KEY, self::OPTION_INSTALLATION_UUID, self::OPTION_AI_API_ENABLED, 'home' ] as $option ) {
+				wp_cache_delete( $option, 'options' );
+			}
+		}
+		return hash_hmac( 'sha256', wp_json_encode( [ self::get_ai_api_url(), self::get_ai_api_site_key(), (string) get_option( self::OPTION_INSTALLATION_UUID, '' ), home_url(), self::is_ai_api_enabled() ] ), wp_salt( 'auth' ) );
+	}
+
+	/** Browser projection only. The full API projection is validated before selecting these fields. */
+	public static function get_early_access_browser_projection( $status = null ) {
+		return array_intersect_key( self::get_early_access_onboarding( self::is_ai_api_enabled() ? $status : [] ), array_flip( [
+			'status', 'grant_status', 'runtime_enabled', 'connection_healthy', 'compatible', 'checked_at', 'expires_at',
+		] ) );
+	}
+
 	/** Public connection address only; availability and site authority are verified by the API. */
 	public static function get_early_access_server_url() {
 		$base = self::get_ai_api_base_url();
@@ -240,7 +260,7 @@ class YoRo_AI_Settings {
             || ( false === $input['runtime_enabled'] && 'granted' === ( $input['grant_status'] ?? 'unknown' ) )
 			|| ! is_bool( $input['connection_healthy'] ) || ! is_bool( $input['compatible'] )
 			|| ! is_int( $input['site_id'] ) || $input['site_id'] <= 0 || $input['site_id'] !== ( $site['id'] ?? null )
-			|| ! is_string( $input['installation_uuid'] ) || ! hash_equals( self::get_installation_uuid(), $input['installation_uuid'] )
+			|| ! is_string( $input['installation_uuid'] ) || ! hash_equals( (string) get_option( self::OPTION_INSTALLATION_UUID, '' ), $input['installation_uuid'] )
 			|| $input['installation_uuid'] !== ( $connection['installation_uuid'] ?? '' )
 			|| rtrim( strtolower( (string) ( $site['url'] ?? '' ) ), '/' ) !== rtrim( strtolower( home_url() ), '/' )
 			|| empty( $context['account_connection']['connected'] ) || 'active' !== ( $connection['status'] ?? '' )
