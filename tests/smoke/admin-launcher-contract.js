@@ -26,17 +26,32 @@ class Element extends Events {
     get textContent() { return this.children.length ? this.children.map(child => child.textContent).join('') : this.text; }
     set textContent(value) { this.text = value; this.children = []; }
     setAttribute(name, value) { this.attrs[name] = value; }
+    getAttribute(name) { return this.attrs[name] ?? null; }
+    contains(element) { return element === this || this.children.some(child => child.contains(element)); }
+    remove() { this.removed = true; }
+    focus() { this.emit('focus'); }
     replaceChildren(...children) { this.children = children; this.text = ''; }
 }
-function fixture({ readyState = 'loading', reduced = false, connected = false, animation = 'yoro-launcher-speak', missing = false } = {}) {
+function fixture({ readyState = 'loading', reduced = false, connected = false, animation = 'yoro-launcher-speak', missing = false, storage = new Map(), now = 1000000000, storageFailure = '', site = 'site-a', user = 1 } = {}) {
     const win = new Events();
     const motion = new Events(); motion.matches = reduced;
     const fullText = 'Hi, I’m YoRo! Let’s connect your account and get started.';
     const tasks = new Map(); let nextId = 0; let removed = missing; let active = null; let appends = 0; let hint = null;
+    const storageKey = 'yoro-launcher-dismiss:' + site + ':' + user;
+    let message, dismiss, icon;
     const template = { remove() { removed = true; }, content: { cloneNode() {
         const root = new Element();
         hint = connected ? null : new Element(fullText);
-        root.querySelector = selector => selector === '.yoro-admin-launcher__hint' ? hint : null;
+        message = connected ? null : new Element();
+        dismiss = connected ? null : new Element(); icon = new Element(); icon.focused = false;
+        icon.focus = () => { icon.focused = true; document.activeElement = icon; };
+        if (message) { message.setAttribute('data-dismiss-key', storageKey); message.children = [hint, dismiss]; }
+        root.querySelector = selector => ({
+            '.yoro-admin-launcher__message': message,
+            '.yoro-admin-launcher__hint': message && !message.removed ? hint : null,
+            '.yoro-admin-launcher__dismiss': message && !message.removed ? dismiss : null,
+            '.yoro-admin-launcher__icon': icon
+        })[selector] || null;
         return { root, querySelector: selector => selector === '#yoro-admin-launcher' ? root : null };
     } } };
     const document = {
@@ -46,18 +61,29 @@ function fixture({ readyState = 'loading', reduced = false, connected = false, a
         body: { appendChild(fragment) { active = fragment.root; active.isConnected = true; ++appends; } }
     };
     Object.assign(win, {
+        localStorage: {
+            getItem(key) { if (storageFailure === 'read') throw Error('blocked'); return storage.get(key) ?? null; },
+            setItem(key, value) { if (storageFailure === 'write') throw Error('quota'); storage.set(key, value); },
+            removeItem(key) { storage.delete(key); }
+        },
         matchMedia: () => motion,
         getComputedStyle: () => ({ animationName: animation }),
         setTimeout(callback, delay) { const id = ++nextId; tasks.set(id, { callback, delay }); return id; },
         clearTimeout: id => tasks.delete(id)
     });
-    const context = { window: win, document, fetch() { throw new Error('Launcher must not fetch or poll.'); } };
+    const context = { window: win, document, Date: { now: () => now }, fetch() { throw new Error('Launcher must not fetch or poll.'); } };
     const run = () => vm.runInNewContext(source, context);
     const load = () => { document.readyState = 'complete'; win.emit('load'); };
     const endAnimation = () => hint.emit('animationend', { target: hint, animationName: 'yoro-launcher-speak' });
     const step = () => { const [id, task] = tasks.entries().next().value; tasks.delete(id); task.callback(); return task.delay; };
     const drain = () => { let limit = 200; while (tasks.size && --limit) step(); assert.ok(limit, 'Typing must terminate.'); };
-    return { run, load, endAnimation, step, drain, win, motion, tasks, fullText,
+    return { run, load, endAnimation, step, drain, win, motion, tasks, fullText, storage, storageKey,
+        dismissMessage() {
+            document.activeElement = dismiss;
+            const event = { prevented: false, stopped: false, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; } };
+            dismiss.emit('click', event); return event;
+        },
+        get visibleMessage() { return !!message && !message.removed; }, get icon() { return icon; },
         get appends() { return appends; }, get root() { return active; }, get hint() { return hint; },
         get typed() { return hint.children.find(child => child.className === 'yoro-admin-launcher__typed'); } };
 }
@@ -102,3 +128,36 @@ for (const action of ['navigation', 'pagehide', 'motion', 'detached']) {
     assert.equal(current.win.count('pagehide'), 0); assert.equal(current.motion.count('change'), 0);
 }
 console.log('YoRo launcher load/late-load/deduplication/typing/focus/reduced-motion/cleanup JS contract passed.');
+
+const sharedStorage = new Map();
+const dismissing = fixture({ storage: sharedStorage }); dismissing.run(); dismissing.load(); dismissing.endAnimation();
+assert.equal(dismissing.tasks.size, 1);
+const click = dismissing.dismissMessage();
+assert.ok(click.prevented && click.stopped, 'Dismiss must not navigate or bubble to other launcher click handling.');
+assert.equal(dismissing.visibleMessage, false); assert.ok(dismissing.icon.focused, 'Move keyboard focus to the remaining icon.');
+assert.equal(dismissing.tasks.size, 0); assert.equal(dismissing.win.count('pagehide'), 0); assert.equal(dismissing.motion.count('change'), 0);
+assert.equal(sharedStorage.get(dismissing.storageKey), String(1000000000 + 3600000), 'Persist exactly one hour, without message/account content.');
+for (const elapsed of [0, 3599999]) {
+    const reload = fixture({ storage: sharedStorage, now: 1000000000 + elapsed }); reload.run(); reload.load();
+    assert.equal(reload.appends, 1, 'Keep the icon even while dismissed.');
+    assert.equal(reload.visibleMessage, false, 'Remain dismissed across navigation until exact expiry.'); assert.equal(reload.tasks.size, 0);
+}
+for (const options of [{ site: 'site-b' }, { user: 2 }]) {
+    const isolated = fixture({ storage: sharedStorage, ...options }); isolated.run(); isolated.load();
+    assert.equal(isolated.visibleMessage, true, 'Do not dismiss another site or account.');
+}
+const expired = fixture({ storage: sharedStorage, now: 1000000000 + 3600000 }); expired.run(); expired.load();
+assert.equal(expired.visibleMessage, true, 'At exact expiry show normal bubble on initialization.'); assert.equal(sharedStorage.has(expired.storageKey), false);
+for (const bad of ['', 'NaN', 'Infinity', '-1', '1000000000.5', '99999999999999999999999', '1003600001', '{}']) {
+    const invalid = fixture(); invalid.storage.set(invalid.storageKey, bad); invalid.run(); invalid.load();
+    assert.equal(invalid.visibleMessage, true, 'Invalid/expired/out-of-range expiry must not hide the message: ' + bad);
+}
+for (const storageFailure of ['read', 'write']) {
+    const blocked = fixture({ storageFailure }); blocked.run(); blocked.load(); blocked.endAnimation(); blocked.dismissMessage();
+    assert.equal(blocked.visibleMessage, false, 'Storage failure still allows current-page dismissal.'); assert.equal(blocked.tasks.size, 0);
+}
+for (const options of [{ reduced: true }, { animation: 'none' }]) {
+    const accessible = fixture(options); accessible.run(); accessible.load(); accessible.dismissMessage();
+    assert.equal(accessible.visibleMessage, false, 'Dismiss also works with reduced motion or no entrance CSS.');
+}
+console.log('YoRo one-hour dismiss, exact expiry, site/user isolation, invalid/blocked storage, focus and typing cleanup passed.');

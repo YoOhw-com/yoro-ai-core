@@ -72,6 +72,10 @@ try {
 	$assert( false !== strpos( $html, 'Hi, I’m YoRo! Let’s connect your account and get started.' ), 'The connection hint must use the approved natural greeting.' );
 	$links = $xpath->query( '//a' );
 	$assert( 2 === $links->length, 'Disconnected site gets an icon and a connection hint.' );
+	$message = $xpath->query( '//div[@class="yoro-admin-launcher__message"]' )->item( 0 );
+	$expected_key = 'yoro-launcher-dismiss:' . get_current_blog_id() . ':' . get_current_user_id() . ':' . hash( 'sha256', home_url( '/' ) );
+	$assert( $message && $expected_key === $message->getAttribute( 'data-dismiss-key' ), 'Dismiss preference must be isolated by authenticated user and site, including the site URL.' );
+	$assert( 1 === $xpath->query( '//div[@class="yoro-admin-launcher__message"]/button[@class="yoro-admin-launcher__dismiss" and @type="button" and string-length(@aria-label)>0 and not(ancestor::a)]/span[@aria-hidden="true"]' )->length, 'Dismiss must be an accessible separate button, not nested in the navigation link.' );
 	foreach ( $links as $link ) {
 		$assert( admin_url( 'admin.php?page=yoro-ai-core' ) === $link->getAttribute( 'href' ) && ! $link->hasAttribute( 'target' ), 'Both links must navigate in the same tab to this site, including subdirectories.' );
 	}
@@ -103,7 +107,7 @@ try {
 	update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
 	$assert( YoRo_AI_Settings::is_ai_api_account_connected(), 'Fixture must satisfy the actual connection predicate.' );
 	$connected = $render();
-	$assert( false === strpos( $connected, 'yoro-admin-launcher__hint' ) && false !== strpos( $connected, 'yoro-admin-launcher__icon' ), 'Connected site retains the icon and hides the connection hint.' );
+	$assert( false === strpos( $connected, 'yoro-admin-launcher__hint' ) && false === strpos( $connected, 'data-dismiss-key' ) && false === strpos( $connected, 'yoro-admin-launcher__dismiss' ) && false !== strpos( $connected, 'yoro-admin-launcher__icon' ), 'Connected site retains the icon and hides the connection hint and dismiss control.' );
 	$status['credential']['expires_at'] = gmdate( 'c', time() - 60 );
 	update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
 	$assert( false !== strpos( $render(), 'yoro-admin-launcher__hint' ), 'Expired credentials must follow the existing disconnected predicate.' );
