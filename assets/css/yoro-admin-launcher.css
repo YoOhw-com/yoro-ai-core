@@ -16,6 +16,7 @@
 
 .yoro-admin-launcher__hint {
 	--yoro-launcher-bubble-background: #fffef8;
+	display: grid;
 	position: relative;
 	box-sizing: border-box;
 	max-width: 240px;
@@ -30,6 +31,15 @@
 	text-decoration: none;
 	overflow-wrap: anywhere;
 	animation: yoro-launcher-speak 800ms ease-out 1s both;
+}
+
+.yoro-admin-launcher__copy,
+.yoro-admin-launcher__typed {
+	grid-area: 1 / 1;
+}
+
+.yoro-admin-launcher__copy {
+	visibility: hidden;
 }
 
 .yoro-admin-launcher__hint::after {
@@ -65,7 +75,12 @@
 .yoro-admin-launcher__hint:hover {
 	--yoro-launcher-bubble-background: #f2f5df;
 	color: #182300;
-	text-decoration: underline;
+}
+
+.yoro-admin-launcher__hint:hover,
+.yoro-admin-launcher__hint:focus,
+.yoro-admin-launcher__hint:active {
+	text-decoration: none;
 }
 
 .yoro-admin-launcher__icon {
