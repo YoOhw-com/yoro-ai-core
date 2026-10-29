@@ -260,7 +260,7 @@ class YoRo_AI_Settings {
             || ( false === $input['runtime_enabled'] && 'granted' === ( $input['grant_status'] ?? 'unknown' ) )
 			|| ! is_bool( $input['connection_healthy'] ) || ! is_bool( $input['compatible'] )
 			|| ! is_int( $input['site_id'] ) || $input['site_id'] <= 0 || $input['site_id'] !== ( $site['id'] ?? null )
-			|| ! is_string( $input['installation_uuid'] ) || ! hash_equals( (string) get_option( self::OPTION_INSTALLATION_UUID, '' ), $input['installation_uuid'] )
+			|| ! is_string( $input['installation_uuid'] ) || ! hash_equals( strtolower( sanitize_text_field( (string) get_option( self::OPTION_INSTALLATION_UUID, '' ) ) ), $input['installation_uuid'] )
 			|| $input['installation_uuid'] !== ( $connection['installation_uuid'] ?? '' )
 			|| rtrim( strtolower( (string) ( $site['url'] ?? '' ) ), '/' ) !== rtrim( strtolower( home_url() ), '/' )
 			|| empty( $context['account_connection']['connected'] ) || 'active' !== ( $connection['status'] ?? '' )

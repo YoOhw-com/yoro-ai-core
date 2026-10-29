@@ -181,6 +181,12 @@ try {
     delete_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID );
     $count = count( $requests ); $data = $server->dispatch( $request() )->get_data();
     $assert( 'connection_required' === $data['state'] && $count === count( $requests ) && false === get_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID, false ), 'A passive refresh cannot create a missing installation identity.' );
+    update_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID, strtoupper( $uuid ), false );
+    $payload = $base;
+    $data = $server->dispatch( $request() )->get_data();
+    $assert( 'granted' === ( $data['projection']['grant_status'] ?? null ) && strtoupper( $uuid ) === get_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID ), 'A valid uppercase installation is normalized without rewriting its option.' );
+    parse_str( wp_parse_url( end( $requests )['url'], PHP_URL_QUERY ), $sent_context );
+    $assert( $uuid === $sent_context['installation_uuid'], 'Status request preserves the existing lowercase UUID wire normalization.' );
     update_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID, 'invalid-disposable-installation', false );
     $count = count( $requests ); $server->dispatch( $request() );
     $assert( $count === count( $requests ) && 'invalid-disposable-installation' === get_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID ), 'Passive actor assertion must not repair an invalid installation.' );

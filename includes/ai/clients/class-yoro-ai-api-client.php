@@ -48,7 +48,7 @@ class YoRo_AI_API_Client implements YoRo_AI_Client_Interface {
 	public function onboarding_status() {
 		$api_url = YoRo_AI_Settings::get_ai_api_url();
 		$site_key = YoRo_AI_Settings::get_ai_api_site_key();
-		$uuid = (string) get_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID, '' );
+		$uuid = strtolower( sanitize_text_field( (string) get_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID, '' ) ) );
 		if ( '' === $api_url || '' === $site_key || ! preg_match( '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $uuid ) ) {
 			return new WP_Error( 'yoro_onboarding_unavailable', __( 'Connection status is unavailable.', 'yoro-ai-core' ) );
 		}
