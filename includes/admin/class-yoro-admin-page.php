@@ -15,6 +15,8 @@ class YoRo_Admin_Page {
 	public static function init() {
 		add_action( 'admin_menu', [ __CLASS__, 'add_menu_page' ] );
 		add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_assets' ] );
+		add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_launcher_assets' ] );
+		add_action( 'admin_footer', [ __CLASS__, 'render_launcher' ] );
 		add_action( 'admin_init', [ __CLASS__, 'handle_policy_save' ] );
 		add_action( 'admin_init', [ __CLASS__, 'handle_ai_api_connect_callback' ] );
 		add_action( 'admin_init', [ __CLASS__, 'handle_settings_save' ] );
@@ -105,6 +107,49 @@ class YoRo_Admin_Page {
 		$path = YORO_AI_CORE_PATH . ltrim( $relative_path, '/' );
 
 		return is_readable( $path ) ? (string) filemtime( $path ) : YORO_AI_CORE_VERSION;
+	}
+
+	private static function can_show_launcher() {
+		return is_admin()
+			&& ! is_network_admin()
+			&& ! is_user_admin()
+			&& is_user_logged_in()
+			&& current_user_can( 'manage_options' )
+			&& current_user_can( YoRo_Capabilities::MANAGE_CONNECTION );
+	}
+
+	public static function enqueue_launcher_assets() {
+		if ( ! self::can_show_launcher() ) {
+			return;
+		}
+
+		wp_enqueue_style(
+			'yoro-admin-launcher',
+			YORO_AI_CORE_URL . 'assets/css/yoro-admin-launcher.css',
+			[],
+			self::asset_version( 'assets/css/yoro-admin-launcher.css' )
+		);
+	}
+
+	public static function render_launcher() {
+		if ( ! self::can_show_launcher() ) {
+			return;
+		}
+
+		$url = admin_url( 'admin.php?page=' . self::MENU_SLUG );
+		?>
+		<div class="yoro-admin-launcher">
+			<?php if ( ! YoRo_AI_Settings::is_ai_api_account_connected() ) : ?>
+				<a class="yoro-admin-launcher__hint" href="<?php echo esc_url( $url ); ?>"><?php esc_html_e( 'Connect your YoRo account', 'yoro-ai-core' ); ?></a>
+			<?php endif; ?>
+			<a class="yoro-admin-launcher__icon" href="<?php echo esc_url( $url ); ?>" aria-label="<?php echo esc_attr__( 'Open YoRo connection settings', 'yoro-ai-core' ); ?>">
+				<picture>
+					<source media="(prefers-reduced-motion: reduce)" srcset="<?php echo esc_url( YORO_AI_CORE_URL . 'assets/images/yoro-c-64-static.svg' ); ?>" />
+					<img src="<?php echo esc_url( YORO_AI_CORE_URL . 'assets/images/yoro-c-64-2x-3-cycles.svg' ); ?>" width="64" height="64" alt="" aria-hidden="true" />
+				</picture>
+			</a>
+		</div>
+		<?php
 	}
 
 	private static function get_woocommerce_email_from_address() {
