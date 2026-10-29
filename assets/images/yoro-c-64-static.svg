@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 1254 1254" role="img" aria-label="YoRo"><defs>
+      <radialGradient id="yoro-c-static-body" cx="450" cy="400" r="640" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#d5e85d"/><stop offset=".35" stop-color="#bfd43b"/><stop offset=".7" stop-color="#9bb51b"/><stop offset="1" stop-color="#718b0d"/>
+      </radialGradient>
+      <linearGradient id="yoro-c-static-ring" x1="550" y1="80" x2="690" y2="1167" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#b3cb29"/><stop offset=".36" stop-color="#91ac08"/><stop offset=".67" stop-color="#8ba30c"/><stop offset="1" stop-color="#607302"/>
+      </linearGradient>
+      <linearGradient id="yoro-c-static-edge" x1="560" y1="185" x2="580" y2="1118" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#e5ee76"/><stop offset=".42" stop-color="#c8de34"/><stop offset=".7" stop-color="#99b524"/><stop offset="1" stop-color="#718508"/>
+      </linearGradient>
+      <linearGradient id="yoro-c-static-left" x1="587" y1="253" x2="430" y2="1002" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#c6df43"/><stop offset=".24" stop-color="#acc628"/><stop offset=".46" stop-color="#819c0b"/><stop offset=".65" stop-color="#465d02"/><stop offset=".88" stop-color="#2b3d00"/><stop offset="1" stop-color="#182300"/>
+      </linearGradient>
+      <linearGradient id="yoro-c-static-right" x1="824" y1="474" x2="649" y2="1101" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#d2e947"/><stop offset=".23" stop-color="#b3cf26"/><stop offset=".49" stop-color="#8fa914"/><stop offset=".73" stop-color="#4f6903"/><stop offset="1" stop-color="#233200"/>
+      </linearGradient>
+      <radialGradient id="yoro-c-static-shade" cx="614" cy="646" r="270" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#0b1600" stop-opacity=".66"/><stop offset=".62" stop-color="#112000" stop-opacity=".18"/><stop offset="1" stop-color="#112000" stop-opacity="0"/>
+      </radialGradient>
+    </defs><g data-ring="">
+      <path fill="url(#yoro-c-static-ring)" fill-rule="evenodd" d="M1155.5 624 A529 543.5 0 1 1 97.5 624 A529 543.5 0 1 1 1155.5 624 Z M1137.5 624 A511 525.5 0 1 0 115.5 624 A511 525.5 0 1 0 1137.5 624 Z"/>
+      <ellipse cx="626.5" cy="624" rx="528.4" ry="542.9" fill="none" stroke="url(#yoro-c-static-edge)" stroke-width="1.6"/>
+      <ellipse cx="626.5" cy="624" rx="511.2" ry="525.7" fill="none" stroke="url(#yoro-c-static-edge)" stroke-width="1.1"/>
+    </g><g><path fill="url(#yoro-c-static-left)" d="M912 224 C817 157 650 187 522 264 C389 345 314 459 299 609 C284 766 303 937 439 1083 C361 998 327 914 330 848 C333 745 411 674 501 644 C549 628 580 626 617 632 C708 652 807 700 704 856 C802 741 751 665 627 634 C547 614 523 552 538 453 C550 346 617 260 714 215 C783 183 849 182 912 224Z"/><path fill="url(#yoro-c-static-shade)" d="M912 224 C817 157 650 187 522 264 C389 345 314 459 299 609 C284 766 303 937 439 1083 C361 998 327 914 330 848 C333 745 411 674 501 644 C549 628 580 626 617 632 C708 652 807 700 704 856 C802 741 751 665 627 634 C547 614 523 552 538 453 C550 346 617 260 714 215 C783 183 849 182 912 224Z"/><path fill="none" stroke="url(#yoro-c-static-edge)" stroke-width="1.5" stroke-linejoin="round" d="M912 224 C817 157 650 187 522 264 C389 345 314 459 299 609 C284 766 303 937 439 1083 C361 998 327 914 330 848 C333 745 411 674 501 644 C549 628 580 626 617 632 C708 652 807 700 704 856 C802 741 751 665 627 634 C547 614 523 552 538 453 C550 346 617 260 714 215 C783 183 849 182 912 224Z"/></g><g><path fill="url(#yoro-c-static-right)" d="M548 519 C621 440 722 444 793 473 C898 516 966 610 972 698 C984 842 897 930 781 970 C650 1017 537 1053 477 1122 C496 1033 571 968 655 902 C762 817 846 733 853 634 C864 536 813 474 744 461 C676 449 609 459 548 519Z"/><path fill="none" stroke="url(#yoro-c-static-edge)" stroke-width="1.5" stroke-linejoin="round" d="M548 519 C621 440 722 444 793 473 C898 516 966 610 972 698 C984 842 897 930 781 970 C650 1017 537 1053 477 1122 C496 1033 571 968 655 902 C762 817 846 733 853 634 C864 536 813 474 744 461 C676 449 609 459 548 519Z"/></g></svg>
