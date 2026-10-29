@@ -156,7 +156,7 @@ class YoRo_Admin_Page {
 			<a class="yoro-admin-launcher__icon" href="<?php echo esc_url( $url ); ?>" aria-label="<?php echo esc_attr__( 'Open YoRo connection settings', 'yoro-ai-core' ); ?>">
 				<picture>
 					<source media="(prefers-reduced-motion: reduce)" srcset="<?php echo esc_url( YORO_AI_CORE_URL . 'assets/images/yoro-c-64-static.svg' ); ?>" />
-					<img src="<?php echo esc_url( YORO_AI_CORE_URL . 'assets/images/yoro-c-64-2x-3-cycles.svg' ); ?>" width="64" height="64" alt="" aria-hidden="true" />
+					<img src="<?php echo esc_url( YORO_AI_CORE_URL . 'assets/images/yoro-c-64-static.svg' ); ?>" data-animation-src="<?php echo esc_url( YORO_AI_CORE_URL . 'assets/images/yoro-c-64-2x-3-cycles.svg' ); ?>" width="64" height="64" alt="" aria-hidden="true" />
 				</picture>
 			</a>
 		</div>

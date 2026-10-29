@@ -82,6 +82,7 @@ try {
 	$assert( 1 === $xpath->query( '//a[@aria-label and string-length(@aria-label)>0]/picture/img[@width="64" and @height="64" and @alt="" and @aria-hidden="true"]' )->length, '64px icon must have an accessible link name and decorative image.' );
 	$assert( 1 === $xpath->query( '//source[@media="(prefers-reduced-motion: reduce)"]' )->length && false !== strpos( $html, 'yoro-c-64-static.svg' ), 'Reduced motion must select the static asset.' );
 	$assert( false !== strpos( $html, 'yoro-c-64-2x-3-cycles.svg' ) && false === strpos( $html, '<script' ) && false === strpos( $html, '<form' ), 'The inert launcher template must contain no inline script or connection form.' );
+	$assert( 1 === $xpath->query( '//picture/img[@data-animation-src and contains(@data-animation-src, "yoro-c-64-2x-3-cycles.svg") and contains(@src, "yoro-c-64-static.svg")]' )->length, 'Keep the original animation URL inert and a static image fallback; JS must create a fresh playback after full load.' );
 	$unsafe_text = static fn( $text, $original, $domain ) => 'yoro-ai-core' === $domain ? '<script>fixture</script> & "label"' : $text;
 	$unsafe_url = static fn( $url ) => $url . '&fixture=" onmouseover="fixture';
 	add_filter( 'gettext', $unsafe_text, 10, 3 );

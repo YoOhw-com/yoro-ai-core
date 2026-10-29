@@ -1,6 +1,106 @@
 (function () {
 	'use strict';
 
+	function initializeIcon(launcher, restored) {
+		const image = launcher.querySelector('.yoro-admin-launcher__icon img');
+		if (!image) return;
+		const source = image.getAttribute('data-animation-src');
+		const staticSource = image.getAttribute('src');
+		const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+		let cachedBlob = null;
+		let objectURL = null;
+		let controller = null;
+		let deadline = null;
+		let generation = 0;
+		let removeImageEvents = function () {};
+
+		function stop() {
+			++generation;
+			if (controller) controller.abort();
+			controller = null;
+			window.clearTimeout(deadline);
+			removeImageEvents();
+			if (objectURL) window.URL.revokeObjectURL(objectURL);
+			objectURL = null;
+		}
+
+		function play() {
+			stop();
+			if (motion.matches || !source) {
+				image.setAttribute('src', staticSource);
+				image.style.visibility = '';
+				return;
+			}
+			const current = generation;
+			image.style.visibility = 'hidden';
+			image.removeAttribute('src');
+			function show(url, fallback) {
+				if (generation !== current) return;
+				removeImageEvents();
+				const loaded = function () { image.style.visibility = ''; removeImageEvents(); };
+				const failed = function () { removeImageEvents(); if (fallback) fallback(); else loaded(); };
+				removeImageEvents = function () {
+					image.removeEventListener('load', loaded);
+					image.removeEventListener('error', failed);
+				};
+				image.addEventListener('load', loaded);
+				image.addEventListener('error', failed);
+				image.setAttribute('src', url);
+			}
+			function fallback() {
+				if (generation !== current) return;
+				if (objectURL) window.URL.revokeObjectURL(objectURL);
+				objectURL = null;
+				const url = new window.URL(source, document.baseURI);
+				if (url.origin !== window.location.origin) { show(staticSource); return; }
+				url.searchParams.set('yoro_play', Date.now() + '-' + Math.random().toString(36).slice(2));
+				show(url.href, function () { show(staticSource); });
+			}
+			async function prepare() {
+				try {
+					const url = new window.URL(source, document.baseURI);
+					if (url.origin !== window.location.origin) { show(staticSource); return; }
+					if (!cachedBlob) {
+						controller = new window.AbortController();
+						deadline = window.setTimeout(function () { if (controller) controller.abort(); }, 10000);
+						const response = await window.fetch(url.href, { cache: 'force-cache', mode: 'same-origin', redirect: 'error', signal: controller.signal });
+						if (!response.ok) throw new Error('SVG unavailable');
+						const blob = await response.blob();
+						if (generation !== current) return;
+						cachedBlob = blob;
+					}
+					if (generation !== current) return;
+					window.clearTimeout(deadline);
+					controller = null;
+					// A fresh image document resets SMIL while the SVG bytes stay browser-cached.
+					objectURL = window.URL.createObjectURL(cachedBlob);
+					show(objectURL, fallback);
+				} catch (_) {
+					if (generation !== current) return;
+					window.clearTimeout(deadline);
+					controller = null;
+					fallback();
+				}
+			}
+			prepare();
+		}
+
+		function pageShown(event) { if (event.persisted) { restored(); play(); } }
+		function pageHidden(event) {
+			stop();
+			image.style.visibility = 'hidden';
+			if (event.persisted) return;
+			cachedBlob = null;
+			window.removeEventListener('pageshow', pageShown);
+			window.removeEventListener('pagehide', pageHidden);
+			motion.removeEventListener('change', play);
+		}
+		window.addEventListener('pageshow', pageShown);
+		window.addEventListener('pagehide', pageHidden);
+		motion.addEventListener('change', play);
+		play();
+	}
+
 	function initialize() {
 		const template = document.getElementById('yoro-admin-launcher-template');
 		if (!template || document.getElementById('yoro-admin-launcher')) return;
@@ -10,21 +110,24 @@
 		const message = launcher.querySelector('.yoro-admin-launcher__message');
 		const storageKey = message && message.getAttribute('data-dismiss-key');
 		const dismissDuration = 60 * 60 * 1000;
-		if (storageKey) {
+		let completeTyping = function () {};
+		function hideDismissedMessage() {
+			if (!storageKey) return;
 			try {
 				const stored = window.localStorage.getItem(storageKey);
 				const expiry = Number(stored);
 				const now = Date.now();
-				if (Number.isSafeInteger(expiry) && expiry > now && expiry <= now + dismissDuration) message.remove();
+				if (Number.isSafeInteger(expiry) && expiry > now && expiry <= now + dismissDuration) { completeTyping(); message.remove(); }
 				else if (stored !== null) window.localStorage.removeItem(storageKey);
 			} catch (_) { /* Storage can be unavailable; keep the page usable. */ }
 		}
+		hideDismissedMessage();
+		initializeIcon(launcher, hideDismissedMessage);
 		document.body.appendChild(contents);
 		template.remove();
 
 		const hint = launcher.querySelector('.yoro-admin-launcher__hint');
 		if (!hint) return;
-		let completeTyping = function () {};
 		const dismiss = launcher.querySelector('.yoro-admin-launcher__dismiss');
 		if (dismiss && message) dismiss.addEventListener('click', function (event) {
 			event.preventDefault();
