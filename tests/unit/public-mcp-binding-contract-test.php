@@ -38,6 +38,13 @@ $bad = $projection; $bad['public_mcp']['runtime_enabled'] = false; $bad['public_
 $assert(!isset($normalize($bad)['public_mcp']), 'Disabled public reads cannot enable writes.');
 $off = $projection; $off['public_mcp']['runtime_enabled'] = false;
 $assert($normalize($off)['public_mcp']['runtime_enabled'] === false, 'Public rollback retains independent EA projection.');
+foreach (['refresh_needed', 'reconnect_required', 'revoked'] as $state) {
+    $display = $projection; $display['grant_status'] = $state;
+    $normalized = $normalize($display);
+    $assert($normalized['grant_status'] === $state && $normalized['public_mcp'] === $projection['public_mcp'], 'Merged EA credential display facts preserve independent public resource facts: '.$state);
+}
+$ea_off = $projection; $ea_off['runtime_enabled'] = false; $ea_off['server_url'] = ''; $ea_off['grant_status'] = 'unknown';
+$assert($normalize($ea_off) === $ea_off, 'A public runtime projection cannot turn a dark EA resource into a connected EA display.');
 foreach (['site', 'key', 'expiry', 'connection', 'manifest'] as $drift) {
     $facts = $context; $input = $projection;
     if ($drift === 'site') { $facts['site']['id'] = 9; }
@@ -47,4 +54,4 @@ foreach (['site', 'key', 'expiry', 'connection', 'manifest'] as $drift) {
     if ($drift === 'manifest') { $facts['connector_runtime']['capability_manifest']['current'] = false; }
     $assert(!isset($normalize($input, $facts)['public_mcp']), 'Current context must bind public projection: '.$drift);
 }
-echo "Public MCP normalization passed (coexistence, legacy, 7 malformed, rollback, 5 authority drifts).\n";
+echo "Public MCP normalization passed (coexistence, legacy, 7 malformed, rollback, 4 merged display cases, 5 authority drifts).\n";
