@@ -98,7 +98,10 @@ class YoRo_Support_Facts {
 			&& 'publish' === $product->get_status() && 'hidden' !== $product->get_catalog_visibility() && $product->is_visible();
 	}
 	private static function plain( $text, $limit ) {
-		return mb_substr( html_entity_decode( wp_strip_all_tags( strip_shortcodes( (string) $text ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ), 0, $limit );
+		$plain = html_entity_decode( wp_strip_all_tags( strip_shortcodes( (string) $text ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+		$plain = preg_replace( '/^[\s\x{FEFF}\x{200B}]+|[\s\x{FEFF}\x{200B}]+$/u', '', $plain ) ?? trim( $plain );
+		$plain = mb_substr( $plain, 0, $limit );
+		return preg_replace( '/^[\s\x{FEFF}\x{200B}]+|[\s\x{FEFF}\x{200B}]+$/u', '', $plain ) ?? trim( $plain );
 	}
 	private static function url( $url ) {
 		return 'https' === wp_parse_url( $url, PHP_URL_SCHEME ) && wp_parse_url( $url, PHP_URL_HOST ) === wp_parse_url( home_url(), PHP_URL_HOST )

@@ -34,12 +34,15 @@ class YoRo_Customer_Support {
 		if ( $session && true === $request->get_param( 'reset' ) ) {
 			if ( ! hash_equals( YoRo_Support_Transport::csrf( $cookie ), (string) $request->get_header( 'X-YoRo-Support-CSRF' ) ) ) { return self::unavailable(); }
 			$revoked = YoRo_Support_Transport::request( 'DELETE', '/sessions/current', [], $session );
-			if ( is_wp_error( $revoked ) ) { return self::unavailable(); }
+			if ( is_wp_error( $revoked ) && 'support_session_inactive' !== $revoked->get_error_code() ) { return self::unavailable(); }
 			$session = [];
 		}
 		if ( $session ) {
 			$validated = YoRo_Support_Transport::request( 'GET', '/sessions/current', [], $session );
-			if ( is_wp_error( $validated ) ) { $session = []; }
+			if ( is_wp_error( $validated ) ) {
+				if ( 'support_session_inactive' !== $validated->get_error_code() ) { return self::unavailable(); }
+				$session = [];
+			}
 		}
 		if ( ! $session ) {
 			$session = YoRo_Support_Transport::request( 'POST', '/sessions' );

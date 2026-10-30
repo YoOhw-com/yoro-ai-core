@@ -18,6 +18,12 @@ class YoRo_Support_Transport {
 		$response = wp_remote_request( $base . '/customer-support' . $path, [ 'method' => $method, 'timeout' => 18,
 			'connect_timeout' => 3, 'redirection' => 0, 'sslverify' => true, 'headers' => $headers,
 			'body' => 'GET' === $method ? null : wp_json_encode( $body ) ] );
+		if ( ! is_wp_error( $response ) && 403 === wp_remote_retrieve_response_code( $response ) ) {
+			$error = json_decode( wp_remote_retrieve_body( $response ), true );
+			if ( is_array( $error ) && 'support_session_unavailable' === ( $error['code'] ?? '' ) ) {
+				return new WP_Error( 'support_session_inactive', 'This support session is no longer active.' );
+			}
+		}
 		if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) < 200 || wp_remote_retrieve_response_code( $response ) >= 300 ) {
 			return new WP_Error( 'support_unavailable', 'Support is unavailable. Please retry later or use the site contact details.' );
 		}
