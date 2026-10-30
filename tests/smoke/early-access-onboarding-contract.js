@@ -21,7 +21,7 @@ function fixture(initial = 'granted', configOverrides = {}) {
     const projection = (grant = 'granted', overrides = {}) => ({ status: 'available', grant_status: grant, runtime_enabled: true,
         connection_healthy: true, compatible: true, checked_at: new Date(now).toISOString(), expires_at: new Date(now + 300000).toISOString(), ...overrides });
     const labels = { checking: 'Checking', unverified: 'Unverified; retrying', unavailable: 'Unavailable; retrying', wordpress: 'Repair WordPress connection',
-        granted: 'Connected', not_granted: 'Sign in from ChatGPT', revoked: 'Revoked; reconnect from ChatGPT', unknown: 'Not yet verified', copied: 'Copied!', copy: 'Select and copy' };
+        granted: 'Connected', refresh_needed: 'Connected — session refresh needed', reconnect_required: 'Disconnected — reconnect from ChatGPT', not_granted: 'Sign in from ChatGPT', revoked: 'Revoked; reconnect from ChatGPT', unknown: 'Not yet verified', copied: 'Copied!', copy: 'Select and copy' };
     const config = { url: '/wp-json/yoro-ai-core/v1/ai-api/onboarding-status', nonce: 'fixture-nonce', context: 'fixture-context', labels,
         projection: initial === null ? {} : projection(initial), ...configOverrides };
     const grant = new Element(); const feedback = new Element(); const signIn = new Element(); const store = new Element();
@@ -68,9 +68,9 @@ function fixture(initial = 'granted', configOverrides = {}) {
     await f.advance(270000); assert.equal(f.calls.length, 3); assert.equal(f.signIn.hidden, true);
     assert.equal(f.calls[0].options.credentials, 'same-origin'); assert.equal(f.calls[0].options.headers['X-WP-Nonce'], 'fixture-nonce');
     assert.equal(JSON.parse(f.calls[0].options.body).context, 'fixture-context');
-    for (const state of ['not_granted', 'revoked', 'unknown']) {
+    for (const state of ['refresh_needed', 'reconnect_required', 'not_granted', 'revoked', 'unknown']) {
         f.replies.push({ grant: state }); await f.advance(270000);
-        assert.equal(f.grant.textContent, f.labels[state]); assert.equal(f.signIn.hidden, state === 'unknown');
+        assert.equal(f.grant.textContent, f.labels[state]); assert.equal(f.signIn.hidden, ['unknown', 'refresh_needed'].includes(state));
     }
     f.replies.push({ grant: 'granted' }); await f.advance(270000); assert.equal(f.grant.textContent, 'Connected');
     let prevented = false; f.tabs[1].events.keydown({ key: 'ArrowLeft', preventDefault() { prevented = true; } });
@@ -100,6 +100,11 @@ function fixture(initial = 'granted', configOverrides = {}) {
         await fail.copy.events.click(); assert.equal(fail.copied(), fail.input.value); assert.equal(fail.copy.disabled, false);
         await fail.advance(30000); assert.equal(fail.grant.textContent, 'Connected');
     }
+    const refresh = fixture('refresh_needed'); assert.equal(refresh.grant.textContent, refresh.labels.refresh_needed); assert.equal(refresh.signIn.hidden, true);
+    refresh.hide(); await refresh.advance(600000); refresh.replies.push({ code: 503 }); refresh.show(); await flush();
+    assert.notEqual(refresh.grant.textContent, refresh.labels.refresh_needed); assert.equal(refresh.signIn.hidden, true);
+    const darkRefresh = fixture('refresh_needed', { projection: refresh.projection('refresh_needed', { runtime_enabled: false }) });
+    assert.notEqual(darkRefresh.grant.textContent, darkRefresh.labels.refresh_needed);
     const dark = fixture(); dark.replies.push({ grant: 'unknown', overrides: { runtime_enabled: false } }); await dark.advance(270000);
     assert.equal(dark.grant.textContent, 'Not yet verified'); assert.equal(dark.signIn.hidden, true);
     const hidden = fixture(); hidden.hide(); await hidden.advance(600000); assert.equal(hidden.calls.length, 0);

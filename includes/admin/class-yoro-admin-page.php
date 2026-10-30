@@ -219,9 +219,9 @@ class YoRo_Admin_Page {
         $can_manage = current_user_can( YoRo_Capabilities::MANAGE_CONNECTION );
         $url = YoRo_AI_Settings::get_early_access_server_url();
         $user = wp_get_current_user();
-        $grant_labels = [ 'not_granted' => __( 'Sign in from ChatGPT', 'yoro-ai-core' ), 'granted' => __( 'Connected', 'yoro-ai-core' ), 'revoked' => __( 'Access revoked. Reconnect from ChatGPT to restore access.', 'yoro-ai-core' ), 'unknown' => __( 'Not yet verified', 'yoro-ai-core' ) ];
+        $grant_labels = [ 'not_granted' => __( 'Sign in from ChatGPT', 'yoro-ai-core' ), 'granted' => __( 'Connected', 'yoro-ai-core' ), 'refresh_needed' => __( 'Connected — session refresh needed', 'yoro-ai-core' ), 'reconnect_required' => __( 'Disconnected — reconnect from ChatGPT', 'yoro-ai-core' ), 'revoked' => __( 'Access revoked. Reconnect from ChatGPT to restore access.', 'yoro-ai-core' ), 'unknown' => __( 'Not yet verified', 'yoro-ai-core' ) ];
         $grant_label = $grant_labels[ $onboarding['grant_status'] ?? 'unknown' ] ?? $grant_labels['unknown'];
-        $sign_in = in_array( $onboarding['grant_status'] ?? 'unknown', [ 'not_granted', 'revoked' ], true );
+        $sign_in = in_array( $onboarding['grant_status'] ?? 'unknown', [ 'not_granted', 'revoked', 'reconnect_required' ], true );
         $refresh_config = [
             'url' => $can_manage ? rest_url( YoRo_REST_API::REST_NAMESPACE . '/ai-api/onboarding-status' ) : '',
             'nonce' => $can_manage ? wp_create_nonce( 'wp_rest' ) : '',
@@ -233,6 +233,8 @@ class YoRo_Admin_Page {
                 'unavailable' => __( 'Connection status is unavailable. Retrying automatically.', 'yoro-ai-core' ),
                 'wordpress' => __( 'WordPress connection needs attention. Reload this page and check your YoRo account connection.', 'yoro-ai-core' ),
                 'granted' => __( 'ChatGPT connection: Connected', 'yoro-ai-core' ),
+                'refresh_needed' => __( 'ChatGPT connection: Connected — session refresh needed', 'yoro-ai-core' ),
+                'reconnect_required' => __( 'ChatGPT connection: Disconnected — reconnect from ChatGPT', 'yoro-ai-core' ),
                 'not_granted' => __( 'ChatGPT connection: Sign in from ChatGPT', 'yoro-ai-core' ),
                 'revoked' => __( 'ChatGPT access was revoked. Reconnect from ChatGPT if you want to restore access.', 'yoro-ai-core' ),
                 'unknown' => __( 'ChatGPT connection: Not yet verified', 'yoro-ai-core' ),
@@ -275,7 +277,7 @@ class YoRo_Admin_Page {
                         <li><div><h3><?php esc_html_e( 'Copy the Early Access Server URL', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'In ChatGPT, add a custom MCP connection and paste this Server URL.', 'yoro-ai-core' ); ?></p>
                             <div class="yoro-server-url" data-yoro-server-url><label class="screen-reader-text" for="yoro-server-url"><?php esc_html_e( 'Early Access Server URL', 'yoro-ai-core' ); ?></label><input id="yoro-server-url" type="text" readonly spellcheck="false" value="<?php echo esc_attr( $url ); ?>" placeholder="<?php echo esc_attr__( 'Configure your YoRo account connection first', 'yoro-ai-core' ); ?>" /><button type="button" class="button button-primary" data-yoro-copy-url <?php disabled( '' === $url ); ?>><?php esc_html_e( 'Copy URL', 'yoro-ai-core' ); ?></button></div>
                             <?php if ( '' === $url ) : ?><p class="yoro-connection-status"><?php esc_html_e( 'Configure the HTTPS YoRo API address to show your Server URL.', 'yoro-ai-core' ); ?></p>
-                            <?php else : ?><p class="yoro-connection-status" data-yoro-store-unverified <?php echo 'granted' === ( $onboarding['grant_status'] ?? '' ) && true === ( $onboarding['runtime_enabled'] ?? false ) ? 'hidden' : ''; ?>><?php esc_html_e( 'Store access is not yet verified. Connection status will refresh automatically.', 'yoro-ai-core' ); ?></p><?php endif; ?>
+                            <?php else : ?><p class="yoro-connection-status" data-yoro-store-unverified <?php echo in_array( $onboarding['grant_status'] ?? '', [ 'granted', 'refresh_needed' ], true ) && true === ( $onboarding['runtime_enabled'] ?? false ) ? 'hidden' : ''; ?>><?php esc_html_e( 'Store access is not yet verified. Connection status will refresh automatically.', 'yoro-ai-core' ); ?></p><?php endif; ?>
                         </div></li>
                         <li><div><h3><?php esc_html_e( 'ChatGPT connection status', 'yoro-ai-core' ); ?></h3><p><?php esc_html_e( 'YoRo verifies available access using your account and WordPress permissions. No separate site grant is required.', 'yoro-ai-core' ); ?></p>
                             <p data-yoro-sign-in <?php echo $sign_in ? '' : 'hidden'; ?>><?php esc_html_e( 'Sign in to your YoRo account when ChatGPT opens the connection.', 'yoro-ai-core' ); ?></p>
