@@ -18,6 +18,9 @@ class YoRo_AI_Core {
 		self::include_execution();
 		self::include_commerce();
 		self::include_rest();
+		require_once YORO_AI_CORE_PATH . 'includes/customer-support/class-yoro-support-facts.php';
+		require_once YORO_AI_CORE_PATH . 'includes/customer-support/class-yoro-support-transport.php';
+		require_once YORO_AI_CORE_PATH . 'includes/customer-support/class-yoro-customer-support.php';
 
 		if ( is_admin() ) {
 			self::include_admin();
@@ -199,6 +202,7 @@ class YoRo_AI_Core {
 		YoRo_Connector_Wake::init();
 
 		YoRo_REST_API::init();
+		YoRo_Customer_Support::init();
 
 		if ( is_admin() ) {
 			YoRo_Admin_Page::init();
