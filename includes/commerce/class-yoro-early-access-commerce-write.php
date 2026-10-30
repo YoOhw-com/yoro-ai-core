@@ -90,7 +90,14 @@ final class YoRo_Early_Access_Commerce_Write {
         ] ] ) {
             return new WP_Error( 'confirmed_note_scope_invalid', 'The confirmed internal note content does not match its scoped slot.' );
         }
-        if(in_array($action,YoRo_Order_Email::WriteActions,true)&&($operation['user_content_slots']??null)!==YoRo_Order_Email::slots($params)){return new WP_Error('confirmed_email_scope_invalid','Authored content does not match the confirmed scoped slots.');}
+        if (in_array($action, YoRo_Order_Email::WriteActions, true)) {
+            $expected_slots = YoRo_Order_Email::slots($params);
+            $confirmed_slots = array_key_exists('user_content_slots', $operation)
+                ? $operation['user_content_slots'] : ([] === $expected_slots ? [] : null);
+            if ($confirmed_slots !== $expected_slots) {
+                return new WP_Error('confirmed_email_scope_invalid', 'Authored content does not match the confirmed scoped slots.');
+            }
+        }
         if ('products.reply_review' === $action && ($operation['user_content_slots'] ?? null) !== [['field'=>'content','content'=>$params['changes']['content'],'content_scope'=>'public_review_reply','provenance'=>'user_goal']]) { return new WP_Error('confirmed_review_reply_scope_invalid','The public reply does not match its exact scoped content.'); }
         if(in_array($action,YoRo_Catalog_Management::WriteActions,true)){ $prepared=YoRo_Catalog_Management::prepare($params,$action);if(is_wp_error($prepared)){return $prepared;}$version=$facts['expected_version']; } elseif(in_array($action,YoRo_Order_Email::WriteActions,true)){ $prepared=YoRo_Order_Email::prepare($params,$action);if(is_wp_error($prepared)){return $prepared;}$version=$facts['expected_version']; } elseif ($action===YoRo_Stock_Adjustment::Action) {
             $prepared=YoRo_Stock_Adjustment::prepare($params);if(is_wp_error($prepared)){return $prepared;}$version=$facts['expected_version'];

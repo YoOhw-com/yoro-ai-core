@@ -2,6 +2,15 @@
 /** Disposable process-backed SQLite tests. MySQL/WordPress admission is covered by the owning smoke contract. */
 if (($argv[1] ?? '') === 'worker') {
     ob_start(); require __DIR__.'/order-email-test.php'; ob_end_clean();
+    define('YR0207_SCOPE_BOOTSTRAP_ONLY',true);
+    require __DIR__.'/order-email-content-slots-test.php';
+    // Only downstream dispatch/result packaging is stubbed; the real execute guard and mail capture run.
+    class YoRo_Action_Executor {
+        public static function execute($action,$params,...$context) {return YoRo_Order_Email::write([...$params,'_yoro_confirmed'=>true,'_yoro_preview'=>false],$action);}
+    }
+    class YoRo_Commerce_Contract_Builder {
+        public static function canonical_execution_payload($execution,$action) {return $execution;}
+    }
     require dirname(__DIR__,2).'/includes/commerce/class-yoro-connector-runtime.php';
     $GLOBALS['order']=new WC_Order(); $GLOBALS['order']->recipient='buyer@example.invalid'; $GLOBALS['wc']=new FixtureWoo();
     $GLOBALS['allowed']=true; $GLOBALS['captured']=[]; unset($GLOBALS['wrapper_footer']);
@@ -42,7 +51,7 @@ if (($argv[1] ?? '') === 'worker') {
     $authority=array_replace($authority,['profile'=>'early_access','binding_version'=>2,'user_id'=>101,'site_id'=>1,'wordpress_identity_id'=>9]);
     $run=str_repeat('a',32);$marker=['task_id'=>'YR-0196','run_id'=>$run,'owner_user_id'=>101,'site_id'=>1,'wordpress_identity_id'=>9];
     $GLOBALS['order']->meta[YoRo_YR0196_Canary_Context::Marker]=$marker;
-    $action=$mode==='native'?'orders.send_native_email':'orders.send_authored_email';
+    $action=in_array($mode,['native','native_empty'],true)?'orders.send_native_email':'orders.send_authored_email';
     $flags=$make($action,$action==='orders.send_native_email'?['template'=>'processing']:['subject'=>'Private fixture','body'=>'Exact private body']);
     $params=array_diff_key($flags,array_flip(['_yoro_confirmed','_yoro_preview']));
     $prepared=YoRo_Order_Email::prepare($params,$action);$source=$prepared['source'];
@@ -51,7 +60,9 @@ if (($argv[1] ?? '') === 'worker') {
         'from_address'=>$source['settings']['from_address'],'from_name_hash'=>hash('sha256',$source['settings']['from_name']),'content_type'=>'text/html'];
     $operation=['action'=>$action,'params'=>$params,'envelope_id'=>'envelope_'.str_repeat('b',64),'workflow_id'=>'fixture-workflow','operation_id'=>'operation_1','idempotency_key'=>'fixture-idempotency',
         'plan_hash'=>str_repeat('1',64),'preview_hash'=>str_repeat('c',64),'authorization'=>['execution_permit'=>'fixture-permit'],
-        'extensions'=>['yoro.mcp_early_access_commerce_write'=>[...$authority,'source_operation_id'=>'envelope_'.str_repeat('d',64),'source_result_hash'=>str_repeat('e',64)]]];
+        'extensions'=>['yoro.mcp_early_access_commerce_write'=>[...$authority,'expected_version'=>$params['expected_version'],'source_operation_id'=>'envelope_'.str_repeat('d',64),'source_result_hash'=>str_repeat('e',64)]]];
+    if($action!=='orders.send_native_email'){$operation['user_content_slots']=YoRo_Order_Email::slots($params);}
+    elseif($mode==='native_empty'){$operation['user_content_slots']=[];}
     $operation['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_preview']=['version'=>1,'task_id'=>'YR-0196','run_id'=>$run,'mode'=>'capture','expires_at'=>$expiry,'params_hash'=>YoRo_Early_Access_Product_Read::params_hash($params)];
     $hash=YoRo_YR0196_Canary_Context::approval_hash($operation,$run);$approvalId=YoRo_YR0196_Canary_Context::approval_id($operation,$run);
     $operation['extensions']['yoro.mcp_early_access_commerce_write']['yr0196_approval']=['version'=>1,'id'=>$approvalId,'hash'=>$hash];
@@ -82,7 +93,7 @@ if (($argv[1] ?? '') === 'worker') {
             $context=YoRo_YR0196_Canary_Context::admit($operation,1,static fn()=>$mutation!=='fence');
             $context->before($operation);$slot->setValue(null,$context);
         }
-        $result=YoRo_Order_Email::write($flags,$action);
+        $result=YoRo_Early_Access_Commerce_Write::execute($operation,static fn()=>$mutation!=='fence');
         $denied=is_wp_error($result);if($denied&&getenv("YR0196_DEBUG")){fwrite(STDERR,$result->code." ".$result->message."\n");}
     } catch(Throwable $error){$denied=true;if(getenv("YR0196_DEBUG")){fwrite(STDERR,$error->getMessage()."\n".$error->getTraceAsString()."\n");}}
     finally{$slot->setValue(null,null);}
@@ -102,7 +113,7 @@ foreach(['profile','resource','binding_version','oauth_client_id','grant_id','gr
     [$code,$r]=$run('authored',$mutation);$assert($r['denied']&&$r['mail_calls']===0&&$r['history']===[]&&$r['context_cleared'],'Denial before effect: '.$mutation);
     $assert((int)$pdo->query('SELECT COUNT(*) FROM options')->fetchColumn()===0,'Denial consumes no capture: '.$mutation);
 }
-foreach(['authored','native']as$mode){
+foreach(['authored','native','native_empty']as$mode){
     $clear();[$code,$r]=$run($mode);$assert(!$r['denied']&&$r['private_ready']&&$r['outcome']==='captured_not_delivered'&&$r['mail_calls']===0&&$r['history']===[],'Both lanes capture truthfully without transport: '.$mode);
     [$code,$r]=$run($mode,'permit_alias');$assert($r['denied']&&$r['mail_calls']===0&&(int)$pdo->query('SELECT COUNT(*) FROM options')->fetchColumn()===1,'Restart cannot recapture or send: '.$mode);
 }
