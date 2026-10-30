@@ -131,6 +131,14 @@ try {
         $data = $server->dispatch( $request() )->get_data();
         $assert( 'unknown' === ( $data['projection']['status'] ?? null ) && ! isset( $data['projection']['grant_status'] ), 'Malformed/stale/context-mismatched projection fails closed: ' . $field );
     }
+    foreach ( [ 'refresh_needed', 'reconnect_required' ] as $new_state ) {
+        $payload = $base; $payload['early_access_onboarding']['grant_status'] = $new_state;
+        $assert( $new_state === $server->dispatch( $request() )->get_data()['projection']['grant_status'], 'The bounded presentation state must survive normal transport: ' . $new_state );
+        if ( 'refresh_needed' === $new_state ) {
+            $payload['early_access_onboarding']['runtime_enabled'] = false; $payload['early_access_onboarding']['server_url'] = '';
+            $assert( 'unknown' === $server->dispatch( $request() )->get_data()['projection']['status'], 'DARK cannot assert a refreshable connection.' );
+        }
+    }
     $payload = $base; unset( $payload['early_access_onboarding']['grant_status'] );
     $data = $server->dispatch( $request() )->get_data();
     $assert( ! isset( $data['projection']['grant_status'] ), 'Missing grant facts never establish sign-in or connected state.' );
@@ -162,18 +170,18 @@ try {
     $assert( 'connection_changed' === $data['state'] && false === get_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID, false ), 'A concurrent installation deletion must not recreate an identity while normalizing the response.' );
     $remove_installation = false;
     update_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID, $uuid, false );
-    if ( $export = getenv( 'YR0201_ONBOARDING_STATUS_EXPORT' ) ) {
+    if ( $export = ( getenv( 'YR0208_ONBOARDING_STATUS_EXPORT' ) ?: getenv( 'YR0201_ONBOARDING_STATUS_EXPORT' ) ) ) {
         $wire = json_decode( file_get_contents( $export ), true, 512, JSON_THROW_ON_ERROR );
         update_option( 'home', $wire['site_url'], false );
         update_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID, $wire['installation_uuid'], false );
         update_option( YoRo_AI_Settings::OPTION_AI_API_URL, 'https://r2-api.yorohq.com/api/v1', false );
         update_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $encrypt->invoke( null, $wire['site_key'] ), false );
-        foreach ( [ 'granted', 'unknown', 'revoked', 'not_granted' ] as $grant_status ) {
+        foreach ( array_keys( $wire['responses'] ) as $grant_status ) {
             $payload = $wire['responses'][ $grant_status ];
             $data = $server->dispatch( $request() )->get_data();
             $assert( $grant_status === ( $data['projection']['grant_status'] ?? null ), 'Actual API GET response must pass the actual Core client and normalizer: ' . $grant_status );
         }
-        echo "Exact source API GET -> Core REST/client/normalizer conformance passed for granted/unknown/revoked/not_granted.\n";
+        echo "Exact source API GET -> Core REST/client/normalizer conformance passed for all exported current/refresh/disconnected/unknown states.\n";
         update_option( 'home', $previous['home'], false );
         update_option( YoRo_AI_Settings::OPTION_INSTALLATION_UUID, $uuid, false );
         update_option( YoRo_AI_Settings::OPTION_AI_API_SITE_KEY, $encrypt->invoke( null, $key ), false );

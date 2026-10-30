@@ -45,6 +45,12 @@ try {
     $status['early_access_onboarding'] = $granted; update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
     ob_start(); YoRo_Admin_Page::render_page(); $authorized = preg_replace( '#<script\b[^>]*>.*?</script>#s', '', ob_get_clean() );
     $assert( false !== strpos( $authorized, 'ChatGPT connection: Connected' ) && false !== strpos( $authorized, 'id="yoro-server-url"' ), 'Current runtime-enabled grant must still show authorized access and its verified URL.' );
+    foreach ( [ 'refresh_needed' => 'Connected — session refresh needed', 'reconnect_required' => 'Disconnected — reconnect from ChatGPT' ] as $state => $label ) {
+        $status['early_access_onboarding'] = array_merge( $projection, [ 'grant_status' => $state ] );
+        update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
+        ob_start(); YoRo_Admin_Page::render_page(); $state_html = preg_replace( '#<script\b[^>]*>.*?</script>#s', '', ob_get_clean() );
+        $assert( str_contains( $state_html, $label ) && ! str_contains( $state_html, $key ), 'Step 3 must present the bounded state without a secret: ' . $state );
+    }
     $dark_grant = $granted; $dark_grant['runtime_enabled'] = false; $dark_grant['server_url'] = '';
     $normalized_dark = YoRo_AI_Settings::normalize_early_access_onboarding( $dark_grant, $status );
     $assert( false === $normalized_dark['runtime_enabled'] && 'granted' !== ( $normalized_dark['grant_status'] ?? 'unknown' ), 'DARK must reject an inconsistent usable-grant projection.' );
@@ -85,9 +91,9 @@ try {
     YoRo_Admin_Page::enqueue_assets( 'toplevel_page_yoro-ai-core' );
     $assert( [ 'yoro-onboarding' ] === $wp_scripts->queue, 'Only the connection page JS may enqueue; native chat assets stay dormant.' );
     $wp_scripts = $saved_scripts;
-    $evidence_dir = getenv( 'YR0201_UI_RENDER_DIR' );
-    if ( is_string( $evidence_dir ) && is_dir( $evidence_dir ) && str_contains( $evidence_dir, 'yr-0201-step3-status-refresh' ) ) {
-        foreach ( [ 'granted', 'not_granted', 'revoked', 'unknown' ] as $render_state ) {
+    $evidence_dir = ( getenv( 'YR0208_UI_RENDER_DIR' ) ?: getenv( 'YR0201_UI_RENDER_DIR' ) );
+    if ( is_string( $evidence_dir ) && is_dir( $evidence_dir ) && ( str_contains( $evidence_dir, 'yr-0201-step3-status-refresh' ) || str_contains( $evidence_dir, 'yr0208-' ) ) ) {
+        foreach ( [ 'granted', 'refresh_needed', 'reconnect_required', 'not_granted', 'revoked', 'unknown' ] as $render_state ) {
             $status['early_access_onboarding'] = array_merge( $projection, [ 'grant_status' => $render_state ] );
             update_option( YoRo_AI_Settings::OPTION_AI_API_STATUS, $status, false );
             ob_start(); YoRo_Admin_Page::render_page(); $render_html = ob_get_clean();
@@ -97,7 +103,7 @@ try {
             $logo = 'data:image/png;base64,' . base64_encode( file_get_contents( dirname( __DIR__, 2 ) . '/assets/images/yoro-logo.png' ) );
             $render_html = preg_replace( '#src="[^"]*/assets/images/yoro-logo.png"#', 'src="' . $logo . '"', $render_html );
             $asset_root = dirname( __DIR__, 2 );
-            file_put_contents( $evidence_dir . '/ui-' . $render_state . '.html', '<!doctype html><html lang="en"><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>YR-0201 disposable source-rendered fixture: ' . $render_state . '</title><style>body{background:#f6f6ef;margin:0}button,input{font:inherit}.button{display:inline-block;text-decoration:none;border:1px solid #cbd0bd;padding:6px 16px;background:white;color:#30362d;cursor:pointer}' . file_get_contents( $asset_root . '/assets/css/yoro-ai-admin.css' ) . '</style><body><p>Disposable source-rendered fixture — ' . esc_html( $render_state ) . '. External OAuth/API NOT_RUN.</p>' . $render_html . '</body></html>' );
+            file_put_contents( $evidence_dir . '/ui-' . $render_state . '.html', '<!doctype html><html lang="en"><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Disposable source-rendered connection fixture: ' . $render_state . '</title><style>body{background:#f6f6ef;margin:0}button,input{font:inherit}.button{display:inline-block;text-decoration:none;border:1px solid #cbd0bd;padding:6px 16px;background:white;color:#30362d;cursor:pointer}' . file_get_contents( $asset_root . '/assets/css/yoro-ai-admin.css' ) . '</style><body><p>Disposable source-rendered fixture — ' . esc_html( $render_state ) . '. External OAuth/API NOT_RUN.</p>' . $render_html . '</body></html>' );
         }
     }
     $output = getenv( 'YR0174_UI_RENDER' );

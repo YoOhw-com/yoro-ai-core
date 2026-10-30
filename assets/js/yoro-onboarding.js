@@ -52,13 +52,13 @@
         const keys = ['status', 'grant_status', 'runtime_enabled', 'connection_healthy', 'compatible', 'checked_at', 'expires_at'];
         if (Object.keys(value).some(key => !keys.includes(key)) ||
             !['available', 'not_available', 'requested_pending', 'withdrawn', 'unknown'].includes(value.status) ||
-            !['granted', 'not_granted', 'revoked', 'unknown'].includes(value.grant_status ?? 'unknown') ||
+            !['granted', 'refresh_needed', 'reconnect_required', 'not_granted', 'revoked', 'unknown'].includes(value.grant_status ?? 'unknown') ||
             ['runtime_enabled', 'connection_healthy', 'compatible'].some(key => typeof value[key] !== 'boolean') ||
             typeof value.checked_at !== 'string' || typeof value.expires_at !== 'string') return false;
         const checked = Date.parse(value.checked_at); const expires = Date.parse(value.expires_at);
         if (!Number.isFinite(checked) || !Number.isFinite(expires) || checked > Date.now() + 30000 ||
             checked < Date.now() - 300000 || expires <= Date.now() || expires > checked + 300000) return false;
-        return value.grant_status !== 'granted' || (value.runtime_enabled && value.connection_healthy && value.compatible &&
+        return !['granted', 'refresh_needed'].includes(value.grant_status) || (value.runtime_enabled && value.connection_healthy && value.compatible &&
             ['available', 'requested_pending', 'withdrawn'].includes(value.status));
     };
     const render = (state = 'unverified') => {
@@ -66,8 +66,8 @@
         const status = fresh ? projection.grant_status || 'unknown' : 'unknown';
         text(grant, (fresh ? labels[status] || labels.unknown : labels[state] || labels.unknown) ||
             grant?.dataset.unverifiedLabel || 'ChatGPT connection: Not yet verified');
-        if (signIn) signIn.hidden = !fresh || !['not_granted', 'revoked'].includes(status);
-        if (storeUnverified) storeUnverified.hidden = fresh && status === 'granted' && projection.runtime_enabled;
+        if (signIn) signIn.hidden = !fresh || !['not_granted', 'revoked', 'reconnect_required'].includes(status);
+        if (storeUnverified) storeUnverified.hidden = fresh && ['granted', 'refresh_needed'].includes(status) && projection.runtime_enabled;
 
     };
     const schedule = () => {
