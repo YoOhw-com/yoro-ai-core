@@ -197,6 +197,12 @@ class YoRo_AI_Settings {
 		return self::normalize_early_access_onboarding( $status['early_access_onboarding'] ?? null, $status );
 	}
 
+	/** Independent exact resource projection; the EA address is never replaced. */
+	public static function public_mcp_projection( $status = null ) {
+		$projection = self::get_early_access_onboarding( $status );
+		return $projection['public_mcp'] ?? [];
+	}
+
 	/** Opaque page binding: changing credentials, endpoint or installation invalidates pending refreshes. */
 	public static function get_early_access_refresh_context( $fresh = false ) {
 		if ( $fresh ) {
@@ -233,8 +239,8 @@ class YoRo_AI_Settings {
 	public static function normalize_early_access_onboarding( $input, array $context, $api_url = null, $site_key = null ) {
 		$unknown = [ 'status' => 'unknown', 'source' => 'api_handshake', 'connection_healthy' => false,
 			'compatible' => false, 'checked_at' => '', 'expires_at' => '', 'future_endpoint' => '', 'runtime_enabled' => false ];
-		$keys = [ 'status', 'source', 'site_id', 'installation_uuid', 'connection_healthy', 'compatible', 'checked_at', 'expires_at', 'future_endpoint', 'runtime_enabled', 'server_url', 'grant_status', 'confirmed_commerce_writes_enabled' ];
-		if ( ! is_array( $input ) || array_diff( array_keys( $input ), $keys ) || array_diff( array_diff( $keys, [ 'server_url', 'grant_status', 'confirmed_commerce_writes_enabled' ] ), array_keys( $input ) ) ) {
+		$keys = [ 'status', 'source', 'site_id', 'installation_uuid', 'connection_healthy', 'compatible', 'checked_at', 'expires_at', 'future_endpoint', 'runtime_enabled', 'server_url', 'grant_status', 'confirmed_commerce_writes_enabled', 'public_mcp' ];
+		if ( ! is_array( $input ) || array_diff( array_keys( $input ), $keys ) || array_diff( array_diff( $keys, [ 'server_url', 'grant_status', 'confirmed_commerce_writes_enabled', 'public_mcp' ] ), array_keys( $input ) ) ) {
 			return $unknown;
 		}
 		$api_url = null === $api_url ? self::get_ai_api_url() : $api_url;
@@ -280,6 +286,17 @@ class YoRo_AI_Settings {
 				|| ( $context['connector_runtime']['connector_version'] ?? '' ) !== YORO_AI_CORE_VERSION
 				|| 1 !== ( $context['connector_runtime']['protocol_version'] ?? null ) || '' === $input['future_endpoint'] ) ) {
 			return $unknown;
+		}
+		if ( array_key_exists( 'public_mcp', $input ) ) {
+			$public = $input['public_mcp'];
+			if ( ! is_array( $public ) || 5 !== count( $public ) || 1 !== ( $public['version'] ?? null )
+				|| ( $public['resource'] ?? null ) !== $base . '/mcp'
+				|| ! is_bool( $public['runtime_enabled'] ?? null ) || ! is_bool( $public['confirmed_commerce_writes_enabled'] ?? null )
+				|| ( true === $public['confirmed_commerce_writes_enabled'] && ! $public['runtime_enabled'] )
+				|| ( $public['manifest_version'] ?? null ) !== 1
+				|| ! in_array( $input['status'], [ 'available', 'requested_pending', 'withdrawn' ], true ) ) {
+				unset( $input['public_mcp'] );
+			}
 		}
 		return array_intersect_key( $input, array_flip( $keys ) );
 	}

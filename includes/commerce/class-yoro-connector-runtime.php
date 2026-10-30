@@ -575,14 +575,28 @@ class YoRo_Connector_Runtime {
     public static function early_access_read_allowed() {
         $status = YoRo_AI_Settings::get_ai_api_status();
         $projection = YoRo_AI_Settings::get_early_access_onboarding( $status );
-        return true === ( $projection['runtime_enabled'] ?? false )
-            && '' !== ( $projection['server_url'] ?? '' )
+        return ( ( true === ( $projection['runtime_enabled'] ?? false ) && '' !== ( $projection['server_url'] ?? '' ) )
+                || true === ( $projection['public_mcp']['runtime_enabled'] ?? false ) )
             && YoRo_AI_Settings::is_ai_api_account_connected( $status ) && class_exists( 'WooCommerce' );
     }
 
     public static function early_access_write_allowed() {
         $projection = YoRo_AI_Settings::get_early_access_onboarding();
-        return self::early_access_read_allowed() && true === ( $projection['confirmed_commerce_writes_enabled'] ?? false );
+        return self::early_access_read_allowed() && ( true === ( $projection['confirmed_commerce_writes_enabled'] ?? false )
+            || true === ( $projection['public_mcp']['confirmed_commerce_writes_enabled'] ?? false ) );
+    }
+
+    /** Exact channel admission is repeated at every existing runner fence. */
+    private static function ordinary_resource_allowed( $facts, $write = false ) {
+        if ( ! is_array( $facts ) || 'early_access' !== ( $facts['profile'] ?? null ) || 2 !== ( $facts['binding_version'] ?? null ) ) { return false; }
+        $projection = YoRo_AI_Settings::get_early_access_onboarding();
+        $public = $projection['public_mcp'] ?? [];
+        if ( ( $facts['resource'] ?? null ) === ( $public['resource'] ?? null ) && isset( $public['resource'] ) ) {
+            return true === ( $public['runtime_enabled'] ?? false ) && ( ! $write || true === ( $public['confirmed_commerce_writes_enabled'] ?? false ) );
+        }
+        return true === ( $projection['runtime_enabled'] ?? false ) && '' !== ( $projection['server_url'] ?? '' )
+            && ( $facts['resource'] ?? null ) === $projection['server_url']
+            && ( ! $write || true === ( $projection['confirmed_commerce_writes_enabled'] ?? false ) );
     }
 
     public function run_early_access_write_once() {
@@ -837,8 +851,7 @@ class YoRo_Connector_Runtime {
         if ( ! self::early_access_write_allowed() || ! YoRo_Early_Access_Commerce_Write::valid_params( $operation['action'] ?? '', $operation['params'] ?? [], $facts )
             || false === $expiry || $expiry <= time() || ! is_array( $facts ) || 1 !== ( $facts['version'] ?? null )
             || ( $facts['action'] ?? null ) !== ( $operation['action'] ?? null )
-            || ( $status['early_access_onboarding']['server_url'] ?? '' ) !== ( $facts['resource'] ?? null )
-            || 'early_access' !== ( $facts['profile'] ?? null ) || 2 !== ( $facts['binding_version'] ?? null )
+            || ! self::ordinary_resource_allowed( $facts, true )
             || YoRo_AI_Settings::get_installation_uuid() !== ( $facts['installation_uuid'] ?? null )
             || ( $status['site']['id'] ?? null ) !== ( $facts['site_id'] ?? null )
             || ( $status['credential']['id'] ?? null ) !== ( $facts['site_key_id'] ?? null )
@@ -872,8 +885,7 @@ class YoRo_Connector_Runtime {
 		if ( ! self::early_access_read_allowed() || ! $valid_selectors
 			|| false === $manifest_expiry || $manifest_expiry <= time()
 			|| [ 'yoro_view_store_data' ] !== ( $operation['actor']['permissions'] ?? null )
-			|| ! is_array( $facts ) || ( $status['early_access_onboarding']['server_url'] ?? '' ) !== ( $facts['resource'] ?? null )
-            || 2 !== ( $facts['binding_version'] ?? null ) || 'early_access' !== ( $facts['profile'] ?? null )
+			|| ! self::ordinary_resource_allowed( $facts )
 			|| YoRo_AI_Settings::get_installation_uuid() !== ( $facts['installation_uuid'] ?? null )
 			|| ( $status['site']['id'] ?? null ) !== ( $facts['site_id'] ?? null )
 			|| ( $status['credential']['id'] ?? null ) !== ( $facts['site_key_id'] ?? null ) ) {

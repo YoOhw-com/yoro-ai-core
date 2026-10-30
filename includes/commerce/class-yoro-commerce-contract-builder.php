@@ -58,6 +58,7 @@ class YoRo_Commerce_Contract_Builder {
 		];
 		$extensions['wordpress.runtime']['read_features']['yoro.early_access_settings_read'] = YoRo_Early_Access_Settings_Read::manifest();
 		if ( yoro_ai_core_has_woocommerce() ) {
+			$extensions['yoro.public_mcp'] = [ 'version' => 1, 'profile' => 'early_access', 'binding_version' => 2, 'resource_path' => '/mcp', 'shared_ordinary_delivery' => true ];
 			$extensions['yoro.early_access_commerce_writes'] = YoRo_Early_Access_Commerce_Write::manifest();
             $extensions['yoro.early_access_product_edit'] = YoRo_Product_Edit::manifest();
             $extensions[YoRo_Product_Reviews::ManifestExtension] = YoRo_Product_Reviews::manifest();
