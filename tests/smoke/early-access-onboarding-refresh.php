@@ -38,6 +38,11 @@ try {
             'connection_healthy' => true, 'compatible' => true, 'checked_at' => gmdate( 'c' ), 'expires_at' => gmdate( 'c', time() + 300 ),
             'future_endpoint' => 'https://fixture-api.test/mcp/early-access', 'runtime_enabled' => true,
             'server_url' => 'https://fixture-api.test/mcp/early-access', 'grant_status' => 'granted' ] ];
+    $payload['early_access_onboarding']['public_mcp'] = ['version' => 1, 'resource' => 'https://fixture-api.test/mcp', 'manifest_version' => 1, 'runtime_enabled' => false, 'confirmed_commerce_writes_enabled' => false];
+    $public_context = $payload;
+    $public_context['early_access_credential_fingerprint'] = hash('sha256', $key);
+    $public_normalized = YoRo_AI_Settings::normalize_early_access_onboarding($payload['early_access_onboarding'], $public_context);
+    $assert(($public_normalized['public_mcp']['resource'] ?? '') === 'https://fixture-api.test/mcp' && $public_normalized['server_url'] === 'https://fixture-api.test/mcp/early-access', 'A validated public projection must coexist with the exact EA endpoint.');
     $base = $payload;
     $http_code = 200; $transport_error = false; $change_context = false; $remove_installation = false; $requests = [];
     $http_filter = static function( $pre, $args, $url ) use ( &$payload, &$http_code, &$transport_error, &$change_context, &$remove_installation, &$requests ) {
