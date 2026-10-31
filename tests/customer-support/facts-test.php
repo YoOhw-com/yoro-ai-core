@@ -90,9 +90,13 @@ if ($woo) {
     $product = YoRo_Support_Facts::product(20);
     check($product['product']['price'] === '100.000 ₫' && $product['product']['currency'] === 'VND', 'Public storefront formatted price/currency.');
     check(!str_contains(json_encode($product), 'SECRET'), 'Private fields excluded before model.');
-    foreach ([['status'=>'draft'], ['visibility'=>'hidden'], ['visible'=>false], ['purchasable'=>false], ['price'=>''], ['type'=>'grouped'], ['url'=>'https://other.test/p']] as $mutation) {
+    foreach ([['status'=>'draft'], ['visibility'=>'hidden'], ['visible'=>false], ['purchasable'=>false], ['price'=>''], ['type'=>'grouped'], ['stock'=>'onpreorder'], ['stock'=>'unknown'], ['url'=>'https://other.test/p']] as $mutation) {
         $GLOBALS['products'][20] = new SyntheticProduct(20, $mutation);
         check(YoRo_Support_Facts::product(20) === null, 'Invalid/hidden/unpurchasable product omitted.');
+    }
+    foreach (['instock', 'outofstock', 'onbackorder'] as $stock) {
+        $GLOBALS['products'][20] = new SyntheticProduct(20, ['stock'=>$stock]);
+        check(YoRo_Support_Facts::product(20)['product']['stock'] === $stock, 'Canonical stock values are preserved without mapping.');
     }
     $GLOBALS['products'][20] = new SyntheticProduct(20, ['type'=>'variable','children'=>[21]]);
     $GLOBALS['posts'][21] = post_fixture(21, ['post_type'=>'product_variation']);

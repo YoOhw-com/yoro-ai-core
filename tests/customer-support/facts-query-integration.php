@@ -59,6 +59,10 @@ $dark = product( 'Dark Ground', [ 'sale' => '62' ] );
 $skyler = product( 'Skyler', [ 'regular' => '50', 'stock' => 'onbackorder' ] );
 $hidden = product( 'Dark Ground hidden secret', [ 'visibility' => 'hidden' ] );
 $draft = product( 'Dark Ground draft secret', [ 'status' => 'draft' ] );
+add_filter( 'woocommerce_product_stock_status_options', static fn( $statuses ) => $statuses + [ 'onpreorder' => 'Synthetic custom preorder' ] );
+$custom_stock = product( 'Global Blacklist Pro support source', [ 'stock' => 'onpreorder' ] );
+verify( 'onpreorder' === wc_get_product( $custom_stock->get_id() )->get_stock_status(), 'Real Woo persistence retains a plugin-defined stock status for the regression.' );
+verify( null === YoRo_Support_Facts::product( $custom_stock->get_id() ), 'Stock values outside the unchanged public-facts v1 enum are omitted, never relabeled.' );
 $parent = new WC_Product_Variable();
 $parent->set_name( 'Jupiter' );
 $parent->set_status( 'publish' );
@@ -84,6 +88,7 @@ foreach ( [ 'faq' => $faq, 'toc' => $toc ] as $kind => $id ) {
 	$snapshot = YoRo_Support_Facts::snapshot( $settings, $queries[ $kind ] );
 	verify( 'content:' . $id === $snapshot['sources'][0]['id'], 'Named content ranks first even after 48 older selected sources: ' . $kind );
 	verify( ! in_array( 'content:' . $unselected, ids( $snapshot ), true ), 'Unselected sources never enter candidates.' );
+	verify( ! in_array( 'product:' . $custom_stock->get_id(), ids( $snapshot ), true ), 'A plugin-defined stock value cannot poison an unrelated natural-question snapshot.' );
 	verify( count( array_filter( $snapshot['sources'], static fn( $source ) => 'content' === $source['type'] ) ) <= 10, 'Content projection cap.' );
 }
 $snapshot = YoRo_Support_Facts::snapshot( $settings, $queries['product'] );
@@ -124,5 +129,5 @@ foreach ( $candidate_queries as $entry ) {
 	verify( str_contains( $entry[0], "post_type = 'product' AND post_status = 'publish' AND post_password = ''" ), 'Candidate SQL is a fixed public-only product projection.' );
 }
 echo wp_json_encode( [ 'result' => 'passed', 'assertions' => $assertions, 'wordpress' => $wp_version, 'woocommerce' => WC_VERSION,
-	'catalog_rows' => 117, 'approved_contents' => count( $selected ), 'candidate_queries' => count( $candidate_queries ),
+	'catalog_rows' => 118, 'approved_contents' => count( $selected ), 'candidate_queries' => count( $candidate_queries ),
 	'original_failures_reproduced' => 3, 'provider_requests' => 0, 'database' => 'fresh-disposable-socket-only' ] ), "\n";

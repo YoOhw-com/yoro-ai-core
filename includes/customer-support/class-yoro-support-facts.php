@@ -127,6 +127,7 @@ class YoRo_Support_Facts {
 		if ( ! function_exists( 'wc_get_product' ) ) { return null; }
 		$product = wc_get_product( $id );
 		if ( ! $product || ! in_array( $product->get_type(), [ 'simple', 'variable', 'variation' ], true )
+			|| ! in_array( $product->get_stock_status(), [ 'instock', 'outofstock', 'onbackorder' ], true )
 			|| ! self::public_product( $product ) || ! $product->is_purchasable() || '' === (string) $product->get_price() ) { return null; }
 		$parent = null;
 		if ( 'variation' === $product->get_type() ) {
