@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import secrets
 import shutil
+import stat
 import subprocess
 import tempfile
 import time
@@ -21,6 +22,9 @@ parser.add_argument("--woocommerce-source", required=True)
 parser.add_argument("--mysql-base", required=True)
 parser.add_argument("--php", required=True)
 args = parser.parse_args()
+for package in (args.wordpress_source, args.woocommerce_source, args.mysql_base, args.php):
+    if Path(package).is_symlink():
+        raise RuntimeError("Package inputs must not be symbolic links")
 wp_source = Path(args.wordpress_source).resolve(strict=True)
 woo_source = Path(args.woocommerce_source).resolve(strict=True)
 mysql_base = Path(args.mysql_base).resolve(strict=True)
@@ -29,6 +33,38 @@ tests = Path(__file__).resolve().parent
 environment = {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": str(tests)}
 process = None
 
+
+def copy_package(source, target):
+    """Copy regular package files using directory-relative, non-following opens."""
+    def copy_directory(descriptor, destination):
+        destination.mkdir(mode=0o700)
+        for name in os.listdir(descriptor):
+            mode = os.stat(name, dir_fd=descriptor, follow_symlinks=False).st_mode
+            if stat.S_ISDIR(mode):
+                child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+                try:
+                    copy_directory(child, destination / name)
+                finally:
+                    os.close(child)
+            elif stat.S_ISREG(mode):
+                copy_file(descriptor, name, destination / name)
+            else:
+                raise RuntimeError("Package links and special files are not accepted")
+
+    descriptor = os.open(source, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        copy_directory(descriptor, target)
+    finally:
+        os.close(descriptor)
+
+
+def copy_file(directory, name, target):
+    descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
+    with os.fdopen(descriptor, "rb") as source, target.open("xb") as output:
+        if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+            raise RuntimeError("Only regular package files are accepted")
+        shutil.copyfileobj(source, output)
+
 with tempfile.TemporaryDirectory(prefix=".disposable-query-", dir=tests) as temporary, tempfile.TemporaryDirectory(prefix="ycs-", dir="/tmp") as socket_directory:
     root = Path(temporary)
     os.chmod(root, 0o700)
@@ -36,11 +72,15 @@ with tempfile.TemporaryDirectory(prefix=".disposable-query-", dir=tests) as temp
     wp = root / "wordpress"
     wp.mkdir(mode=0o700)
     for directory in ("wp-admin", "wp-includes"):
-        shutil.copytree(wp_source / directory, wp / directory)
-    for source in wp_source.glob("*.php"):
-        if source.name != "wp-config.php":
-            shutil.copyfile(source, wp / source.name)
-    shutil.copytree(woo_source, wp / "wp-content/plugins/woocommerce")
+        copy_package(wp_source / directory, wp / directory)
+    source_directory = os.open(wp_source, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for name in ("wp-load.php", "wp-settings.php"):
+            copy_file(source_directory, name, wp / name)
+    finally:
+        os.close(source_directory)
+    (wp / "wp-content/plugins").mkdir(parents=True, mode=0o700)
+    copy_package(woo_source, wp / "wp-content/plugins/woocommerce")
     (wp / ".support-disposable").write_text("YR-0214-disposable-wordpress")
     socket = str(Path(socket_directory) / "mysql.sock")
     datadir = root / "mysql"
