@@ -14,29 +14,35 @@ class YoRo_Support_Facts {
 				if ( $source ) { $sources[] = $source; }
 			}
 		} else {
+			$terms = self::terms( mb_substr( (string) $query, 0, 120 ) );
+			$candidates = 0;
 			$content_ids = array_slice( array_map( 'absint', $settings['content_ids'] ?? [] ), 0, 50 );
 			if ( $content_ids ) {
 				$posts = get_posts( [ 'post_type' => [ 'post', 'page' ], 'post_status' => 'publish', 'post__in' => $content_ids,
-					's' => mb_substr( (string) $query, 0, 120 ), 'numberposts' => 100, 'has_password' => false,
+					'numberposts' => 50, 'has_password' => false,
 					'orderby' => 'ID', 'order' => 'ASC', 'suppress_filters' => true ] );
 				foreach ( $posts as $post ) {
+					if ( ++$candidates > 50 ) { break; }
 					$source = self::content( $post->ID, $settings );
 					if ( $source ) { $sources[] = $source; }
-					if ( count( $sources ) >= 10 ) { break; }
 				}
+				$sources = array_slice( self::rank( $sources, $terms ), 0, 10 );
 			}
 			if ( $commerce ) {
-				$products = wc_get_products( [ 'status' => 'publish', 'visibility' => 'visible', 'limit' => 100,
-					'orderby' => 'ID', 'order' => 'ASC', 's' => mb_substr( (string) $query, 0, 120 ) ] );
-				$count = 0; $candidates = 0;
-				foreach ( $products as $product ) {
+				$count = 0; $parents = [];
+				foreach ( self::product_ids( $terms, 100 - $candidates ) as $id ) {
 					if ( ++$candidates > 100 ) { break; }
-					$source = self::product( $product->get_id() );
+					$source = self::product( $id );
 					if ( $source ) { $sources[] = $source; ++$count; }
-					if ( $source && 'variable' === $product->get_type() && $count < 10 && $candidates < 100 ) {
-						$children = wc_get_products( [ 'type' => 'variation', 'parent' => $product->get_id(), 'status' => 'publish', 'limit' => 100 - $candidates, 'return' => 'ids' ] );
+					if ( $source && 'variable' === $source['product']['kind'] ) { $parents[] = (int) $id; }
+					if ( $count >= 10 ) { break; }
+				}
+				foreach ( $parents as $id ) {
+					if ( $count < 10 && $candidates < 100 ) {
+						$children = wc_get_products( [ 'type' => 'variation', 'parent' => (int) $id, 'status' => 'publish', 'limit' => 100 - $candidates,
+							'orderby' => 'ID', 'order' => 'ASC', 'return' => 'ids' ] );
 						foreach ( $children as $child ) {
-							++$candidates;
+							if ( ++$candidates > 100 ) { break; }
 							$variation = self::product( $child );
 							if ( $variation ) { $sources[] = $variation; ++$count; }
 							if ( $count >= 10 ) { break; }
@@ -45,8 +51,65 @@ class YoRo_Support_Facts {
 					if ( $count >= 10 ) { break; }
 				}
 			}
+			$sources = self::rank( $sources, $terms );
 		}
 		return [ 'contract_type' => 'yoro.customer_support.public_facts', 'schema_version' => 1, 'commerce' => $commerce, 'sources' => $sources ];
+	}
+
+	/** Lexical retrieval is a candidate hint, never interpretation or permission. */
+	private static function terms( $text ) {
+		$text = mb_strtolower( remove_accents( (string) $text ) );
+		preg_match_all( '/[\p{L}\p{N}]+/u', $text, $matches );
+		return array_values( array_unique( $matches[0] ) );
+	}
+
+	private static function score( array $source, array $terms ) {
+		$title = ' ' . implode( ' ', self::terms( $source['title'] ) ) . ' ';
+		$text = ' ' . implode( ' ', self::terms( $source['text'] ) ) . ' ';
+		$score = 0;
+		foreach ( $terms as $term ) {
+			$weight = min( 12, mb_strlen( $term ) );
+			$score += ( false !== strpos( $title, ' ' . $term . ' ' ) ? 8 : 0 ) * $weight;
+			$score += ( false !== strpos( $text, ' ' . $term . ' ' ) ? 1 : 0 ) * $weight;
+		}
+		return $score;
+	}
+
+	private static function rank( array $sources, array $terms ) {
+		usort( $sources, static function ( $left, $right ) use ( $terms ) {
+			return self::score( $right, $terms ) <=> self::score( $left, $terms );
+		} );
+		return $sources;
+	}
+
+	/** One bounded OR query avoids requiring every word of a sentence in one product. */
+	private static function product_ids( array $terms, $limit ) {
+		global $wpdb;
+		if ( $limit <= 0 ) { return []; }
+		$matches = []; $scores = []; $parameters = [];
+		foreach ( $terms as $term ) {
+			$like = '%' . $wpdb->esc_like( $term ) . '%';
+			$weight = min( 12, mb_strlen( $term ) );
+			$matches[] = '(post_title LIKE %s OR post_excerpt LIKE %s)';
+			$scores[] = '(CASE WHEN post_title LIKE %s THEN %d ELSE 0 END + CASE WHEN post_excerpt LIKE %s THEN %d ELSE 0 END)';
+			$parameters[] = $like; $parameters[] = 8 * $weight; $parameters[] = $like; $parameters[] = $weight;
+		}
+		$where = $matches ? ' AND (' . implode( ' OR ', $matches ) . ')' : '';
+		foreach ( $terms as $term ) {
+			$like = '%' . $wpdb->esc_like( $term ) . '%';
+			$parameters[] = $like; $parameters[] = $like;
+		}
+		$visibility = wc_get_product_visibility_term_ids();
+		$hidden = array_filter( [ (int) ( $visibility['exclude-from-catalog'] ?? 0 ), (int) ( $visibility['exclude-from-search'] ?? 0 ) ] );
+		if ( $hidden ) {
+			$placeholders = implode( ', ', array_fill( 0, count( $hidden ), '%d' ) );
+			$where .= " AND NOT EXISTS (SELECT 1 FROM {$wpdb->term_relationships} tr INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id WHERE tr.object_id = {$wpdb->posts}.ID AND tt.taxonomy = 'product_visibility' AND tt.term_id IN ({$placeholders}))";
+			$parameters = array_merge( $parameters, array_values( $hidden ) );
+		}
+		// SELECT order places relevance parameters before WHERE parameters.
+		$rank = $scores ? '(' . implode( ' + ', $scores ) . ') AS support_rank' : '0 AS support_rank';
+		$parameters[] = min( 100, (int) $limit );
+		return $wpdb->get_col( $wpdb->prepare( "SELECT ID, {$rank} FROM {$wpdb->posts} WHERE post_type = 'product' AND post_status = 'publish' AND post_password = ''{$where} ORDER BY support_rank DESC, ID ASC LIMIT %d", $parameters ) );
 	}
 
 	public static function content( $id, array $settings ) {
