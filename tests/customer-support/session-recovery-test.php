@@ -6,6 +6,7 @@ function absint($value) { return abs((int)$value); }
 function home_url() { return 'https://public-store.test'; }
 function wp_salt($name) { return 'synthetic-session-'.$name; }
 function wp_json_encode($value) { return json_encode($value); }
+function remove_accents($value) { return iconv('UTF-8', 'ASCII//TRANSLIT', $value); }
 function wp_parse_url($value,$component=-1) { return parse_url($value,$component); }
 function get_current_blog_id() { return 1; }
 function is_ssl() { return true; }

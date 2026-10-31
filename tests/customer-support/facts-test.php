@@ -10,7 +10,8 @@ function home_url() { return 'https://public-store.test'; }
 function wp_parse_url($url, $component = -1) { return parse_url($url, $component); }
 function esc_url_raw($url) { return $url; }
 function wp_json_encode($value) { return json_encode($value); }
-function get_post($id) { return $GLOBALS['posts'][is_object($id) ? $id->ID : $id] ?? null; }
+function remove_accents($value) { return iconv('UTF-8', 'ASCII//TRANSLIT', $value); }
+function get_post($id) { $GLOBALS['inspections'] = ($GLOBALS['inspections'] ?? 0) + 1; return $GLOBALS['posts'][is_object($id) ? $id->ID : $id] ?? null; }
 function get_permalink($post) { return $post->url ?? 'https://public-store.test/content/'.$post->ID; }
 function is_post_publicly_viewable($post) { return $post->public ?? true; }
 function get_posts($args) { $GLOBALS['queries'][] = $args; return array_values(array_filter($GLOBALS['posts'], fn ($post) => in_array($post->ID, $args['post__in'], true))); }
@@ -18,7 +19,17 @@ function strip_shortcodes($text) { return preg_replace('/\[[^\]]*\]/', '', $text
 function wp_strip_all_tags($text) { return strip_tags($text); }
 function do_shortcode($text) { throw new RuntimeException('Shortcodes must never run.'); }
 function is_wp_error($value) { return false; }
+class SyntheticDatabase {
+    public $posts = 'wp_posts';
+    public $term_relationships = 'wp_term_relationships';
+    public $term_taxonomy = 'wp_term_taxonomy';
+    public function esc_like($value) { return addcslashes($value, '_%\\'); }
+    public function prepare($query, $parameters) { $GLOBALS['queries'][] = ['sql' => $query, 'parameters' => $parameters]; return $query; }
+    public function get_col($query) { return array_keys(array_filter($GLOBALS['products'], fn($product) => $product->get_type() !== 'variation')); }
+}
+$GLOBALS['wpdb'] = new SyntheticDatabase();
 if ($woo) {
+    function wc_get_product_visibility_term_ids() { return ['exclude-from-catalog'=>2, 'exclude-from-search'=>3]; }
     function wc_get_product($id) { return $GLOBALS['products'][$id] ?? null; }
     function wc_get_products($args) { $GLOBALS['queries'][] = $args; if (isset($args['parent'])) { return array_keys(array_filter($GLOBALS['products'],fn($p)=>$p->get_type()==='variation'&&$p->get_parent_id()===$args['parent'])); } return array_values(array_filter($GLOBALS['products'], fn ($product) => $product->get_type() !== 'variation')); }
     function get_woocommerce_currency() { return 'VND'; }
@@ -71,7 +82,7 @@ check(YoRo_Support_Facts::content(11,$settings)['text']==='','Empty public excer
 $GLOBALS['posts'][11] = post_fixture(11);
 $snapshot = YoRo_Support_Facts::snapshot($settings, 'delivery');
 check($snapshot['commerce'] === $woo, 'Woo capability reflects actual presence.');
-check($GLOBALS['queries'][0]['numberposts'] === 100 && $GLOBALS['queries'][0]['suppress_filters'] === true, 'Bounded unfiltered lookup.');
+check($GLOBALS['queries'][0]['numberposts'] === 50 && $GLOBALS['queries'][0]['suppress_filters'] === true && !isset($GLOBALS['queries'][0]['s']), 'Approved content is bounded before generic ranking, not sentence-AND filtered.');
 check(!str_contains(json_encode($snapshot), 'customer_email'), 'No customer context.');
 if ($woo) {
     $GLOBALS['posts'][20] = post_fixture(20, ['post_type'=>'product']);
@@ -79,9 +90,13 @@ if ($woo) {
     $product = YoRo_Support_Facts::product(20);
     check($product['product']['price'] === '100.000 ₫' && $product['product']['currency'] === 'VND', 'Public storefront formatted price/currency.');
     check(!str_contains(json_encode($product), 'SECRET'), 'Private fields excluded before model.');
-    foreach ([['status'=>'draft'], ['visibility'=>'hidden'], ['visible'=>false], ['purchasable'=>false], ['price'=>''], ['type'=>'grouped'], ['url'=>'https://other.test/p']] as $mutation) {
+    foreach ([['status'=>'draft'], ['visibility'=>'hidden'], ['visible'=>false], ['purchasable'=>false], ['price'=>''], ['type'=>'grouped'], ['stock'=>'onpreorder'], ['stock'=>'unknown'], ['url'=>'https://other.test/p']] as $mutation) {
         $GLOBALS['products'][20] = new SyntheticProduct(20, $mutation);
         check(YoRo_Support_Facts::product(20) === null, 'Invalid/hidden/unpurchasable product omitted.');
+    }
+    foreach (['instock', 'outofstock', 'onbackorder'] as $stock) {
+        $GLOBALS['products'][20] = new SyntheticProduct(20, ['stock'=>$stock]);
+        check(YoRo_Support_Facts::product(20)['product']['stock'] === $stock, 'Canonical stock values are preserved without mapping.');
     }
     $GLOBALS['products'][20] = new SyntheticProduct(20, ['type'=>'variable','children'=>[21]]);
     $GLOBALS['posts'][21] = post_fixture(21, ['post_type'=>'product_variation']);
@@ -97,5 +112,26 @@ if ($woo) {
     $GLOBALS['products'][20]->fields['visibility']='visible';
     $GLOBALS['posts'][20]->post_password='password';
     check(YoRo_Support_Facts::product(20) === null && YoRo_Support_Facts::product(21) === null, 'Password protects parent and children.');
+    $GLOBALS['posts'] = [1=>post_fixture(1,['post_type'=>'product']),2=>post_fixture(2,['post_type'=>'product'])];
+    $GLOBALS['products'] = [1=>new SyntheticProduct(1,['type'=>'variable','name'=>'Variable Anchor']),2=>new SyntheticProduct(2,['name'=>'Companion'])];
+    for ($i = 101; $i < 121; ++$i) {
+        $GLOBALS['posts'][$i] = post_fixture($i,['post_type'=>'product_variation']);
+        $GLOBALS['products'][$i] = new SyntheticProduct($i,['type'=>'variation','parent_id'=>1]);
+    }
+    $comparison = YoRo_Support_Facts::snapshot(['content_ids'=>[]], 'Compare Variable Anchor and Companion');
+    check(in_array('product:2',array_column($comparison['sources'],'id'),true)&&count($comparison['sources'])===10,'A parent with many variants cannot displace the second named product before parent selection.');
+    $GLOBALS['posts'] = []; $GLOBALS['products'] = []; $GLOBALS['queries'] = [];
+    for ($i = 1; $i <= 50; ++$i) { $GLOBALS['posts'][$i] = post_fixture($i, ['post_title'=>'Reference '.$i]); }
+    $GLOBALS['posts'][50]->post_title = 'Lighthouse Z';
+    for ($i = 1000; $i < 1200; ++$i) {
+        $GLOBALS['posts'][$i] = post_fixture($i, ['post_type'=>'product']);
+        $GLOBALS['products'][$i] = new SyntheticProduct($i, ['visibility'=>'hidden']);
+    }
+    $GLOBALS['inspections'] = 0;
+    $bounded = YoRo_Support_Facts::snapshot(['content_ids'=>range(1,50)], 'Could you summarize Lighthouse—Z?');
+    check($bounded['sources'][0]['id']==='content:50','Generic punctuation/title ranking can select the last approved source.');
+    check(count($bounded['sources'])===10&&$GLOBALS['inspections']===100,'All invalid products and approved content share at most100 source inspections.');
+    $sql = $GLOBALS['queries'][1];
+    check(end($sql['parameters'])===50&&str_contains($sql['sql'],' OR ')&&str_contains($sql['sql'],'LIMIT %d'),'One prepared OR product query is bounded to the remaining candidate budget.');
 }
 echo json_encode(['result'=>'passed','woo'=>$woo,'assertions'=>$count], JSON_THROW_ON_ERROR), "\n";
