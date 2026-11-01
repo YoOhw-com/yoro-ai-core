@@ -2,6 +2,25 @@
     'use strict';
     const root = document.getElementById('yoro-support');
     if (!root) return;
+    // Each bundled animation loads once. Reduced motion permanently switches this page to static.
+    const iconMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    const iconImages = [...root.querySelectorAll('[data-support-icon]')];
+    const staticIcons = () => iconImages.forEach(image => { if (image.getAttribute('src') !== image.dataset.static) image.setAttribute('src', image.dataset.static); });
+    iconImages.forEach(image => {
+        let failedStatic = false;
+        image.addEventListener('error', () => {
+            if (!failedStatic && image.getAttribute('src') !== image.dataset.static) { failedStatic = true; image.setAttribute('src', image.dataset.static); }
+            else { image.hidden = true; image.parentElement.querySelector('[data-icon-fallback]').hidden = false; }
+        });
+        if (image.complete && image.naturalWidth === 0) image.dispatchEvent(new Event('error'));
+    });
+    if (iconMotion) {
+        if (iconMotion.matches) staticIcons();
+        const reduceIcons = event => { if (event.matches) staticIcons(); };
+        if (iconMotion.addEventListener) iconMotion.addEventListener('change', reduceIcons);
+        else if (iconMotion.addListener) iconMotion.addListener(reduceIcons);
+    }
+
     const vi = (document.documentElement.lang || navigator.language || '').toLowerCase().startsWith('vi');
     const words = {
         'In stock': 'Còn hàng', 'Out of stock': 'Hết hàng', 'On backorder': 'Đặt trước', 'You': 'Bạn', 'Support': 'Hỗ trợ', 'Connecting…': 'Đang kết nối…', 'Thinking…': 'Đang tìm câu trả lời…',

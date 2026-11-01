@@ -10,6 +10,7 @@ class Element {
     get parentElement() { return this.parent; }
     get firstElementChild() { return this.children[0]; }
     setAttribute(name, value) { this.attrs[name] = value; }
+    getAttribute(name) { return this.attrs[name]; }
     addEventListener(name, fn) { (this.listeners[name] ||= []).push(fn); }
     async event(name, extra = {}) { for (const fn of this.listeners[name] || []) await fn({preventDefault() {}, ...extra}); await flush(); }
     focus() { document.activeElement = this; }
@@ -32,17 +33,25 @@ const end = el('button'); end.dataset.endPrivate = ''; bar.append(label, end);
 const reset = el('button'); reset.dataset.reset = ''; const close = el('button'); close.dataset.close = '';
 const quote = el('button'); quote.dataset.starter = 'quote'; panel.append(quote);
 const orders = el('button'); orders.dataset.starter = 'orders'; panel.append(composer, log, status, area, bar, reset, close, orders); root.append(launch, panel);
+const iconHolder = el('span'), iconImage = el('img'), iconFallback = el('span');
+iconImage.dataset.supportIcon = ''; iconImage.dataset.static = '/fixed-static.svg'; iconImage.setAttribute('src', '/fixed-3-cycles.svg'); iconFallback.dataset.iconFallback = ''; iconFallback.hidden = true; iconHolder.append(iconImage, iconFallback); launch.append(iconHolder);
+let iconMotionChanged;
 const documentEvents = {};
 const document = {activeElement: null, documentElement: {lang: 'en'}, hidden: false, getElementById: id => id === 'yoro-support' ? root : null, createElement: tag => el(tag), addEventListener(name, callback) { (documentEvents[name] ||= []).push(callback); }, async event(name) { for (const callback of documentEvents[name] || []) callback(); await flush(); }};
 const calls = [], responses = [], timers = new Map(); let timerId = 0, uuid = 0;
 const flush = () => new Promise(resolve => setImmediate(resolve));
-const sandbox = {document, navigator: {language: 'en'}, window: {location: {origin: 'https://fixture.invalid'}, matchMedia: () => ({matches: false}), confirm: () => true, addEventListener() {}},
+const sandbox = {document, navigator: {language: 'en'}, window: {location: {origin: 'https://fixture.invalid'}, matchMedia: () => ({matches: false, addEventListener(type, fn) { iconMotionChanged = fn; }}), confirm: () => true, addEventListener() {}},
     crypto: {randomUUID: () => 'synthetic-turn-' + (++uuid)}, URL, AbortController, Date, Map, console,
     setTimeout(fn, delay) { const id = ++timerId; timers.set(id, {fn, delay}); if (delay === 0) setImmediate(() => { if (timers.has(id)) { timers.delete(id); fn(); } }); return id; }, clearTimeout(id) { timers.delete(id); },
     fetch: async (url, options) => { const body = JSON.parse(options.body); calls.push({url, options, body}); const next = responses.shift(); assert.ok(next, 'Unexpected protocol request'); if (next.error) throw new Error('Synthetic offline'); if (next.wait) await next.wait; return {ok: next.ok !== false, json: async () => next.body}; }};
 vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname, '../../assets/js/yoro-support.js'), 'utf8'), sandbox);
 let checks = 0; const verify = (condition, message) => { assert.ok(condition, message); checks++; };
 (async () => {
+    iconMotionChanged({matches: true}); verify(iconImage.getAttribute('src') === '/fixed-static.svg', 'Frontend motion preference uses static');
+    iconMotionChanged({matches: false}); verify(iconImage.getAttribute('src') === '/fixed-static.svg', 'Frontend does not restart animation');
+    iconImage.setAttribute('src', '/fixed-3-cycles.svg'); await iconImage.event('error'); verify(iconImage.getAttribute('src') === '/fixed-static.svg', 'Frontend image failure uses fixed static');
+    await iconImage.event('error'); verify(iconImage.hidden && !iconFallback.hidden && calls.length === 0, 'Failed static falls back without protocol or AI');
+
     responses.push({body: {csrf: 'synthetic-csrf', protocol: 2, capabilities: {content: true, products: true, quote: true, coupons: false, payments: true, orders: true}, verification: {verified: false}}});
     await launch.event('click');
     verify(calls.length === 1 && calls[0].url.endsWith('/session'), 'Opening only establishes session, no AI');

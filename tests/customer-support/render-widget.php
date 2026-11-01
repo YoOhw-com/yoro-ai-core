@@ -1,8 +1,13 @@
 <?php
 /** Disposable source-rendered fixture. Synthetic transport only, no API/provider/email/site DB. */
 define( 'ABSPATH', __DIR__ );
+define( 'YORO_AI_CORE_FILE', dirname( __DIR__, 2 ) . '/yoro-ai-core.php' );
+function plugins_url( $path, $file ) {
+    if ( ! in_array( $path, [ 'assets/images/yoro-c-64-static.svg', 'assets/images/yoro-c-64-2x-3-cycles.svg' ], true ) ) { throw new RuntimeException( 'Unexpected fixture asset.' ); }
+    return 'data:image/svg+xml;base64,' . base64_encode( file_get_contents( dirname( __DIR__, 2 ) . '/' . $path ) );
+}
 function get_option( $name, $default = null ) { return [ 'enabled' => true, 'revision' => 1, 'content_ids' => [ 11 ], 'contact' => 'Contact: hello@example.test', 'protocol' => 2,
-    'preferences' => [ 'features' => [ 'orders' => true, 'quote' => true, 'coupons' => true, 'payments' => true ], 'appearance' => [ 'name' => 'Northline support', 'welcome' => 'A little help, every step of the way.' ] ] ]; }
+    'preferences' => [ 'features' => [ 'orders' => true, 'quote' => true, 'coupons' => true, 'payments' => true ], 'appearance' => [ 'welcome' => 'A little help, every step of the way.' ] ] ]; }
 function rest_url( $path ) { return 'https://fixture.invalid/' . $path; }
 function esc_url( $value ) { return htmlspecialchars( $value, ENT_QUOTES ); }
 function esc_html( $value ) { return htmlspecialchars( $value, ENT_QUOTES ); }

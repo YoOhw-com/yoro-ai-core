@@ -81,12 +81,51 @@
         }, 250);
     });
     const preview = document.querySelector('.ys-preview');
-    form.querySelector('[data-preview]').addEventListener('click', () => {
+    // Each bundled animation loads once. Reduced motion permanently switches this page to static.
+    const iconMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    const iconImages = [...preview.querySelectorAll('[data-support-icon]')];
+    const staticIcons = () => iconImages.forEach(image => { if (image.getAttribute('src') !== image.dataset.static) image.setAttribute('src', image.dataset.static); });
+    iconImages.forEach(image => {
+        let failedStatic = false;
+        image.addEventListener('error', () => {
+            if (!failedStatic && image.getAttribute('src') !== image.dataset.static) { failedStatic = true; image.setAttribute('src', image.dataset.static); }
+            else { image.hidden = true; image.parentElement.querySelector('[data-icon-fallback]').hidden = false; }
+        });
+        if (image.complete && image.naturalWidth === 0) image.dispatchEvent(new Event('error'));
+    });
+    if (iconMotion) {
+        if (iconMotion.matches) staticIcons();
+        const reduceIcons = event => { if (event.matches) staticIcons(); };
+        if (iconMotion.addEventListener) iconMotion.addEventListener('change', reduceIcons);
+        else if (iconMotion.addListener) iconMotion.addListener(reduceIcons);
+    }
+    const hex = form.elements['appearance[color]'], picker = document.getElementById('ys-accent-picker');
+    const validColor = value => /^#[a-f0-9]{6}$/i.test(value);
+    function effectiveColor(value) {
+        const channels = [1, 3, 5].map(offset => parseInt(value.slice(offset, offset + 2), 16) / 255).map(channel => channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4);
+        return 1.05 / (.2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2] + .05) >= 4.5 ? value : '#2b3a20';
+    }
+    let lastColor = validColor(hex.value) ? hex.value : '#2b3a20';
+    function updatePreview() {
         preview.querySelector('[data-preview-name]').textContent = form.elements['appearance[name]'].value;
         preview.querySelector('[data-preview-welcome]').textContent = form.elements['appearance[welcome]'].value;
-        const color = form.elements['appearance[color]'].value; if (/^#[a-f0-9]{6}$/i.test(color)) preview.style.setProperty('--ys-preview-accent', color);
-        preview.showModal();
-    });
+        preview.querySelector('[data-preview-launcher]').textContent = form.elements['appearance[launcher]'].value;
+        preview.style.setProperty('--ys-preview-accent', effectiveColor(lastColor));
+        preview.querySelectorAll('[data-preview-icon]').forEach(icon => { icon.hidden = icon.dataset.previewIcon !== form.elements['appearance[icon]'].value; });
+    }
+    function hexChanged() {
+        const valid = validColor(hex.value);
+        hex.setCustomValidity(valid ? '' : 'Enter a color in #RRGGBB format.');
+        hex.setAttribute('aria-invalid', String(!valid));
+        if (valid) { lastColor = hex.value; picker.value = hex.value; }
+        updatePreview();
+    }
+    function pickerChanged() { hex.value = picker.value; hexChanged(); }
+    ['input', 'change'].forEach(event => { hex.addEventListener(event, hexChanged); picker.addEventListener(event, pickerChanged); });
+    form.addEventListener('input', updatePreview);
+    form.addEventListener('change', updatePreview);
+    hexChanged();
+    form.querySelector('[data-preview]').addEventListener('click', () => { updatePreview(); preview.showModal(); });
     preview.querySelector('[data-preview-close]').addEventListener('click', () => preview.close());
     preview.querySelectorAll('[data-preview-width]').forEach(button => button.addEventListener('click', () => { preview.classList.toggle('ys-mobile', button.dataset.previewWidth === 'mobile'); }));
 })();

@@ -16,7 +16,7 @@ class YoRo_Support_Context {
 	public static function preferences( array $settings ) {
 		$values = is_array( $settings['preferences'] ?? null ) ? $settings['preferences'] : [];
 		return [ 'features' => array_replace( [ 'content' => true, 'products' => true, 'quote' => false, 'coupons' => false, 'payments' => false, 'orders' => false ], $values['features'] ?? [] ),
-			'appearance' => array_replace( [ 'name' => 'Store support', 'welcome' => 'How can we help you today?', 'launcher' => 'Chat support', 'color' => '#126479', 'position' => 'right', 'starters' => [ 'products', 'policies', 'orders' ] ], $values['appearance'] ?? [] ),
+			'appearance' => array_replace( [ 'name' => 'YoRo', 'welcome' => 'How can we help you today?', 'launcher' => 'Chat support', 'color' => '#2b3a20', 'icon' => 'yoro-animated', 'position' => 'right', 'starters' => [ 'products', 'policies', 'orders' ] ], $values['appearance'] ?? [] ),
 			'sources' => $values['sources'] ?? [] ];
 	}
 
