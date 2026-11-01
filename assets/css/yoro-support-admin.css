@@ -1,0 +1,24 @@
+.yoro-support-admin { max-width:1180px; margin:28px 24px 50px 0; color:#1d2939; }
+.yoro-support-admin * { box-sizing:border-box; }
+.ys-admin-header { display:flex; justify-content:space-between; align-items:center; gap:24px; margin-bottom:24px; }
+.ys-admin-header h1 { font-size:30px; font-weight:650; padding:0; margin:4px 0 10px; }
+.ys-eyebrow { color:#526c7b; letter-spacing:.13em; font-size:10px; font-weight:700; }
+.ys-admin-header p { margin:0; color:#536575; }
+.ys-status { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:14px 18px; border:1px solid #dce5e8; background:#f8fbfc; border-radius:10px; margin-bottom:24px; }
+.ys-status > span:last-child { margin-left:auto; color:#5c6876; font-size:12px; }
+.ys-dot { width:8px; height:8px; border-radius:50%; background:#8a9ba8; }.ys-dot.active { background:#278060; }
+.yoro-support-admin .nav-tab-wrapper { display:flex; gap:5px; padding:0; border:0; margin-bottom:18px; overflow:auto; }
+.yoro-support-admin .nav-tab { background:none; border:0; border-bottom:2px solid transparent; margin:0; padding:12px 14px; font-weight:500; white-space:nowrap; cursor:pointer; }
+.yoro-support-admin .nav-tab-active { border-bottom-color:#126479; color:#126479; }
+.ys-admin-panel { border:1px solid #dde4e8; background:#fff; border-radius:12px; padding:26px; box-shadow:0 2px 4px #1d293904; }
+.ys-admin-panel[hidden] { display:none; }.ys-admin-panel h2 { margin-top:0; font-size:19px; }.ys-admin-panel > p { color:#596777; line-height:1.65; max-width:800px; }
+.ys-toggle { display:block; margin:22px 0; font-weight:600; }
+.ys-feature-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:20px 0 26px; }
+.ys-feature { display:flex; align-items:flex-start; gap:10px; padding:16px; background:#fafcfd; border:1px solid #e3e9ed; border-radius:8px; }.ys-feature input { margin-top:2px; }.ys-feature strong,.ys-feature small { display:block; }.ys-feature small { color:#6c7785; margin-top:6px; }
+.ys-field { display:flex; flex-direction:column; gap:8px; font-weight:500; margin:18px 0; }.ys-field input,.ys-field textarea,.ys-field select { width:100%; max-width:600px; border-color:#cdd7de; border-radius:6px; min-height:38px; }.ys-fields { display:grid; grid-template-columns:1fr 1fr; gap:0 25px; }
+.ys-info { padding:14px 18px; border-left:3px solid #126479; background:#f0f7fa; }.ys-source { display:flex; flex-wrap:wrap; align-items:center; gap:14px; padding:18px; margin:12px 0; border:1px solid #e1e7ec; border-radius:8px; }.ys-source > div:first-of-type { flex:1; min-width:180px; }.ys-source small { display:block; margin-top:6px; color:#667786; }.ys-source-products { width:100%; }.ys-source-products input[type=search] { margin-left:8px; min-width:220px; }.ys-chip,.ys-inline { display:inline-flex; align-items:center; padding:8px; gap:5px; }.ys-chip { background:#f2f7f9; border-radius:5px; margin:5px; }.ys-source [data-remove-source] { margin-left:auto; }
+[data-source-results] .button,[data-product-results] .button { margin:4px; }
+.ys-facts { display:grid; grid-template-columns:140px 1fr; gap:16px; padding:20px; background:#f6f9fb; border-radius:8px; }.ys-facts dt { font-weight:600; }.ys-facts dd { margin:0; color:#536575; }
+.ys-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:15px; margin:24px 0; }.ys-metrics > div { background:#f6f9fb; border-radius:8px; padding:20px; }.ys-metrics small,.ys-metrics strong { display:block; }.ys-metrics small { color:#667786; }.ys-metrics strong { font-size:26px; padding-top:12px; }
+.ys-preview { border:1px solid #dce5e8; border-radius:18px; padding:24px; max-width:720px; width:85vw; color:#263746; }.ys-preview::backdrop { background:#172b3566; }.ys-preview header { display:flex; justify-content:space-between; }.ys-preview button { cursor:pointer; padding:8px 12px; background:#fff; border:1px solid #ccd7de; border-radius:5px; }.ys-preview-toolbar { margin:15px 0; display:flex; gap:8px; }.ys-preview-phone { max-width:450px; margin:0 auto; border:1px solid #d9e3e8; background:#f8fbfc; border-radius:12px; padding:22px; }.ys-preview.ys-mobile .ys-preview-phone { max-width:320px; }.ys-preview h2 { color:#164f61; }.ys-preview-message { padding:14px; background:#fff; border:1px solid #dce6ec; border-radius:8px; margin:12px 0; line-height:1.7; }.ys-preview-message input { display:block; margin:8px 0; width:100%; }
+@media(max-width:780px) { .ys-admin-header { align-items:flex-start; flex-direction:column; }.ys-feature-grid,.ys-fields,.ys-metrics { grid-template-columns:1fr; }.ys-admin-panel { padding:18px; }.ys-facts { grid-template-columns:1fr; gap:8px; }.yoro-support-admin { margin-right:12px; }.ys-source-products input[type=search] { width:100%; min-width:0; margin:8px 0; } }

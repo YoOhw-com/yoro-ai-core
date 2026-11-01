@@ -46,8 +46,8 @@ $safe=YoRo_Customer_Support::safe_answer(['text'=>'<script>x</script>plain','sou
 check($safe['text']==='xplain'&&count($safe['sources'])===1&&$safe['sources'][0]['url']==='https://public-store.test/faq','Safe text and citations resolved only from current server facts.');
 $js=file_get_contents(dirname(__DIR__,2).'/assets/js/yoro-support.js');
 check(!str_contains($js,'innerHTML')&&!str_contains($js,'localStorage')&&!str_contains($js,'sessionStorage')&&!str_contains($js,'indexedDB'),'No HTML injection or persistent browser transcript.');
-check(str_contains($js,'crypto.randomUUID()')&&str_contains($js,'retryCount < 2'),'Stable UUID and finite explicit retries.');
-$php=file_get_contents(dirname(__DIR__,2).'/includes/customer-support/class-yoro-customer-support.php');
+check(str_contains($js,'crypto.randomUUID()')&&(str_contains($js,'retryCount < 2') || str_contains($js,'retryCount >= 2')),'Stable UUID and finite explicit retries.');
+$php=file_get_contents(dirname(__DIR__,2).'/includes/customer-support/class-yoro-customer-support.php').file_get_contents(dirname(__DIR__,2).'/includes/customer-support/class-yoro-support-admin.php');
 check(str_contains($php,"'httponly' => true")&&str_contains($php,"'secure' => true")&&str_contains($php,"'samesite' => 'Strict'"),'Secure HttpOnly SameSite cookie flags.');
 check(str_contains($php,"current_user_can( 'manage_options' )")&&str_contains($php,"current_user_can( 'yoro_manage_connection' )")&&str_contains($php,"check_admin_referer( 'yoro_support_settings' )"),'Settings require both current capabilities and CSRF.');
 echo json_encode(['result'=>'passed','assertions'=>$count],JSON_THROW_ON_ERROR),"\n";

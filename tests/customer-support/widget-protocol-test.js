@@ -1,0 +1,91 @@
+'use strict';
+// Unit DOM protocol harness: no browser engine, rendering, network, provider, storage or site runtime.
+const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
+class Element {
+    constructor(tag) { this.tagName = tag; this.children = []; this.listeners = {}; this.dataset = {}; this.attrs = {}; this.value = ''; this.textContent = ''; this.hidden = false; this.disabled = false; }
+    append(...nodes) { nodes.forEach(node => { node.parent = this; this.children.push(node); }); }
+    replaceChildren(...nodes) { this.children.forEach(node => { node.parent = null; }); this.children = []; this.append(...nodes); }
+    remove() { if (this.parent) this.parent.children = this.parent.children.filter(node => node !== this); this.parent = null; }
+    get isConnected() { return this === root || Boolean(this.parent && this.parent.isConnected); }
+    get parentElement() { return this.parent; }
+    get firstElementChild() { return this.children[0]; }
+    setAttribute(name, value) { this.attrs[name] = value; }
+    addEventListener(name, fn) { (this.listeners[name] ||= []).push(fn); }
+    async event(name, extra = {}) { for (const fn of this.listeners[name] || []) await fn({preventDefault() {}, ...extra}); await flush(); }
+    focus() { document.activeElement = this; }
+    getClientRects() { return this.hidden ? [] : [{}]; }
+    matches(selector) {
+        if (selector[0] === '.') return (this.className || '').split(' ').includes(selector.slice(1));
+        const attr = selector.match(/^\[([^=\]]+)(?:=['"]?([^'"\]]+)['"]?)?\]$/);
+        if (attr) { const key = attr[1].replace(/^data-/, '').replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()); const value = attr[1].startsWith('data-') ? this.dataset[key] : (this.attrs[attr[1]] ?? this[attr[1]]); return value !== undefined && (attr[2] === undefined || String(value) === attr[2]); }
+        return this.tagName === selector;
+    }
+    querySelectorAll(selector) { const selectors = selector.split(','); return this.children.flatMap(child => [...(selectors.some(s => child.matches(s)) ? [child] : []), ...child.querySelectorAll(selector)]); }
+    querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+}
+const el = (tag, className = '', attrs = {}) => { const node = new Element(tag); node.className = className; Object.assign(node.attrs, attrs); return node; };
+const root = el('div'); root.dataset.endpoint = 'https://fixture.invalid/support/';
+const launch = el('button', 'yoro-support-launch'), panel = el('section'), composer = el('form', 'yoro-support-composer'), input = el('textarea'), send = el('button', '', {type: 'submit'}), retry = el('button'); retry.dataset.retry = '';
+panel.hidden = true; composer.append(input, send, retry); const log = el('div', '', {role: 'log'}), status = el('p'); status.dataset.status = '';
+const area = el('div', 'yoro-support-context'), bar = el('div', 'yoro-support-verified'), label = el('span'); label.dataset.verifiedLabel = '';
+const end = el('button'); end.dataset.endPrivate = ''; bar.append(label, end);
+const reset = el('button'); reset.dataset.reset = ''; const close = el('button'); close.dataset.close = '';
+const quote = el('button'); quote.dataset.starter = 'quote'; panel.append(quote);
+const orders = el('button'); orders.dataset.starter = 'orders'; panel.append(composer, log, status, area, bar, reset, close, orders); root.append(launch, panel);
+const document = {activeElement: null, documentElement: {lang: 'en'}, hidden: false, getElementById: id => id === 'yoro-support' ? root : null, createElement: tag => el(tag), addEventListener() {}};
+const calls = [], responses = [], timers = new Map(); let timerId = 0, uuid = 0;
+const flush = () => new Promise(resolve => setImmediate(resolve));
+const sandbox = {document, navigator: {language: 'en'}, window: {location: {origin: 'https://fixture.invalid'}, matchMedia: () => ({matches: false}), confirm: () => true, addEventListener() {}},
+    crypto: {randomUUID: () => 'synthetic-turn-' + (++uuid)}, URL, AbortController, Date, Map, console,
+    setTimeout(fn, delay) { const id = ++timerId; timers.set(id, {fn, delay}); if (delay === 0) queueMicrotask(fn); return id; }, clearTimeout(id) { timers.delete(id); },
+    fetch: async (url, options) => { const body = JSON.parse(options.body); calls.push({url, options, body}); const next = responses.shift(); assert.ok(next, 'Unexpected protocol request'); if (next.error) throw new Error('Synthetic offline'); if (next.wait) await next.wait; return {ok: next.ok !== false, json: async () => next.body}; }};
+vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname, '../../assets/js/yoro-support.js'), 'utf8'), sandbox);
+let checks = 0; const verify = (condition, message) => { assert.ok(condition, message); checks++; };
+(async () => {
+    responses.push({body: {csrf: 'synthetic-csrf', protocol: 2, capabilities: {content: true, products: true, quote: true, coupons: false, payments: true, orders: true}, verification: {verified: false}}});
+    await launch.event('click');
+    verify(calls.length === 1 && calls[0].url.endsWith('/session'), 'Opening only establishes session, no AI');
+    input.value = 'Public question'; responses.push({error: true}); await composer.event('submit');
+    const original = JSON.stringify(calls.at(-1).body); responses.push({error: true}); await retry.event('click'); responses.push({error: true}); await retry.event('click'); await retry.event('click');
+    verify(calls.filter(call => call.url.endsWith('/turn')).length === 3, 'Original + at most two explicit retries');
+    verify(calls.filter(call => call.url.endsWith('/turn')).every(call => JSON.stringify(call.body) === original), 'Retry preserves exact UUID and input');
+    verify(retry.hidden === true, 'Retry hidden after finite budget');
+    await orders.event('click'); verify(area.querySelector('[name=email]') !== null, 'Orders open dedicated email form');
+    area.querySelector('[name=email]').value = 'buyer@example.test'; responses.push({body: {challenge_id: 'synthetic-challenge', email_hint: 'b***@example.test', resend_seconds: 60}}); await area.querySelector('form').event('submit');
+    verify(calls.at(-1).url.endsWith('/verification') && calls.at(-1).body.email === 'buyer@example.test', 'Email only sent to verification route');
+    area.querySelector('[name=code]').value = '123456'; responses.push({body: {verified: true, expires_at: new Date(Date.now() + 900000).toISOString(), email_hint: 'b***@example.test'}}, {body: {orders: [], has_next: false}}); await area.querySelector('form').event('submit');
+    verify(calls.at(-2).body.code === '123456' && calls.at(-1).body.kind === 'orders', 'Confirm then read scoped order list');
+    verify(calls.filter(call => call.url.endsWith('/turn')).length === 3, 'Email/code/order list cause zero AI turns');
+    verify(!JSON.stringify(calls.filter(call => call.url.endsWith('/turn'))).includes('buyer@example.test') && !JSON.stringify(calls.filter(call => call.url.endsWith('/turn'))).includes('123456'), 'Verification secrets excluded from turn payloads');
+    const privateEntry = el('div'); privateEntry.dataset.private = 'true'; log.append(privateEntry);
+    let release; const wait = new Promise(resolve => { release = resolve; }); input.value = 'Pending private question';
+    responses.push({wait, body: {status: 'completed', private: true, answer: {text: 'STALE_PRIVATE_RESPONSE', sources: []}}});
+    const inFlight = composer.event('submit'); await flush();
+    responses.push({body: {verified: false}}); await end.event('click'); release(); await inFlight;
+    verify(!log.children.some(entry => entry.children.some(child => child.textContent === 'STALE_PRIVATE_RESPONSE')), 'In-flight response cannot restore private data after revoke');
+    verify(log.querySelectorAll('[data-private]').length === 0 && area.children.length === 0 && bar.hidden, 'Revoke clears private transcript/cards/forms');
+    verify(status.textContent.includes('Private access ended'), 'Revoke status remains visible');
+    verify(calls.every(call => call.options.cache === 'no-store' && call.options.credentials === 'same-origin'), 'Every request same-origin and no-store');
+    verify(calls.slice(1).every(call => call.options.headers['X-YoRo-Support-CSRF'] === 'synthetic-csrf'), 'Every post-session request carries CSRF');
+    input.value = 'A fresh public question'; responses.push({body: {status: 'completed', answer: {text: 'Current approved answer.', sources: []}}}); await composer.event('submit');
+    verify(status.textContent === '', 'Completed answer clears the thinking state');
+
+    const beforeQuote = calls.length; await quote.event('click');
+    verify(calls.length === beforeQuote && area.querySelector('[name=coupon]').disabled, 'Quote opens a static form and disabled coupon capability hides coupon input');
+    area.querySelector('[name=query]').value = 'Trail daypack';
+    responses.push({body: {products: [{id: 47, name: 'Trail daypack', kind: 'simple', price: '49 USD', options: []}]}}); await area.querySelectorAll('form')[0].event('submit');
+    await area.querySelectorAll('button').find(button => button.textContent.startsWith('Trail daypack')).event('click');
+    for (const [name, value] of Object.entries({country: 'US', state: 'CA', postcode: '94105'})) area.querySelector('[name=' + name + ']').value = value;
+    const quoteCard = {kind: 'quote', title: 'Current estimate', data: {items: [{name: 'Trail daypack', quantity: 1}], subtotal: '49.00', discount: '0.00', shipping: '5.00', tax: '0.00', total: '54.00', currency: 'USD', quoted_at: new Date().toISOString(), coupon: {state: 'none', message: ''}, payment_methods: ['Bank transfer'], shipping_rates: []}};
+    responses.push({body: {context_token: 'synthetic-quote-context', private: false, expires_at: new Date(Date.now() + 300000).toISOString(), card: quoteCard}}); await area.querySelectorAll('form')[1].event('submit');
+    verify(calls.at(-1).body.kind === 'quote' && calls.at(-1).body.params.items[0].product_id === 47 && calls.at(-1).body.params.destination.postcode === '94105', 'Quote uses explicit product quantity and destination inputs');
+    verify(calls.filter(call => call.url.endsWith('/turn')).length === 5, 'Product selection and quote preview do not infer');
+    responses.push({body: {status: 'completed', answer: {text: 'Estimate explanation.', sources: []}}}); await area.querySelectorAll('button').find(button => button.textContent === 'Explain this estimate').event('click');
+    verify(calls.at(-1).url.endsWith('/turn') && calls.at(-1).body.context_token === 'synthetic-quote-context', 'Explicit explanation binds the selected context token');
+    let releaseExpired; const delayed = new Promise(resolve => { releaseExpired = resolve; });
+    responses.push({wait: delayed, body: {status: 'completed', answer: {text: 'LATE_EXPIRED_QUOTE', sources: []}}});
+    const explaining = area.querySelectorAll('button').find(button => button.textContent === 'Explain this estimate').event('click'); await flush();
+    const expiry = [...timers.values()].find(timer => timer.delay >= 290000 && timer.delay <= 300000); assert.ok(expiry); expiry.fn(); releaseExpired(); await explaining;
+    verify(!log.children.some(entry => entry.children.some(child => child.textContent === 'LATE_EXPIRED_QUOTE')) && retry.hidden, 'Expired selection drops a late AI response and its retry input');
+    console.log(JSON.stringify({result: 'passed', suite: 'widget-unit-protocol', assertions: checks, browser_rendering: 'NOT_EVALUATED', network: 0, provider: 0}));
+})().catch(error => { console.error(error); process.exitCode = 1; });

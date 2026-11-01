@@ -25,7 +25,11 @@ class YoRo_Support_Transport {
 			}
 		}
 		if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) < 200 || wp_remote_retrieve_response_code( $response ) >= 300 ) {
-			return new WP_Error( 'support_unavailable', 'Support is unavailable. Please retry later or use the site contact details.' );
+			$value = is_wp_error( $response ) ? [] : json_decode( wp_remote_retrieve_body( $response ), true );
+			$known = [ 'support_verification_required', 'support_verification_invalid', 'support_verification_retry', 'support_verification_unavailable', 'support_capability_unavailable', 'support_context_invalid' ];
+			$code = in_array( $value['code'] ?? '', $known, true ) ? $value['code'] : 'support_unavailable';
+			$status = is_wp_error( $response ) ? 503 : wp_remote_retrieve_response_code( $response );
+			return new WP_Error( $code, 'Support is unavailable. Please retry later or use the site contact details.', [ 'status' => $status ] );
 		}
 		$value = json_decode( wp_remote_retrieve_body( $response ), true );
 		return is_array( $value ) ? $value : new WP_Error( 'support_unavailable', 'Support is unavailable.' );

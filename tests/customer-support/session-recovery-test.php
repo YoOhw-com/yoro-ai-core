@@ -35,6 +35,7 @@ class YoRo_AI_Settings {
 class SyntheticSupportRequest {
     public function __construct(public array $params=[],public array $headers=[]) {}
     public function get_header($name) { return $this->headers[$name]??''; }
+    public function get_params() { return $this->params; }
     public function get_param($name) { return $this->params[$name]??null; }
 }
 require dirname(__DIR__,2).'/includes/ai/clients/class-yoro-ai-api-endpoint-resolver.php';

@@ -21,6 +21,7 @@ parser.add_argument("--wordpress-source", required=True)
 parser.add_argument("--woocommerce-source", required=True)
 parser.add_argument("--mysql-base", required=True)
 parser.add_argument("--php", required=True)
+parser.add_argument("--suite", choices=("query", "commerce", "all"), default="query")
 args = parser.parse_args()
 for package in (args.wordpress_source, args.woocommerce_source, args.mysql_base, args.php):
     if Path(package).is_symlink():
@@ -75,7 +76,7 @@ with tempfile.TemporaryDirectory(prefix=".disposable-query-", dir=tests) as temp
         copy_package(wp_source / directory, wp / directory)
     source_directory = os.open(wp_source, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        for name in ("wp-load.php", "wp-settings.php"):
+        for name in ("wp-load.php", "wp-settings.php", "index.php"):
             copy_file(source_directory, name, wp / name)
     finally:
         os.close(source_directory)
@@ -93,7 +94,7 @@ with tempfile.TemporaryDirectory(prefix=".disposable-query-", dir=tests) as temp
     def run(command, **kwargs):
         result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=180, **kwargs)
         if result.returncode:
-            raise RuntimeError(result.stderr[-4000:] or result.stdout[-4000:])
+            raise RuntimeError(result.stderr[-2000:] + result.stdout[-5000:])
         return result.stdout
 
     try:
@@ -120,10 +121,12 @@ with tempfile.TemporaryDirectory(prefix=".disposable-query-", dir=tests) as temp
         (wp / "wp-config.php").write_text(configuration)
         os.chmod(wp / "wp-config.php", 0o600)
         bootstrap = root / "install.php"
-        bootstrap.write_text("<?php\ndefine('WP_INSTALLING', true);\nfunction wp_mail(...$args) { return true; }\nrequire $argv[1].'/wp-load.php';\nrequire ABSPATH.'wp-admin/includes/upgrade.php';\nwp_install('Disposable support fixture', 'synthetic-owner', 'nobody@example.invalid', false, '', 'synthetic-only-password');\nupdate_option('active_plugins', ['woocommerce/woocommerce.php']);\n")
+        bootstrap.write_text("<?php\ndefine('WP_INSTALLING', true);\nfunction wp_mail(...$args) { return true; }\nrequire $argv[1].'/wp-load.php';\nrequire ABSPATH.'wp-admin/includes/upgrade.php';\nwp_install('Disposable support fixture', 'synthetic-owner', 'nobody@example.invalid', false, '', 'synthetic-only-password');\nupdate_option('active_plugins', ['woocommerce/woocommerce.php']);\nrequire $argv[1].'/wp-content/plugins/woocommerce/woocommerce.php';\nWC_Install::install();\n")
         run([php, str(bootstrap), str(wp)])
-        output = run([php, str(tests / "facts-query-integration.php"), str(wp)])
-        print(output.strip())
+        for suite in (["query", "commerce"] if args.suite == "all" else [args.suite]):
+            filename = "facts-query-integration.php" if suite == "query" else "commerce-integration.php"
+            output = run([php, str(tests / filename), str(wp)])
+            print(output.strip())
     finally:
         if process is not None and process.poll() is None:
             process.terminate()

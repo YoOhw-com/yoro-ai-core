@@ -1,23 +1,65 @@
-#yoro-support { position:fixed; display:flex; flex-direction:column; align-items:flex-end; z-index:99990; right:20px; bottom:20px; font:15px/1.5 system-ui,sans-serif; color:#172b35; }
+#yoro-support { --ys-accent:#126479; position:fixed; right:24px; bottom:24px; z-index:2147483000; font:14px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#243848; letter-spacing:normal; text-align:left; }
+#yoro-support.yoro-support-left { right:auto; left:24px; }
+#yoro-support * { box-sizing:border-box; }
 #yoro-support [hidden] { display:none!important; }
-#yoro-support button { border:1px solid #b6cbd2; border-radius:9px; padding:10px 15px; background:#fff; color:#173a48; font:inherit; cursor:pointer; min-height:44px; }
-#yoro-support .yoro-support-launch { order:2; }
-#yoro-support .yoro-support-launch,#yoro-support [type=submit] { background:#126479; color:#fff; border-color:#126479; }
-#yoro-support button:disabled { opacity:.6; cursor:wait; }
-#yoro-support :focus-visible { outline:3px solid #c67123; outline-offset:3px; }
-#yoro-support-panel { order:1; box-sizing:border-box; background:#fff; width:380px; max-width:calc(100vw - 32px); height:min(690px,calc(100dvh - 100px)); border:1px solid #ccd9df; border-radius:16px; box-shadow:0 10px 45px #102f3c30; padding:18px; display:flex; flex-direction:column; margin-bottom:12px; overflow:auto; }
-#yoro-support-panel header { display:flex; align-items:center; justify-content:space-between; font-size:18px; }
-#yoro-support-panel p { margin:8px 0; }
-#yoro-support .yoro-support-notice { font-size:12px; line-height:1.6; color:#4e6673; border-bottom:1px solid #e0eaee; padding-bottom:12px; }
-#yoro-support .yoro-support-messages { flex:1; min-height:120px; overflow:auto; overscroll-behavior:contain; padding:5px 0; }
-#yoro-support .yoro-support-entry { padding:10px 12px; margin:8px 0; border-radius:10px; background:#f1f6f8; overflow-wrap:anywhere; }
-#yoro-support .yoro-support-entry p { white-space:pre-wrap; }
-#yoro-support .yoro-support-entry.user { background:#e4f1f2; }
-#yoro-support .yoro-support-entry a { display:block; color:#0c617c; text-decoration:underline; }
-#yoro-support [data-status] { color:#8b390d; font-size:13px; }
-#yoro-support form { display:flex; flex-wrap:wrap; gap:8px; }
-#yoro-support label { width:100%; font-size:13px; }
-#yoro-support textarea { width:100%; box-sizing:border-box; min-height:64px; max-height:140px; padding:10px; color:#172b35; background:#fff; border:1px solid #9db6c0; border-radius:8px; font:inherit; }
-#yoro-support [data-reset] { margin-left:auto; font-size:12px; padding:8px; }
-#yoro-support .yoro-support-contact { font-size:12px; color:#4e6673; white-space:pre-wrap; }
-@media(max-width:480px) { #yoro-support { right:12px; bottom:12px; } #yoro-support-panel { width:calc(100vw - 24px); max-width:none; box-sizing:border-box; padding:14px; height:calc(100dvh - 90px); } }
+#yoro-support button,#yoro-support input,#yoro-support textarea,#yoro-support select { font:inherit; }
+#yoro-support button { cursor:pointer; border:1px solid #d6e1e6; background:#fff; border-radius:9px; padding:9px 12px; color:#24424f; min-height:40px; box-shadow:none; text-transform:none; letter-spacing:normal; }
+#yoro-support button:disabled { cursor:wait; opacity:.6; }
+#yoro-support :focus-visible { outline:3px solid #4c99bd; outline-offset:3px; }
+#yoro-support .yoro-support-launch { display:flex; gap:9px; align-items:center; color:#fff; background:var(--ys-accent); border:0; border-radius:30px; padding:13px 20px; box-shadow:0 5px 22px #15394c29; font-weight:600; }
+#yoro-support .yoro-support-launch span { font-size:21px; }
+#yoro-support-panel { position:absolute; bottom:68px; right:0; width:410px; max-width:calc(100vw - 32px); height:min(720px,calc(100dvh - 125px)); display:flex; flex-direction:column; background:#fff; border:1px solid #d8e4e8; border-radius:18px; box-shadow:0 18px 65px #102d4030; overflow:hidden; }
+#yoro-support.yoro-support-left #yoro-support-panel { right:auto; left:0; }
+#yoro-support header { display:flex; align-items:center; gap:10px; padding:17px 18px; border-bottom:1px solid #e5ecef; flex:none; background:#fff; }
+#yoro-support header > div { flex:1; min-width:0; }
+#yoro-support header strong { display:block; font-size:15px; overflow-wrap:anywhere; }
+#yoro-support header small { display:block; font-size:11px; color:#6d818c; margin-top:2px; }
+#yoro-support header button { border:0; background:#f4f7f8; padding:4px; min-width:32px; min-height:32px; font-size:20px; }
+#yoro-support .yoro-support-avatar { width:38px; height:38px; display:grid; place-items:center; border-radius:12px; background:#eaf3f5; color:var(--ys-accent); font-size:23px; }
+#yoro-support .yoro-support-body { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; padding:20px 18px; scrollbar-width:thin; }
+#yoro-support .yoro-support-welcome { padding:6px 0 20px; }
+#yoro-support .yoro-support-eyebrow { font-size:9px; letter-spacing:.15em; color:#66828e; font-weight:700; }
+#yoro-support h2 { font-size:23px; line-height:1.35; font-weight:650; color:#203c4c; margin:9px 0 12px; }
+#yoro-support .yoro-support-welcome p { font-size:13px; color:#657c89; margin:0 0 18px; }
+#yoro-support .yoro-support-starters { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+#yoro-support .yoro-support-starters button { display:flex; justify-content:space-between; text-align:left; align-items:center; gap:8px; font-size:12px; border:1px solid #deeaee; background:#f8fbfc; padding:11px; min-height:48px; }
+#yoro-support .yoro-support-starters span { color:#6e8a96; }
+#yoro-support .yoro-support-entry { margin:15px 0; padding:12px 14px; border-radius:12px; background:#f3f7f9; overflow-wrap:anywhere; }
+#yoro-support .yoro-support-entry > strong { font-size:10px; letter-spacing:.03em; color:#587584; }
+#yoro-support .yoro-support-entry p { white-space:pre-wrap; margin:5px 0; font-size:13px; }
+#yoro-support .yoro-support-entry.user { margin-left:22px; background:#eaf4f5; }
+#yoro-support .yoro-support-entry.assistant { margin-right:12px; }
+#yoro-support .yoro-support-source { display:inline-block; border:1px solid #c6dbe2; border-radius:6px; padding:3px 7px; margin:7px 5px 0 0; color:#20586d; font-size:11px; text-decoration:none; background:#fff; }
+#yoro-support .yoro-support-flow,#yoro-support .yoro-support-card { border:1px solid #d5e3e9; border-radius:12px; padding:16px; margin:12px 0; background:#fbfdfe; }
+#yoro-support h3 { font-size:16px; margin:0 0 10px; color:#264b5e; }
+#yoro-support h4 { font-size:12px; margin:16px 0 6px; }
+#yoro-support .yoro-support-flow > p,#yoro-support .yoro-support-card > p { font-size:12px; color:#607887; }
+#yoro-support .yoro-support-context form { display:flex; flex-direction:column; gap:10px; margin:12px 0; }
+#yoro-support .yoro-support-context label { display:flex; flex-direction:column; gap:5px; font-size:11px; font-weight:550; }
+#yoro-support input,#yoro-support select { width:100%; min-width:0; height:40px; border:1px solid #bbced8; border-radius:7px; padding:8px 10px; color:#254252; background:#fff; }
+#yoro-support input[name=code] { letter-spacing:.35em; font-size:20px; }
+#yoro-support .yoro-support-context form > button[type=submit] { color:#fff; background:var(--ys-accent); border-color:var(--ys-accent); font-weight:600; }
+#yoro-support .yoro-support-context button { margin:4px 3px 4px 0; font-size:12px; }
+#yoro-support .yoro-support-order { border-top:1px solid #e1e9ee; padding:12px 0; }
+#yoro-support .yoro-support-order p { font-size:11px; color:#5b7381; }
+#yoro-support .yoro-support-quote-item { display:flex; align-items:center; gap:8px; margin:10px 0; font-size:12px; }
+#yoro-support .yoro-support-quote-item span { flex:1; }
+#yoro-support .yoro-support-quote-item input { width:60px; }
+#yoro-support .yoro-support-card dl { display:grid; grid-template-columns:1fr auto; gap:8px; font-size:12px; }
+#yoro-support .yoro-support-card dt,#yoro-support .yoro-support-card dd { margin:0; }
+#yoro-support .yoro-support-card dt:last-of-type,#yoro-support .yoro-support-card dd:last-of-type { border-top:1px solid #d6e2e8; padding-top:10px; font-weight:700; }
+#yoro-support .yoro-support-card small { color:#657d8a; font-size:10px; display:block; }
+#yoro-support .yoro-support-verified { display:flex; flex-wrap:wrap; gap:5px; justify-content:space-between; padding:8px 17px; background:#edf7f1; color:#236144; font-size:10px; }
+#yoro-support .yoro-support-verified button { background:none; border:0; font-size:10px; min-height:24px; padding:2px; color:#236144; text-decoration:underline; }
+#yoro-support [data-status] { padding:0 18px; font-size:11px; color:#8f4b22; margin:7px 0; }
+#yoro-support .yoro-support-composer { display:flex; align-items:flex-end; gap:8px; border:1px solid #cbdde5; border-radius:12px; padding:7px; margin:0 14px 10px; flex-wrap:wrap; }
+#yoro-support textarea { flex:1; border:0; border-radius:6px; min-width:0; min-height:40px; max-height:120px; resize:vertical; padding:9px 7px; font-size:12px; background:#fff; color:#244252; box-shadow:none; }
+#yoro-support .yoro-support-composer button[type=submit] { border:0; min-width:36px; min-height:36px; color:#fff; background:var(--ys-accent); font-size:21px; padding:2px 9px; }
+#yoro-support [data-retry] { width:100%; }
+#yoro-support footer { padding:0 19px 12px; font-size:10px; color:#6b818c; }
+#yoro-support footer p { font-size:10px; margin:7px 0; }
+#yoro-support footer summary { cursor:pointer; }
+#yoro-support .yoro-support-contact { white-space:pre-wrap; }
+#yoro-support .yoro-support-sr { position:absolute; width:1px; height:1px; clip:rect(0,0,0,0); overflow:hidden; white-space:nowrap; }
+@media(max-width:480px) { #yoro-support,#yoro-support.yoro-support-left { bottom:max(14px,env(safe-area-inset-bottom)); right:14px; left:auto; } #yoro-support-panel,#yoro-support.yoro-support-left #yoro-support-panel { position:fixed; inset:8px; width:auto; max-width:none; height:auto; padding-bottom:env(safe-area-inset-bottom); border-radius:14px; } #yoro-support .yoro-support-body { padding:17px 14px; } }
+@media(prefers-reduced-motion:reduce) { #yoro-support * { scroll-behavior:auto; } }
