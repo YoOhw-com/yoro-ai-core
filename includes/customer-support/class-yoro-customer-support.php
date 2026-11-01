@@ -107,13 +107,20 @@ class YoRo_Customer_Support {
 		return self::unavailable();
 	}
 	public static function safe_answer( array $answer, array $snapshot ) {
-		$sources = [];
+		$sources = []; $products = [];
 		foreach ( $answer['sources'] ?? [] as $source ) {
 			foreach ( $snapshot['sources'] ?? [] as $fact ) {
-				if ( ( $source['id'] ?? null ) === $fact['id'] ) { $sources[] = [ 'title' => $fact['title'], 'url' => $fact['url'] ]; }
+				if ( ( $source['id'] ?? null ) === $fact['id'] ) {
+					$sources[] = [ 'title' => $fact['title'], 'url' => $fact['url'] ];
+					if ( 'product' === ( $fact['type'] ?? '' ) && isset( $fact['product'] ) && count( $products ) < 4 ) {
+						$products[ $fact['id'] ] = [ 'id' => $fact['id'], 'title' => $fact['title'], 'url' => $fact['url'],
+							'price' => $fact['product']['price'], 'currency' => $fact['product']['currency'], 'stock' => $fact['product']['stock'],
+							'sku' => $fact['product']['sku'] ?? '', 'options' => array_slice( $fact['product']['options'], 0, 6 ) ];
+					}
+				}
 			}
 		}
-		return [ 'text' => mb_substr( wp_strip_all_tags( (string) ( $answer['text'] ?? '' ) ), 0, 4000 ), 'sources' => $sources ];
+		return [ 'text' => mb_substr( wp_strip_all_tags( (string) ( $answer['text'] ?? '' ) ), 0, 4000 ), 'sources' => $sources, 'products' => array_values( $products ) ];
 	}
 
 	private static function v2( array $settings ) { return 2 === ( $settings['protocol'] ?? null ); }

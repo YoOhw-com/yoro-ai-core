@@ -38,7 +38,7 @@ window.fetch=async(url,options)=>{
   else {const order=data.kind==='order';body={context_token:order?'synthetic-order-context':'synthetic-quote-context',private:order,expires_at:later(),card:{kind:order?'order':data.kind,title:order?'Order #1024':'Current checkout estimate',data:order?orderData():quoteData()}};}
  }
  else if(window.fixtureFailure){window.fixtureFailure=false;ok=false;body={code:'support_unavailable'};}
- else body={turn_id:data.turn_id,status:'completed',private:data.context_token==='synthetic-order-context',answer:{text:data.context_token==='synthetic-order-context'?'Your recorded order is processing. The stored tracking does not establish live delivery.':'Our approved store guide has the information you need. This answer uses synthetic facts.',sources:[{title:'Approved store guide',url:window.location.origin+'/guide'}]}};
+ else body={turn_id:data.turn_id,status:'completed',private:data.context_token==='synthetic-order-context',answer:{text:data.context_token==='synthetic-order-context'?'Your recorded order is processing. The stored tracking does not establish live delivery.':'Our approved store guide has the information you need. This answer uses synthetic facts.',sources:[{title:'Approved store guide',url:window.location.origin+'/guide'}],products:data.context_token?[]:[{id:'product:47',title:'Trail daypack',url:window.location.origin+'/product/daypack',price:'49.00',currency:'USD',stock:'instock',sku:'TRAIL47',options:['Capacity: 12 L']}]}};
  return {ok,json:async()=>body};
 };
 document.getElementById('fixture-expire').onclick=()=>{window.fixtureVerified=false;document.dispatchEvent(new Event('visibilitychange'));};

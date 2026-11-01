@@ -174,4 +174,37 @@ $request->set_body_params( [ 'kind' => 'products', 'query' => '', 'email' => 'fo
 verify( is_wp_error( YoRo_Customer_Support::context( $request ) ), 'Unknown context control fields cannot inject browser identity.' );
 remove_filter( 'pre_http_request', $authority_filter, 1 );
 
+
+// Public reply cards are projected only from current native cited facts, never model-written fields.
+$product_settings = [ 'enabled' => true, 'protocol' => 2, 'revision' => 4, 'content_ids' => [], 'contact' => '', 'preferences' => [ 'features' => [ 'content' => false, 'products' => true, 'quote' => false, 'coupons' => false, 'payments' => false, 'orders' => false ] ] ];
+update_option( YoRo_Customer_Support::OPTION, $product_settings );
+$p->set_sku( 'NATIVE-PUBLIC-SKU' ); $p->save();
+$public_id = 'product:' . $p->get_id();
+foreach ( [ 'unchanged', 'price-changed', 'hidden' ] as $scenario ) {
+    $p->set_regular_price( '100' ); $p->set_catalog_visibility( 'visible' ); $p->save();
+    $previous = YoRo_Support_Context::snapshot( $product_settings, $session, 'Native quote product' );
+    $native_source = array_values( array_filter( $previous['sources'], static fn( $source ) => $source['id'] === $public_id ) )[0];
+    $replay = function ( $pre, $args, $url ) use ( $scenario, $p, $previous, $public_id ) {
+        if ( str_ends_with( $url, '/cancel' ) ) { return [ 'response' => [ 'code' => 200 ], 'body' => wp_json_encode( [ 'status' => 'failed' ] ) ]; }
+        if ( ! str_ends_with( $url, '/turns' ) ) { throw new RuntimeException( 'Unexpected public-card transport.' ); }
+        if ( 'price-changed' === $scenario ) { $p->set_regular_price( '120' ); $p->save(); }
+        if ( 'hidden' === $scenario ) { $p->set_catalog_visibility( 'hidden' ); $p->save(); }
+        return [ 'response' => [ 'code' => 200 ], 'body' => wp_json_encode( [ 'status' => 'completed', 'snapshot' => $previous,
+            'answer' => [ 'text' => 'Current product.', 'products' => [ [ 'price' => '999999', 'url' => 'https://evil.invalid' ] ], 'sources' => [ [ 'id' => $public_id, 'title' => 'Model forged title', 'url' => 'https://evil.invalid' ] ] ] ] ) ];
+    };
+    add_filter( 'pre_http_request', $replay, 1, 3 );
+    $request = new WP_REST_Request( 'POST' ); $request->set_body_params( [ 'turn_id' => '12345678-1234-4123-8123-123456789abc', 'message' => 'Native quote product' ] );
+    $request->set_header( 'X-YoRo-Support-CSRF', YoRo_Support_Transport::csrf( $cookie ) );
+    $reply = YoRo_Customer_Support::turn( $request );
+    if ( 'unchanged' === $scenario ) {
+        $card = valid_result( $reply )->get_data()['answer']['products'][0];
+        verify( $card['title'] === $native_source['title'] && $card['price'] === $native_source['product']['price'] && $card['url'] === $native_source['url'] && 'NATIVE-PUBLIC-SKU' === $card['sku'], 'Public card uses native revalidated price, SKU and URL, ignoring forged model data.' );
+    } else { verify( is_wp_error( $reply ), 'Changed or hidden public product cannot produce a stale completed reply/card, including replay.' ); }
+    remove_filter( 'pre_http_request', $replay, 1 );
+}
+$p->set_regular_price( '100' ); $p->set_catalog_visibility( 'visible' ); $p->save();
+$legacy = YoRo_Support_Facts::snapshot( $product_settings, 'Native quote product' );
+$legacy_card = YoRo_Customer_Support::safe_answer( [ 'text' => 'Legacy public answer.', 'sources' => [ [ 'id' => $public_id ] ] ], $legacy );
+verify( ! empty( $legacy_card['products'] ) && '' === $legacy_card['products'][0]['sku'], 'Protocol1 public product facts remain compatible with additive card projection.' );
+
 echo wp_json_encode( [ 'result' => 'passed', 'suite' => 'native-commerce', 'assertions' => $count, 'woocommerce' => WC_VERSION, 'wordpress' => get_bloginfo( 'version' ), 'provider_calls' => 0, 'outbound_mail' => 0, 'scope' => 'disposable fixture only' ] ), "\n";

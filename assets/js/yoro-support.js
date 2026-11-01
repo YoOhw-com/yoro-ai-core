@@ -4,7 +4,7 @@
     if (!root) return;
     const vi = (document.documentElement.lang || navigator.language || '').toLowerCase().startsWith('vi');
     const words = {
-        'You': 'Bạn', 'Support': 'Hỗ trợ', 'Connecting…': 'Đang kết nối…', 'Thinking…': 'Đang tìm câu trả lời…',
+        'In stock': 'Còn hàng', 'Out of stock': 'Hết hàng', 'On backorder': 'Đặt trước', 'You': 'Bạn', 'Support': 'Hỗ trợ', 'Connecting…': 'Đang kết nối…', 'Thinking…': 'Đang tìm câu trả lời…',
         'Support is unavailable. Please try again or contact the store.': 'Hỗ trợ đang gián đoạn. Vui lòng thử lại hoặc liên hệ cửa hàng.',
         'Verify your ordering email': 'Xác minh email đặt hàng', 'Email used at checkout': 'Email đã dùng khi đặt hàng',
         'Send verification code': 'Gửi mã xác minh', 'Verification code': 'Mã xác minh', 'Verify': 'Xác minh',
@@ -113,7 +113,21 @@
         status.textContent = '';
         if (result.status === 'context') { pendingQuestion = message; pending = null; openFlow(result.context); return; }
         if (!result.answer || typeof result.answer.text !== 'string') throw new Error('unavailable');
-        append(result.answer.text, 'assistant', result.answer.sources, result.private === true); pending = null; pendingQuestion = ''; input.value = '';
+        const entry = append(result.answer.text, 'assistant', result.answer.sources, result.private === true); renderProducts(entry, result.answer.products); pending = null; pendingQuestion = ''; input.value = '';
+    }
+    function renderProducts(entry, products) {
+        if (!Array.isArray(products)) return;
+        products.slice(0, 4).forEach(product => {
+            try {
+                const url = new URL(product.url);
+                if (url.protocol !== 'https:' || url.origin !== window.location.origin || url.username || url.password) return;
+                const card = node('article', '', 'yoro-support-product'), link = node('a', product.title); link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer';
+                card.append(link, node('strong', product.price + ' · ' + product.currency), node('small', t({instock: 'In stock', outofstock: 'Out of stock', onbackorder: 'On backorder'}[product.stock] || '')));
+                if (product.sku) card.append(node('small', 'SKU: ' + product.sku));
+                if (Array.isArray(product.options)) product.options.slice(0, 6).forEach(option => card.append(node('small', option)));
+                entry.append(card);
+            } catch (_) { /* Discard malformed public product DTOs. */ }
+        });
     }
     composer.addEventListener('submit', async event => { event.preventDefault(); const message = input.value.trim(); if (!message || message.length > 2000) return; await sendMessage(message); if (pending) retry.hidden = retryCount >= 2; });
     input.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); composer.requestSubmit(); } });
@@ -147,7 +161,7 @@
         const result = await request('context', {kind: 'orders', page}); contextArea.replaceChildren(); const card = node('div', '', 'yoro-support-flow'); card.dataset.private = 'true'; card.append(node('h3', t('Choose an order')));
         if (!result.orders.length) card.append(node('p', t('No orders match this verified email.')));
         result.orders.forEach(order => { const row = node('div', '', 'yoro-support-order'); row.append(node('strong', '#' + order.number), node('p', [order.date, order.status, order.total + ' ' + order.currency].join(' · ')), button('Select order', () => action(async () => {
-            const selected = await request('context', {kind: 'order', params: {reference: order.reference}}); selectContext(selected); renderCard(selected.card); contextArea.append(button('Other orders', () => action(() => orders()))); const question = pendingQuestion || t('What is the current status of this order?'); setTimeout(() => sendMessage(question, !!pendingQuestion), 0);
+            const selected = await request('context', {kind: 'order', params: {reference: order.reference}}); selectContext(selected); renderCard(selected.card); contextArea.append(button('Other orders', () => action(() => orders()))); contextArea.append(button('Ask about this order', () => sendMessage(t('What is the current status of this order?')))); const question = pendingQuestion, token = contextToken, ownGeneration = generation; if (question) setTimeout(() => { if (generation === ownGeneration && contextToken === token && pendingQuestion === question) sendMessage(question, true); }, 0);
         }))); card.append(row); });
         if (result.has_next) card.append(button('Next orders', () => action(() => orders(page + 1)))); contextArea.append(card);
     }

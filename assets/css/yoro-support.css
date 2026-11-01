@@ -63,3 +63,5 @@
 #yoro-support .yoro-support-sr { position:absolute; width:1px; height:1px; clip:rect(0,0,0,0); overflow:hidden; white-space:nowrap; }
 @media(max-width:480px) { #yoro-support,#yoro-support.yoro-support-left { bottom:max(14px,env(safe-area-inset-bottom)); right:14px; left:auto; } #yoro-support-panel,#yoro-support.yoro-support-left #yoro-support-panel { position:fixed; inset:8px; width:auto; max-width:none; height:auto; padding-bottom:env(safe-area-inset-bottom); border-radius:14px; } #yoro-support .yoro-support-body { padding:17px 14px; } }
 @media(prefers-reduced-motion:reduce) { #yoro-support * { scroll-behavior:auto; } }
+
+#yoro-support .yoro-support-product{display:grid;gap:5px;margin-top:10px;padding:12px;border:1px solid #d8e4e5;border-radius:12px;background:#fff}#yoro-support .yoro-support-product a{font-weight:650}#yoro-support .yoro-support-product small{display:block;color:#465c63}
