@@ -80,14 +80,18 @@ class YoRo_Customer_Support {
 		$token = $request->get_param( 'context_token' ) ?? '';
 		if ( ! is_string( $token ) || strlen( $token ) > 12000 ) { return self::unavailable(); }
 		$snapshot = self::snapshot( $settings, $session, $message, null, $token );
+		if ( self::invalidated( $settings ) ) { return self::inactive(); }
 		if ( is_wp_error( $snapshot ) ) { return $snapshot; }
 		$result = YoRo_Support_Transport::request( 'POST', '/turns', [ 'turn_id' => $id, 'message' => $message, 'snapshot' => $snapshot ], $session );
+		if ( self::invalidated( $settings ) ) { return is_wp_error( $result ) ? self::inactive() : self::cancel( $id, $session, self::inactive(), $settings ); }
 		if ( is_wp_error( $result ) ) { return $result; }
 		if ( 'facts' === ( $result['status'] ?? '' ) && is_string( $result['query'] ?? null ) && microtime( true ) - $started < 25 ) {
-			if ( self::settings() !== $settings ) { return self::cancel( $id, $session ); }
+			if ( self::invalidated( $settings ) ) { return self::cancel( $id, $session, self::inactive(), $settings ); }
 			$snapshot = self::snapshot( $settings, $session, mb_substr( $result['query'], 0, 120 ), null, $token );
-			if ( is_wp_error( $snapshot ) ) { return self::cancel( $id, $session ); }
+			if ( self::invalidated( $settings ) ) { return self::cancel( $id, $session, self::inactive(), $settings ); }
+			if ( is_wp_error( $snapshot ) ) { return self::cancel( $id, $session, $snapshot, $settings ); }
 			$result = YoRo_Support_Transport::request( 'POST', '/turns/' . $id . '/facts', [ 'snapshot' => $snapshot ], $session );
+			if ( self::invalidated( $settings ) ) { return is_wp_error( $result ) ? self::inactive() : self::cancel( $id, $session, self::inactive(), $settings ); }
 			if ( is_wp_error( $result ) ) { return $result; }
 		}
 		if ( 'context' === ( $result['status'] ?? '' ) && self::v2( $settings ) && in_array( $result['context'] ?? '', [ 'orders', 'quote', 'coupons', 'payments' ], true ) ) {
@@ -96,13 +100,20 @@ class YoRo_Customer_Support {
 		if ( in_array( $result['status'] ?? '', [ 'validate', 'completed' ], true ) && is_array( $result['snapshot'] ?? null ) ) {
 			$previous = $result['snapshot'];
 			$current = self::snapshot( $settings, $session, '', array_column( $previous['sources'] ?? [], 'id' ), $token );
-			if ( self::settings() !== $settings || $current !== $previous || microtime( true ) - $started >= 45 ) { return self::cancel( $id, $session ); }
+			if ( self::invalidated( $settings ) ) { return self::cancel( $id, $session, self::inactive(), $settings ); }
+			if ( is_wp_error( $current ) ) { return self::cancel( $id, $session, $current, $settings ); }
+			if ( $current !== $previous || microtime( true ) - $started >= 45 ) { return self::cancel( $id, $session, null, $settings ); }
 			if ( 'validate' === $result['status'] ) {
 				$result = YoRo_Support_Transport::request( 'POST', '/turns/' . $id . '/complete', [ 'snapshot' => $current ], $session );
 			}
-			if ( is_wp_error( $result ) || 'completed' !== ( $result['status'] ?? '' ) || self::settings() !== $settings ) { return self::unavailable(); }
+			if ( self::invalidated( $settings ) ) { return self::inactive(); }
+			if ( is_wp_error( $result ) ) { return self::private_failure( $result ); }
+			if ( 'completed' !== ( $result['status'] ?? '' ) ) { return self::unavailable(); }
 			// Revalidate once more immediately before exposing a durable answer (including replay).
-			if ( self::snapshot( $settings, $session, '', array_column( $previous['sources'], 'id' ), $token ) !== $previous ) { return self::unavailable(); }
+			$latest = self::snapshot( $settings, $session, '', array_column( $previous['sources'], 'id' ), $token );
+			if ( self::invalidated( $settings ) ) { return self::inactive(); }
+			if ( is_wp_error( $latest ) ) { return self::private_failure( $latest ); }
+			if ( $latest !== $previous ) { return self::unavailable(); }
 			return self::response( [ 'turn_id' => $id, 'status' => 'completed', 'answer' => self::safe_answer( $result['answer'] ?? [], $previous ), 'private' => ! empty( $previous['context']['access_id'] ) ] );
 		}
 		return self::unavailable();
@@ -192,8 +203,20 @@ class YoRo_Customer_Support {
 		return [] === array_diff( array_keys( $request->get_params() ), $allowed );
 	}
 
-	private static function cancel( $id, array $session ) {
-		YoRo_Support_Transport::request( 'POST', '/turns/' . $id . '/cancel', [ 'snapshot' => [] ], $session );
+	private static function cancel( $id, array $session, $failure, array $settings ) {
+		$cleanup = YoRo_Support_Transport::request( 'POST', '/turns/' . $id . '/cancel', [ 'snapshot' => [] ], $session );
+		$local = self::invalidated( $settings ) ? self::inactive() : null;
+		return self::private_failure( $failure, $cleanup, $local );
+	}
+	private static function invalidated( array $settings ) {
+		return self::settings() !== $settings || '' === YoRo_AI_Settings::get_ai_api_site_key();
+	}
+	private static function private_failure( $failure, $cleanup = null, $local = null ) {
+		foreach ( [ $failure, $cleanup, $local ] as $candidate ) {
+			if ( ! is_wp_error( $candidate ) ) { continue; }
+			if ( 'support_session_inactive' === $candidate->get_error_code() ) { return self::inactive(); }
+			if ( 'support_verification_required' === $candidate->get_error_code() ) { return $candidate; }
+		}
 		return self::unavailable();
 	}
 	private static function cookie_name() { return '__Host-yoro_support_' . get_current_blog_id(); }

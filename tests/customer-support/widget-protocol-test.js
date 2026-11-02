@@ -183,5 +183,21 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
     responses.push({body: {verified: false, expires_at: null, email_hint: null}}); await document.event('visibilitychange');
     input.value = 'Ordinary public question after unverified status'; responses.push({body: {status: 'completed', answer: {text: 'PUBLIC_AFTER_UNVERIFIED_STATUS', sources: []}}}); await composer.event('submit');
     verify(calls.at(-1).body.context_token === '' && log.children.some(entry => entry.children.some(child => child.textContent === 'PUBLIC_AFTER_UNVERIFIED_STATUS')) && !send.disabled, 'Successful unverified status leaves ordinary explicit public questions usable');
-    console.log(JSON.stringify({result: 'passed', suite: 'widget-unit-protocol', assertions: checks, browser_rendering: 'NOT_EVALUATED', network: 0, provider: 0}));
+    let midphaseCases = 0;
+    if (process.argv[2]) {
+        const actual = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+        assert.equal(actual.result, 'passed'); assert.equal(actual.native_wordpress, 'NOT_EVALUATED');
+        assert.ok(Array.isArray(actual.midphase_cases) && actual.midphase_cases.length > 0);
+        for (const fault of actual.midphase_cases) {
+            await primePrivate(); const before = calls.length;
+            input.value = 'Explicit private question with midphase ' + fault.phase + ' response';
+            responses.push({ok: false, body: {code: fault.code}}); await composer.event('submit');
+            const definitive = ['support_session_inactive', 'support_verification_required'].includes(fault.code);
+            const safeArea = fault.code === 'support_verification_required' ? area.querySelector('[name=email]')?.value === '' && area.querySelectorAll('[data-private]').length === 0 : area.children.length === 0;
+            verify(definitive ? bar.hidden && log.querySelectorAll('[data-private]').length === 0 && safeArea && retry.hidden : !bar.hidden && log.querySelectorAll('[data-private]').length > 0 && area.children.length > 0, 'Actual PHP ' + fault.phase + '/' + fault.kind + ' response clears only definitive private loss');
+            verify(calls.length === before + 1, 'Midphase HTTP denial creates no automatic inference or session admission');
+            midphaseCases++;
+        }
+    }
+    console.log(JSON.stringify({result: 'passed', suite: 'widget-unit-protocol', assertions: checks, php_midphase_cases: midphaseCases, browser_rendering: 'NOT_EVALUATED', network: 0, provider: 0}));
 })().catch(error => { console.error(error); process.exitCode = 1; });
