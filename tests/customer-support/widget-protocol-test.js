@@ -121,5 +121,67 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
     const explaining = area.querySelectorAll('button').find(button => button.textContent === 'Explain this estimate').event('click'); await flush();
     const expiry = [...timers.values()].find(timer => timer.delay >= 290000 && timer.delay <= 300000); assert.ok(expiry); expiry.fn(); releaseExpired(); await explaining;
     verify(!log.children.some(entry => entry.children.some(child => child.textContent === 'LATE_EXPIRED_QUOTE')) && retry.hidden, 'Expired selection drops a late AI response and its retry input');
+    async function primePrivate() {
+        responses.push({body: {verified: false}}); await end.event('click');
+        await orders.event('click');
+        area.querySelector('[name=email]').value = 'buyer@example.test';
+        responses.push({body: {challenge_id: 'synthetic-loss-challenge', email_hint: 'b***@example.test', resend_seconds: 60}}); await area.querySelector('form').event('submit');
+        area.querySelector('[name=code]').value = '123456';
+        responses.push({body: {verified: true, expires_at: new Date(Date.now() + 900000).toISOString(), email_hint: 'b***@example.test'}}, {body: orderList}); await area.querySelector('form').event('submit');
+        responses.push({body: selectedOrder}); await area.querySelectorAll('button').find(button => button.textContent === 'Select order').event('click');
+        responses.push({body: {status: 'completed', private: true, answer: {text: 'Synthetic private answer before invalidation.', sources: []}}});
+        await area.querySelectorAll('button').find(button => button.textContent === 'Ask about this order').event('click');
+        verify(!bar.hidden && log.querySelectorAll('[data-private]').length > 0 && area.children.length > 0, 'Private precondition is rendered through actual verification/order/turn controls');
+    }
+    for (const code of ['support_session_inactive', 'support_forbidden', 'support_verification_required']) {
+        await primePrivate(); const before = calls.length;
+        responses.push({ok: false, body: {code}}); await document.event('visibilitychange');
+        const safeArea = code === 'support_verification_required' ? area.querySelector('[name=email]')?.value === '' && area.querySelectorAll('[data-private]').length === 0 : area.children.length === 0;
+        verify(bar.hidden && log.querySelectorAll('[data-private]').length === 0 && safeArea && retry.hidden, 'Definitive ' + code + ' current-session denial clears private state; only a fresh public verification form may remain');
+        verify(calls.length === before + 1, 'Definitive loss adds no automatic admission/email/inference request');
+        input.value = 'Fresh public request after denial'; responses.push({body: {status: 'completed', answer: {text: 'Synthetic public answer.', sources: []}}}); await composer.event('submit');
+        verify(calls.at(-1).body.context_token === '', 'A later explicit request cannot reuse the invalidated private token');
+    }
+    for (const loss of [{ok: false, body: {code: 'support_session_inactive'}}, {body: {verified: false, expires_at: null, email_hint: null}}, {reset: true}]) {
+        await primePrivate(); let releaseOrder;
+        const heldOrder = new Promise(resolve => { releaseOrder = resolve; });
+        responses.push({wait: heldOrder, body: orderList}); await orders.event('click');
+        if (loss.reset) { responses.push({body: {csrf: 'synthetic-reset-csrf'}}); await reset.event('click'); }
+        else { responses.push(loss); await document.event('visibilitychange'); }
+        releaseOrder(); await flush(); await flush();
+        verify(bar.hidden && area.children.length === 0 && log.querySelectorAll('[data-private]').length === 0, 'A delayed private order response cannot restore UI after definitive error, verified:false status or explicit reset');
+    }
+    for (const route of ['orders', 'turn']) {
+        await primePrivate(); const before = calls.length;
+        responses.push({ok: false, body: {code: 'support_session_inactive'}});
+        if (route === 'orders') await orders.event('click');
+        else { input.value = 'Private request denied after settings changed'; await composer.event('submit'); }
+        verify(bar.hidden && log.querySelectorAll('[data-private]').length === 0 && area.children.length === 0 && retry.hidden, 'Actual ' + route + ' denial clears private state even outside the visibility handler');
+        verify(calls.length === before + 1, 'A denied ' + route + ' request creates no automatic inference or recovery');
+    }
+    await primePrivate(); input.value = 'Pending private question before invalidation';
+    responses.push({body: {status: 'context', context: 'orders'}}, {body: orderList}); await composer.event('submit');
+    const beforeLostResume = calls.filter(call => call.url.endsWith('/turn')).length;
+    responses.push({body: selectedOrder}); await area.querySelectorAll('button').find(button => button.textContent === 'Select order').listeners.click[0]();
+    responses.push({ok: false, body: {code: 'support_session_inactive'}}); await document.event('visibilitychange'); await flush();
+    verify(calls.filter(call => call.url.endsWith('/turn')).length === beforeLostResume && retry.hidden, 'Definitive loss invalidates a scheduled pending-question resume without inference');
+    for (const failure of [{ok: false, body: {code: 'support_unavailable'}}, {error: true}]) {
+        await primePrivate(); const before = calls.length, privateCount = log.querySelectorAll('[data-private]').length;
+        responses.push(failure); await document.event('visibilitychange');
+        verify(!bar.hidden && log.querySelectorAll('[data-private]').length === privateCount && area.children.length > 0, 'A transient current-session outage alone does not declare private authorization revoked');
+        verify(calls.length === before + 1, 'Transient status failure creates no automatic retry or admission');
+    }
+    responses.push({body: {verified: false}}); await end.event('click');
+    let releasePublic; const heldPublic = new Promise(resolve => { releasePublic = resolve; });
+    input.value = 'Ordinary public question during visibility change';
+    responses.push({wait: heldPublic, body: {status: 'completed', answer: {text: 'PUBLIC_RESPONSE_REMAINS_USABLE', sources: []}}});
+    const publicInFlight = composer.event('submit'); await flush(); const beforePublicVisibility = calls.length;
+    await document.event('visibilitychange');
+    verify(calls.length === beforePublicVisibility, 'An unverified public turn keeps the existing busy guard against concurrent status requests');
+    releasePublic(); await publicInFlight;
+    verify(log.children.some(entry => entry.children.some(child => child.textContent === 'PUBLIC_RESPONSE_REMAINS_USABLE')) && !send.disabled && retry.hidden, 'Ordinary public response is not silently discarded by visibility handling');
+    responses.push({body: {verified: false, expires_at: null, email_hint: null}}); await document.event('visibilitychange');
+    input.value = 'Ordinary public question after unverified status'; responses.push({body: {status: 'completed', answer: {text: 'PUBLIC_AFTER_UNVERIFIED_STATUS', sources: []}}}); await composer.event('submit');
+    verify(calls.at(-1).body.context_token === '' && log.children.some(entry => entry.children.some(child => child.textContent === 'PUBLIC_AFTER_UNVERIFIED_STATUS')) && !send.disabled, 'Successful unverified status leaves ordinary explicit public questions usable');
     console.log(JSON.stringify({result: 'passed', suite: 'widget-unit-protocol', assertions: checks, browser_rendering: 'NOT_EVALUATED', network: 0, provider: 0}));
 })().catch(error => { console.error(error); process.exitCode = 1; });

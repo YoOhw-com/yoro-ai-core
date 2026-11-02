@@ -11,7 +11,7 @@ function wp_parse_url($value,$component=-1) { return parse_url($value,$component
 function get_current_blog_id() { return 1; }
 function is_ssl() { return true; }
 function is_wp_error($value) { return $value instanceof WP_Error; }
-function get_option($name,$default=null) { return ['enabled'=>true,'revision'=>1,'content_ids'=>[],'contact'=>'Public contact']; }
+function get_option($name,$default=null) { return $GLOBALS['support_fixture_settings'] ?? ['enabled'=>true,'revision'=>1,'content_ids'=>[],'contact'=>'Public contact']; }
 function wp_remote_request($url,$args) {
     $GLOBALS['requests'][]=[$args['method'],parse_url($url,PHP_URL_PATH),$args];
     if (!$GLOBALS['responses']) { throw new RuntimeException('Unexpected HTTP transport call.'); }
@@ -30,7 +30,8 @@ class WP_REST_Response {
 }
 class YoRo_AI_Settings {
     public static function get_ai_api_url() { return 'https://api.example.test/api/v1'; }
-    public static function get_ai_api_site_key() { return 'synthetic-server-only-key'; }
+    public static string $key = 'synthetic-server-only-key';
+    public static function get_ai_api_site_key() { return self::$key; }
 }
 class SyntheticSupportRequest {
     public function __construct(public array $params=[],public array $headers=[]) {}
@@ -80,4 +81,41 @@ check(count($GLOBALS['requests'])===0,'Forged reset has no transport side effect
 [$cookie,$csrf]=existing_session();$GLOBALS['responses']=[['status'=>200,'body'=>['revision'=>1]]];
 $result=YoRo_Customer_Support::session(new SyntheticSupportRequest());
 check($result instanceof WP_REST_Response&&$result->data['csrf']===$csrf&&count($GLOBALS['requests'])===1,'Current active session is validated and reused.');
+// Definitive local session loss must remain distinct from transient transport failure.
+foreach (['revision', 'disconnect', 'missing'] as $loss) {
+    foreach (['verification', 'context', 'turn'] as $route) {
+        [$cookie,$csrf]=existing_session();
+        $GLOBALS['support_fixture_settings']=['enabled'=>true,'protocol'=>2,'revision'=>$loss==='revision'?2:1,'content_ids'=>[],'contact'=>'Public contact'];
+        YoRo_AI_Settings::$key=$loss==='disconnect'?'':'synthetic-server-only-key';
+        if ($loss==='missing') { unset($_COOKIE['__Host-yoro_support_1']); }
+        $params=match($route) {
+            'verification'=>['action'=>'current'], 'context'=>['kind'=>'orders'],
+            'turn'=>['turn_id'=>'12345678-1234-4123-8123-123456789abc','message'=>'Synthetic public question'],
+        };
+        $result=YoRo_Customer_Support::$route(new SyntheticSupportRequest($params,['Origin'=>home_url(),'X-YoRo-Support-CSRF'=>$csrf]));
+        check(is_wp_error($result)&&$result->get_error_code()==='support_session_inactive','G010 definitive '.$loss.' loss has a browser-consumable inactive code on '.$route.'.');
+        check(($result->data['status']??null)===403&&count($GLOBALS['requests'])===0,'Definitive local loss denies before any transport/admission.');
+    }
+}
+YoRo_AI_Settings::$key='synthetic-server-only-key';
+$GLOBALS['support_fixture_settings']=['enabled'=>true,'protocol'=>2,'revision'=>1,'content_ids'=>[],'contact'=>'Public contact'];
+[$cookie,$csrf]=existing_session();$GLOBALS['responses']=[response_fixture(403,'support_session_unavailable')];
+$result=YoRo_Customer_Support::verification(new SyntheticSupportRequest(['action'=>'current'],['X-YoRo-Support-CSRF'=>$csrf]));
+check(is_wp_error($result)&&$result->get_error_code()==='support_session_inactive'&&($result->data['status']??null)===403,'Known upstream inactive session is preserved by current verification.');
+check(count($GLOBALS['requests'])===1&&$GLOBALS['requests'][0][0]==='GET'&&$_COOKIE['__Host-yoro_support_1']===$cookie,'Inactive status never resets/adopts/retries session or changes cookie.');
+foreach ([new WP_Error('network_failed','Synthetic outage'),response_fixture(503,'support_provider_failed')] as $failure) {
+    [$cookie,$csrf]=existing_session();$GLOBALS['responses']=[$failure];
+    $result=YoRo_Customer_Support::verification(new SyntheticSupportRequest(['action'=>'current'],['X-YoRo-Support-CSRF'=>$csrf]));
+    check(is_wp_error($result)&&$result->get_error_code()==='support_unavailable','Transient current-session failure is not labelled definitive inactive.');
+    check(count($GLOBALS['requests'])===1&&$_COOKIE['__Host-yoro_support_1']===$cookie,'Transient denial preserves original cookie and performs no automatic admission.');
+}
+[$cookie,$csrf]=existing_session();
+$result=YoRo_Customer_Support::verification(new SyntheticSupportRequest(['action'=>'current'],['X-YoRo-Support-CSRF'=>'forged']));
+check(is_wp_error($result)&&$result->get_error_code()==='support_unavailable'&&count($GLOBALS['requests'])===0,'Existing CSRF denial stays fail closed without transport.');
+$GLOBALS['support_fixture_settings']['protocol']=1;
+$result=YoRo_Customer_Support::verification(new SyntheticSupportRequest(['action'=>'current'],['X-YoRo-Support-CSRF'=>$csrf]));
+check(is_wp_error($result)&&$result->get_error_code()==='support_unavailable'&&count($GLOBALS['requests'])===0,'Existing local protocol guard stays fail closed.');
+$GLOBALS['support_fixture_settings']['protocol']=2;$GLOBALS['responses']=[['status'=>200,'body'=>['protocol'=>1]]];
+$result=YoRo_Customer_Support::verification(new SyntheticSupportRequest(['action'=>'current'],['X-YoRo-Support-CSRF'=>$csrf]));
+check(is_wp_error($result)&&$result->get_error_code()==='support_unavailable'&&count($GLOBALS['requests'])===1,'Unexpected upstream protocol cannot expose private context.');
 echo json_encode(['result'=>'passed','assertions'=>$count],JSON_THROW_ON_ERROR),"\n";

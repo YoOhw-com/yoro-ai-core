@@ -70,12 +70,13 @@ class YoRo_Customer_Support {
 		$started = microtime( true );
 		$cookie = (string) ( $_COOKIE[ self::cookie_name() ] ?? '' );
 		$session = YoRo_Support_Transport::open( $cookie );
+		if ( ! $session ) { return self::inactive(); }
 		$id = $request->get_param( 'turn_id' ); $message = $request->get_param( 'message' );
 		if ( ! $session || ! hash_equals( YoRo_Support_Transport::csrf( $cookie ), (string) $request->get_header( 'X-YoRo-Support-CSRF' ) )
 			|| ! is_string( $id ) || ! preg_match( '/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i', $id )
 			|| ! is_string( $message ) || '' === trim( $message ) || mb_strlen( $message ) > 2000 ) { return self::unavailable(); }
 		$settings = self::settings();
-		if ( (int) $settings['revision'] !== (int) $session['revision'] ) { return self::unavailable(); }
+		if ( (int) $settings['revision'] !== (int) $session['revision'] || '' === YoRo_AI_Settings::get_ai_api_site_key() ) { return self::inactive(); }
 		$token = $request->get_param( 'context_token' ) ?? '';
 		if ( ! is_string( $token ) || strlen( $token ) > 12000 ) { return self::unavailable(); }
 		$snapshot = self::snapshot( $settings, $session, $message, null, $token );
@@ -131,10 +132,11 @@ class YoRo_Customer_Support {
 	private static function control_session( $request ) {
 		$cookie = (string) ( $_COOKIE[ self::cookie_name() ] ?? '' );
 		$session = YoRo_Support_Transport::open( $cookie );
-		if ( ! $session || ! self::v2( self::settings() ) || (int) $session['revision'] !== (int) self::settings()['revision']
-			|| ! hash_equals( YoRo_Support_Transport::csrf( $cookie ), (string) $request->get_header( 'X-YoRo-Support-CSRF' ) ) ) { return self::unavailable(); }
+		if ( ! $session || (int) $session['revision'] !== (int) self::settings()['revision'] || '' === YoRo_AI_Settings::get_ai_api_site_key() ) { return self::inactive(); }
+		if ( ! self::v2( self::settings() ) || ! hash_equals( YoRo_Support_Transport::csrf( $cookie ), (string) $request->get_header( 'X-YoRo-Support-CSRF' ) ) ) { return self::unavailable(); }
 		$valid = YoRo_Support_Transport::request( 'GET', '/sessions/current', [], $session );
-		return is_wp_error( $valid ) || 2 !== ( $valid['protocol'] ?? null ) ? self::unavailable() : $session;
+		if ( is_wp_error( $valid ) ) { return 'support_session_inactive' === $valid->get_error_code() ? self::inactive() : self::unavailable(); }
+		return 2 !== ( $valid['protocol'] ?? null ) ? self::unavailable() : $session;
 	}
 	public static function verification( $request ) {
 		$session = self::control_session( $request );
@@ -200,6 +202,7 @@ class YoRo_Customer_Support {
 		$response->header( 'Cache-Control', 'no-store, private' );
 		return $response;
 	}
+	private static function inactive() { return new WP_Error( 'support_session_inactive', 'This support session is no longer active.', [ 'status' => 403 ] ); }
 	private static function unavailable() { return new WP_Error( 'support_unavailable', 'Support is unavailable. Please retry later or use the site contact details.', [ 'status' => 503 ] ); }
 	public static function assets() {
 		if ( ! self::settings()['enabled'] ) { return; }

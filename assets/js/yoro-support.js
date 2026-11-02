@@ -75,7 +75,13 @@
             const response = await fetch(endpoint + path, {method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: {'Content-Type': 'application/json', 'X-YoRo-Support-CSRF': csrf}, body: JSON.stringify(body), signal: controller.signal});
             const data = await response.json();
             if (ownGeneration !== generation) throw {code: 'support_request_superseded'};
-            if (!response.ok) { const error = new Error('unavailable'); error.code = data.code || 'support_unavailable'; throw error; }
+            if (!response.ok) {
+                const error = new Error('unavailable'); error.code = data.code || 'support_unavailable';
+                if (['support_session_inactive', 'support_verification_required', 'support_forbidden'].includes(error.code)) {
+                    invalidatePrivate();
+                }
+                throw error;
+            }
             return data;
         } finally { clearTimeout(timer); }
     }
@@ -105,13 +111,16 @@
         contextToken = ''; contextPrivate = false; contextExpires = 0; quoteParameters = null; pending = null; retry.hidden = true;
         log.querySelectorAll('[data-private]').forEach(el => el.remove()); contextArea.replaceChildren(); if (!keepQuestion) pendingQuestion = '';
     }
+    function invalidatePrivate() {
+        generation++; clearPrivate(); busy = false; send.disabled = false;
+    }
     function setVerification(state) {
         clearTimeout(accessTimer); const wasVerified = verified; verified = state.verified === true;
-        if (!verified) { if (wasVerified || contextPrivate) clearPrivate(true); else verifiedBar.hidden = true; return; }
+        if (!verified) { if (wasVerified || contextPrivate) invalidatePrivate(); else verifiedBar.hidden = true; return; }
         verifiedBar.hidden = false; verifiedBar.querySelector('[data-verified-label]').textContent = t('Email verified') + ' · ' + (state.email_hint || '');
         const remaining = Date.parse(state.expires_at) - Date.now();
-        if (!(remaining > 0)) { clearPrivate(); return; }
-        accessTimer = setTimeout(() => { generation++; clearPrivate(); busy = false; send.disabled = false; status.textContent = t('Private access ended. Verify again to view orders.'); }, Math.min(remaining, 2147483647));
+        if (!(remaining > 0)) { invalidatePrivate(); return; }
+        accessTimer = setTimeout(() => { invalidatePrivate(); status.textContent = t('Private access ended. Verify again to view orders.'); }, Math.min(remaining, 2147483647));
     }
     async function action(work) {
         if (busy) return; const ownGeneration = generation; busy = true; send.disabled = true;
@@ -151,9 +160,9 @@
     composer.addEventListener('submit', async event => { event.preventDefault(); const message = input.value.trim(); if (!message || message.length > 2000) return; await sendMessage(message); if (pending) retry.hidden = retryCount >= 2; });
     input.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); composer.requestSubmit(); } });
     retry.addEventListener('click', () => action(async () => { if (!pending || retryCount >= 2) return; retryCount++; const result = await request('turn', pending); handleAnswer(result, pending.message); retry.hidden = !pending || retryCount >= 2; }));
-    root.querySelector('[data-reset]').addEventListener('click', () => { if (!window.confirm(t('New conversation? Current private access will end.'))) return; action(async () => { const result = await request('session', {reset: true}); csrf = result.csrf; clearPrivate(); log.replaceChildren(); input.value = ''; }); });
+    root.querySelector('[data-reset]').addEventListener('click', () => { if (!window.confirm(t('New conversation? Current private access will end.'))) return; action(async () => { const result = await request('session', {reset: true}); csrf = result.csrf; invalidatePrivate(); log.replaceChildren(); input.value = ''; }); });
     root.querySelector('[data-end-private]').addEventListener('click', async () => {
-        if (revoking) return; revoking = true; generation++; clearPrivate(); busy = true; send.disabled = true;
+        if (revoking) return; revoking = true; invalidatePrivate(); busy = true; send.disabled = true;
         try { await request('verification', {action: 'revoke'}); status.textContent = t('Private access ended. Verify again to view orders.'); }
         catch (_) { verifiedBar.hidden = false; verifiedBar.querySelector('[data-verified-label]').textContent = t('Could not confirm revocation. Retry End private lookup.'); status.textContent = t('Could not confirm revocation. Retry End private lookup.'); }
         finally { revoking = false; busy = false; send.disabled = false; }
