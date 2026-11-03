@@ -38,12 +38,13 @@ iconImage.dataset.supportIcon = ''; iconImage.dataset.static = '/fixed-static.sv
 let iconMotionChanged;
 const documentEvents = {};
 const document = {activeElement: null, documentElement: {lang: 'en'}, hidden: false, getElementById: id => id === 'yoro-support' ? root : null, createElement: tag => el(tag), addEventListener(name, callback) { (documentEvents[name] ||= []).push(callback); }, async event(name) { for (const callback of documentEvents[name] || []) callback(); await flush(); }};
+const r3Committed = new Map();
 const calls = [], responses = [], timers = new Map(); let timerId = 0, uuid = 0;
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const sandbox = {document, navigator: {language: 'en'}, window: {location: {origin: 'https://fixture.invalid'}, matchMedia: () => ({matches: false, addEventListener(type, fn) { iconMotionChanged = fn; }}), confirm: () => true, addEventListener() {}},
     crypto: {randomUUID: () => 'synthetic-turn-' + (++uuid)}, URL, AbortController, Date, Map, console,
     setTimeout(fn, delay) { const id = ++timerId; timers.set(id, {fn, delay}); if (delay === 0) setImmediate(() => { if (timers.has(id)) { timers.delete(id); fn(); } }); return id; }, clearTimeout(id) { timers.delete(id); },
-    fetch: async (url, options) => { const body = JSON.parse(options.body); calls.push({url, options, body}); const next = responses.shift(); assert.ok(next, 'Unexpected protocol request'); if (next.error) throw new Error('Synthetic offline'); if (next.wait) await next.wait; return {ok: next.ok !== false, json: async () => next.body}; }};
+    fetch: async (url, options) => { const body = JSON.parse(options.body); calls.push({url, options, body}); const next = responses.shift(); assert.ok(next, 'Unexpected protocol request'); if (next.commit) { assert.ok(url.endsWith('/turn')); const held = r3Committed.get(body.turn_id); if (held) assert.deepEqual(held, body); else r3Committed.set(body.turn_id, JSON.parse(JSON.stringify(body))); } if (next.error) throw new Error('Synthetic offline'); if (next.wait) await next.wait; return {ok: next.ok !== false, json: async () => next.body}; }};
 vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname, '../../assets/js/yoro-support.js'), 'utf8'), sandbox);
 let checks = 0; const verify = (condition, message) => { assert.ok(condition, message); checks++; };
 (async () => {
@@ -199,5 +200,89 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
             midphaseCases++;
         }
     }
+    const r3OriginalAssertions = checks, r3Cases = [], r3Failures = []; let r3Checks = 0;
+    const r3Turns = () => calls.filter(call => call.url.endsWith('/turn'));
+    const r3Check = (condition, message) => { r3Checks++; if (!condition) r3Failures.push(message); return condition; };
+    const r3Completed = text => ({status: 'completed', answer: {text, sources: []}});
+    async function r3Public() {
+        responses.length = 0;
+        responses.push({body: {verified: false}}); await end.event('click');
+    }
+    let r3SubmitPromise;
+    composer.requestSubmit = () => { r3SubmitPromise = composer.event('submit'); };
+    for (const route of ['Submit', 'Enter']) {
+        await r3Public(); const start = r3Committed.size;
+        const message = 'R3 server completed but response lost via ' + route;
+        input.value = message; responses.push({error: true, commit: true}); await composer.event('submit');
+        const first = r3Turns().at(-1).body;
+        const retainedInput = input.value === message && !send.disabled && !retry.hidden;
+        responses.push({body: r3Completed('Synthetic replay answer.'), commit: true});
+        if (route === 'Enter') { await input.event('keydown', {key: 'Enter', shiftKey: false, isComposing: false}); await r3SubmitPromise; }
+        else await composer.event('submit');
+        const second = r3Turns().at(-1).body, sameEnvelope = JSON.stringify(first) === JSON.stringify(second);
+        r3Cases.push({case: 'same-intent-' + route, retainedInput, first, second, sameEnvelope, simulatedCommittedTurns: r3Committed.size - start});
+        r3Check(retainedInput, route + ': ambiguous failure must retain the input and retry state');
+        r3Check(sameEnvelope && r3Committed.size - start === 1, route + ': unchanged resubmission must preserve UUID and one simulated logical commit');
+    }
+    await r3Public(); {
+        const start = r3Committed.size; input.value = 'R3 explicit Retry control';
+        responses.push({error: true, commit: true}); await composer.event('submit'); const first = r3Turns().at(-1).body;
+        responses.push({body: r3Completed('Synthetic explicit replay.'), commit: true}); await retry.event('click');
+        const second = r3Turns().at(-1).body, exact = JSON.stringify(first) === JSON.stringify(second);
+        r3Cases.push({case: 'original-Retry-control', exact, simulatedCommittedTurns: r3Committed.size - start});
+        r3Check(exact && r3Committed.size - start === 1, 'Original Retry must retain exact UUID/input');
+    }
+    await r3Public(); {
+        const start = r3Committed.size, message = 'R3 deliberately repeated acknowledged question'; input.value = message;
+        responses.push({body: r3Completed('Synthetic first acknowledged answer.'), commit: true}); await composer.event('submit');
+        const first = r3Turns().at(-1).body;
+        input.value = message; responses.push({body: r3Completed('Synthetic second acknowledged answer.'), commit: true}); await composer.event('submit');
+        const second = r3Turns().at(-1).body;
+        r3Cases.push({case: 'acknowledged-identical-question-control', first, second, simulatedCommittedTurns: r3Committed.size - start});
+        r3Check(first.turn_id !== second.turn_id && first.message === second.message && r3Committed.size - start === 2, 'An acknowledged answer must allow a deliberate identical new question');
+    }
+    await r3Public(); {
+        const before = r3Turns().length; input.value = 'R3 shared finite replay budget';
+        responses.push({error: true, commit: true}); await composer.event('submit');
+        for (let i = 0; i < 2; i++) { responses.push({error: true, commit: true}); await retry.event('click'); }
+        responses.push({error: true, commit: true}); await composer.event('submit');
+        const dispatches = r3Turns().length - before;
+        r3Cases.push({case: 'shared-replay-budget', dispatches, expected: 3});
+        r3Check(dispatches === 3, 'Unchanged Submit must not reset the two-explicit-retry budget');
+    }
+    await r3Public(); {
+        const start = r3Committed.size; input.value = 'R3 first intent';
+        responses.push({error: true, commit: true}); await composer.event('submit'); const first = r3Turns().at(-1).body;
+        input.value = 'R3 different explicit intent'; responses.push({body: r3Completed('Synthetic new intent.'), commit: true}); await composer.event('submit');
+        const second = r3Turns().at(-1).body;
+        r3Cases.push({case: 'changed-message-control', first, second, simulatedCommittedTurns: r3Committed.size - start});
+        r3Check(first.turn_id !== second.turn_id && second.message === 'R3 different explicit intent' && r3Committed.size - start === 2, 'Changed explicit message must remain a new logical intent');
+    }
+    responses.length = 0; await primePrivate(); {
+        const start = r3Committed.size; input.value = 'R3 same question with changed selected order';
+        responses.push({error: true, commit: true}); await composer.event('submit'); const first = r3Turns().at(-1).body;
+        responses.push({body: orderList}); await orders.event('click');
+        responses.push({body: {...selectedOrder, context_token: 'synthetic-R3-different-order-context'}});
+        await area.querySelectorAll('button').find(button => button.textContent === 'Select order').event('click');
+        const before = r3Turns().length;
+        responses.push({body: r3Completed('Synthetic changed-context answer.'), commit: true}); await composer.event('submit');
+        const second = r3Turns().at(-1).body;
+        r3Cases.push({case: 'changed-context-control', first, second, simulatedCommittedTurns: r3Committed.size - start});
+        r3Check(r3Turns().length === before + 1 && first.turn_id !== second.turn_id && first.message === second.message && first.context_token !== second.context_token && second.context_token === 'synthetic-R3-different-order-context', 'Changed selected context must bind a new explicit turn without replaying the old context');
+    }
+    await r3Public(); {
+        const start = r3Committed.size; input.value = 'R3 same question after explicit new conversation';
+        responses.push({error: true, commit: true}); await composer.event('submit'); const first = r3Turns().at(-1).body;
+        responses.push({body: {csrf: 'synthetic-R3-reset-csrf'}}); await reset.event('click');
+        const cleared = input.value === '' && retry.hidden;
+        input.value = first.message; responses.push({body: r3Completed('Synthetic new-session answer.'), commit: true}); await composer.event('submit');
+        const second = r3Turns().at(-1).body;
+        r3Cases.push({case: 'explicit-reset-control', cleared, first, second, simulatedCommittedTurns: r3Committed.size - start});
+        r3Check(cleared && first.turn_id !== second.turn_id && r3Committed.size - start === 2, 'Explicit new conversation must clear old pending authority and allow a new turn');
+    }
+    const r3Report = {kind: 'CURRENT_SOURCE_DOM_PROTOCOL_R3_REPRODUCTION', result: r3Failures.length ? 'REPRODUCED_FAILURE' : 'PASS', originalAssertions: r3OriginalAssertions, r3Checks, cases: r3Cases, failures: r3Failures, network: 0, provider: 0, actualFinancialWrites: 0, simulatedServerCommitModel: 'One synthetic 1000-milli completion per distinct UUID, matching API request identity; no real ledger or provider used', browserRendering: 'NOT_EVALUATED'};
+    if (process.env.YR0217_R3_REPORT) fs.writeFileSync(process.env.YR0217_R3_REPORT, JSON.stringify(r3Report, null, 2));
+    console.log(JSON.stringify(r3Report));
+    assert.deepEqual(r3Failures, [], 'R3 unchanged-intent composer replay invariants');
     console.log(JSON.stringify({result: 'passed', suite: 'widget-unit-protocol', assertions: checks, php_midphase_cases: midphaseCases, browser_rendering: 'NOT_EVALUATED', network: 0, provider: 0}));
 })().catch(error => { console.error(error); process.exitCode = 1; });

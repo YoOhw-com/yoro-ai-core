@@ -132,6 +132,13 @@
         if (busy) return;
         await action(async () => {
             if (contextToken && contextExpires <= Date.now()) { contextToken = ''; throw {code: 'support_context_invalid'}; }
+            if (pending && pending.message === message && pending.context_token === contextToken) {
+                if (retryCount >= 2) return;
+                retryCount++;
+                const result = await request('turn', pending); handleAnswer(result, pending.message);
+                retry.hidden = !pending || retryCount >= 2;
+                return;
+            }
             if (!fromResume) append(message, 'user', [], contextPrivate);
             pending = {turn_id: crypto.randomUUID(), message, context_token: contextToken}; retryCount = 0; retry.hidden = true; status.textContent = t('Thinking…');
             const result = await request('turn', pending); handleAnswer(result, message);
