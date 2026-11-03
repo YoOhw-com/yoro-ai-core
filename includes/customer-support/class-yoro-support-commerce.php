@@ -13,11 +13,12 @@ class YoRo_Support_Commerce {
             if ( 'all' !== $name && 0 !== strpos( $name, 'woocommerce_' ) ) { continue; }
             // Woo registers this lazy background installer, which no quote path invokes.
             if ( 'woocommerce_wccom_install_products' === $name ) { continue; }
-            foreach ( $hook->callbacks as $callbacks ) {
+            foreach ( $hook->callbacks as $priority => $callbacks ) {
                 foreach ( $callbacks as $entry ) {
                     try {
                         $callback = $entry['function'];
                         if ( self::native_wordpress_callback( $name, $callback ) ) { continue; }
+                        if ( self::report_mutation_callback( $name, $priority, $entry ) ) { continue; }
                         if ( is_array( $callback ) ) {
                             if ( is_string( $callback[0] ) && ! class_exists( $callback[0], false ) ) { return new WP_Error( 'support_checkout_unsupported', 'A checkout callback cannot be safely inspected.' ); }
                             $reflection = new ReflectionMethod( $callback[0], $callback[1] );
@@ -34,6 +35,22 @@ class YoRo_Support_Commerce {
             }
         }
         return true;
+    }
+
+    /** Full Core report invalidation observes only persistence hooks, never read-only quote hooks. */
+    private static function report_mutation_callback( $hook, $priority, array $entry ) {
+        $hooks = [ 'woocommerce_before_order_object_save' => 1, 'woocommerce_before_order_refund_object_save' => 1,
+            'woocommerce_after_order_object_save' => 1, 'woocommerce_after_order_refund_object_save' => 1,
+            'woocommerce_before_delete_order' => 0, 'woocommerce_delete_order' => 0, 'woocommerce_trash_order' => 0, 'woocommerce_untrash_order' => 0,
+            'woocommerce_before_delete_order_item' => 0, 'woocommerce_new_order_item' => 0, 'woocommerce_update_order_item' => 0,
+            'woocommerce_before_product_object_save' => 0, 'woocommerce_after_product_object_save' => 0 ];
+        if ( ! isset( $hooks[ $hook ] ) || 10 !== $priority || ( $entry['accepted_args'] ?? null ) !== $hooks[ $hook ]
+            || ! ( $entry['function'] instanceof Closure ) || ! class_exists( 'YoRo_Complete_Store_Report', false ) ) { return false; }
+        $reflection = new ReflectionFunction( $entry['function'] );
+        $scope = $reflection->getClosureScopeClass();
+        $file = realpath( __DIR__ . '/../commerce/class-yoro-complete-store-report.php' );
+        return $file && $reflection->isStatic() && $scope && 'YoRo_Complete_Store_Report' === $scope->getName()
+            && $file === realpath( $scope->getFileName() ) && $file === realpath( $reflection->getFileName() );
     }
 
     /** Exact helpers registered by WooCommerce itself; arbitrary WP callbacks stay unsupported. */
