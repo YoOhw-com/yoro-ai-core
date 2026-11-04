@@ -72,7 +72,7 @@ final class YoRo_Subscriptions_Read
     {
         $type=$object instanceof WC_Order ? $object->get_type() : '';
         return $object instanceof WC_Order && in_array($type,['shop_subscription','shop_order','shop_order_refund'],true)
-            && $object->get_id()>0 && current_user_can($type==='shop_subscription'?'read_shop_subscription':'read_shop_order',$type==='shop_order_refund'?$object->get_parent_id():$object->get_id());
+            && $object->get_id()>0 && current_user_can('read_shop_order',$type==='shop_order_refund'?$object->get_parent_id():$object->get_id());
     }
     private static function subscription(int $id): WC_Subscription
     {
