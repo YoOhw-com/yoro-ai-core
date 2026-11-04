@@ -3,6 +3,10 @@ namespace Automattic\WooCommerce\Utilities { class OrderUtil { public static fun
 namespace {
 define('ABSPATH','/disposable/');define('DAY_IN_SECONDS',86400);define('HOUR_IN_SECONDS',3600);
 $GLOBALS['options']=[];$GLOBALS['filters']=[];$GLOBALS['allowed']=true;$GLOBALS['denied_ids']=[];$GLOBALS['hpos']=false;$GLOBALS['queries']=[];$GLOBALS['objects']=[];$GLOBALS['mutate_on_query']=false;
+$GLOBALS['principal_id']=1;
+// Both characterized owners register subscription read_post as read_shop_order.
+$GLOBALS['capabilities']=['yoro_view_store_data'=>true,'manage_woocommerce'=>true,'read_shop_order'=>true,'read_post'=>true,'yoro_execute_actions'=>true,'edit_post'=>true];
+$GLOBALS['capability_checks']=[];
 class WP_Error {public function __construct(public string $code,public string $message){}public function get_error_code(){return $this->code;}}
 function is_wp_error($value){return $value instanceof WP_Error;}
 function wp_json_encode($value,$flags=0){return json_encode($value,$flags);}
@@ -12,13 +16,21 @@ function update_option($key,$value,$autoload=null){$GLOBALS['options'][$key]=$va
 function add_option($key,$value,...$args){$GLOBALS['options'][$key]=$value;return true;}
 function delete_option($key){unset($GLOBALS['options'][$key]);}
 function maybe_serialize($value){return serialize($value);}
-function get_current_user_id(){return 1;}
+function get_current_user_id(){return $GLOBALS['principal_id'];}
 function home_url(){return 'https://disposable.example';}
 function wp_timezone_string(){return 'Asia/Ho_Chi_Minh';}
 function wp_timezone(){return new \DateTimeZone(wp_timezone_string());}
 function wp_date($format){return (new \DateTimeImmutable('now',wp_timezone()))->format($format);}
 function get_woocommerce_currency(){return 'USD';}
-function current_user_can($cap,...$args){return $GLOBALS['allowed']&&!in_array($args[0]??0,$GLOBALS['denied_ids'],true);}
+function current_user_can($cap,...$args){
+ $GLOBALS['capability_checks'][]=[$cap,$args];
+ if(!get_current_user_id()||!$GLOBALS['allowed']||empty($GLOBALS['capabilities'][$cap])){return false;}
+ if(in_array($cap,['read_shop_order','read_post','edit_post'],true)){
+  $id=$args[0]??null;
+  return is_int($id)&&$id>0&&isset(($cap==='read_shop_order'?$GLOBALS['objects']:$GLOBALS['products'])[$id])&&!in_array($id,$GLOBALS['denied_ids'],true);
+ }
+ return $args===[];
+}
 function get_userdata($id){return $id===8?(object)['ID'=>8]:false;}
 function wc_get_product($id){return $GLOBALS['products'][$id]??false;}
 function sanitize_text_field($value){return trim(strip_tags($value));}
@@ -88,7 +100,7 @@ require __DIR__.'/../../includes/commerce/class-yoro-store-report-period.php';
 require __DIR__.'/../../includes/commerce/class-yoro-complete-store-report.php';
 require __DIR__.'/../../includes/commerce/class-yoro-subscriptions-read.php';
 $assert=function($condition,$message){if(!$condition){throw new \RuntimeException($message);} $GLOBALS['assertions']=($GLOBALS['assertions']??0)+1;};
-$run=function($action,$params=[],$guard=null){return YoRo_Subscriptions_Read::execute(['action'=>$action,'params'=>$params,'envelope_id'=>'envelope_'.str_repeat('a',64),'expires_at'=>gmdate('c',time()+1800)],$guard);};
+$run=function($action,$params=[],$guard=null,$expiresAt=null){return YoRo_Subscriptions_Read::execute(['action'=>$action,'params'=>$params,'envelope_id'=>'envelope_'.str_repeat('a',64),'expires_at'=>$expiresAt??gmdate('c',time()+1800)],$guard);};
 $assert(YoRo_Subscriptions_Read::supported(),'Characterized signatures and version support.');
 foreach(['8.8.0','9.2.0','8.8.1-dev'] as $version){WC_Subscriptions::$version=$version;$assert(!YoRo_Subscriptions_Read::supported(),'Uncharacterized owner fails closed.');$status=$run('subscriptions.get_status');$assert($status['data']['available']===false&&$status['data']['actions']===['subscriptions.get_status'],'Unsupported owner exposes only truthful status probe.');$assert(is_wp_error($run('subscriptions.search',['limit'=>20,'offset'=>0])),'Business reads unavailable.');}WC_Subscriptions::$version='8.8.1';
 $versionResults=[];
@@ -99,7 +111,48 @@ for($i=1;$i<=310;$i++){$s=new WC_Subscription($i);$s->manual=$i%2===0;$s->curren
 $GLOBALS['objects'][9000]=new WC_Order(9000);$GLOBALS['objects'][9001]=new WC_Order(9001);$GLOBALS['objects'][9001]->relations=['renewal'=>[1,2],'switch'=>[1]];
 $GLOBALS['objects'][9002]=new WC_Order(9002);$GLOBALS['objects'][9002]->relations=['renewal'=>[1]];$GLOBALS['objects'][9002]->status='failed';$GLOBALS['objects'][9002]->paid=null;$GLOBALS['objects'][9002]->currency='EUR';
 $refund=new WC_Order_Refund(9010,'shop_order_refund',9001);$refund->total='0.000001';$GLOBALS['objects'][9010]=$refund;
-foreach([false,true] as $hpos){$GLOBALS['hpos']=$hpos;$GLOBALS['options']=[];$all=[];$params=['limit'=>17,'offset'=>0];for($i=0;$i<50;$i++){$r=$run('subscriptions.search',$params);$assert(!is_wp_error($r),'Search works with owner queries.');$all=[...$all,...array_column($r['data']['subscriptions'],'id')];$p=$r['data']['page_info'];if(!$p['has_more']){break;}$params=['limit'=>17,'offset'=>$p['next_offset'],'anchor_id'=>$p['anchor_id'],'revision'=>$p['revision']];}$assert(count($all)===310&&count(array_unique($all))===310,'All310subscriptions traverse finite batches without duplicates.');
+foreach([false,true] as $hpos){$GLOBALS['hpos']=$hpos;$GLOBALS['options']=[];
+ $assert(current_user_can('read_shop_order',1)&&!current_user_can('read_shop_subscription',1),'Native subscription read uses the registered order capability, without an invented subscription capability.');
+ $assert(!current_user_can('read_shop_order')&&!current_user_can('read_shop_order',999999),'Native object capability requires a known positive object ID.');
+ $assert(!is_wp_error($run('subscriptions.get_details',['subscription_id'=>1])),'Legitimate native order permission permits subscription details for each owner/storage fixture.');
+ $actionParams=[
+  'subscriptions.get_status'=>[],
+  'subscriptions.search'=>['limit'=>20,'offset'=>0],
+  'subscriptions.get_details'=>['subscription_id'=>1],
+  'subscriptions.get_order_context'=>['order_id'=>9001,'limit'=>20,'offset'=>0],
+  'subscriptions.get_related_orders'=>['subscription_id'=>1,'limit'=>20,'offset'=>0],
+  'subscriptions.get_summary'=>['window'=>'today'],
+  'subscriptions.get_renewal_report'=>['window'=>'today'],
+ ];
+ $assert(array_keys($actionParams)===YoRo_Subscriptions_Read::ReadActions&&YoRo_Subscriptions_Read::Reports===['subscriptions.get_summary','subscriptions.get_renewal_report'],'Exactly seven reads and two reports retain their public identities.');
+ foreach($actionParams as $action=>$input){
+  $GLOBALS['principal_id']=0;$assert(is_wp_error($run($action,$input)),'No principal denies '.$action);$GLOBALS['principal_id']=1;
+  foreach(['yoro_view_store_data','manage_woocommerce'] as $cap){$GLOBALS['capabilities'][$cap]=false;$assert(is_wp_error($run($action,$input)),'Missing '.$cap.' denies '.$action);$GLOBALS['capabilities'][$cap]=true;}
+  $assert(is_wp_error($run($action,$input,null,gmdate('c',time()-60))),'Expired operation denies '.$action);
+  $assert(is_wp_error($run($action,$input,fn()=>false)),'External permission intersection denies '.$action);
+  if($action==='subscriptions.get_status'){continue;}
+  $GLOBALS['options']=[];$GLOBALS['capabilities']['read_shop_order']=false;
+  $assert(is_wp_error($run($action,$input)),'Missing native object capability denies '.$action);$GLOBALS['capabilities']['read_shop_order']=true;
+  $GLOBALS['options']=[];$GLOBALS['denied_ids']=[1];
+  $assert(is_wp_error($run($action,$input)),'Native subscription object denial fails closed for '.$action);$GLOBALS['denied_ids']=[];
+  WC_Subscriptions::$version='9.3.1';$assert(is_wp_error($run($action,$input)),'Uncharacterized owner denies '.$action);WC_Subscriptions::$version=$ownerVersion;
+ }
+ foreach([0,-1] as $invalidId){$GLOBALS['objects'][1]->id=$invalidId;$assert(is_wp_error($run('subscriptions.get_details',['subscription_id'=>1])),'Nonpositive owner object ID denies details.');}$GLOBALS['objects'][1]->id=1;
+ $GLOBALS['objects'][1]->id=2;$assert(is_wp_error($run('subscriptions.get_details',['subscription_id'=>1])),'Mismatched owner object ID denies details.');$GLOBALS['objects'][1]->id=1;
+ $GLOBALS['objects'][1]->type='unsupported_order';$assert(is_wp_error($run('subscriptions.get_details',['subscription_id'=>1])),'Unknown object type denies details.');$GLOBALS['objects'][1]->type='shop_subscription';
+ $GLOBALS['denied_ids']=[9000];$assert(is_wp_error($run('subscriptions.get_order_context',['order_id'=>9000,'limit'=>20,'offset'=>0])),'Native parent-order denial fails closed.');$GLOBALS['denied_ids']=[9001];
+ $assert(is_wp_error($run('subscriptions.get_order_context',['order_id'=>9001,'limit'=>20,'offset'=>0])),'Native renewal-order denial fails closed.');$GLOBALS['denied_ids']=[];
+ $objectAllowed=new \ReflectionMethod(YoRo_Subscriptions_Read::class,'allowed');
+ $GLOBALS['denied_ids']=[9010];$assert($objectAllowed->invoke(null,$refund),'Refund read authorization follows its permitted parent, not the refund ID.');
+ $GLOBALS['denied_ids']=[9001];$assert(!$objectAllowed->invoke(null,$refund),'Denied native refund parent cannot be bypassed by a permitted refund ID.');$GLOBALS['denied_ids']=[];
+ $assert(!$objectAllowed->invoke(null,new \stdClass),'Non-order owner object fails closed.');
+ $assert(is_wp_error($run('subscriptions.get_order_context',['order_id'=>9010,'limit'=>20,'offset'=>0])),'Refund type cannot be used as order context.');
+ $GLOBALS['objects'][9001]->id=9002;$assert(is_wp_error($run('subscriptions.get_order_context',['order_id'=>9001,'limit'=>20,'offset'=>0])),'Mismatched owner order ID denies context.');$GLOBALS['objects'][9001]->id=9001;
+ $parentContext=$run('subscriptions.get_order_context',['order_id'=>9000,'limit'=>20,'offset'=>0]);$assert(!is_wp_error($parentContext)&&$parentContext['data']['subscriptions'][0]['relation_kinds']===['parent'],'Parent context works with the registered native capability.');
+ $GLOBALS['capabilities']['read_post']=false;$assert(!is_wp_error($run('subscriptions.get_details',['subscription_id'=>1])),'Subscription permission does not fall back to read_post.');
+ $assert(is_wp_error($run('subscriptions.search',['limit'=>20,'offset'=>0,'product_id'=>10])),'Product filter retains its separate native product permission.');$GLOBALS['capabilities']['read_post']=true;
+ $GLOBALS['options']=[];$GLOBALS['capability_checks']=[];
+ $all=[];$params=['limit'=>17,'offset'=>0];for($i=0;$i<50;$i++){$r=$run('subscriptions.search',$params);$assert(!is_wp_error($r),'Search works with owner queries.');$all=[...$all,...array_column($r['data']['subscriptions'],'id')];$p=$r['data']['page_info'];if(!$p['has_more']){break;}$params=['limit'=>17,'offset'=>$p['next_offset'],'anchor_id'=>$p['anchor_id'],'revision'=>$p['revision']];}$assert(count($all)===310&&count(array_unique($all))===310,'All310subscriptions traverse finite batches without duplicates.');
  $r=$run('subscriptions.get_details',['subscription_id'=>1]);$assert(!is_wp_error($r)&&$r['data']['subscription']['agreement_total']==='1.000001'&&$r['data']['subscription']['next_payment_at']===null,'Exact decimal agreement and missing date preserved.');
  $context=$run('subscriptions.get_order_context',['order_id'=>9001,'limit'=>20,'offset'=>0]);$assert($context['data']['subscriptions'][0]['relation_kinds']===['renewal','switch'],'Owner reverse relation kinds.');
  $related=$run('subscriptions.get_related_orders',['subscription_id'=>1,'limit'=>20,'offset'=>0]);$assert(array_column($related['data']['orders'],'id')===[9000,9001,9002],'Parent and reverse relations bounded.');
@@ -112,9 +165,10 @@ foreach([false,true] as $hpos){$GLOBALS['hpos']=$hpos;$GLOBALS['options']=[];$al
  $slow=fn()=>0.001;add_filter('yoro_complete_report_seconds',$slow);$summary=null;$deferred=0;for($i=0;$i<80;$i++){$r=$run('subscriptions.get_summary',['window'=>'today']);$assert(!is_wp_error($r),'Resumable report execution.');if(isset($r['deferred'])){$deferred++;continue;}$summary=$r;break;}$assert($summary!==null&&$summary['data']['subscription_count']===310&&$summary['data']['created_in_period']===310,'Complete current snapshot and created events are distinct explicit metrics.');$currencies=array_column($summary['data']['currencies'],null,'currency');$assert($currencies['USD']['agreement_totals']==='155.000155'&&$currencies['EUR']['agreement_totals']==='155.000155','Exact decimals never mix currencies or normalize recurring periods.');
  $report=null;for($i=0;$i<80;$i++){$r=$run('subscriptions.get_renewal_report',['window'=>'today']);$assert(!is_wp_error($r),'Renewal report executes.');if(!isset($r['deferred'])){$report=$r;break;}}$assert($report!==null&&$report['data']['created_orders']===2&&$report['data']['paid_orders']===1&&$report['data']['failed_created_orders']===1&&$report['data']['refund_records']===1,'Renewal denominator is distinct orders, excludes attempts, independent refund records.');$currencies=array_column($report['data']['currencies'],null,'currency');$assert($currencies['USD']['recorded_paid_order_totals']==='1.000001'&&$currencies['USD']['recorded_refunds']==='0.000001','Paid/refund recorded exact amounts.');
  $assert(in_array('historical_churn',$report['data']['not_assessed'],true)&&!str_contains(json_encode([$summary,$report]),'PRIVATE'),'Unsupported historical metrics and private-free output.');
+ $assert(in_array(['read_shop_order',[9001]],$GLOBALS['capability_checks'],true)&&!in_array(['read_shop_order',[9010]],$GLOBALS['capability_checks'],true),'Refund authorization uses its parent order ID, never the refund ID.');
+ $assert(!in_array('read_shop_subscription',array_column($GLOBALS['capability_checks'],0),true),'Successful reads and reports never request an unregistered subscription capability.');
  $assert(is_wp_error($run('subscriptions.get_summary',['window'=>'today'],fn()=>false)),'Cached result never bypasses guard.');remove_filter('yoro_complete_report_seconds',$slow);
  $GLOBALS['options']=[];$GLOBALS['mutate_on_query']=true;$assert(is_wp_error($run('subscriptions.get_summary',['window'=>'today'])),'Mutation during report cannot return complete stale totals.');
-}
 foreach($GLOBALS['queries'] as $query){$assert($query['limit']>=1&&$query['limit']<=100&&!isset($query['meta_query']),'Only bounded public owner queries.');}
 $assert(!str_contains(file_get_contents(__DIR__.'/../../includes/commerce/class-yoro-subscriptions-read.php'),'->get_meta('),'Adapter never reconstructs owner metadata.');
 require_once __DIR__.'/../../includes/actions/class-yoro-product-edit.php';
@@ -133,6 +187,8 @@ $fixtureContext=YoRo_Variable_Product::context($GLOBALS['products'][11],true);
 $variable=YoRo_Variable_Product::read(['action'=>'products.get_variable_details','params'=>['product_id'=>11,'page'=>1,'limit'=>20],'extensions'=>['yoro.mcp_early_access_product_read'=>['subscription_product_version'=>1]]]);
 $assert(!is_wp_error($variable)&&$variable['data']['variable']['editable']===false&&$variable['data']['products'][0]['type']==='variable-subscription','Variable subscription read has distinct noneditable context.');
 $assert(is_wp_error(YoRo_Variable_Product::read(['action'=>'products.get_variable_details','params'=>['product_id'=>11,'page'=>1,'limit'=>20]])),'Variable subscription requires negotiation.');
+echo 'Subscriptions '.$ownerVersion.' '.($hpos?'HPOS':'CPT').": native permission positives/negatives, reads, reports and products passed.\n";
+}
 $versionResults[$ownerVersion]=['status'=>$run('subscriptions.get_status'),'search'=>$run('subscriptions.search',['limit'=>20,'offset'=>0]),'context'=>$context,'related'=>$related,'summary'=>$summary,'renewal'=>$report,'variable'=>$variable,'details'=>$run('subscriptions.get_details',['subscription_id'=>1])];
 
 }
