@@ -95,11 +95,12 @@ if ( $full_core ) {
     verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Unregistered methods in the same Core file are not directory-trusted.' );
     remove_action( 'woocommerce_before_product_object_save', [ 'YoRo_Complete_Store_Report', 'invalidate' ], 10 );
     $subscription = $subscription_hooks['woocommerce_before_subscription_object_save'][0];
-    foreach ( [ 'all', 'woocommerce_before_calculate_totals' ] as $hook ) {
-        add_action( $hook, $subscription, 10, 0 );
-        verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'A real subscription callback on an all or quote hook remains unsupported.' );
-        remove_action( $hook, $subscription, 10 );
-    }
+    // Installing a real invalidator on all would itself recurse through WP_Error actions.
+    $subscription_guard = new ReflectionMethod( 'YoRo_Support_Commerce', 'subscription_mutation_callback' );
+    verify( false === $subscription_guard->invoke( null, 'all', 10, [ 'function' => $subscription, 'accepted_args' => 0 ] ), 'A real subscription callback cannot be admitted on all.' );
+    add_action( 'woocommerce_before_calculate_totals', $subscription, 10, 0 );
+    verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'A real subscription callback on a quote hook remains unsupported.' );
+    remove_action( 'woocommerce_before_calculate_totals', $subscription, 10 );
     $spoof_subscription = Closure::bind( static function() {}, null, 'YoRo_Subscriptions_Read' );
     add_action( 'woocommerce_before_subscription_object_save', $spoof_subscription, 10, 0 );
     verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'A foreign callback with spoofed subscription scope remains unsupported.' );
