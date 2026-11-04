@@ -27,14 +27,15 @@ $count = 0;
 function verify( $condition, $reason ) { global $count; ++$count; if ( ! $condition ) { throw new RuntimeException( $reason ); } }
 function valid_result( $value ) { if ( is_wp_error( $value ) ) { throw new RuntimeException( $value->get_error_code() . ': ' . $value->get_error_message() ); } return $value; }
 function readonly_quote( array $params, array $authority ) {
-    global $wpdb, $report_hooks;
+    global $wpdb, $report_hooks, $subscription_hooks;
     $before = count( $wpdb->queries );
-    $actions = array_map( 'did_action', array_keys( $report_hooks ?? [] ) );
+    $persistence_hooks = array_merge( $report_hooks ?? [], $subscription_hooks ?? [] );
+    $actions = array_map( 'did_action', array_keys( $persistence_hooks ) );
     $generation = get_option( '_yoro_complete_report_generation_v2' );
     $mutation = get_option( '_yoro_complete_report_mutation_v2' );
     $result = YoRo_Support_Commerce::quote( $params, $authority );
     if ( $report_hooks ?? [] ) {
-        verify( $actions === array_map( 'did_action', array_keys( $report_hooks ) ), 'Read-only quote invokes no report persistence hook.' );
+        verify( $actions === array_map( 'did_action', array_keys( $persistence_hooks ) ), 'Read-only quote invokes no report or subscription persistence hook.' );
         verify( $generation === get_option( '_yoro_complete_report_generation_v2' ) && $mutation === get_option( '_yoro_complete_report_mutation_v2' ), 'Read-only quote does not invalidate report generations.' );
     }
     $prefix = preg_quote( $wpdb->prefix, '/' );
@@ -50,6 +51,7 @@ function readonly_quote( array $params, array $authority ) {
 }
 function source_product( $name, $price = '100' ) { $p = new WC_Product_Simple(); $p->set_name( $name ); $p->set_status( 'publish' ); $p->set_regular_price( $price ); $p->set_tax_status( 'taxable' ); $p->set_manage_stock( true ); $p->set_stock_quantity( 20 ); $p->save(); return $p; }
 $report_hooks = [];
+$subscription_hooks = [];
 if ( $full_core ) {
     verify( defined( 'YORO_AI_CORE_FILE' ) && class_exists( 'YoRo_AI_Core', false ) && class_exists( 'YoRo_Complete_Store_Report', false ), 'Actual full Core is loaded through the WordPress active plugin bootstrap.' );
     verify( realpath( YORO_AI_CORE_FILE ) === realpath( $root . '/wp-content/plugins/yoro-ai-core/yoro-ai-core.php' ) && did_action( 'init' ) === 1, 'Full plugin entrypoint and normal WordPress init ran.' );
@@ -62,13 +64,15 @@ if ( $full_core ) {
                 $reflection = new ReflectionFunction( $entry['function'] );
                 $scope = $reflection->getClosureScopeClass();
                 if ( $scope && 'YoRo_Complete_Store_Report' === $scope->getName() ) { $report_hooks[ $name ] = [ $entry['function'], $priority, $entry['accepted_args'] ]; }
+                if ( $scope && 'YoRo_Subscriptions_Read' === $scope->getName() ) { $subscription_hooks[ $name ] = [ $entry['function'], $priority, $entry['accepted_args'] ]; }
             }
         }
     }
     verify( 13 === count( $report_hooks ), 'All thirteen full Core report Woo callbacks remain registered.' );
-    $before_profile = array_map( 'did_action', array_keys( $report_hooks ) );
+    verify( 5 === count( $subscription_hooks ), 'All five full Core subscription persistence callbacks remain registered.' );
+    $before_profile = array_map( 'did_action', array_keys( array_merge( $report_hooks, $subscription_hooks ) ) );
     valid_result( YoRo_Support_Commerce::profile() );
-    verify( $before_profile === array_map( 'did_action', array_keys( $report_hooks ) ), 'Profile inspection never invokes report callbacks.' );
+    verify( $before_profile === array_map( 'did_action', array_keys( array_merge( $report_hooks, $subscription_hooks ) ) ), 'Profile inspection never invokes report or subscription callbacks.' );
     $report = reset( $report_hooks )[0];
     add_filter( 'woocommerce_before_calculate_totals', $report, 10, 1 );
     verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Even a real report callback is unsupported on a quote hook.' );
@@ -90,6 +94,25 @@ if ( $full_core ) {
     add_action( 'woocommerce_before_product_object_save', [ 'YoRo_Complete_Store_Report', 'invalidate' ], 10, 0 );
     verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Unregistered methods in the same Core file are not directory-trusted.' );
     remove_action( 'woocommerce_before_product_object_save', [ 'YoRo_Complete_Store_Report', 'invalidate' ], 10 );
+    $subscription = $subscription_hooks['woocommerce_before_subscription_object_save'][0];
+    foreach ( [ 'all', 'woocommerce_before_calculate_totals' ] as $hook ) {
+        add_action( $hook, $subscription, 10, 0 );
+        verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'A real subscription callback on an all or quote hook remains unsupported.' );
+        remove_action( $hook, $subscription, 10 );
+    }
+    $spoof_subscription = Closure::bind( static function() {}, null, 'YoRo_Subscriptions_Read' );
+    add_action( 'woocommerce_before_subscription_object_save', $spoof_subscription, 10, 0 );
+    verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'A foreign callback with spoofed subscription scope remains unsupported.' );
+    remove_action( 'woocommerce_before_subscription_object_save', $spoof_subscription, 10 );
+    foreach ( [ [ 9, 0 ], [ 10, 1 ] ] as $binding ) {
+        add_action( 'woocommerce_before_subscription_object_save', $subscription, $binding[0], $binding[1] );
+        verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Unexpected subscription priority or accepted arguments fail closed.' );
+        remove_action( 'woocommerce_before_subscription_object_save', $subscription, $binding[0] );
+        add_action( 'woocommerce_before_subscription_object_save', $subscription, 10, 0 );
+    }
+    add_action( 'woocommerce_before_subscription_object_save', [ 'YoRo_Subscriptions_Read', 'manifest' ], 10, 0 );
+    verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'A method in the subscription file is not directory-trusted.' );
+    remove_action( 'woocommerce_before_subscription_object_save', [ 'YoRo_Subscriptions_Read', 'manifest' ], 10 );
     valid_result( YoRo_Support_Commerce::profile() );
 }
 update_option( 'woocommerce_currency', 'USD' ); update_option( 'woocommerce_default_country', 'US:CA' );
@@ -268,5 +291,6 @@ verify( ! empty( $legacy_card['products'] ) && '' === $legacy_card['products'][0
 
 if ( $full_core ) {
     foreach ( $report_hooks as $hook => $binding ) { verify( has_action( $hook, $binding[0] ) === $binding[1], 'Full report hooks remain registered after all quote and security cases.' ); }
+    foreach ( $subscription_hooks as $hook => $binding ) { verify( has_action( $hook, $binding[0] ) === $binding[1], 'Full subscription hooks remain registered after all quote and security cases.' ); }
 }
 echo wp_json_encode( [ 'result' => 'passed', 'suite' => $full_core ? 'full-core-native-commerce' : 'native-commerce', 'assertions' => $count, 'woocommerce' => WC_VERSION, 'wordpress' => get_bloginfo( 'version' ), 'full_core' => $full_core, 'report_callbacks' => count( $report_hooks ), 'provider_calls' => 0, 'outbound_mail' => 0, 'scope' => 'disposable fixture only' ] ), "\n";

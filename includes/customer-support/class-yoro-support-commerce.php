@@ -19,6 +19,7 @@ class YoRo_Support_Commerce {
                         $callback = $entry['function'];
                         if ( self::native_wordpress_callback( $name, $callback ) ) { continue; }
                         if ( self::report_mutation_callback( $name, $priority, $entry ) ) { continue; }
+                        if ( self::subscription_mutation_callback( $name, $priority, $entry ) ) { continue; }
                         if ( is_array( $callback ) ) {
                             if ( is_string( $callback[0] ) && ! class_exists( $callback[0], false ) ) { return new WP_Error( 'support_checkout_unsupported', 'A checkout callback cannot be safely inspected.' ); }
                             $reflection = new ReflectionMethod( $callback[0], $callback[1] );
@@ -35,6 +36,20 @@ class YoRo_Support_Commerce {
             }
         }
         return true;
+    }
+
+    /** Core subscription invalidation runs only on persistence, never quote hooks. */
+    private static function subscription_mutation_callback( $hook, $priority, array $entry ) {
+        $hooks = [ 'woocommerce_before_subscription_object_save', 'woocommerce_after_subscription_object_save',
+            'woocommerce_before_delete_subscription', 'woocommerce_trash_subscription', 'woocommerce_untrash_subscription' ];
+        if ( ! in_array( $hook, $hooks, true ) || 10 !== $priority || 0 !== ( $entry['accepted_args'] ?? null )
+            || ! ( $entry['function'] instanceof Closure ) || ! class_exists( 'YoRo_Subscriptions_Read', false ) ) { return false; }
+        $reflection = new ReflectionFunction( $entry['function'] );
+        $scope = $reflection->getClosureScopeClass();
+        $file = realpath( __DIR__ . '/../commerce/class-yoro-subscriptions-read.php' );
+        return $file && $reflection->isStatic() && null === $reflection->getClosureThis()
+            && [] === $reflection->getStaticVariables() && $scope && 'YoRo_Subscriptions_Read' === $scope->getName()
+            && $file === realpath( $scope->getFileName() ) && $file === realpath( $reflection->getFileName() );
     }
 
     /** Full Core report invalidation observes only persistence hooks, never read-only quote hooks. */
