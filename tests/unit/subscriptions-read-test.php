@@ -50,19 +50,26 @@ class YoRo_AI_Settings {public static function get_ai_api_url(){return 'https://
 class YoRo_Early_Access_Order_Read {public const STATUSES=['pending','processing','on-hold','completed','cancelled','refunded','failed'];}
 class WC_Subscriptions {public static $version='8.8.1';}
 class WC_Subscriptions_Product {public static function get_period($p){return 'month';}public static function get_interval($p){return 1;}public static function get_length($p){return 0;}public static function get_trial_length($p){return 0;}public static function get_trial_period($p){return 'day';}public static function get_sign_up_fee($p){return '2.000001';}}
-class WC_Order {
- public array $relations=[];public string $currency='USD',$status='completed',$total='1.000001';public ?\DateTimeImmutable $created,$paid;
- public function __construct(public int $id,public string $type='shop_order',public int $parent=0){$this->created=new \DateTimeImmutable('today 01:00:00',wp_timezone());$this->paid=$this->created;}
- public function get_id(){return $this->id;}public function get_type(){return $this->type;}public function get_parent_id($context='view'){return $this->parent;}public function get_status(){return $this->status;}public function get_currency(){return $this->currency;}public function get_total(){return $this->total;}public function get_date_created($context='view'){return $this->created;}public function get_date_paid(){return $this->paid;}public function save(){throw new \RuntimeException('DOMAIN WRITE');}public function update_status(){throw new \RuntimeException('DOMAIN WRITE');}
+// Native order/refund siblings share the paid-date accessor; refunds have no stored paid-date property.
+abstract class WC_Abstract_Order {
+ public string $currency='USD',$status='completed',$total='1.000001';public ?\DateTimeImmutable $created;
+ public function __construct(public int $id,public string $type='shop_order',public int $parent=0){$this->created=new \DateTimeImmutable('today 01:00:00',wp_timezone());}
+ public function get_id(){return $this->id;}public function get_type(){return $this->type;}public function get_parent_id($context='view'){return $this->parent;}public function get_status(){return $this->status;}public function get_currency(){return $this->currency;}public function get_total(){return $this->total;}public function get_date_created($context='view'){return $this->created;}public function get_date_paid($context='view'){return null;}public function save(){throw new \RuntimeException('DOMAIN WRITE');}public function update_status(){throw new \RuntimeException('DOMAIN WRITE');}
 }
-class WC_Order_Refund extends WC_Order {public function get_amount(){return $this->total;}}
+class WC_Order extends WC_Abstract_Order {
+ public array $relations=[];public ?\DateTimeImmutable $paid;
+ public function __construct($id,$type='shop_order',$parent=0){parent::__construct($id,$type,$parent);$this->paid=$this->created;}
+ public function get_date_paid($context='view'){return $this->paid;}
+}
+class WC_Order_Refund extends WC_Abstract_Order {public string $amount='0.000001';public function get_amount($context='view'){return $this->amount;}}
+class Unsupported_Abstract_Order extends WC_Abstract_Order {}
 class SubscriptionItem {public function get_product_id(){return 10;}public function get_variation_id(){return 0;}public function get_name(){return 'Subscription product';}public function get_quantity(){return 1;}public function get_total(){return '1.000001';}}
 class WC_Subscription extends WC_Order {
  public int $customer=8,$item_count=1;public bool $manual=false;public ?string $next=null;
  public function __construct($id){parent::__construct($id,'shop_subscription',9000);$this->status='active';}
  public function get_date($key,$timezone='gmt',$exclude=[]){return $key==='start'?$this->created->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s'):($key==='next_payment'?($this->next??'0'):'0');}
  public function get_billing_period($context='view'){return 'month';}public function get_billing_interval($context='view'){return 1;}public function get_requires_manual_renewal($context='view'){return $this->manual;}public function is_manual(){throw new \RuntimeException('GATEWAY CONSTRUCTOR');}public function get_items($type='line_item'){return array_fill(0,$this->item_count,new SubscriptionItem);}
- public function get_customer_id(){return $this->customer;}public function get_related_orders(...$args){throw new \RuntimeException('PERSISTENT CACHE WRITE');}public function get_paginated_related_orders(...$args){throw new \RuntimeException('PERSISTENT CACHE WRITE');}public function get_date_paid(){throw new \RuntimeException('SUBSCRIPTION DERIVED PAYMENT CACHE');}
+ public function get_customer_id(){return $this->customer;}public function get_related_orders(...$args){throw new \RuntimeException('PERSISTENT CACHE WRITE');}public function get_paginated_related_orders(...$args){throw new \RuntimeException('PERSISTENT CACHE WRITE');}public function get_date_paid($context='view'){throw new \RuntimeException('SUBSCRIPTION DERIVED PAYMENT CACHE');}
 }
 function wcs_get_subscription($id){return ($GLOBALS['objects'][$id]??null) instanceof WC_Subscription?$GLOBALS['objects'][$id]:false;}
 function wcs_get_subscription_ids_for_order($order,$kinds=['any']){if(array_diff($kinds,['renewal','switch','resubscribe'])){throw new \RuntimeException('UNBOUNDED PARENT QUERY');}$ids=[];foreach($kinds as $kind){$ids=[...$ids,...($order->relations[$kind]??[])];}return $ids;}
@@ -110,7 +117,7 @@ $status=$run('subscriptions.get_status');$assert($status['data']['available']===
 for($i=1;$i<=310;$i++){$s=new WC_Subscription($i);$s->manual=$i%2===0;$s->currency=$i%2===0?'EUR':'USD';$GLOBALS['objects'][$i]=$s;}
 $GLOBALS['objects'][9000]=new WC_Order(9000);$GLOBALS['objects'][9001]=new WC_Order(9001);$GLOBALS['objects'][9001]->relations=['renewal'=>[1,2],'switch'=>[1]];
 $GLOBALS['objects'][9002]=new WC_Order(9002);$GLOBALS['objects'][9002]->relations=['renewal'=>[1]];$GLOBALS['objects'][9002]->status='failed';$GLOBALS['objects'][9002]->paid=null;$GLOBALS['objects'][9002]->currency='EUR';
-$refund=new WC_Order_Refund(9010,'shop_order_refund',9001);$refund->total='0.000001';$GLOBALS['objects'][9010]=$refund;
+$refund=new WC_Order_Refund(9010,'shop_order_refund',9001);$refund->total='-0.000001';$GLOBALS['objects'][9010]=$refund;
 foreach([false,true] as $hpos){$GLOBALS['hpos']=$hpos;$GLOBALS['options']=[];
  $assert(current_user_can('read_shop_order',1)&&!current_user_can('read_shop_subscription',1),'Native subscription read uses the registered order capability, without an invented subscription capability.');
  $assert(!current_user_can('read_shop_order')&&!current_user_can('read_shop_order',999999),'Native object capability requires a known positive object ID.');
@@ -143,9 +150,28 @@ foreach([false,true] as $hpos){$GLOBALS['hpos']=$hpos;$GLOBALS['options']=[];
  $GLOBALS['denied_ids']=[9000];$assert(is_wp_error($run('subscriptions.get_order_context',['order_id'=>9000,'limit'=>20,'offset'=>0])),'Native parent-order denial fails closed.');$GLOBALS['denied_ids']=[9001];
  $assert(is_wp_error($run('subscriptions.get_order_context',['order_id'=>9001,'limit'=>20,'offset'=>0])),'Native renewal-order denial fails closed.');$GLOBALS['denied_ids']=[];
  $objectAllowed=new \ReflectionMethod(YoRo_Subscriptions_Read::class,'allowed');
+ $assert($refund instanceof WC_Abstract_Order&&!($refund instanceof WC_Order)&&method_exists($refund,'get_date_paid')&&$refund->get_date_paid('edit')===null&&$refund->get_total()!==$refund->get_amount(),'Refund fixture inherits the native paid-date accessor with no stored date and has a distinct recorded amount.');
  $GLOBALS['denied_ids']=[9010];$assert($objectAllowed->invoke(null,$refund),'Refund read authorization follows its permitted parent, not the refund ID.');
  $GLOBALS['denied_ids']=[9001];$assert(!$objectAllowed->invoke(null,$refund),'Denied native refund parent cannot be bypassed by a permitted refund ID.');$GLOBALS['denied_ids']=[];
  $assert(!$objectAllowed->invoke(null,new \stdClass),'Non-order owner object fails closed.');
+ $rejectRefund=function($reason)use($assert,$run,$objectAllowed,$refund){
+  $assert(!$objectAllowed->invoke(null,$refund),$reason.' denies native refund admission.');
+  $GLOBALS['options']=[];$result=null;
+  for($attempt=0;$attempt<80;$attempt++){$result=$run('subscriptions.get_renewal_report',['window'=>'today']);if(is_wp_error($result)||!isset($result['deferred'])){break;}}
+  $assert(is_wp_error($result),$reason.' fails the complete report instead of skipping a refund.');
+ };
+ $GLOBALS['denied_ids']=[9001];$rejectRefund('Denied parent');$GLOBALS['denied_ids']=[];
+ foreach([0,-1,999999,1,9010] as $parent){$refund->parent=$parent;$rejectRefund('Nonpositive, missing or non-order parent '.$parent);}$refund->parent=9001;
+ $parent=$GLOBALS['objects'][9001];
+ $GLOBALS['objects'][9001]=new WC_Order(9002);$rejectRefund('Mismatched parent identity');
+ $GLOBALS['objects'][9001]=new WC_Order(9001,'unsupported_order');$rejectRefund('Unsupported parent type');
+ $GLOBALS['objects'][9001]=new Unsupported_Abstract_Order(9001,'shop_order');$rejectRefund('Unsupported parent model');$GLOBALS['objects'][9001]=$parent;
+ foreach([0,-1] as $id){$refund->id=$id;$assert(!$objectAllowed->invoke(null,$refund),'Nonpositive refund ID fails closed.');}$refund->id=9010;
+ foreach(['shop_order','shop_subscription','unsupported_order'] as $type){$refund->type=$type;$assert(!$objectAllowed->invoke(null,$refund),'Refund cannot impersonate another order type.');}$refund->type='shop_order_refund';
+ $assert(!$objectAllowed->invoke(null,new WC_Order(9010,'shop_order_refund',9001)),'Ordinary order cannot impersonate the refund model.');
+ foreach(['shop_order','shop_subscription','shop_order_refund','unsupported_order'] as $type){$assert(!$objectAllowed->invoke(null,new Unsupported_Abstract_Order(9010,$type,9001)),'Unsupported abstract model cannot impersonate a supported type.');}
+ $GLOBALS['objects'][9010]=new Unsupported_Abstract_Order(9010,'shop_order_refund',9001);$GLOBALS['options']=[];
+ $assert(is_wp_error($run('subscriptions.get_renewal_report',['window'=>'today'])),'Unsupported abstract refund record fails the complete report.');$GLOBALS['objects'][9010]=$refund;$GLOBALS['options']=[];
  $assert(is_wp_error($run('subscriptions.get_order_context',['order_id'=>9010,'limit'=>20,'offset'=>0])),'Refund type cannot be used as order context.');
  $GLOBALS['objects'][9001]->id=9002;$assert(is_wp_error($run('subscriptions.get_order_context',['order_id'=>9001,'limit'=>20,'offset'=>0])),'Mismatched owner order ID denies context.');$GLOBALS['objects'][9001]->id=9001;
  $parentContext=$run('subscriptions.get_order_context',['order_id'=>9000,'limit'=>20,'offset'=>0]);$assert(!is_wp_error($parentContext)&&$parentContext['data']['subscriptions'][0]['relation_kinds']===['parent'],'Parent context works with the registered native capability.');
@@ -168,6 +194,10 @@ foreach([false,true] as $hpos){$GLOBALS['hpos']=$hpos;$GLOBALS['options']=[];
  $assert(in_array(['read_shop_order',[9001]],$GLOBALS['capability_checks'],true)&&!in_array(['read_shop_order',[9010]],$GLOBALS['capability_checks'],true),'Refund authorization uses its parent order ID, never the refund ID.');
  $assert(!in_array('read_shop_subscription',array_column($GLOBALS['capability_checks'],0),true),'Successful reads and reports never request an unregistered subscription capability.');
  $assert(is_wp_error($run('subscriptions.get_summary',['window'=>'today'],fn()=>false)),'Cached result never bypasses guard.');remove_filter('yoro_complete_report_seconds',$slow);
+ $refundCreated=$refund->created;$refund->created=$refundCreated->modify('-1 day');$GLOBALS['options']=[];$outsideReport=null;
+ for($i=0;$i<80;$i++){$r=$run('subscriptions.get_renewal_report',['window'=>'today']);$assert(!is_wp_error($r),'Refund date discrimination report executes.');if(!isset($r['deferred'])){$outsideReport=$r;break;}}
+ $outsideCurrencies=array_column($outsideReport['data']['currencies']??[],null,'currency');
+ $assert($outsideReport!==null&&$outsideReport['data']['created_orders']===2&&$outsideReport['data']['paid_orders']===1&&$outsideReport['data']['refund_records']===0&&$outsideCurrencies['USD']['recorded_refunds']==='0.000000'&&$outsideCurrencies['USD']['recorded_paid_order_totals']==='1.000001','Refund creation date controls its independent event without changing parent-order denominators or paid totals.');$refund->created=$refundCreated;$GLOBALS['options']=[];
  $GLOBALS['options']=[];$GLOBALS['mutate_on_query']=true;$assert(is_wp_error($run('subscriptions.get_summary',['window'=>'today'])),'Mutation during report cannot return complete stale totals.');
 foreach($GLOBALS['queries'] as $query){$assert($query['limit']>=1&&$query['limit']<=100&&!isset($query['meta_query']),'Only bounded public owner queries.');}
 $assert(!str_contains(file_get_contents(__DIR__.'/../../includes/commerce/class-yoro-subscriptions-read.php'),'->get_meta('),'Adapter never reconstructs owner metadata.');

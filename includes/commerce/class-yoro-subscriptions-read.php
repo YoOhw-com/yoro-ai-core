@@ -70,9 +70,15 @@ final class YoRo_Subscriptions_Read
     private static function revision(): string { return hash('sha256',YoRo_Complete_Store_Report::current_revision()); }
     private static function allowed($object): bool
     {
-        $type=$object instanceof WC_Order ? $object->get_type() : '';
-        return $object instanceof WC_Order && in_array($type,['shop_subscription','shop_order','shop_order_refund'],true)
-            && $object->get_id()>0 && current_user_can('read_shop_order',$type==='shop_order_refund'?$object->get_parent_id():$object->get_id());
+        if (!$object instanceof WC_Order && !$object instanceof WC_Order_Refund) { return false; }
+        $type=$object->get_type();
+        if ($object->get_id()<1 || !in_array($type,['shop_subscription','shop_order','shop_order_refund'],true)) { return false; }
+        if ($type==='shop_order_refund') {
+            $parentId=$object->get_parent_id();$parent=$parentId>0?wc_get_order($parentId):false;
+            return $object instanceof WC_Order_Refund && $parent instanceof WC_Order && $parent->get_type()==='shop_order'
+                && $parent->get_id()===$parentId && current_user_can('read_shop_order',$parentId);
+        }
+        return $object instanceof WC_Order && current_user_can('read_shop_order',$object->get_id());
     }
     private static function subscription(int $id): WC_Subscription
     {
