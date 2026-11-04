@@ -56,6 +56,8 @@ final class YoRo_Complete_Store_Report {
         return (string) $value;
     }
 
+    public static function current_revision(): string { return self::generation(self::MUTATION_OPTION); }
+
     public static function manifest() {
         return [ 'version' => 3, 'actions' => YoRo_Early_Access_Store_Overview_Read::ACTIONS, 'batch_size' => self::BATCH_SIZE,
             'coverage' => 'all_matching_orders', 'windows' => YoRo_Early_Access_Store_Overview_Read::WINDOWS,

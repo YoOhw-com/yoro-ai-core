@@ -52,7 +52,9 @@ class YoRo_Commerce_Discovery_Service {
 				}
 			);
 		} else {
-			$products = wc_get_products( $args );
+			$query_args = $args;
+            if (($query_args['type'] ?? null) === 'subscription_variation') { $query_args['type'] = 'variation'; }
+            $products = wc_get_products( $query_args );
 		}
 
 		$products = array_values(
