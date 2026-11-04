@@ -101,6 +101,15 @@ if ( class_exists( 'YoRo_Early_Access_WordPress_Management' ) && ! YoRo_WordPres
 	$missing_names = array_values( array_diff( $missing_names, $optional ) );
 }
 
+// Subscription business reads require the exact characterized owner; status remains inspectable.
+if ( class_exists( 'YoRo_Subscriptions_Read' ) && ! YoRo_Subscriptions_Read::supported() ) {
+    $optional = array_slice( YoRo_Subscriptions_Read::ReadActions, 1 );
+    $assert( [] === array_values( array_intersect( $optional, $actual_names ) ), 'Uncharacterized subscription reads must never be advertised.' );
+    $marker = $manifest['extensions']['woocommerce.runtime']['commerce_features'][YoRo_Subscriptions_Read::Extension] ?? [];
+    $assert( YoRo_Subscriptions_Read::manifest(false) === $marker, 'Subscription marker must expose only the characterized status probe.' );
+    $missing_names = array_values( array_diff( $missing_names, $optional ) );
+}
+
 $assert( [] === $missing_names, 'The connector must support every API canonical action in this exact compatibility tranche: ' . implode( ', ', $missing_names ) );
 $assert(
 	[] === $extra_names,
