@@ -2,9 +2,10 @@
 
 if (!defined('ABSPATH')) { exit; }
 
-/** Owner8.8.1 reads only. Never traverse the persistent related-order cache. */
+/** Characterized owner reads only. Never traverse the persistent related-order cache. */
 final class YoRo_Subscriptions_Read
 {
+    public const OwnerVersions = ['8.8.1','9.3.0'];
     public const ReadActions = ['subscriptions.get_status','subscriptions.search','subscriptions.get_details','subscriptions.get_order_context','subscriptions.get_related_orders','subscriptions.get_summary','subscriptions.get_renewal_report'];
     public const Reports = ['subscriptions.get_summary','subscriptions.get_renewal_report'];
     public const Extension = 'yoro.subscriptions_read';
@@ -18,8 +19,8 @@ final class YoRo_Subscriptions_Read
 
     public static function supported(): bool
     {
-        if (!class_exists('WC_Subscriptions') || WC_Subscriptions::$version !== '8.8.1' || !class_exists('WC_Subscription') || !class_exists('WC_Subscriptions_Product')) { return false; }
-        foreach (['wcs_get_subscription'=>[1,1],'wcs_get_subscriptions'=>[1,1],'wcs_get_subscription_ids_for_order'=>[1,2],'wc_get_orders'=>[0,1]] as $function=>$signature) {
+        if (!class_exists('WC_Subscriptions') || !in_array(WC_Subscriptions::$version,self::OwnerVersions,true) || !class_exists('WC_Subscription') || !class_exists('WC_Subscriptions_Product')) { return false; }
+        foreach (['wcs_get_subscription'=>[1,1],'wcs_get_subscriptions'=>[1,1],'wcs_get_subscription_ids_for_order'=>[1,2],'wc_get_orders'=>[1,1]] as $function=>$signature) {
             if (!function_exists($function)) { return false; } $reflection=new ReflectionFunction($function);
             if ($reflection->getNumberOfRequiredParameters()!==$signature[0] || $reflection->getNumberOfParameters()!==$signature[1]) { return false; }
         }
@@ -28,15 +29,15 @@ final class YoRo_Subscriptions_Read
             if (!$reflection->isPublic() || $reflection->isStatic() || $reflection->getNumberOfRequiredParameters()!==$signature[0] || $reflection->getNumberOfParameters()!==$signature[1]) { return false; }
         }
         foreach (['get_period','get_interval','get_length','get_trial_length','get_trial_period','get_sign_up_fee'] as $method) {
-            if (!is_callable(['WC_Subscriptions_Product',$method])) { return false; } $reflection=new ReflectionMethod('WC_Subscriptions_Product',$method);
-            if (!$reflection->isStatic() || $reflection->getNumberOfRequiredParameters()!==1 || $reflection->getNumberOfParameters()!==1) { return false; }
+            if (!method_exists('WC_Subscriptions_Product',$method)) { return false; } $reflection=new ReflectionMethod('WC_Subscriptions_Product',$method);
+            if (!$reflection->isPublic() || !$reflection->isStatic() || $reflection->getNumberOfRequiredParameters()!==1 || $reflection->getNumberOfParameters()!==1) { return false; }
         }
         return true;
     }
 
     public static function manifest(?bool $supported = null): array
     {
-        return ['version'=>1,'actions'=>($supported??self::supported())?self::ReadActions:[self::ReadActions[0]],'owner'=>'woocommerce-subscriptions','owner_versions'=>['8.8.1'],'batch_size'=>100,'max_items'=>20,'max_relation_ids_per_order'=>200,'report_execution_seconds'=>1800,'max_period_days'=>366,'pagination'=>'anchored_offset_mutation_guard','customer_data'=>'ids_only','result_version'=>1];
+        return ['version'=>1,'actions'=>($supported??self::supported())?self::ReadActions:[self::ReadActions[0]],'owner'=>'woocommerce-subscriptions','owner_versions'=>self::OwnerVersions,'batch_size'=>100,'max_items'=>20,'max_relation_ids_per_order'=>200,'report_execution_seconds'=>1800,'max_period_days'=>366,'pagination'=>'anchored_offset_mutation_guard','customer_data'=>'ids_only','result_version'=>1];
     }
 
     public static function input_properties(string $action): array { return self::specification()['properties'][$action] ?? []; }

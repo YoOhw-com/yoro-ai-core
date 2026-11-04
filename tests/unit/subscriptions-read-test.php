@@ -56,7 +56,7 @@ function wcs_get_subscription($id){return ($GLOBALS['objects'][$id]??null) insta
 function wcs_get_subscription_ids_for_order($order,$kinds=['any']){if(array_diff($kinds,['renewal','switch','resubscribe'])){throw new \RuntimeException('UNBOUNDED PARENT QUERY');}$ids=[];foreach($kinds as $kind){$ids=[...$ids,...($order->relations[$kind]??[])];}return $ids;}
 function owner_query(array $args){$GLOBALS['queries'][]=$args;if(($args['limit']??0)<1||($args['limit']??0)>100){throw new \RuntimeException('UNBOUNDED QUERY');}$objects=array_values(array_filter($GLOBALS['objects'],fn($o)=>$o->get_type()===$args['type']));usort($objects,fn($a,$b)=>($args['order']==='DESC'?-1:1)*($a->get_id()<=>$b->get_id()));$objects=array_slice($objects,$args['offset']??0,$args['limit']);if($GLOBALS['mutate_on_query']){$GLOBALS['options'][YoRo_Complete_Store_Report::MUTATION_OPTION]=wp_generate_uuid4();$GLOBALS['mutate_on_query']=false;}return $objects;}
 function wcs_get_subscriptions($args){if(isset($args['product_id'])||isset($args['customer_id'])){throw new \RuntimeException('UNBOUNDED OWNER FILTER COMBINATION');}return owner_query(['type'=>'shop_subscription','limit'=>$args['subscriptions_per_page'],'offset'=>$args['offset']??0,'order'=>$args['order'],'orderby'=>$args['orderby']]);}
-function wc_get_orders($args=[]){
+function wc_get_orders($args){
  if(isset($args['yoro_report_cursor'])){if($GLOBALS['hpos']){apply_filters('woocommerce_orders_table_query_clauses',['where'=>''],new class{function get_table_name($name){return 'wp_orders';}},$args);}else{$queryArgs=apply_filters('woocommerce_order_data_store_cpt_get_orders_query',[],$args);apply_filters('posts_where','',new class($queryArgs){function __construct(private $args){}function get($key){return $this->args[$key]??null;}});}return [];}
  return owner_query($args);
 }
@@ -91,6 +91,10 @@ $assert=function($condition,$message){if(!$condition){throw new \RuntimeExceptio
 $run=function($action,$params=[],$guard=null){return YoRo_Subscriptions_Read::execute(['action'=>$action,'params'=>$params,'envelope_id'=>'envelope_'.str_repeat('a',64),'expires_at'=>gmdate('c',time()+1800)],$guard);};
 $assert(YoRo_Subscriptions_Read::supported(),'Characterized signatures and version support.');
 foreach(['8.8.0','9.2.0','8.8.1-dev'] as $version){WC_Subscriptions::$version=$version;$assert(!YoRo_Subscriptions_Read::supported(),'Uncharacterized owner fails closed.');$status=$run('subscriptions.get_status');$assert($status['data']['available']===false&&$status['data']['actions']===['subscriptions.get_status'],'Unsupported owner exposes only truthful status probe.');$assert(is_wp_error($run('subscriptions.search',['limit'=>20,'offset'=>0])),'Business reads unavailable.');}WC_Subscriptions::$version='8.8.1';
+$versionResults=[];
+foreach (['8.8.1','9.3.0'] as $ownerVersion) {
+WC_Subscriptions::$version=$ownerVersion;
+$status=$run('subscriptions.get_status');$assert($status['data']['available']===true&&$status['data']['owner_version']===$ownerVersion&&count($status['data']['actions'])===7,'Both characterized owners expose exactly seven read actions.');
 for($i=1;$i<=310;$i++){$s=new WC_Subscription($i);$s->manual=$i%2===0;$s->currency=$i%2===0?'EUR':'USD';$GLOBALS['objects'][$i]=$s;}
 $GLOBALS['objects'][9000]=new WC_Order(9000);$GLOBALS['objects'][9001]=new WC_Order(9001);$GLOBALS['objects'][9001]->relations=['renewal'=>[1,2],'switch'=>[1]];
 $GLOBALS['objects'][9002]=new WC_Order(9002);$GLOBALS['objects'][9002]->relations=['renewal'=>[1]];$GLOBALS['objects'][9002]->status='failed';$GLOBALS['objects'][9002]->paid=null;$GLOBALS['objects'][9002]->currency='EUR';
@@ -113,10 +117,10 @@ foreach([false,true] as $hpos){$GLOBALS['hpos']=$hpos;$GLOBALS['options']=[];$al
 }
 foreach($GLOBALS['queries'] as $query){$assert($query['limit']>=1&&$query['limit']<=100&&!isset($query['meta_query']),'Only bounded public owner queries.');}
 $assert(!str_contains(file_get_contents(__DIR__.'/../../includes/commerce/class-yoro-subscriptions-read.php'),'->get_meta('),'Adapter never reconstructs owner metadata.');
-require __DIR__.'/../../includes/actions/class-yoro-product-edit.php';
-require __DIR__.'/../../includes/actions/class-yoro-variable-product.php';
-require __DIR__.'/../../includes/actions/class-yoro-product-lifecycle.php';
-require __DIR__.'/../../includes/commerce/class-yoro-early-access-product-read.php';
+require_once __DIR__.'/../../includes/actions/class-yoro-product-edit.php';
+require_once __DIR__.'/../../includes/actions/class-yoro-variable-product.php';
+require_once __DIR__.'/../../includes/actions/class-yoro-product-lifecycle.php';
+require_once __DIR__.'/../../includes/commerce/class-yoro-early-access-product-read.php';
 foreach ([10,11,12] as $id) {
  $product=$GLOBALS['products'][$id];
  $assert(YoRo_Early_Access_Product_Read::product($product,true)===null,'Subscription products stay outside legacy unnegotiated reads.');
@@ -129,10 +133,10 @@ $fixtureContext=YoRo_Variable_Product::context($GLOBALS['products'][11],true);
 $variable=YoRo_Variable_Product::read(['action'=>'products.get_variable_details','params'=>['product_id'=>11,'page'=>1,'limit'=>20],'extensions'=>['yoro.mcp_early_access_product_read'=>['subscription_product_version'=>1]]]);
 $assert(!is_wp_error($variable)&&$variable['data']['variable']['editable']===false&&$variable['data']['products'][0]['type']==='variable-subscription','Variable subscription read has distinct noneditable context.');
 $assert(is_wp_error(YoRo_Variable_Product::read(['action'=>'products.get_variable_details','params'=>['product_id'=>11,'page'=>1,'limit'=>20]])),'Variable subscription requires negotiation.');
+$versionResults[$ownerVersion]=['status'=>$run('subscriptions.get_status'),'search'=>$run('subscriptions.search',['limit'=>20,'offset'=>0]),'context'=>$context,'related'=>$related,'summary'=>$summary,'renewal'=>$report,'variable'=>$variable,'details'=>$run('subscriptions.get_details',['subscription_id'=>1])];
 
-
-$signatureProbe="define('ABSPATH','/disposable/');class WC_Subscriptions {public static \$version='8.8.1';}class WC_Subscription {}class WC_Subscriptions_Product {}function wcs_get_subscription(\$id,\$extra=null){}function wcs_get_subscriptions(\$args){}function wcs_get_subscription_ids_for_order(\$order,\$types=['any']){}function wc_get_orders(\$args=[]){}require ".var_export(realpath(__DIR__.'/../../includes/commerce/class-yoro-subscriptions-read.php'),true).";exit(YoRo_Subscriptions_Read::supported()?1:0);";
-$probe=proc_open([PHP_BINARY,'-r',$signatureProbe],[1=>['pipe','w'],2=>['pipe','w']],$pipes);$probeOut=stream_get_contents($pipes[1]);$probeErr=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$assert(proc_close($probe)===0&&$probeOut===''&&$probeErr==='','Same-version changed owner signature fails closed before registration.');
-if ($export=getenv('YORO_SUBSCRIPTIONS_RESULT_EXPORT')) { file_put_contents($export,json_encode(['summary'=>$summary,'renewal'=>$report,'variable'=>$variable,'details'=>$run('subscriptions.get_details',['subscription_id'=>1])],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)); }
+}
+require __DIR__.'/subscriptions-owner-admission-test.php';
+if ($export=getenv('YORO_SUBSCRIPTIONS_RESULT_EXPORT')) { file_put_contents($export,json_encode(['versions'=>$versionResults,'summary'=>$summary,'renewal'=>$report,'variable'=>$variable,'details'=>$run('subscriptions.get_details',['subscription_id'=>1])],JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)); }
 echo 'Subscriptions owner-signature fixtures, CPT/HPOS query routes,310records, timezone, currency, reports, cardinality, mutation, permissions and no-domain-write guards: '.$GLOBALS['assertions']." assertions passed.\n";
 }
