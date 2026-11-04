@@ -95,6 +95,7 @@ class YoRo_AI_Core {
         require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-product-lifecycle.php';
         require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-product-authoring.php';
         require_once YORO_AI_CORE_PATH . 'includes/actions/class-yoro-product-reviews.php';
+        require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-subscriptions-read.php';
         require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-customer-history-report.php';
         require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-commerce-insights.php';
         require_once YORO_AI_CORE_PATH . 'includes/commerce/class-yoro-stock-adjustment.php';
@@ -182,6 +183,7 @@ class YoRo_AI_Core {
             YoRo_Product_Lifecycle::register();
             YoRo_Product_Authoring::register();
             YoRo_Product_Reviews::register();
+            YoRo_Subscriptions_Read::register();
             YoRo_Customer_History_Report::register();
             YoRo_Commerce_Insights::register();
             YoRo_Stock_Adjustment::register();

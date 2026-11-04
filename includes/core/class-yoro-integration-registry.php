@@ -29,13 +29,7 @@ class YoRo_Integration_Registry {
 
 		$known = [
 			'woocommerce'               => self::woocommerce_adapter_status(),
-			'woocommerce_subscriptions' => self::presence_only_status(
-				$plugins,
-				'WooCommerce Subscriptions',
-				[ 'woocommerce subscriptions' ],
-				[ 'woocommerce-subscriptions', 'woocommerce_subscriptions' ],
-				'subscriptions'
-			),
+			'woocommerce_subscriptions' => self::subscriptions_adapter_status($plugins),
 			'flexible_shipping'         => self::presence_only_status(
 				$plugins,
 				'Flexible Shipping',
@@ -106,6 +100,14 @@ class YoRo_Integration_Registry {
 			'source'                   => $active ? 'yoro_integrated_adapter_registry' : 'not_detected',
 		];
 	}
+
+    private static function subscriptions_adapter_status($plugins) {
+        $presence=self::presence_only_status($plugins,'WooCommerce Subscriptions',['woocommerce subscriptions'],['woocommerce-subscriptions','woocommerce_subscriptions'],'subscriptions');
+        $supported=class_exists('YoRo_Subscriptions_Read') && YoRo_Subscriptions_Read::supported();
+        return array_merge($presence, ['yoro_adapter'=>true,'store_specific_supported'=>$supported,'integration_level'=>$supported?'integrated_read_only':'status_probe_only',
+            'capabilities'=>array_merge($presence['capabilities'],['read_subscriptions'=>$supported,'read_products'=>$supported,'read_reports'=>$supported]),
+            'source'=>'yoro_characterized_subscription_read_adapter']);
+    }
 
 	private static function presence_only_status( $plugins, $label, $name_needles, $file_needles, $category ) {
 		$matches = self::plugin_matches( $plugins, $name_needles, $file_needles );

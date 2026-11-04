@@ -37,7 +37,7 @@ class YoRo_Early_Access_Product_Read {
 				return false;
 			}
 		}
-		return ( ! isset( $params['type'] ) || in_array( $params['type'], [ 'simple', 'variable', 'variation' ], true ) )
+		return ( ! isset( $params['type'] ) || in_array( $params['type'], [ 'simple', 'variable', 'variation', ...(1 === ($facts['subscription_product_version'] ?? null) && YoRo_Subscriptions_Read::supported() ? YoRo_Subscriptions_Read::ProductTypes : []) ], true ) )
 			&& ( ! isset( $params['stock_status'] ) || in_array( $params['stock_status'], [ 'instock', 'outofstock', 'onbackorder' ], true ) );
 	}
 
@@ -78,7 +78,7 @@ class YoRo_Early_Access_Product_Read {
 		foreach ( (array) ( $execution['products'] ?? ( $execution['data']['products'] ?? [] ) ) as $row ) {
 			$id = is_array( $row ) ? ( $row['product_id'] ?? ( $row['id'] ?? null ) ) : null;
 			$product = is_numeric( $id ) ? wc_get_product( (int) $id ) : false;
-			$dto = self::product( $product, 'products.get_details' === $action, $lifecycle );
+			$dto = self::product( $product, 'products.get_details' === $action, $lifecycle, 1 === ($operation['extensions']['yoro.mcp_early_access_product_read']['subscription_product_version'] ?? null) );
 			if (is_array($dto) && !$lifecycle) { unset($dto['extensions']['woocommerce.product_lifecycle']); if ('publish' !== $dto['status']) { $dto = null; } }
 			if ( null === $dto || isset( $products[ $dto['id'] ] ) ) {
 				continue;
@@ -121,13 +121,16 @@ class YoRo_Early_Access_Product_Read {
 			'display_type' => $inventory ? 'inventory_queue' : 'products_list', 'assistant_summary' => $message, 'extensions' => (object) [] ];
 	}
 
-	public static function product( $product, $details, $allowDraft = false ) {
-		if ( ! $product instanceof WC_Product || ! in_array( $product->get_status(), [ 'publish', 'draft' ], true ) || ! in_array( $product->get_type(), [ 'simple', 'variable', 'variation' ], true ) ) {
+	public static function product( $product, $details, $allowDraft = false, $allowSubscriptions = false ) {
+        $subscription = $product instanceof WC_Product && in_array($product->get_type(), YoRo_Subscriptions_Read::ProductTypes, true);
+        if ($subscription && (!$allowSubscriptions || !YoRo_Subscriptions_Read::supported() || !current_user_can('manage_woocommerce') || !current_user_can('read_post', $product->get_id()))) { return null; }
+		if ( ! $product instanceof WC_Product || ! in_array( $product->get_status(), [ 'publish', 'draft' ], true ) || ! in_array( $product->get_type(), [ 'simple', 'variable', 'variation', ...($allowSubscriptions ? YoRo_Subscriptions_Read::ProductTypes : []) ], true ) ) {
 			return null;
 		}
         if ( 'draft' === $product->get_status() && ( !$allowDraft || ! current_user_can( 'yoro_execute_actions' ) || ! current_user_can( 'edit_post', $product->get_id() ) ) ) { return null; }
-		if ( 'variation' === $product->get_type() ) {
+		if ( in_array($product->get_type(), ['variation','subscription_variation'],true) ) {
 			$parent = wc_get_product( $product->get_parent_id() );
+            if ($subscription && (!$parent instanceof WC_Product || $parent->get_type()!=='variable-subscription' || !current_user_can('read_post',$parent->get_id()))) { return null; }
 			if ( ! $parent instanceof WC_Product || ( 'publish' !== $parent->get_status() && ( !$allowDraft || 'draft' !== $parent->get_status() || ! current_user_can( 'yoro_execute_actions' ) || ! current_user_can( 'edit_post', $parent->get_id() ) ) ) ) {
 				return null;
 			}
@@ -145,14 +148,14 @@ class YoRo_Early_Access_Product_Read {
 			'permalink' => self::url( $product->get_permalink() ), 'attributes' => $attributes, 'manage_stock' => (bool) $product->managing_stock(),
 			'low_stock_amount' => is_numeric( $threshold ) ? max( 0, (int) $threshold ) : null ];
 		if ( $details ) {
-			$extra = array_merge($extra, YoRo_Product_Edit::facts($product));
+			$extra = $subscription ? [...$extra,'description'=>mb_strcut(sanitize_textarea_field(wp_strip_all_tags($product->get_description())),0,4000,'UTF-8'),'short_description'=>mb_strcut(sanitize_textarea_field(wp_strip_all_tags($product->get_short_description())),0,1000,'UTF-8')] : array_merge($extra, YoRo_Product_Edit::facts($product));
 			$target = 'variation' === $product->get_type() ? $product->get_parent_id() : $product->get_id();
-			$extra['admin_edit_url'] = current_user_can( 'edit_post', $target ) ? self::url( get_edit_post_link( $target, 'raw' ) ) : null;
-			$extra['description'] = $extra['edit_fields']['description'];
-            $extra['short_description'] = $extra['edit_fields']['short_description'];
+			$extra['admin_edit_url'] = !$subscription && current_user_can( 'edit_post', $target ) ? self::url( get_edit_post_link( $target, 'raw' ) ) : null;
+			if (!$subscription) { $extra['description'] = $extra['edit_fields']['description'];
+            $extra['short_description'] = $extra['edit_fields']['short_description']; }
 		}
-        $extensions = [ 'woocommerce.product' => $extra ];
-        if ( $details && $allowDraft && current_user_can( 'yoro_execute_actions' ) && current_user_can( 'edit_post', $product->get_id() ) ) { $extensions['woocommerce.product_lifecycle'] = YoRo_Product_Lifecycle::details( $product ); }
+        $extensions = [ 'woocommerce.product' => $extra, ...($subscription ? ['woocommerce.subscription_product'=>YoRo_Subscriptions_Read::product_facts($product)] : []) ];
+        if ( !$subscription && $details && $allowDraft && current_user_can( 'yoro_execute_actions' ) && current_user_can( 'edit_post', $product->get_id() ) ) { $extensions['woocommerce.product_lifecycle'] = YoRo_Product_Lifecycle::details( $product ); }
 		return [ 'id' => (int) $product->get_id(), 'name' => mb_strcut( sanitize_text_field( $product->get_name() ), 0, 1024, 'UTF-8' ),
 			'sku' => $product->get_sku(), 'status' => $product->get_status(), 'type' => $product->get_type(), 'price' => (string) $product->get_price(),
 			'currency' => get_woocommerce_currency(), 'stock_quantity' => null === $product->get_stock_quantity() ? null : (int) $product->get_stock_quantity(),

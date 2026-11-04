@@ -196,9 +196,10 @@ final class YoRo_Variable_Product
         return $value;
     }
 
-    public static function context(WC_Product_Variable $parent): array
+    public static function context(WC_Product_Variable $parent, bool $subscriptionRead = false): array
     {
-        $parent=self::parent_product($parent->get_id(),true);
+        if (!$subscriptionRead) { $parent=self::parent_product($parent->get_id(),true); }
+        elseif (!YoRo_Subscriptions_Read::supported() || !$parent->is_type('variable-subscription') || $parent->get_status()!=='publish' || !current_user_can('manage_woocommerce') || !current_user_can('read_post',$parent->get_id())) { self::invalid(); }
         $ids = get_posts(['post_type'=>'product_variation','post_parent'=>$parent->get_id(),
             'post_status'=>['publish','private','draft','pending','future'],'numberposts'=>self::MaxChildren + 1,
             'fields'=>'ids','orderby'=>'ID','order'=>'ASC','suppress_filters'=>false]);
@@ -232,7 +233,7 @@ final class YoRo_Variable_Product
         $order=[];foreach($attributes as $a){if($a['variation']){$order[]=$a['name'];}}sort($order,SORT_STRING);
         $used=[];$combinations=[];$versions=[];
         foreach($ids as $id){
-            $child=wc_get_product($id);if(!$child||!$child->is_type('variation')||$child->get_parent_id()!==$parent->get_id()){self::invalid();}
+            $child=wc_get_product($id);if(!$child||!$child->is_type($subscriptionRead?'subscription_variation':'variation')||$child->get_parent_id()!==$parent->get_id()){self::invalid();}
             $raw=$child->get_attributes('edit');$selected=[];$mask=0;
             foreach($order as $i=>$name){
                 $attribute=$byKey[sanitize_title($name)]??null;if(!$attribute){self::invalid();}
@@ -246,7 +247,7 @@ final class YoRo_Variable_Product
         $combinationRows=[];ksort($combinations,SORT_NUMERIC);foreach($combinations as $mask=>$hashes){$combinationRows[]=['mask'=>(int)$mask,'hashes'=>array_values(array_unique($hashes))];}
         $version=hash('sha256',wp_json_encode([YoRo_Commerce_Discovery_Service::product_version($parent),$attributes,$defaults,$versions],JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE));
         return ['attributes'=>$attributes,'defaults'=>$defaults,'attribute_context'=>$context,'used_options'=>$usedRows,
-            'attribute_order'=>$order,'combinations'=>$combinationRows,'children_count'=>count($ids),'editable'=>true,'version'=>$version];
+            'attribute_order'=>$order,'combinations'=>$combinationRows,'children_count'=>count($ids),'editable'=>!$subscriptionRead,'version'=>$version];
     }
 
     public static function valid_read_params($action, $params): bool
@@ -263,11 +264,13 @@ final class YoRo_Variable_Product
         $lifecycle=1===($operation['extensions']['yoro.mcp_early_access_product_read']['product_lifecycle_version']??null);
         try {
             if(!self::valid_read_params($operation['action']??'', $params)||!current_user_can('yoro_view_store_data')){self::invalid();}
-            $parent=self::parent_product($params['product_id'],$lifecycle);$context=self::context($parent);
+            $candidate=wc_get_product($params['product_id']);$subscription=$candidate instanceof WC_Product_Variable && $candidate->is_type('variable-subscription');
+            if ($subscription) { if(1!==($operation['extensions']['yoro.mcp_early_access_product_read']['subscription_product_version']??null)||!current_user_can('yoro_execute_actions')||!current_user_can('edit_post',$params['product_id'])){self::invalid();} $parent=$candidate; } else { $parent=self::parent_product($params['product_id'],$lifecycle); }
+            $context=self::context($parent,$subscription);
             $query=wc_get_products(['type'=>'variation','parent'=>$parent->get_id(),'status'=>'publish','limit'=>$params['limit'],
                 'page'=>$params['page'],'orderby'=>'id','order'=>'ASC','paginate'=>true]);
-            $rows=[];foreach($query->products as $variation){$row=YoRo_Early_Access_Product_Read::product($variation,false,$lifecycle);if($row){$rows[]=$row;}}
-            $data=['products'=>[YoRo_Early_Access_Product_Read::product($parent,true,$lifecycle)],'variations'=>$rows,'variable'=>$context,
+            $rows=[];foreach($query->products as $variation){$row=YoRo_Early_Access_Product_Read::product($variation,false,$lifecycle,$subscription);if($row){$rows[]=$row;}}
+            $data=['products'=>[YoRo_Early_Access_Product_Read::product($parent,true,$lifecycle,$subscription)],'variations'=>$rows,'variable'=>$context,
                 'count'=>count($rows),'page_info'=>['page'=>$params['page'],'limit'=>$params['limit'],'total'=>(int)$query->total,'has_more'=>$params['page']<(int)$query->max_num_pages]];
             return ['success'=>true,'action'=>self::ReadAction,'message'=>'Variable product read completed.','summary'=>'Variable product read completed.',
                 'data'=>$data,'read_only'=>true,'undoable'=>false,'result_type'=>'variable_product','display_type'=>'variable_product','assistant_summary'=>'Variable product read completed.','extensions'=>(object)[]];
