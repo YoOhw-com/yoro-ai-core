@@ -46,7 +46,7 @@ final class YoRo_Subscriptions_Read
     /** Reuse configured native signing material without entering wp_salt's option-writing fallback. */
     private static function diagnostics_key(): ?string
     {
-        if(!defined('AUTH_KEY')||!defined('AUTH_SALT')||!is_string(AUTH_KEY)||!is_string(AUTH_SALT)||AUTH_KEY===''||AUTH_SALT===''||AUTH_KEY===AUTH_SALT||AUTH_KEY==='put your unique phrase here'||AUTH_SALT==='put your unique phrase here'){return null;}
+        if(!defined('AUTH_KEY')||!defined('AUTH_SALT')||!is_string(AUTH_KEY)||!is_string(AUTH_SALT)||trim(AUTH_KEY)===''||trim(AUTH_SALT)===''||AUTH_KEY===AUTH_SALT||trim(AUTH_KEY)==='put your unique phrase here'||trim(AUTH_SALT)==='put your unique phrase here'){return null;}
         return hash('sha256',"yoro.subscriptions_diagnostics.v1\0".AUTH_KEY."\0".AUTH_SALT,true);
     }
     public static function diagnostics_supported(): bool { return self::supported()&&self::diagnostics_key()!==null; }

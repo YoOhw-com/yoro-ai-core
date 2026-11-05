@@ -5,6 +5,7 @@ $cases=[
  ['empty_key',['AUTH_KEY'=>'','AUTH_SALT'=>'DISPOSABLE-private-salt'],false],['empty_salt',['AUTH_KEY'=>'DISPOSABLE-private-key','AUTH_SALT'=>''],false],
  ['non_string',['AUTH_KEY'=>123,'AUTH_SALT'=>'DISPOSABLE-private-salt'],false],['duplicate',['AUTH_KEY'=>'DISPOSABLE-same','AUTH_SALT'=>'DISPOSABLE-same'],false],
  ['default_key',['AUTH_KEY'=>'put your unique phrase here','AUTH_SALT'=>'DISPOSABLE-private-salt'],false],['default_salt',['AUTH_KEY'=>'DISPOSABLE-private-key','AUTH_SALT'=>'put your unique phrase here'],false],
+ ['whitespace_key',['AUTH_KEY'=>'  ','AUTH_SALT'=>'DISPOSABLE-private-salt'],false],['whitespace_salt',['AUTH_KEY'=>'DISPOSABLE-private-key','AUTH_SALT'=>'  '],false],['padded_default',['AUTH_KEY'=>' put your unique phrase here ','AUTH_SALT'=>'DISPOSABLE-private-salt'],false],
  ['configured',['AUTH_KEY'=>'DISPOSABLE-private-key','AUTH_SALT'=>'DISPOSABLE-private-salt'],true],
 ];
 foreach($cases as [$label,$constants,$expected]){
@@ -15,4 +16,4 @@ foreach($cases as [$label,$constants,$expected]){
  $out=stream_get_contents($pipes[1]);$error=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$exit=proc_close($process);
  if($exit!==0||$out!=='PASS'||$error!==''){throw new RuntimeException('Signer configuration fixture failed: '.$label);}
 }
-echo "Subscription diagnostics signer: 10 isolated configured/missing/default cases passed; no secret output or storage fallback.\n";
+echo "Subscription diagnostics signer: 13 isolated configured/missing/default cases passed; no secret output or storage fallback.\n";
