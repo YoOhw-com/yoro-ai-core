@@ -17,7 +17,7 @@ class YoRo_Support_Commerce {
                 foreach ( $callbacks as $entry ) {
                     try {
                         $callback = $entry['function'];
-                        if ( self::native_wordpress_callback( $name, $callback ) ) { continue; }
+                        if ( self::native_wordpress_callback( $name, $callback, $priority, $entry['accepted_args'] ?? null ) ) { continue; }
                         if ( self::report_mutation_callback( $name, $priority, $entry ) ) { continue; }
                         if ( self::subscription_mutation_callback( $name, $priority, $entry ) ) { continue; }
                         if ( is_array( $callback ) ) {
@@ -69,7 +69,13 @@ class YoRo_Support_Commerce {
     }
 
     /** Exact helpers registered by WooCommerce itself; arbitrary WP callbacks stay unsupported. */
-    private static function native_wordpress_callback( $hook, $callback ) {
+    private static function native_wordpress_callback( $hook, $callback, $priority, $accepted_args ) {
+        if ( in_array( $hook, [ 'woocommerce_rest_shop_order_refund_trashable', 'woocommerce_rest_shop_order_refund_object_trashable' ], true )
+            && '__return_false' === $callback ) {
+            $reflection = new ReflectionFunction( $callback );
+            return 10 === $priority && 1 === $accepted_args
+                && realpath( $reflection->getFileName() ) === realpath( ABSPATH . WPINC . '/functions.php' );
+        }
         if ( 'woocommerce_stock_amount' === $hook && 'intval' === $callback ) { return true; }
         $known = [ 'woocommerce_shipping_rate_label' => [ 'sanitize_text_field' ], 'woocommerce_attribute_label' => [ 'wp_kses_post' ],
             'woocommerce_short_description' => [ 'do_blocks', 'wptexturize', 'convert_smilies', 'convert_chars', 'wpautop', 'shortcode_unautop', 'prepend_attachment', 'do_shortcode' ],
@@ -93,7 +99,7 @@ class YoRo_Support_Commerce {
             if ( ! is_string( $destination[ $field ] ?? '' ) || mb_strlen( $destination[ $field ] ?? '' ) > 100 || preg_match( '/[<>\x00-\x1f]/u', $destination[ $field ] ?? '' ) ) { return self::invalid(); }
         }
         $country = strtoupper( $destination['country'] ?? '' );
-        if ( ! isset( WC()->countries->get_shipping_countries()[ $country ] ) || empty( $destination['postcode'] )
+        if ( ! isset( WC()->countries->get_allowed_countries()[ $country ] ) || empty( $destination['postcode'] )
             || ! WC_Validation::is_postcode( $destination['postcode'], $country ) ) {
             return new WP_Error( 'support_destination_required', 'Choose a supported country and enter a valid postcode.' );
         }
@@ -111,7 +117,7 @@ class YoRo_Support_Commerce {
             $customer->{ 'set_billing_' . $field }( $destination[ $field ] ?? '' );
         }
         $customer->set_calculated_shipping( true );
-        $seen = [];
+        $seen = []; $physical = false;
         foreach ( $params['items'] as $index => $item ) {
             if ( ! is_array( $item ) || array_diff( array_keys( $item ), [ 'product_id', 'quantity' ] )
                 || ! is_int( $item['product_id'] ?? null ) || ! is_int( $item['quantity'] ?? null ) || $item['quantity'] < 1 || $item['quantity'] > 100 ) { return self::invalid(); }
@@ -120,10 +126,12 @@ class YoRo_Support_Commerce {
             $product = wc_get_product( $item['product_id'] );
             if ( ! $product || ! in_array( $product->get_type(), [ 'simple', 'variation' ], true ) || ! $product->is_purchasable() || ! $product->is_in_stock()
                 || ! self::public_product( $product ) || ( $product->is_sold_individually() && $item['quantity'] > 1 ) || ! $product->has_enough_stock( $item['quantity'] ) ) { return self::invalid(); }
+            $physical = $physical || $product->needs_shipping();
             $cart->cart_contents[ (string) $index ] = [ 'key' => (string) $index, 'product_id' => $product->get_parent_id() ?: $product->get_id(),
                 'variation_id' => $product->is_type( 'variation' ) ? $product->get_id() : 0, 'variation' => $product->is_type( 'variation' ) ? $product->get_variation_attributes() : [],
                 'quantity' => $item['quantity'], 'data' => $product ];
         }
+        if ( $physical && ! isset( WC()->countries->get_shipping_countries()[ $country ] ) ) { return new WP_Error( 'support_no_shipping_rate', 'No shipping rate is available for this destination.' ); }
         $original = [ WC()->cart, WC()->customer, WC()->session ];
         global $current_user;
         $original_user = $current_user;
@@ -136,12 +144,15 @@ class YoRo_Support_Commerce {
             WC()->cart = $cart; WC()->customer = $customer; WC()->session = $memory;
             $current_user = new WP_User( 0 );
             add_filter( 'pre_http_request', $deny_http, PHP_INT_MIN );
+            if ( is_wp_error( $cart->check_cart_item_stock() ) ) { return self::invalid(); }
             $cart->calculate_totals();
             $coupon_state = [ 'state' => 'none', 'message' => '' ];
             if ( ! empty( $params['coupon'] ) ) {
                 if ( ! is_string( $params['coupon'] ) || mb_strlen( $params['coupon'] ) > 100 ) { return self::invalid(); }
                 $coupon = new WC_Coupon( $params['coupon'] );
-                if ( ( $coupon->get_email_restrictions() || $coupon->get_usage_limit_per_user() ) && '' === $email ) {
+                if ( ! wc_coupons_enabled() || ! wc_is_same_coupon( $coupon->get_code(), wc_format_coupon_code( $params['coupon'] ) ) ) {
+                    $coupon_state = [ 'state' => 'invalid', 'message' => 'This coupon is unavailable.' ];
+                } elseif ( ( $coupon->get_email_restrictions() || $coupon->get_usage_limit_per_user() ) && '' === $email ) {
                     $coupon_state = [ 'state' => 'verification_required', 'message' => 'Verify the purchasing email before checking customer restrictions.' ];
                 } else {
                     $valid = ( new WC_Discounts( $cart ) )->is_coupon_valid( $coupon );
@@ -153,6 +164,7 @@ class YoRo_Support_Commerce {
                     else { $cart->set_applied_coupons( [ $coupon->get_code() ] ); $cart->calculate_totals(); $coupon_state = [ 'state' => 'valid', 'message' => 'Valid for this estimate. Not applied to your cart.' ]; }
                 }
             }
+            if ( $physical && ( ! $cart->has_calculated_shipping() || ! $cart->support_shipping->get_packages() ) ) { return new WP_Error( 'support_no_shipping_rate', 'No shipping rate is available for this destination.' ); }
             $shipping_rates = [];
             foreach ( $cart->support_shipping->get_packages() as $package_index => $package ) {
                 if ( ! $package['rates'] ) { return new WP_Error( 'support_no_shipping_rate', 'No shipping rate is available for this destination.' ); }
@@ -162,7 +174,7 @@ class YoRo_Support_Commerce {
                 }
             }
             $methods = [];
-            foreach ( WC()->payment_gateways()->payment_gateways() as $gateway ) {
+            foreach ( $cart->needs_payment() ? WC()->payment_gateways()->payment_gateways() : [] as $gateway ) {
                 if ( ! in_array( get_class( $gateway ), [ 'WC_Gateway_BACS', 'WC_Gateway_Cheque', 'WC_Gateway_COD' ], true ) ) {
                     if ( 'yes' === $gateway->enabled ) { return new WP_Error( 'support_checkout_unsupported', 'Payment availability needs checkout for this integration.' ); }
                     continue;
@@ -201,9 +213,9 @@ class YoRo_Support_Commerce {
 
     public static function order( array $authority, $reference ) {
         if ( ! self::verified( $authority ) || ! is_string( $reference ) || strlen( $reference ) > 2000 ) { return self::invalid(); }
-        $held = YoRo_Support_Transport::open( $reference );
+        $held = YoRo_Support_Transport::open( $reference, 'order' );
         if ( ! $held || ! is_int( $held['order_id'] ?? null ) || ! hash_equals( $authority['session_id'], $held['session_id'] )
-            || ! hash_equals( $authority['access_id'], $held['credential'] ) || ! hash_equals( hash( 'sha256', $authority['email'] ), $held['email_binding'] ?? '' ) ) { return self::invalid(); }
+            || ! hash_equals( YoRo_Support_Transport::binding( $authority['access_id'] ), (string) ( $held['access_binding'] ?? '' ) ) || ! hash_equals( hash( 'sha256', $authority['email'] ), $held['email_binding'] ?? '' ) ) { return self::invalid(); }
         $id = $held['order_id'];
         $order = wc_get_order( $id );
         if ( ! self::owns( $order, $authority ) ) { return self::invalid(); }
@@ -244,11 +256,13 @@ class YoRo_Support_Commerce {
     }
     private static function order_reference( $id, array $authority ) {
         return YoRo_Support_Transport::seal( [ 'order_id' => (int) $id, 'session_id' => $authority['session_id'],
-            'credential' => $authority['access_id'], 'email_binding' => hash( 'sha256', $authority['email'] ), 'expires' => strtotime( $authority['expires_at'] ) ] );
+            'access_binding' => YoRo_Support_Transport::binding( $authority['access_id'] ), 'email_binding' => hash( 'sha256', $authority['email'] ), 'expires' => strtotime( $authority['expires_at'] ) ], 'order' );
     }
     private static function public_product( $product ) {
         $target = $product->is_type( 'variation' ) ? wc_get_product( $product->get_parent_id() ) : $product;
-        return $target && 'publish' === $target->get_status() && $target->is_visible() && ! post_password_required( $target->get_id() );
+        return $target && 'publish' === $target->get_status() && $target->is_visible()
+            && 'publish' === $product->get_status() && '' === (string) get_post_field( 'post_password', $target->get_id(), 'raw' )
+            && '' === (string) get_post_field( 'post_password', $product->get_id(), 'raw' );
     }
     private static function money( $value ) { return wc_format_decimal( $value, wc_get_price_decimals() ); }
     private static function text( $value, $max ) { return mb_substr( wp_strip_all_tags( (string) $value ), 0, $max ); }

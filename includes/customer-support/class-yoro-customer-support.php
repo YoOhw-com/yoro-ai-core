@@ -36,6 +36,7 @@ class YoRo_Customer_Support {
 		if ( ! self::fields( $request, [ 'reset' ] ) || ( null !== $request->get_param( 'reset' ) && ! is_bool( $request->get_param( 'reset' ) ) ) ) { return self::unavailable(); }
 		$cookie = (string) ( $_COOKIE[ self::cookie_name() ] ?? '' );
 		$session = YoRo_Support_Transport::open( $cookie );
+		$validated = [];
 		if ( $session && true === $request->get_param( 'reset' ) ) {
 			if ( ! hash_equals( YoRo_Support_Transport::csrf( $cookie ), (string) $request->get_header( 'X-YoRo-Support-CSRF' ) ) ) { return self::unavailable(); }
 			$revoked = YoRo_Support_Transport::request( 'DELETE', '/sessions/current', [], $session );
@@ -47,6 +48,7 @@ class YoRo_Customer_Support {
 			if ( is_wp_error( $validated ) ) {
 				if ( 'support_session_inactive' !== $validated->get_error_code() ) { return self::unavailable(); }
 				$session = [];
+				$validated = [];
 			}
 		}
 		if ( ! $session ) {

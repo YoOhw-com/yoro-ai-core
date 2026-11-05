@@ -216,18 +216,80 @@ $changed = $proof; $changed['expires_at'] = gmdate( 'c', time() - 1 ); verify( i
 $package_plugin = static fn( $packages ) => array_merge( $packages, $packages ); add_filter( 'woocommerce_cart_shipping_packages', $package_plugin ); verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Uncharacterized multi-package checkout is reported unsupported.' ); remove_filter( 'woocommerce_cart_shipping_packages', $package_plugin );
 $bad = $params; $bad['destination']['country'] = 'GB'; $bad['destination']['state'] = ''; $bad['destination']['postcode'] = 'SW1A 1AA'; verify( is_wp_error( readonly_quote( $bad, [] ) ), 'No configured rate is unavailable, never free shipping.' );
 
+// F05: the same native availability/code guards used by WC_Cart::apply_coupon.
+update_option( 'woocommerce_enable_coupons', 'no' );
+$off_coupon = valid_result( readonly_quote( $params + [ 'coupon' => 'synthetic-ten' ], [] ) );
+verify( 'invalid' === $off_coupon['data']['coupon']['state'] && '0.00' === $off_coupon['data']['discount'], 'Disabled native coupons cannot discount a preview.' );
+update_option( 'woocommerce_enable_coupons', 'yes' );
+$id_coupon = valid_result( readonly_quote( $params + [ 'coupon' => (string) $coupon->get_id() ], [] ) );
+verify( 'invalid' === $id_coupon['data']['coupon']['state'] && '0.00' === $id_coupon['data']['discount'], 'Numeric coupon post ID cannot substitute for its different code.' );
+$numeric = new WC_Coupon(); $numeric->set_code( '987654321' ); $numeric->set_discount_type( 'percent' ); $numeric->set_amount( 10 ); $numeric->save();
+verify( 'valid' === valid_result( readonly_quote( $params + [ 'coupon' => '987654321' ], [] ) )['data']['coupon']['state'], 'An actual numeric coupon code remains supported.' );
+
+// F06/F09: virtual/free totals are distinct from missing physical shipping.
+$virtual = source_product( 'Free virtual fixture', '0' ); $virtual->set_virtual( true ); $virtual->save();
+$virtual_params = $params; $virtual_params['items'] = [ [ 'product_id' => $virtual->get_id(), 'quantity' => 1 ] ];
+$free = valid_result( readonly_quote( $virtual_params, [] ) );
+verify( '0.00' === $free['data']['shipping'] && '0.00' === $free['data']['total'] && [] === $free['data']['payment_methods'], 'Native virtual zero-total cart needs neither shipping nor a payment gateway.' );
+$virtual->set_regular_price( '30' ); $virtual->save();
+verify( in_array( 'Bank transfer', valid_result( readonly_quote( $virtual_params, [] ) )['data']['payment_methods'], true ), 'Positive native total retains enabled payment gateway.' );
+$all_off = new WC_Coupon(); $all_off->set_code( 'synthetic-free' ); $all_off->set_discount_type( 'percent' ); $all_off->set_amount( 100 ); $all_off->save();
+verify( [] === valid_result( readonly_quote( $virtual_params + [ 'coupon' => 'synthetic-free' ], [] ) )['data']['payment_methods'], 'Native post-discount zero-total cart does not request a gateway.' );
+update_option( 'woocommerce_ship_to_countries', 'disabled' );
+verify( is_wp_error( readonly_quote( $params, [] ) ), 'Physical items with no shipping methods cannot become a false free-shipping total.' );
+verify( ! is_wp_error( readonly_quote( $virtual_params, [] ) ), 'Shipping-disabled store still supports a genuinely virtual cart.' );
+update_option( 'woocommerce_ship_to_countries', '' );
+$zone->delete_shipping_method( $rate_id ); $zone->delete_shipping_method( $second_id );
+verify( is_wp_error( readonly_quote( $params, [] ) ), 'Physical cart in a store with zero configured native methods cannot return a false zero fee.' );
+$rate_id = $zone->add_shipping_method( 'flat_rate' ); update_option( 'woocommerce_flat_rate_' . $rate_id . '_settings', [ 'title' => 'Standard', 'tax_status' => 'taxable', 'cost' => '10' ] );
+$second_id = $zone->add_shipping_method( 'flat_rate' ); update_option( 'woocommerce_flat_rate_' . $second_id . '_settings', [ 'title' => 'Express', 'tax_status' => 'taxable', 'cost' => '20' ] );
+
+$free_zone = new WC_Shipping_Zone(); $free_zone->set_zone_name( 'Synthetic free UK' ); $free_zone->add_location( 'GB', 'country' ); $free_zone->save();
+$free_id = $free_zone->add_shipping_method( 'free_shipping' ); update_option( 'woocommerce_free_shipping_' . $free_id . '_settings', [ 'title' => 'Free native shipping', 'requires' => '' ] );
+$free_shipping = valid_result( readonly_quote( $bad, [] ) );
+verify( '0.00' === $free_shipping['data']['shipping'] && ! empty( $free_shipping['data']['shipping_rates'] ), 'An actual native free-shipping rate can truthfully cost zero.' );
+
+// F07/F08: stock is shared by native owner, and public visibility ignores password cookies.
+$variation->set_status( 'publish' ); $variation->save();
+$sibling = new WC_Product_Variation(); $sibling->set_parent_id( $parent->get_id() ); $sibling->set_attributes( [ 'size' => 'L' ] ); $sibling->set_status( 'publish' ); $sibling->set_regular_price( '50' ); $sibling->save();
+$parent->set_manage_stock( true ); $parent->set_stock_quantity( 5 ); $parent->set_backorders( 'no' ); $parent->save(); WC_Product_Variable::sync( $parent->get_id() );
+foreach ( [ [ 1, 3, true ], [ 2, 3, true ], [ 4, 4, false ] ] as [ $left, $right, $allowed ] ) {
+    $siblings = $params; $siblings['items'] = [ [ 'product_id' => $variation->get_id(), 'quantity' => $left ], [ 'product_id' => $sibling->get_id(), 'quantity' => $right ] ];
+    verify( $allowed === ! is_wp_error( readonly_quote( $siblings, [] ) ), 'Sibling variation aggregate stock uses parent threshold: ' . $left . '+' . $right );
+}
+verify( 5 === wc_get_product( $parent->get_id() )->get_stock_quantity(), 'Read-only shared-stock quotes never consume stock.' );
+$parent->set_backorders( 'yes' ); $parent->save();
+verify( ! is_wp_error( readonly_quote( $siblings, [] ) ), 'Native backorder permission remains supported on shared owner.' );
+$parent->set_backorders( 'no' ); $parent->save();
+$hold = wc_create_order(); $hold->add_product( wc_get_product( $variation->get_id() ), 2 ); $hold->save(); wc_reserve_stock_for_order( $hold );
+$held_params = $params; $held_params['items'] = [ [ 'product_id' => $variation->get_id(), 'quantity' => 2 ], [ 'product_id' => $sibling->get_id(), 'quantity' => 2 ] ];
+verify( wc_get_held_stock_quantity( wc_get_product( $variation->get_id() ) ) >= 2 && is_wp_error( readonly_quote( $held_params, [] ) ), 'Native held stock counts against the shared owner without borrowing live shopper order authority.' );
+wc_release_stock_for_order( $hold );
+verify( ! is_wp_error( readonly_quote( $held_params, [] ) ), 'Released native held stock restores the eligible read-only estimate.' );
+foreach ( [ $p->get_id(), $parent->get_id(), $variation->get_id() ] as $protected_id ) {
+    wp_update_post( [ 'ID' => $protected_id, 'post_password' => 'synthetic-password' ] );
+    $protected_params = $protected_id === $p->get_id() ? $params : $variant_params;
+    foreach ( [ false, true ] as $with_cookie ) {
+        if ( $with_cookie ) { require_once ABSPATH . WPINC . '/class-phpass.php'; $_COOKIE[ 'wp-postpass_' . COOKIEHASH ] = ( new PasswordHash( 8, true ) )->HashPassword( 'synthetic-password' ); }
+        else { unset( $_COOKIE[ 'wp-postpass_' . COOKIEHASH ] ); }
+        verify( is_wp_error( readonly_quote( $protected_params, [] ) ), 'Password-protected product/parent/variation never becomes a public quote, including a valid password cookie.' );
+    }
+    wp_update_post( [ 'ID' => $protected_id, 'post_password' => '' ] ); unset( $_COOKIE[ 'wp-postpass_' . COOKIEHASH ] );
+}
+verify( ! is_wp_error( readonly_quote( $params, [] ) ), 'Public native product stays quotable after protected cases.' );
+
 // Context protocol uses synthetic API authorization but the same actual native Woo engine.
-$authorization_revoked = false; $authorization_calls = 0;
+$authorization_revoked = false; $authorization_calls = 0; $authorization_access = null; $authorization_email = null;
 $session = [ 'session_id' => 'context-fixture-session', 'credential' => 'synthetic-context-secret', 'revision' => 4, 'expires' => time() + 600 ];
 $settings = [ 'revision' => 4, 'content_ids' => [], 'preferences' => [ 'features' => [ 'content' => false, 'products' => false, 'quote' => true, 'payments' => false, 'coupons' => true, 'orders' => true ] ] ];
-$authority_filter = function ( $pre, $args, $url ) use ( &$authorization_revoked, &$authorization_calls, $session ) {
+$authority_filter = function ( $pre, $args, $url ) use ( &$authorization_revoked, &$authorization_calls, &$authorization_access, &$authorization_email, $session ) {
     if ( 'support-api-fixture.invalid' !== parse_url( $url, PHP_URL_HOST ) ) { return new WP_Error( 'fixture_outbound_denied', 'No external network.' ); }
     ++$authorization_calls;
     if ( $authorization_revoked ) { return [ 'response' => [ 'code' => 403 ], 'body' => wp_json_encode( [ 'code' => 'support_verification_required' ] ) ]; }
     if ( str_ends_with( $url, '/sessions/current' ) ) { return [ 'response' => [ 'code' => 200 ], 'body' => wp_json_encode( [ 'protocol' => 2 ] ) ]; }
     $body = json_decode( $args['body'], true );
     return [ 'response' => [ 'code' => 200 ], 'body' => wp_json_encode( [ 'protocol' => 2, 'purpose' => $body['purpose'], 'session_id' => $session['session_id'], 'revision' => 4,
-        'access_id' => null, 'email' => null, 'expires_at' => null ] ) ];
+        'access_id' => $authorization_access, 'email' => $authorization_email, 'expires_at' => null === $authorization_access ? null : gmdate( 'c', time() + 600 ) ] ) ];
 };
 add_filter( 'pre_http_request', $authority_filter, 1, 3 );
 $selected = valid_result( YoRo_Support_Context::create( $settings, $session, 'quote', $params ) );
@@ -235,6 +297,16 @@ verify( ! str_contains( $selected['context_token'], 'synthetic-context-secret' )
 $snap = valid_result( YoRo_Support_Context::snapshot( $settings, $session, '', null, $selected['context_token'] ) );
 verify( $selected['card'] === $snap['cards'][0] && 'disabled' === $snap['cards'][0]['data']['payment_state'] && [] === $snap['cards'][0]['data']['payment_methods'], 'Fresh native context reproduces exact card and masks disabled payment facts.' );
 verify( $authorization_calls === 2, 'Each selected context reauthorizes at API; browser token grants no authority.' );
+$decoded_context = YoRo_Support_Transport::open( $selected['context_token'], 'context' );
+verify( ! isset( $decoded_context['credential'] ) && isset( $decoded_context['credential_binding'] ) && [] === YoRo_Support_Transport::open( $selected['context_token'] ), 'Context is purpose-separated and contains no reusable session credential.' );
+$authorization_access = 'synthetic-new-access'; $authorization_email = 'buyer@example.test';
+verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, $selected['context_token'] ) ), 'A public null-access context cannot silently upgrade after verification.' );
+$private_selected = valid_result( YoRo_Support_Context::create( $settings, $session, 'quote', $params ) );
+verify( $private_selected['private'] && ! is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, $private_selected['context_token'] ) ), 'A freshly selected context retains the exact new live private binding.' );
+$authorization_access = 'synthetic-changed-access'; $authorization_email = 'other@example.test';
+verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, $private_selected['context_token'] ) ), 'Changed email/access cannot reuse a prior private context.' );
+$authorization_access = null; $authorization_email = null;
+verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, $private_selected['context_token'] ) ), 'Revoked private access cannot downgrade a prior context to public.' );
 $p->set_regular_price( '110' ); $p->save();
 $changed = valid_result( YoRo_Support_Context::snapshot( $settings, $session, '', null, $selected['context_token'] ) );
 verify( $changed['cards'][0]['version'] !== $snap['cards'][0]['version'], 'A product price change invalidates previous context snapshot.' );
@@ -243,13 +315,55 @@ $foreign = $session; $foreign['session_id'] = 'other-session'; verify( is_wp_err
 $foreign = $session; $foreign['credential'] = 'rotated-secret'; verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $foreign, '', null, $selected['context_token'] ) ), 'Rotated credential context token denied.' );
 $new_settings = $settings; $new_settings['revision']++; verify( is_wp_error( YoRo_Support_Context::snapshot( $new_settings, $session, '', null, $selected['context_token'] ) ), 'Changed settings revision denies held context.' );
 $disabled = $settings; $disabled['preferences']['features']['quote'] = false; verify( is_wp_error( YoRo_Support_Context::snapshot( $disabled, $session, '', null, $selected['context_token'] ) ), 'Disabled capability cannot reuse held context.' );
-$expired_context = YoRo_Support_Transport::open( $selected['context_token'] ); $expired_context['expires'] = time() - 1;
-verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, YoRo_Support_Transport::seal( $expired_context ) ) ), 'Expired encrypted context fails without pruning.' );
+$expired_context = YoRo_Support_Transport::open( $selected['context_token'], 'context' ); $expired_context['expires'] = time() - 1;
+verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, YoRo_Support_Transport::seal( $expired_context, 'context' ) ) ), 'Expired encrypted context fails without pruning.' );
 $authorization_revoked = true; verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, $selected['context_token'] ) ), 'Fresh API revocation fences context read before facts are returned.' );
 
 $authorization_revoked = false;
 update_option( YoRo_Customer_Support::OPTION, $settings + [ 'enabled' => true, 'protocol' => 2 ] );
 $cookie = YoRo_Support_Transport::seal( $session ); $_COOKIE[ '__Host-yoro_support_' . get_current_blog_id() ] = $cookie;
+$g028_https_before = $_SERVER['HTTPS'] ?? null;
+$_SERVER['HTTPS'] = 'on'; YoRo_Customer_Support::routes();
+foreach ( [ $selected['context_token'], $reference ] as $substitute ) {
+    $_COOKIE[ '__Host-yoro_support_' . get_current_blog_id() ] = $substitute;
+    foreach ( [ 'verification' => [ 'action' => 'current' ], 'context' => [ 'kind' => 'orders' ], 'turn' => [ 'turn_id' => '12345678-1234-4123-8123-123456789abc', 'message' => 'Question' ] ] as $route => $body ) {
+        $request = new WP_REST_Request( 'POST', '/yoro/v1/support/' . $route ); $request->set_body_params( $body );
+        $request->set_header( 'Origin', home_url() ); $request->set_header( 'X-YoRo-Support-CSRF', YoRo_Support_Transport::csrf( $substitute ) );
+        $before_calls = $authorization_calls; $denied = rest_do_request( $request );
+        verify( $denied->get_status() >= 400 && $before_calls === $authorization_calls, 'Native REST rejects a context/order token as session authority before any API/private read.' );
+    }
+}
+$_COOKIE[ '__Host-yoro_support_' . get_current_blog_id() ] = $cookie;
+valid_result( YoRo_Support_Commerce::profile() );
+$native_rest_hooks = [ 'woocommerce_rest_shop_order_refund_trashable', 'woocommerce_rest_shop_order_refund_object_trashable' ];
+$GLOBALS['g028_mutating_callback_calls'] = 0;
+function g028_foreign_mutating_callback( $value ) { ++$GLOBALS['g028_mutating_callback_calls']; update_option( 'g028_forbidden_profile_effect', true ); return $value; }
+foreach ( $native_rest_hooks as $hook ) {
+    verify( has_filter( $hook, '__return_false' ) === 10 && $GLOBALS['wp_filter'][ $hook ]->callbacks[10]['__return_false']['accepted_args'] === 1, 'Actual locked native refund guard retains exact priority and arity.' );
+    foreach ( [ static fn( $value ) => $value, 'g028_foreign_mutating_callback' ] as $foreign ) {
+        add_filter( $hook, $foreign, 10, 1 );
+        verify( is_wp_error( readonly_quote( $params, [] ) ) && 0 === $GLOBALS['g028_mutating_callback_calls'] && false === get_option( 'g028_forbidden_profile_effect', false ), 'Foreign/closure/mutating callback is rejected without invocation or persistence.' );
+        remove_filter( $hook, $foreign, 10 );
+    }
+    add_filter( $hook, '__return_false', 9, 1 );
+    verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Correct global callback with an unexpected priority is rejected.' );
+    remove_filter( $hook, '__return_false', 9 );
+    add_filter( $hook, '__return_false', 10, 2 );
+    verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Correct global callback with unexpected arity is rejected.' );
+    add_filter( $hook, '__return_false', 10, 1 );
+}
+add_filter( 'woocommerce_before_calculate_totals', '__return_false', 10, 1 );
+verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Same WordPress callback on an unrelated hook stays unsupported.' );
+remove_filter( 'woocommerce_before_calculate_totals', '__return_false', 10 );
+valid_result( YoRo_Support_Commerce::profile() );
+$rest_quote = new WP_REST_Request( 'POST', '/yoro/v1/support/context' ); $rest_quote->set_body_params( [ 'kind' => 'quote', 'params' => $params ] );
+$rest_quote->set_header( 'Origin', home_url() ); $rest_quote->set_header( 'X-YoRo-Support-CSRF', YoRo_Support_Transport::csrf( $cookie ) );
+$rest_cart_before = [ WC()->cart, WC()->customer, WC()->session ];
+$rest_quote_response = rest_do_request( $rest_quote );
+verify( 200 === $rest_quote_response->get_status() && 'quote' === $rest_quote_response->get_data()['card']['kind'] && '231.00' === $rest_quote_response->get_data()['card']['data']['total'], 'Actual native REST bootstrap retains the supported read-only quote, native totals and exact refund guards.' );
+verify( $rest_cart_before === [ WC()->cart, WC()->customer, WC()->session ] && 0 === $GLOBALS['g028_mutating_callback_calls'], 'Native REST estimate restores the live cart identities and never invokes rejected callbacks.' );
+if ( null === $g028_https_before ) { unset( $_SERVER['HTTPS'] ); } else { $_SERVER['HTTPS'] = $g028_https_before; }
+
 $request = new WP_REST_Request( 'POST' ); $request->set_body_params( [ 'kind' => 'products', 'query' => 'Native quote product' ] ); $request->set_header( 'X-YoRo-Support-CSRF', YoRo_Support_Transport::csrf( $cookie ) );
 $choices = valid_result( YoRo_Customer_Support::context( $request ) )->get_data();
 verify( ! empty( $choices['products'] ) && false === YoRo_Support_Context::capabilities( $settings )['products'], 'Quote product selection works while separate public product advice is disabled.' );
@@ -289,6 +403,7 @@ $p->set_regular_price( '100' ); $p->set_catalog_visibility( 'visible' ); $p->sav
 $legacy = YoRo_Support_Facts::snapshot( $product_settings, 'Native quote product' );
 $legacy_card = YoRo_Customer_Support::safe_answer( [ 'text' => 'Legacy public answer.', 'sources' => [ [ 'id' => $public_id ] ] ], $legacy );
 verify( ! empty( $legacy_card['products'] ) && '' === $legacy_card['products'][0]['sku'], 'Protocol1 public product facts remain compatible with additive card projection.' );
+
 
 if ( $full_core ) {
     foreach ( $report_hooks as $hook => $binding ) { verify( has_action( $hook, $binding[0] ) === $binding[1], 'Full report hooks remain registered after all quote and security cases.' ); }

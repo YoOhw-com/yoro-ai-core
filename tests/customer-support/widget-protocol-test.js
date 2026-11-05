@@ -122,6 +122,14 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
     const explaining = area.querySelectorAll('button').find(button => button.textContent === 'Explain this estimate').event('click'); await flush();
     const expiry = [...timers.values()].find(timer => timer.delay >= 290000 && timer.delay <= 300000); assert.ok(expiry); expiry.fn(); releaseExpired(); await explaining;
     verify(!log.children.some(entry => entry.children.some(child => child.textContent === 'LATE_EXPIRED_QUOTE')) && retry.hidden, 'Expired selection drops a late AI response and its retry input');
+    await quote.event('click');
+    area.querySelector('[name=query]').value = 'Trail daypack';
+    responses.push({body: {products: [{id: 47, name: 'Trail daypack', kind: 'simple', price: '49 USD', options: []}]}}); await area.querySelectorAll('form')[0].event('submit');
+    await area.querySelectorAll('button').find(button => button.textContent.startsWith('Trail daypack')).event('click');
+    for (const [name, value] of Object.entries({country: 'US', state: 'CA', postcode: '94105'})) area.querySelector('[name=' + name + ']').value = value;
+    const zeroCard = {...quoteCard, data: {...quoteCard.data, total: '0.00', payment_methods: [], payment_state: 'available'}};
+    responses.push({body: {context_token: 'synthetic-free-context', private: false, expires_at: new Date(Date.now() + 300000).toISOString(), card: zeroCard}}); await area.querySelectorAll('form')[1].event('submit');
+    verify(area.querySelectorAll('p').some(item => item.textContent === 'No payment is required for this estimate.'), 'Zero native total renders no payment requirement distinctly from unavailable gateways');
     async function primePrivate() {
         responses.push({body: {verified: false}}); await end.event('click');
         await orders.event('click');

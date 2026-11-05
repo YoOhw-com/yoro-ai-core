@@ -51,7 +51,7 @@ class YoRo_Support_Context {
 		}
 		if ( is_wp_error( $card ) ) { return $card; }
 		$card = self::project( $card, $settings );
-		$token = YoRo_Support_Transport::seal( array_merge( $session, [ 'expires' => $expires, 'context' => $context, 'params' => $params ] ) );
+		$token = YoRo_Support_Transport::seal( [ 'session_id' => $session['session_id'], 'credential_binding' => YoRo_Support_Transport::binding( $session['credential'] ), 'revision' => $session['revision'], 'expires' => $expires, 'context' => $context, 'params' => $params ], 'context' );
 		if ( '' === $token ) { return self::invalid(); }
 		return [ 'context_token' => $token, 'card' => $card, 'private' => null !== $context['access_id'], 'expires_at' => $context['expires_at'] ];
 	}
@@ -80,15 +80,16 @@ class YoRo_Support_Context {
 		$snapshot = [ 'contract_type' => 'yoro.customer_support.facts', 'schema_version' => 2, 'commerce' => $public['commerce'],
 			'sources' => $public['sources'], 'capabilities' => self::capabilities( $settings ), 'context' => null, 'cards' => [] ];
 		if ( '' === $token ) { return $snapshot; }
-		$held = YoRo_Support_Transport::open( $token );
+		$held = YoRo_Support_Transport::open( $token, 'context' );
 		if ( ! $held || ! isset( $held['context'], $held['params'] ) || ! is_array( $held['params'] )
-			|| ! hash_equals( $session['session_id'], $held['session_id'] ) || ! hash_equals( $session['credential'], $held['credential'] )
-			|| (int) $held['revision'] !== (int) $settings['revision'] ) { return self::invalid(); }
+			|| ! hash_equals( $session['session_id'], $held['session_id'] ) || ! hash_equals( YoRo_Support_Transport::binding( $session['credential'] ), (string) ( $held['credential_binding'] ?? '' ) )
+			|| (int) ( $held['revision'] ?? 0 ) !== (int) $settings['revision'] ) { return self::invalid(); }
 		$kind = $held['context']['kind'];
 		$purpose = [ 'order' => 'orders', 'quote' => 'quote', 'coupon' => 'coupons', 'payment' => 'payments' ][ $kind ] ?? '';
 		if ( ! $purpose || ! self::capabilities( $settings )[ $purpose ] ) { return self::invalid(); }
 		$proof = self::authorize( $session, $purpose, $held['context']['access_id'] ?? null );
 		if ( is_wp_error( $proof ) ) { return $proof; }
+		if ( ( $held['context']['access_id'] ?? null ) !== ( $proof['access_id'] ?? null ) ) { return self::invalid(); }
 		$card = 'order' === $kind ? YoRo_Support_Commerce::order( $proof, $held['params']['reference'] ?? null ) : YoRo_Support_Commerce::quote( $held['params'], $proof );
 		if ( is_wp_error( $card ) ) { return $card; }
 		$card = self::project( $card, $settings );

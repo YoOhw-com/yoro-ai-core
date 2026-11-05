@@ -146,8 +146,8 @@ function mid_setup(): array {
     $GLOBALS['support_fixture_settings']=['enabled'=>true,'protocol'=>2,'revision'=>1,'content_ids'=>[],'contact'=>'Public contact','preferences'=>['features'=>['content'=>false,'products'=>false,'orders'=>true]]];
     $GLOBALS['mid_card_marker']='PRIVATE_CARD';$session=YoRo_Support_Transport::open($cookie);
     $context=['kind'=>'order','access_id'=>'synthetic-access','reference'=>'opaque-private-reference','expires_at'=>gmdate('c',time()+300)];
-    $reference=YoRo_Support_Transport::seal(['order_id'=>1,'session_id'=>$session['session_id'],'credential'=>'synthetic-access','email_binding'=>hash('sha256','synthetic@example.invalid'),'expires'=>time()+300]);
-    $token=YoRo_Support_Transport::seal(array_replace($session,['expires'=>time()+300,'context'=>$context,'params'=>['reference'=>$reference]]));
+    $reference=YoRo_Support_Transport::seal(['order_id'=>1,'session_id'=>$session['session_id'],'access_binding'=>YoRo_Support_Transport::binding('synthetic-access'),'email_binding'=>hash('sha256','synthetic@example.invalid'),'expires'=>time()+300], 'order');
+    $token=YoRo_Support_Transport::seal(['session_id'=>$session['session_id'],'credential_binding'=>YoRo_Support_Transport::binding($session['credential']),'revision'=>$session['revision'],'expires'=>time()+300,'context'=>$context,'params'=>['reference'=>$reference]], 'context');
     $GLOBALS['responses']=[mid_auth_ok()];$snapshot=YoRo_Support_Context::snapshot($GLOBALS['support_fixture_settings'],$session,'Synthetic question',null,$token);
     check(!is_wp_error($snapshot)&&$snapshot['context']['access_id']==='synthetic-access','Real sealed private Context snapshot passes initial API authorization.');
     $GLOBALS['requests']=[];$GLOBALS['responses']=[];
@@ -240,5 +240,38 @@ foreach (['session','verification','local-key'] as $cleanup_loss) {
     check(is_wp_error($result)&&$result->get_error_code()===$expected,'An existing cancel response/local state preserves definitive loss even when the original abort was only a mismatch.');
     check($GLOBALS['responses']===[]&&count($GLOBALS['requests'])===4&&str_ends_with($GLOBALS['requests'][3][1],'/cancel'),'Cleanup classification adds no cancel, admission or inference request.');
     YoRo_AI_Settings::$key='synthetic-server-only-key';
+}
+// F01/F10: purpose-specific capabilities cannot be promoted to a session cookie.
+[$csrf,$contextToken,$snapshot]=mid_setup();
+$held=YoRo_Support_Transport::open($contextToken,'context');
+check(!isset($held['credential'])&&isset($held['credential_binding']),'Context contains only a one-way credential binding.');
+foreach ([$contextToken,$held['params']['reference']] as $substitute) {
+    $_COOKIE['__Host-yoro_support_1']=$substitute;
+    $GLOBALS['requests']=[];$GLOBALS['responses']=[];
+    foreach (['verification','context','turn'] as $route) {
+        $request=new SyntheticSupportRequest(['action'=>'current','kind'=>'orders','turn_id'=>'12345678-1234-4123-8123-123456789abc','message'=>'Question'],['X-YoRo-Support-CSRF'=>YoRo_Support_Transport::csrf($substitute)]);
+        check(is_wp_error(YoRo_Customer_Support::$route($request))&&count($GLOBALS['requests'])===0,'A context/order token never authenticates '.$route.'.');
+    }
+    $GLOBALS['responses']=[['status'=>200,'body'=>['session_id'=>'replacement','credential'=>'fresh-secret','revision'=>1,'protocol'=>2]],['status'=>200,'body'=>['verified'=>false]]];
+    $reply=YoRo_Customer_Support::session(new SyntheticSupportRequest());
+    check($reply instanceof WP_REST_Response&&$reply->data['protocol']===2&&$GLOBALS['requests'][0][0]==='POST'&&str_ends_with($GLOBALS['requests'][0][1],'/sessions'),'A substituted cookie starts a fresh independent session, never validates original authority.');
+}
+// Legitimate pre-purpose cookie shape stays accepted; old context-shaped ciphertext does not.
+function legacy_seal(array $payload): string {
+    $iv=random_bytes(12);$tag='';$key=hash('sha256',wp_salt('secure_auth').'|'.home_url().'|'.YoRo_AI_Settings::get_ai_api_site_key(),true);
+    $cipher=openssl_encrypt(wp_json_encode($payload),'aes-256-gcm',$key,OPENSSL_RAW_DATA,$iv,$tag,home_url());
+    return rtrim(strtr(base64_encode($iv.$tag.$cipher),'+/','-_'),'=');
+}
+$legacy=['session_id'=>'legacy','credential'=>'legacy-secret','revision'=>1,'expires'=>time()+300];
+check(YoRo_Support_Transport::open(legacy_seal($legacy))===$legacy,'Legitimate old v1 cookie remains compatible.');
+check(YoRo_Support_Transport::open(legacy_seal($legacy+['context'=>['kind'=>'order']]))===[],'Old context cannot pass the strict legacy cookie shape.');
+foreach (['success','network','protocol'] as $scenario) {
+    existing_session();
+    $GLOBALS['responses']=[response_fixture(403,'support_session_unavailable')];
+    $GLOBALS['responses'][]=$scenario==='network'?new WP_Error('network','Synthetic failure'):['status'=>200,'body'=>['session_id'=>'replacement','credential'=>'fresh-secret','revision'=>1,'protocol'=>$scenario==='protocol'?1:2]];
+    if($scenario==='success'){$GLOBALS['responses'][]=['status'=>200,'body'=>['verified'=>false]];}
+    $reply=YoRo_Customer_Support::session(new SyntheticSupportRequest());
+    check($scenario==='success'?($reply instanceof WP_REST_Response&&$reply->data['protocol']===2&&$reply->data['verification']['verified']===false&&is_string($reply->data['csrf'])):is_wp_error($reply),'Inactive recovery '.$scenario.' uses only the replacement session protocol and fails closed on errors.');
+    check(count(array_filter($GLOBALS['requests'],fn($request)=>$request[0]==='DELETE'))===0,'Inactive recovery needs no reset/revoke.');
 }
 echo json_encode(['result'=>'passed','assertions'=>$count,'midphase_cases'=>$midphase_results,'native_wordpress'=>'NOT_EVALUATED'],JSON_THROW_ON_ERROR),"\n";
