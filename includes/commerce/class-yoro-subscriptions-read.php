@@ -7,6 +7,9 @@ final class YoRo_Subscriptions_Read
 {
     public const OwnerVersions = ['8.8.1','9.3.0'];
     public const ReadActions = ['subscriptions.get_status','subscriptions.search','subscriptions.get_details','subscriptions.get_order_context','subscriptions.get_related_orders','subscriptions.get_summary','subscriptions.get_renewal_report'];
+    public const DiagnosticActions = ['subscriptions.get_timeline','subscriptions.get_payment_health','subscriptions.get_attention_queue'];
+    public const AllActions = [...self::ReadActions,...self::DiagnosticActions];
+    public const DiagnosticsExtension = 'yoro.subscriptions_diagnostics';
     public const Reports = ['subscriptions.get_summary','subscriptions.get_renewal_report'];
     public const Extension = 'yoro.subscriptions_read';
     public const ProductTypes = ['subscription','variable-subscription','subscription_variation'];
@@ -40,12 +43,35 @@ final class YoRo_Subscriptions_Read
         return ['version'=>1,'actions'=>($supported??self::supported())?self::ReadActions:[self::ReadActions[0]],'owner'=>'woocommerce-subscriptions','owner_versions'=>self::OwnerVersions,'batch_size'=>100,'max_items'=>20,'max_relation_ids_per_order'=>200,'report_execution_seconds'=>1800,'max_period_days'=>366,'pagination'=>'anchored_offset_mutation_guard','customer_data'=>'ids_only','result_version'=>1];
     }
 
-    public static function input_properties(string $action): array { return self::specification()['properties'][$action] ?? []; }
-    public static function result_schema(string $action): array { return self::specification()['results'][$action]; }
+    /** Reuse configured native signing material without entering wp_salt's option-writing fallback. */
+    private static function diagnostics_key(): ?string
+    {
+        if(!defined('AUTH_KEY')||!defined('AUTH_SALT')||!is_string(AUTH_KEY)||!is_string(AUTH_SALT)||AUTH_KEY===''||AUTH_SALT===''||AUTH_KEY===AUTH_SALT||AUTH_KEY==='put your unique phrase here'||AUTH_SALT==='put your unique phrase here'){return null;}
+        return hash('sha256',"yoro.subscriptions_diagnostics.v1\0".AUTH_KEY."\0".AUTH_SALT,true);
+    }
+    public static function diagnostics_supported(): bool { return self::supported()&&self::diagnostics_key()!==null; }
+    private static function diagnostic_revision(array $operation,string $physicalRevision,string $started,int $anchor): string
+    {
+        $key=self::diagnostics_key();if($key===null){throw new RuntimeException('subscription_cursor_signer_unavailable');}
+        $facts=$operation['extensions']['yoro.mcp_early_access_product_read']??[];$params=$operation['params'];
+        return hash_hmac('sha256',wp_json_encode([$operation['action'],get_current_blog_id(),get_current_user_id(),$facts['site_id']??null,$facts['installation_uuid']??null,$facts['wordpress_identity_id']??null,$facts['profile']??null,$facts['resource']??null,$facts['oauth_client_id']??null,$facts['user_id']??null,$params['subscription_id']??null,$params['record_type']??'orders',$params['limit'],$physicalRevision,$started,$anchor]),$key);
+    }
+    public static function diagnostics_specification(): array
+    {
+        static $spec;
+        return $spec ??= json_decode(file_get_contents(__DIR__.'/subscriptions-diagnostics-v1.json'), true, 64, JSON_THROW_ON_ERROR);
+    }
+    public static function diagnostics_manifest(): array
+    {
+        return ['version'=>1,'actions'=>self::DiagnosticActions,'base_extension'=>self::Extension,'owner_versions'=>self::OwnerVersions,'batch_size'=>100,'max_items'=>20,'pagination'=>'signed_scan_start_anchored_offset_mutation_guard','result_version'=>1,'cursor_signer'=>'configured_non_default_native_auth_key_salt_v1'];
+    }
+    private static function action_specification(string $action): array { return in_array($action,self::DiagnosticActions,true)?self::diagnostics_specification():self::specification(); }
+    public static function input_properties(string $action): array { return self::action_specification($action)['properties'][$action] ?? []; }
+    public static function result_schema(string $action): array { return self::action_specification($action)['results'][$action]; }
 
     public static function valid_params(string $action, $params): bool
     {
-        if (!in_array($action,self::ReadActions,true) || !is_array($params) || array_diff(array_keys($params),array_keys(self::input_properties($action)))) { return false; }
+        if (!in_array($action,self::AllActions,true) || !is_array($params) || array_diff(array_keys($params),array_keys(self::input_properties($action)))) { return false; }
         foreach ($params as $key=>$value) {
             $schema=self::input_properties($action)[$key];
             if (($schema['type']==='integer' && (!is_int($value)||$value<($schema['minimum']??0)||$value>($schema['maximum']??PHP_INT_MAX)))
@@ -57,12 +83,19 @@ final class YoRo_Subscriptions_Read
         foreach (['created','next_payment'] as $kind) { if (isset($params[$kind.'_from'],$params[$kind.'_to']) && $params[$kind.'_from']>$params[$kind.'_to']) { return false; } }
         if (isset($params['offset']) && $params['offset']>0 && (!isset($params['anchor_id'],$params['revision']))) { return false; }
         if (isset($params['anchor_id']) !== isset($params['revision'])) { return false; }
-        if (in_array($action,['subscriptions.search','subscriptions.get_order_context','subscriptions.get_related_orders'],true) && !isset($params['limit'],$params['offset'])) { return false; }
-        if (in_array($action,['subscriptions.get_details','subscriptions.get_related_orders'],true) && !isset($params['subscription_id'])) { return false; }
+        if (isset(self::input_properties($action)['limit']) && !isset($params['limit'],$params['offset'])) { return false; }
+        if (isset(self::input_properties($action)['subscription_id']) && !isset($params['subscription_id'])) { return false; }
         if ($action==='subscriptions.get_order_context' && !isset($params['order_id'])) { return false; }
         if (in_array($action,self::Reports,true)) {
             try { $period=array_intersect_key($params,array_flip(['window','anchor_date','date_from','date_to'])); if (!isset($period['window'])||YoRo_Store_Report_Period::parameters($period)!==$period) { return false; } }
             catch (Throwable $error) { return false; }
+        }
+        if (in_array($action,self::DiagnosticActions,true)) {
+            if (($params['offset']??0)>0 && !isset($params['scan_started_at'])) { return false; }
+            if (($params['offset']??0)===0 && (isset($params['scan_started_at'])||isset($params['anchor_id'])||isset($params['revision']))) { return false; }
+            if (isset($params['scan_started_at'])) {
+                try { $observed=new DateTimeImmutable($params['scan_started_at']); if($observed->format('c')!==$params['scan_started_at']||$observed->getTimestamp()>time()){return false;} } catch(Throwable $error){return false;}
+            }
         }
         return true;
     }
@@ -167,6 +200,48 @@ final class YoRo_Subscriptions_Read
         if ($last >= $anchor) { $more=false; }
         return [$related?'orders':'subscriptions'=>$result,'count'=>count($result),'page_info'=>['anchor_id'=>$anchor,'next_offset'=>$more?$params['offset']+$scanned:null,'has_more'=>$more,'revision'=>$revision,'scanned'=>$scanned,'coverage'=>'bounded_scan_current_state']];
     }
+    /** One bounded owner batch, with separate stored schedule and recorded native facts. */
+    private static function diagnostic(array $operation): array
+    {
+        $action=$operation['action'];$params=$operation['params'];$observed=gmdate('c');$started=$params['scan_started_at']??$observed;
+        $revision=self::revision();
+        $attention=$action===self::DiagnosticActions[2];$recordType=$params['record_type']??'orders';
+        $type=$attention?'shop_subscription':($recordType==='refunds'?'shop_order_refund':'shop_order');
+        $anchor=$params['anchor_id']??self::anchor($type);$signedRevision=self::diagnostic_revision($operation,$revision,$started,$anchor);
+        if(isset($params['revision'])&&!hash_equals($signedRevision,$params['revision'])){throw new RuntimeException('subscription_cursor_changed');}
+        $seed=$attention?null:self::subscription($params['subscription_id']);
+        $batch=self::batch($type,$params['offset']);$rows=[];$scanned=0;$last=0;$more=count($batch)===100;
+        foreach($batch as $object){
+            if(!is_object($object)||!self::allowed($object)){throw new RuntimeException('subscription_diagnostic_denied');}
+            $id=$object->get_id();if($id>$anchor){$more=false;break;}if($id<=$last||$object->get_type()!==$type){throw new RuntimeException('subscription_diagnostic_invalid');}$last=$id;$scanned++;
+            if($attention){
+                if(!$object instanceof WC_Subscription||!in_array($object->get_status(),self::specification()['statuses'],true)){throw new RuntimeException('subscription_diagnostic_invalid');}
+                $row=self::row($object);$reasons=[];
+                if($row['status']==='on-hold'){$reasons[]='on_hold';}
+                if($row['status']==='pending-cancel'){$reasons[]='pending_cancellation';}
+                if($row['status']==='active'&&$row['next_payment_at']!==null&&strtotime($row['next_payment_at'])<strtotime($started)){$reasons[]='stored_next_payment_overdue';}
+                if(!$reasons){continue;}$row['reasons']=$reasons;
+            }else{
+                $order=$recordType==='refunds'?self::order($object->get_parent_id()):self::order($id);
+                $relations=self::reverse($order)[$seed->get_id()]??[];
+                if($seed->get_parent_id()===$order->get_id()){array_unshift($relations,'parent');}
+                if(!$relations||($action===self::DiagnosticActions[1]&&!in_array('renewal',$relations,true))){continue;}
+                if($recordType==='refunds'&&(!$object instanceof WC_Order_Refund||$object->get_currency()!==$order->get_currency())){throw new RuntimeException('subscription_diagnostic_refund_invalid');}
+                $row=['id'=>$id,'kind'=>$recordType==='refunds'?'refund':'order','parent_order_id'=>$recordType==='refunds'?$order->get_id():0,
+                    'status'=>$object->get_status(),'currency'=>self::currency($object->get_currency()),'total'=>self::money($recordType==='refunds'?$object->get_amount():$object->get_total()),
+                    'created_at'=>self::date($object->get_date_created()),'paid_at'=>$recordType==='refunds'?null:self::date($order->get_date_paid()),'relation_kinds'=>$relations];
+            }
+            $rows[]=$row;if(count($rows)===$params['limit']){$more=$id<$anchor;break;}
+        }
+        if(!hash_equals($revision,self::revision())){throw new RuntimeException('subscription_scan_changed');}
+        if($last>=$anchor){$more=false;}
+        $data=['observed_at'=>$observed,'scan_started_at'=>$started,'timezone'=>wp_timezone_string(),'not_assessed'=>self::diagnostics_specification()['not_assessed'],
+            'page_info'=>['anchor_id'=>$anchor,'next_offset'=>$more?$params['offset']+$scanned:null,'has_more'=>$more,'revision'=>$signedRevision,'scanned'=>$scanned,'coverage'=>'bounded_scan_current_state'],'count'=>count($rows)];
+        if($attention){return [...$data,'subscriptions'=>$rows];}
+        $data=[...$data,'subscription'=>self::row($seed),'records'=>$rows,'record_type'=>$recordType];
+        if($action===self::DiagnosticActions[1]){$data['renewal_facts_in_page']=['orders'=>count($rows),'failed_current_status'=>count(array_filter($rows,static fn($row)=>$row['status']==='failed')),'with_recorded_paid_date'=>count(array_filter($rows,static fn($row)=>$row['paid_at']!==null))];}
+        return $data;
+    }
     private static function in_window($date,array $window): bool
     {return $date instanceof DateTimeInterface && $date->getTimestamp()>=strtotime($window['start']) && $date->getTimestamp()<=strtotime($window['end']);}
     private static function add_money(array &$row,string $field,$value): void
@@ -206,12 +281,12 @@ final class YoRo_Subscriptions_Read
     {
         try{$action=$operation['action']??'';$params=$operation['params']??null;
             $allowed=static fn()=>($action===self::ReadActions[0]||self::supported())&&current_user_can('yoro_view_store_data')&&current_user_can('manage_woocommerce')&&(!is_callable($guard)||$guard())&&(!isset($operation['expires_at'])||strtotime($operation['expires_at'])>time());
-            if(!self::valid_params($action,$params)||!$allowed()){throw new RuntimeException('subscriptions_denied');}
+            if(!self::valid_params($action,$params)||!$allowed()||(in_array($action,self::DiagnosticActions,true)&&!self::diagnostics_supported())){throw new RuntimeException('subscriptions_denied');}
             if(isset($params['product_id'])&&(!wc_get_product($params['product_id'])||!current_user_can('read_post',$params['product_id']))){throw new RuntimeException('subscription_product_unavailable');}
             if(isset($params['customer_id'])&&!get_userdata($params['customer_id'])){throw new RuntimeException('subscription_customer_unavailable');}
             $data=match($action){'subscriptions.get_status'=>['available'=>self::supported(),'reason'=>self::supported()?'characterized':(class_exists('WC_Subscriptions')?'owner_version_or_api_uncharacterized':'owner_not_active_or_absent'),'owner'=>'woocommerce-subscriptions','owner_version'=>class_exists('WC_Subscriptions')?mb_substr((string)WC_Subscriptions::$version,0,40):null,'timezone'=>wp_timezone_string(),'statuses'=>self::specification()['statuses'],'actions'=>self::manifest()['actions'],'read_only'=>true],
                 'subscriptions.get_details'=>['subscription'=>self::row(self::subscription($params['subscription_id']),true)],
-                'subscriptions.search','subscriptions.get_order_context','subscriptions.get_related_orders'=>self::scan($operation),default=>self::report($operation,$allowed)};
+                'subscriptions.search','subscriptions.get_order_context','subscriptions.get_related_orders'=>self::scan($operation),'subscriptions.get_timeline','subscriptions.get_payment_health','subscriptions.get_attention_queue'=>self::diagnostic($operation),default=>self::report($operation,$allowed)};
             if(is_wp_error($data)||isset($data['deferred'])){return $data;}if(!$allowed()){throw new RuntimeException('subscriptions_expired');}
             $message='Subscription read completed. Current state is not historical events; recorded money is not settlement. No subscription, order, payment or schedule was changed.';
             return ['success'=>true,'action'=>$action,'message'=>$message,'summary'=>$message,'data'=>$data,'read_only'=>true,'undoable'=>false,'result_type'=>'subscriptions','display_type'=>'subscriptions','assistant_summary'=>$message,'extensions'=>(object)[]];
@@ -221,7 +296,7 @@ final class YoRo_Subscriptions_Read
     public static function register(): void
     {
         static $initialized=false; if (!$initialized) { $initialized=true; foreach (['woocommerce_before_subscription_object_save','woocommerce_after_subscription_object_save','woocommerce_before_delete_subscription','woocommerce_trash_subscription','woocommerce_untrash_subscription'] as $hook) { add_action($hook,static function(){ YoRo_Complete_Store_Report::invalidate(); },10,0); } }
-        foreach(self::manifest()['actions'] as $action){$properties=self::input_properties($action);$required=in_array($action,['subscriptions.search','subscriptions.get_order_context','subscriptions.get_related_orders'],true)?['limit','offset']:[];
+        foreach([...self::manifest()['actions'],...(self::diagnostics_supported()?self::DiagnosticActions:[])] as $action){$properties=self::input_properties($action);$required=isset($properties['limit'])?['limit','offset']:[];
             if(isset($properties['subscription_id'])){$required[]='subscription_id';}if(isset($properties['order_id'])){$required[]='order_id';}if(in_array($action,self::Reports,true)){$required[]='window';}
             YoRo_Action_Registry::register($action,['label'=>$action,'description'=>'Read-only characterized subscription records. Bounded scans require continuation; reports cover complete matching records.','category'=>'subscriptions','permission'=>'yoro_view_store_data','callback'=>static function($params)use($action){unset($params['_yoro_confirmed'],$params['_yoro_preview']);return self::execute(['action'=>$action,'params'=>$params]);},'risk_level'=>'low','write_action'=>false,'effect'=>'read','target_type'=>'subscription','max_items'=>20,'input_schema'=>array_map(static fn($property)=>$property['type'],$properties),'canonical_input_schema'=>$properties,'required_params'=>$required,'capabilities'=>['subscriptions','read']]);}
     }

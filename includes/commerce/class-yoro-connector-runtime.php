@@ -882,6 +882,7 @@ class YoRo_Connector_Runtime {
                 && is_string( $params['sku'] ?? null ) && preg_match( '/\A[A-Za-z0-9._-]{1,128}\z/D', $params['sku'] )
                 && 'publish' === ( $params['status'] ?? null ) && 'simple' === ( $params['type'] ?? null ) && 1 === ( $params['limit'] ?? null )
                 && hash( 'sha256', $params['sku'] ) === ( $facts['sku_hash'] ?? null );
+        if (in_array($operation['action'] ?? '', YoRo_Subscriptions_Read::DiagnosticActions, true) && (($facts['subscriptions_diagnostics_version'] ?? null) !== 1 || !YoRo_Subscriptions_Read::diagnostics_supported())) { $valid_selectors=false; }
 		if ( ! self::early_access_read_allowed() || ! $valid_selectors
 			|| false === $manifest_expiry || $manifest_expiry <= time()
 			|| [ 'yoro_view_store_data' ] !== ( $operation['actor']['permissions'] ?? null )

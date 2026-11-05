@@ -1,0 +1,1149 @@
+{
+    "version": 1,
+    "actions": [
+        "subscriptions.get_timeline",
+        "subscriptions.get_payment_health",
+        "subscriptions.get_attention_queue"
+    ],
+    "not_assessed": [
+        "exhaustive_audit_history",
+        "payment_attempts",
+        "effective_collection_mode",
+        "gateway_readiness",
+        "settlement",
+        "sla",
+        "status_duration",
+        "store_totals"
+    ],
+    "properties": {
+        "subscriptions.get_timeline": {
+            "subscription_id": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+            },
+            "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+            },
+            "anchor_id": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+            },
+            "revision": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+            },
+            "record_type": {
+                "type": "string",
+                "enum": [
+                    "orders",
+                    "refunds"
+                ]
+            },
+            "scan_started_at": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+00:00$"
+            }
+        },
+        "subscriptions.get_payment_health": {
+            "subscription_id": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+            },
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+            },
+            "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+            },
+            "anchor_id": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+            },
+            "revision": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+            },
+            "scan_started_at": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+00:00$"
+            }
+        },
+        "subscriptions.get_attention_queue": {
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+            },
+            "offset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+            },
+            "anchor_id": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2147483647
+            },
+            "revision": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+            },
+            "scan_started_at": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+00:00$"
+            }
+        }
+    },
+    "results": {
+        "subscriptions.get_timeline": {
+            "type": "object",
+            "properties": {
+                "observed_at": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+00:00$"
+                },
+                "timezone": {
+                    "type": "string",
+                    "maxLength": 80
+                },
+                "not_assessed": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "exhaustive_audit_history",
+                            "payment_attempts",
+                            "effective_collection_mode",
+                            "gateway_readiness",
+                            "settlement",
+                            "sla",
+                            "status_duration",
+                            "store_totals"
+                        ]
+                    },
+                    "minItems": 8,
+                    "maxItems": 8
+                },
+                "page_info": {
+                    "type": "object",
+                    "properties": {
+                        "anchor_id": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        },
+                        "next_offset": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        },
+                        "has_more": {
+                            "type": "boolean"
+                        },
+                        "revision": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "scanned": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100
+                        },
+                        "coverage": {
+                            "type": "string",
+                            "enum": [
+                                "bounded_scan_current_state"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "anchor_id",
+                        "next_offset",
+                        "has_more",
+                        "revision",
+                        "scanned",
+                        "coverage"
+                    ],
+                    "additionalProperties": false
+                },
+                "count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 2147483647
+                },
+                "subscription": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 2147483647
+                        },
+                        "status": {
+                            "type": "string",
+                            "enum": [
+                                "pending",
+                                "active",
+                                "on-hold",
+                                "pending-cancel",
+                                "cancelled",
+                                "expired",
+                                "switched"
+                            ]
+                        },
+                        "customer_id": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        },
+                        "parent_order_id": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        },
+                        "currency": {
+                            "type": "string",
+                            "pattern": "^[A-Z]{3}$"
+                        },
+                        "agreement_total": {
+                            "type": "string",
+                            "pattern": "^(?:0|[1-9][0-9]{0,9})\\.[0-9]{6}$"
+                        },
+                        "billing_period": {
+                            "type": "string",
+                            "enum": [
+                                "day",
+                                "week",
+                                "month",
+                                "year"
+                            ]
+                        },
+                        "billing_interval": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 120
+                        },
+                        "payment_mode": {
+                            "type": "string",
+                            "enum": [
+                                "manual_configured",
+                                "automatic_configured"
+                            ]
+                        },
+                        "created_at": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "maxLength": 40
+                        },
+                        "start_at": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "maxLength": 40
+                        },
+                        "trial_end_at": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "maxLength": 40
+                        },
+                        "next_payment_at": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "maxLength": 40
+                        },
+                        "end_at": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "maxLength": 40
+                        },
+                        "items": {
+                            "type": "array",
+                            "maxItems": 20,
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "product_id": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 2147483647
+                                    },
+                                    "variation_id": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 2147483647
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "maxLength": 160
+                                    },
+                                    "quantity": {
+                                        "type": "string",
+                                        "pattern": "^(?:0|[1-9][0-9]{0,8})(?:\\.[0-9]{1,6})?$"
+                                    },
+                                    "total": {
+                                        "type": "string",
+                                        "pattern": "^(?:0|[1-9][0-9]{0,9})\\.[0-9]{6}$"
+                                    }
+                                },
+                                "required": [
+                                    "product_id",
+                                    "variation_id",
+                                    "name",
+                                    "quantity",
+                                    "total"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "items_truncated": {
+                            "type": "boolean"
+                        },
+                        "relation_kinds": {
+                            "type": "array",
+                            "maxItems": 4,
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "parent",
+                                    "renewal",
+                                    "switch",
+                                    "resubscribe"
+                                ]
+                            }
+                        },
+                        "payment_mode_basis": {
+                            "type": "string",
+                            "enum": [
+                                "stored_requires_manual_renewal"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "status",
+                        "customer_id",
+                        "parent_order_id",
+                        "currency",
+                        "agreement_total",
+                        "billing_period",
+                        "billing_interval",
+                        "payment_mode",
+                        "created_at",
+                        "start_at",
+                        "trial_end_at",
+                        "next_payment_at",
+                        "end_at",
+                        "items",
+                        "items_truncated",
+                        "relation_kinds",
+                        "payment_mode_basis"
+                    ],
+                    "additionalProperties": false
+                },
+                "records": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 2147483647
+                            },
+                            "status": {
+                                "type": "string",
+                                "maxLength": 80
+                            },
+                            "currency": {
+                                "type": "string",
+                                "pattern": "^[A-Z]{3}$"
+                            },
+                            "total": {
+                                "type": "string",
+                                "pattern": "^(?:0|[1-9][0-9]{0,9})\\.[0-9]{6}$"
+                            },
+                            "created_at": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 40
+                            },
+                            "paid_at": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 40
+                            },
+                            "relation_kinds": {
+                                "type": "array",
+                                "maxItems": 4,
+                                "items": {
+                                    "type": "string",
+                                    "enum": [
+                                        "parent",
+                                        "renewal",
+                                        "switch",
+                                        "resubscribe"
+                                    ]
+                                }
+                            },
+                            "kind": {
+                                "type": "string",
+                                "enum": [
+                                    "order",
+                                    "refund"
+                                ]
+                            },
+                            "parent_order_id": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 2147483647
+                            }
+                        },
+                        "required": [
+                            "id",
+                            "status",
+                            "currency",
+                            "total",
+                            "created_at",
+                            "paid_at",
+                            "relation_kinds",
+                            "kind",
+                            "parent_order_id"
+                        ],
+                        "additionalProperties": false
+                    }
+                },
+                "record_type": {
+                    "type": "string",
+                    "enum": [
+                        "orders",
+                        "refunds"
+                    ]
+                },
+                "scan_started_at": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+00:00$"
+                }
+            },
+            "required": [
+                "observed_at",
+                "timezone",
+                "not_assessed",
+                "page_info",
+                "count",
+                "subscription",
+                "records",
+                "record_type",
+                "scan_started_at"
+            ],
+            "additionalProperties": false
+        },
+        "subscriptions.get_payment_health": {
+            "type": "object",
+            "properties": {
+                "observed_at": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+00:00$"
+                },
+                "timezone": {
+                    "type": "string",
+                    "maxLength": 80
+                },
+                "not_assessed": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "exhaustive_audit_history",
+                            "payment_attempts",
+                            "effective_collection_mode",
+                            "gateway_readiness",
+                            "settlement",
+                            "sla",
+                            "status_duration",
+                            "store_totals"
+                        ]
+                    },
+                    "minItems": 8,
+                    "maxItems": 8
+                },
+                "page_info": {
+                    "type": "object",
+                    "properties": {
+                        "anchor_id": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        },
+                        "next_offset": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        },
+                        "has_more": {
+                            "type": "boolean"
+                        },
+                        "revision": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "scanned": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100
+                        },
+                        "coverage": {
+                            "type": "string",
+                            "enum": [
+                                "bounded_scan_current_state"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "anchor_id",
+                        "next_offset",
+                        "has_more",
+                        "revision",
+                        "scanned",
+                        "coverage"
+                    ],
+                    "additionalProperties": false
+                },
+                "count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 2147483647
+                },
+                "subscription": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 2147483647
+                        },
+                        "status": {
+                            "type": "string",
+                            "enum": [
+                                "pending",
+                                "active",
+                                "on-hold",
+                                "pending-cancel",
+                                "cancelled",
+                                "expired",
+                                "switched"
+                            ]
+                        },
+                        "customer_id": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        },
+                        "parent_order_id": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        },
+                        "currency": {
+                            "type": "string",
+                            "pattern": "^[A-Z]{3}$"
+                        },
+                        "agreement_total": {
+                            "type": "string",
+                            "pattern": "^(?:0|[1-9][0-9]{0,9})\\.[0-9]{6}$"
+                        },
+                        "billing_period": {
+                            "type": "string",
+                            "enum": [
+                                "day",
+                                "week",
+                                "month",
+                                "year"
+                            ]
+                        },
+                        "billing_interval": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 120
+                        },
+                        "payment_mode": {
+                            "type": "string",
+                            "enum": [
+                                "manual_configured",
+                                "automatic_configured"
+                            ]
+                        },
+                        "created_at": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "maxLength": 40
+                        },
+                        "start_at": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "maxLength": 40
+                        },
+                        "trial_end_at": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "maxLength": 40
+                        },
+                        "next_payment_at": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "maxLength": 40
+                        },
+                        "end_at": {
+                            "type": [
+                                "string",
+                                "null"
+                            ],
+                            "maxLength": 40
+                        },
+                        "items": {
+                            "type": "array",
+                            "maxItems": 20,
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "product_id": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 2147483647
+                                    },
+                                    "variation_id": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 2147483647
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "maxLength": 160
+                                    },
+                                    "quantity": {
+                                        "type": "string",
+                                        "pattern": "^(?:0|[1-9][0-9]{0,8})(?:\\.[0-9]{1,6})?$"
+                                    },
+                                    "total": {
+                                        "type": "string",
+                                        "pattern": "^(?:0|[1-9][0-9]{0,9})\\.[0-9]{6}$"
+                                    }
+                                },
+                                "required": [
+                                    "product_id",
+                                    "variation_id",
+                                    "name",
+                                    "quantity",
+                                    "total"
+                                ],
+                                "additionalProperties": false
+                            }
+                        },
+                        "items_truncated": {
+                            "type": "boolean"
+                        },
+                        "relation_kinds": {
+                            "type": "array",
+                            "maxItems": 4,
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "parent",
+                                    "renewal",
+                                    "switch",
+                                    "resubscribe"
+                                ]
+                            }
+                        },
+                        "payment_mode_basis": {
+                            "type": "string",
+                            "enum": [
+                                "stored_requires_manual_renewal"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "status",
+                        "customer_id",
+                        "parent_order_id",
+                        "currency",
+                        "agreement_total",
+                        "billing_period",
+                        "billing_interval",
+                        "payment_mode",
+                        "created_at",
+                        "start_at",
+                        "trial_end_at",
+                        "next_payment_at",
+                        "end_at",
+                        "items",
+                        "items_truncated",
+                        "relation_kinds",
+                        "payment_mode_basis"
+                    ],
+                    "additionalProperties": false
+                },
+                "records": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 2147483647
+                            },
+                            "status": {
+                                "type": "string",
+                                "maxLength": 80
+                            },
+                            "currency": {
+                                "type": "string",
+                                "pattern": "^[A-Z]{3}$"
+                            },
+                            "total": {
+                                "type": "string",
+                                "pattern": "^(?:0|[1-9][0-9]{0,9})\\.[0-9]{6}$"
+                            },
+                            "created_at": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 40
+                            },
+                            "paid_at": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 40
+                            },
+                            "relation_kinds": {
+                                "type": "array",
+                                "maxItems": 4,
+                                "items": {
+                                    "type": "string",
+                                    "enum": [
+                                        "parent",
+                                        "renewal",
+                                        "switch",
+                                        "resubscribe"
+                                    ]
+                                }
+                            },
+                            "kind": {
+                                "type": "string",
+                                "enum": [
+                                    "order",
+                                    "refund"
+                                ]
+                            },
+                            "parent_order_id": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 2147483647
+                            }
+                        },
+                        "required": [
+                            "id",
+                            "status",
+                            "currency",
+                            "total",
+                            "created_at",
+                            "paid_at",
+                            "relation_kinds",
+                            "kind",
+                            "parent_order_id"
+                        ],
+                        "additionalProperties": false
+                    }
+                },
+                "record_type": {
+                    "type": "string",
+                    "enum": [
+                        "orders"
+                    ]
+                },
+                "renewal_facts_in_page": {
+                    "type": "object",
+                    "properties": {
+                        "orders": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        },
+                        "failed_current_status": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        },
+                        "with_recorded_paid_date": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        }
+                    },
+                    "required": [
+                        "orders",
+                        "failed_current_status",
+                        "with_recorded_paid_date"
+                    ],
+                    "additionalProperties": false
+                },
+                "scan_started_at": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+00:00$"
+                }
+            },
+            "required": [
+                "observed_at",
+                "timezone",
+                "not_assessed",
+                "page_info",
+                "count",
+                "subscription",
+                "records",
+                "record_type",
+                "renewal_facts_in_page",
+                "scan_started_at"
+            ],
+            "additionalProperties": false
+        },
+        "subscriptions.get_attention_queue": {
+            "type": "object",
+            "properties": {
+                "observed_at": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+00:00$"
+                },
+                "timezone": {
+                    "type": "string",
+                    "maxLength": 80
+                },
+                "not_assessed": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "exhaustive_audit_history",
+                            "payment_attempts",
+                            "effective_collection_mode",
+                            "gateway_readiness",
+                            "settlement",
+                            "sla",
+                            "status_duration",
+                            "store_totals"
+                        ]
+                    },
+                    "minItems": 8,
+                    "maxItems": 8
+                },
+                "page_info": {
+                    "type": "object",
+                    "properties": {
+                        "anchor_id": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        },
+                        "next_offset": {
+                            "type": [
+                                "integer",
+                                "null"
+                            ],
+                            "minimum": 0,
+                            "maximum": 2147483647
+                        },
+                        "has_more": {
+                            "type": "boolean"
+                        },
+                        "revision": {
+                            "type": "string",
+                            "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "scanned": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100
+                        },
+                        "coverage": {
+                            "type": "string",
+                            "enum": [
+                                "bounded_scan_current_state"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "anchor_id",
+                        "next_offset",
+                        "has_more",
+                        "revision",
+                        "scanned",
+                        "coverage"
+                    ],
+                    "additionalProperties": false
+                },
+                "count": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 2147483647
+                },
+                "subscriptions": {
+                    "type": "array",
+                    "maxItems": 20,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 2147483647
+                            },
+                            "status": {
+                                "type": "string",
+                                "enum": [
+                                    "pending",
+                                    "active",
+                                    "on-hold",
+                                    "pending-cancel",
+                                    "cancelled",
+                                    "expired",
+                                    "switched"
+                                ]
+                            },
+                            "customer_id": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 2147483647
+                            },
+                            "parent_order_id": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 2147483647
+                            },
+                            "currency": {
+                                "type": "string",
+                                "pattern": "^[A-Z]{3}$"
+                            },
+                            "agreement_total": {
+                                "type": "string",
+                                "pattern": "^(?:0|[1-9][0-9]{0,9})\\.[0-9]{6}$"
+                            },
+                            "billing_period": {
+                                "type": "string",
+                                "enum": [
+                                    "day",
+                                    "week",
+                                    "month",
+                                    "year"
+                                ]
+                            },
+                            "billing_interval": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 120
+                            },
+                            "payment_mode": {
+                                "type": "string",
+                                "enum": [
+                                    "manual_configured",
+                                    "automatic_configured"
+                                ]
+                            },
+                            "created_at": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 40
+                            },
+                            "start_at": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 40
+                            },
+                            "trial_end_at": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 40
+                            },
+                            "next_payment_at": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 40
+                            },
+                            "end_at": {
+                                "type": [
+                                    "string",
+                                    "null"
+                                ],
+                                "maxLength": 40
+                            },
+                            "items": {
+                                "type": "array",
+                                "maxItems": 20,
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "product_id": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 2147483647
+                                        },
+                                        "variation_id": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 2147483647
+                                        },
+                                        "name": {
+                                            "type": "string",
+                                            "maxLength": 160
+                                        },
+                                        "quantity": {
+                                            "type": "string",
+                                            "pattern": "^(?:0|[1-9][0-9]{0,8})(?:\\.[0-9]{1,6})?$"
+                                        },
+                                        "total": {
+                                            "type": "string",
+                                            "pattern": "^(?:0|[1-9][0-9]{0,9})\\.[0-9]{6}$"
+                                        }
+                                    },
+                                    "required": [
+                                        "product_id",
+                                        "variation_id",
+                                        "name",
+                                        "quantity",
+                                        "total"
+                                    ],
+                                    "additionalProperties": false
+                                }
+                            },
+                            "items_truncated": {
+                                "type": "boolean"
+                            },
+                            "relation_kinds": {
+                                "type": "array",
+                                "maxItems": 4,
+                                "items": {
+                                    "type": "string",
+                                    "enum": [
+                                        "parent",
+                                        "renewal",
+                                        "switch",
+                                        "resubscribe"
+                                    ]
+                                }
+                            },
+                            "payment_mode_basis": {
+                                "type": "string",
+                                "enum": [
+                                    "stored_requires_manual_renewal"
+                                ]
+                            },
+                            "reasons": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                    "enum": [
+                                        "on_hold",
+                                        "pending_cancellation",
+                                        "stored_next_payment_overdue"
+                                    ]
+                                },
+                                "minItems": 1,
+                                "maxItems": 2
+                            }
+                        },
+                        "required": [
+                            "id",
+                            "status",
+                            "customer_id",
+                            "parent_order_id",
+                            "currency",
+                            "agreement_total",
+                            "billing_period",
+                            "billing_interval",
+                            "payment_mode",
+                            "created_at",
+                            "start_at",
+                            "trial_end_at",
+                            "next_payment_at",
+                            "end_at",
+                            "items",
+                            "items_truncated",
+                            "relation_kinds",
+                            "payment_mode_basis",
+                            "reasons"
+                        ],
+                        "additionalProperties": false
+                    }
+                },
+                "scan_started_at": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+00:00$"
+                }
+            },
+            "required": [
+                "observed_at",
+                "timezone",
+                "not_assessed",
+                "page_info",
+                "count",
+                "subscriptions",
+                "scan_started_at"
+            ],
+            "additionalProperties": false
+        }
+    }
+}
