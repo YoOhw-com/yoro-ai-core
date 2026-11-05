@@ -345,6 +345,14 @@ foreach ( $native_rest_hooks as $hook ) {
         verify( is_wp_error( readonly_quote( $params, [] ) ) && 0 === $GLOBALS['g028_mutating_callback_calls'] && false === get_option( 'g028_forbidden_profile_effect', false ), 'Foreign/closure/mutating callback is rejected without invocation or persistence.' );
         remove_filter( $hook, $foreign, 10 );
     }
+    // A real Woo-owned mutating method must not escape through generic native ownership reflection.
+    $native_mutator = [ ( new ReflectionClass( 'WC_Cart' ) )->newInstanceWithoutConstructor(), 'empty_cart' ];
+    $mutator_owner = new ReflectionMethod( $native_mutator[0], $native_mutator[1] );
+    verify( str_starts_with( realpath( $mutator_owner->getFileName() ), realpath( WC_ABSPATH ) . DIRECTORY_SEPARATOR ), 'Negative method reference has actual locked Woo ownership.' );
+    add_filter( $hook, $native_mutator, 10, 1 );
+    verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Each exact refund hook rejects an actual Woo-owned empty_cart method reference before generic native fallback; it is never invoked.' );
+    remove_filter( $hook, $native_mutator, 10 );
+    valid_result( YoRo_Support_Commerce::profile() );
     add_filter( $hook, '__return_false', 9, 1 );
     verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Correct global callback with an unexpected priority is rejected.' );
     remove_filter( $hook, '__return_false', 9 );

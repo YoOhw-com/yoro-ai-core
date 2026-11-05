@@ -18,6 +18,7 @@ class YoRo_Support_Commerce {
                     try {
                         $callback = $entry['function'];
                         if ( self::native_wordpress_callback( $name, $callback, $priority, $entry['accepted_args'] ?? null ) ) { continue; }
+                        if ( in_array( $name, [ 'woocommerce_rest_shop_order_refund_trashable', 'woocommerce_rest_shop_order_refund_object_trashable' ], true ) ) { return new WP_Error( 'support_checkout_unsupported', 'The native refund guard registration is unsupported.' ); }
                         if ( self::report_mutation_callback( $name, $priority, $entry ) ) { continue; }
                         if ( self::subscription_mutation_callback( $name, $priority, $entry ) ) { continue; }
                         if ( is_array( $callback ) ) {
@@ -73,8 +74,8 @@ class YoRo_Support_Commerce {
         if ( in_array( $hook, [ 'woocommerce_rest_shop_order_refund_trashable', 'woocommerce_rest_shop_order_refund_object_trashable' ], true )
             && '__return_false' === $callback ) {
             $reflection = new ReflectionFunction( $callback );
-            return 10 === $priority && 1 === $accepted_args
-                && realpath( $reflection->getFileName() ) === realpath( ABSPATH . WPINC . '/functions.php' );
+            $file = realpath( $reflection->getFileName() ); $native = realpath( ABSPATH . WPINC . '/functions.php' );
+            return 10 === $priority && 1 === $accepted_args && false !== $file && false !== $native && $file === $native;
         }
         if ( 'woocommerce_stock_amount' === $hook && 'intval' === $callback ) { return true; }
         $known = [ 'woocommerce_shipping_rate_label' => [ 'sanitize_text_field' ], 'woocommerce_attribute_label' => [ 'wp_kses_post' ],
