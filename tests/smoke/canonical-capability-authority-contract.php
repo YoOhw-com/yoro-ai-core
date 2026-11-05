@@ -110,6 +110,19 @@ if ( class_exists( 'YoRo_Subscriptions_Read' ) && ! YoRo_Subscriptions_Read::sup
     $missing_names = array_values( array_diff( $missing_names, $optional ) );
 }
 
+// Diagnostics also require configured signing material, independently of base read support.
+if ( class_exists( 'YoRo_Subscriptions_Read' ) ) {
+	$diagnostics = YoRo_Subscriptions_Read::DiagnosticActions;
+	$features    = $manifest['extensions']['woocommerce.runtime']['commerce_features'] ?? [];
+	if ( ! YoRo_Subscriptions_Read::diagnostics_supported() ) {
+		$assert( [] === array_values( array_intersect( $diagnostics, $actual_names ) ), 'Unsupported subscription diagnostics must never be advertised, including unsupported owner or signer.' );
+		$assert( ! array_key_exists( YoRo_Subscriptions_Read::DiagnosticsExtension, $features ), 'Unsupported subscription diagnostics must not publish a supported feature marker.' );
+		$missing_names = array_values( array_diff( $missing_names, $diagnostics ) );
+	} else {
+		$assert( YoRo_Subscriptions_Read::diagnostics_manifest() === ( $features[YoRo_Subscriptions_Read::DiagnosticsExtension] ?? null ), 'Supported subscription diagnostics must publish the exact versioned feature marker.' );
+	}
+}
+
 $assert( [] === $missing_names, 'The connector must support every API canonical action in this exact compatibility tranche: ' . implode( ', ', $missing_names ) );
 $assert(
 	[] === $extra_names,
