@@ -310,6 +310,76 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
         verify(input.value === '' && retry.hidden && !send.disabled && !bar.hidden && area.querySelector('[name=query]'), 'Direct Refresh estimate abandons an in-flight private selection even while the generic action busy guard is active');
         verify(calls.length === before && !log.children.some(entry => entry.children.some(child => child.textContent === 'LATE_ABANDONED_QUOTE_ANSWER')), 'Late private quote response cannot restore abandoned pending input or expose its answer');
     }
+
+    async function pendingQuote(message, privateOrigin) {
+        if (privateOrigin) await primePrivate();
+        else { responses.push({body: {verified: false}}); await end.event('click'); }
+        input.value = message; responses.push({body: {status: 'context', context: 'quote'}}); await composer.event('submit');
+        area.querySelector('[name=query]').value = 'Pending question quote choice';
+        responses.push({body: {products: [{id: 20, kind: 'simple', name: 'Pending question quote choice', price: '40.00'}]}}); await area.querySelectorAll('form')[0].event('submit');
+        await area.querySelectorAll('button').find(button => button.textContent.startsWith('Pending question quote choice')).event('click');
+        for (const [name, value] of Object.entries({country: 'US', state: 'CA', postcode: '94105'})) area.querySelector('[name=' + name + ']').value = value;
+    }
+    for (const expired of [false, true]) {
+        const message = 'Private pending question on public receipt ' + expired;
+        await pendingQuote(message, true); input.value = 'Unrelated unsent draft'; const before = calls.filter(call => call.url.endsWith('/turn')).length;
+        clockOffset = expired ? 901000 : 0;
+        try {
+            const token = 'new-public-quote-' + expired;
+            responses.push({body: {context_token: token, private: false, expires_at: new Date(Date.now() + 1200000).toISOString(), card: quoteCard}}); await area.querySelectorAll('form')[1].event('submit');
+            verify(bar.hidden && retry.hidden && input.value === 'Unrelated unsent draft' && area.querySelector('.yoro-support-card') && log.querySelectorAll('[data-private]').length === 0, 'Authoritative public receipt removes old private state while preserving the new public card and unrelated draft');
+            verify(calls.filter(call => call.url.endsWith('/turn')).length === before, 'Losing access and rendering a public estimate never infers or replays a private question');
+            responses.push({body: {status: 'completed', answer: {text: 'New public explanation', sources: []}}}); await area.querySelectorAll('button').find(button => button.textContent === 'Explain this estimate').event('click');
+            verify(calls.at(-1).body.context_token === token && calls.at(-1).body.message === 'Please explain this estimate, coupon eligibility and payment methods.' && input.value === 'Unrelated unsent draft', 'Explain binds the new public card without the private-origin pending question, including when the access timer is throttled');
+        } finally { clockOffset = 0; }
+    }
+    {
+        const message = 'Public-origin real pending question remains usable'; await pendingQuote(message, false);
+        responses.push({body: {context_token: 'public-pending-quote', private: false, expires_at: new Date(Date.now() + 300000).toISOString(), card: quoteCard}}); await area.querySelectorAll('form')[1].event('submit');
+        responses.push({body: {status: 'completed', answer: {text: 'Public pending answer', sources: []}}}); await area.querySelectorAll('button').find(button => button.textContent === 'Explain this estimate').event('click');
+        verify(calls.at(-1).body.message === message && calls.at(-1).body.context_token === 'public-pending-quote', 'A public-origin real pending question resumes on its new public estimate');
+    }
+    {
+        const message = 'Private-origin real pending question while grant remains live'; await pendingQuote(message, true);
+        responses.push({body: {context_token: 'live-private-pending-quote', private: true, expires_at: new Date(Date.now() + 300000).toISOString(), card: quoteCard}}); await area.querySelectorAll('form')[1].event('submit');
+        responses.push({body: {status: 'completed', private: true, answer: {text: 'Live private pending answer', sources: []}}}); await area.querySelectorAll('button').find(button => button.textContent === 'Explain this estimate').event('click');
+        verify(!bar.hidden && calls.at(-1).body.message === message && calls.at(-1).body.context_token === 'live-private-pending-quote', 'A private-origin question retains the approved flow under a live private selection');
+    }
+    {
+        await primePrivate(); const message = 'Private owned input after absolute access deadline'; input.value = message;
+        responses.push({error: true}); await composer.event('submit'); const before = calls.length;
+        clockOffset = 901000;
+        try { await retry.event('click'); verify(calls.length === before && bar.hidden && retry.hidden && input.value === '' && !send.disabled, 'Absolute access deadline blocks a private retry and clears owned input even when its timer did not run'); }
+        finally { clockOffset = 0; }
+    }
+
+
+    for (const exposure of ['orders', 'selection', 'answer']) {
+        await primePrivate();
+        if (exposure === 'selection') { responses.push({body: orderList}); await orders.event('click'); }
+        let release; const wait = new Promise(resolve => { release = resolve; });
+        const lateOrder = {...selectedOrder, card: {...selectedOrder.card, title: 'LATE_PRIVATE_ORDER_CARD'}};
+        responses.push({wait, body: exposure === 'orders' ? orderList : (exposure === 'selection' ? lateOrder : {status: 'completed', private: true, answer: {text: 'LATE_PRIVATE_ANSWER_AFTER_GRANT_DEADLINE', sources: []}})});
+        if (exposure === 'answer') input.value = 'Private input awaiting deadline-late answer';
+        const delayed = exposure === 'orders' ? orders.event('click') : (exposure === 'selection' ? area.querySelectorAll('button').find(button => button.textContent === 'Select order').event('click') : composer.event('submit'));
+        await flush(); clockOffset = 901000; // Request issued with a live grant, response delivered after the absolute deadline; timer withheld.
+        try {
+            release(); await delayed;
+            verify(bar.hidden && retry.hidden && !send.disabled && log.querySelectorAll('[data-private]').length === 0 && area.querySelectorAll('[data-private]').length === 0, 'Late private ' + exposure + ' response cannot expose data after the absolute access deadline, even before the access timer runs');
+            verify(!area.querySelectorAll('button').some(button => button.textContent === 'Select order') && !area.querySelector('.yoro-support-card') && !log.children.some(entry => entry.children.some(child => child.textContent === 'LATE_PRIVATE_ANSWER_AFTER_GRANT_DEADLINE')), 'Late private ' + exposure + ' receipt is rejected before rendering its list, card or answer');
+            if (exposure === 'answer') verify(input.value === '', 'Definitive deadline loss clears the private-owned composer on a delayed answer');
+        } finally { clockOffset = 0; }
+    }
+    {
+        const message = 'Public-origin question awaits private selection without a local grant'; await pendingQuote(message, false);
+        responses.push({body: {context_token: 'untrusted-private-receipt', private: true, expires_at: new Date(Date.now() + 300000).toISOString(), card: quoteCard}}); await area.querySelectorAll('form')[1].event('submit');
+        verify(bar.hidden && !area.querySelector('.yoro-support-card') && area.querySelector('[name=email]') && retry.hidden, 'A private-only receipt without a trustworthy local live-grant deadline is not displayed');
+        area.querySelector('[name=email]').value = 'buyer@example.test'; responses.push({body: {challenge_id: 'new-confirmation', email_hint: 'b***@example.test'}}); await area.querySelector('form').event('submit');
+        area.querySelector('[name=code]').value = '123456'; responses.push({body: {verified: true, expires_at: new Date(Date.now() + 900000).toISOString(), email_hint: 'b***@example.test'}}, {body: orderList}); await area.querySelector('form').event('submit');
+        responses.push({body: selectedOrder}, {body: {status: 'completed', private: true, answer: {text: 'Public question resumed after explicit confirmation', sources: []}}}); await area.querySelectorAll('button').find(button => button.textContent === 'Select order').event('click');
+        verify(calls.at(-1).body.message === message && calls.at(-1).body.context_token === selectedOrder.context_token, 'A public-origin pending question survives the rejected private receipt and resumes only after explicit live verification and selection');
+    }
+
     const r3OriginalAssertions = checks, r3Cases = [], r3Failures = []; let r3Checks = 0;
     const r3Turns = () => calls.filter(call => call.url.endsWith('/turn'));
     const r3Check = (condition, message) => { r3Checks++; if (!condition) r3Failures.push(message); return condition; };

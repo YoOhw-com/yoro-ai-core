@@ -60,7 +60,7 @@
     const log = root.querySelector('[role=log]'), status = root.querySelector('[data-status]'), contextArea = root.querySelector('.yoro-support-context');
     const verifiedBar = root.querySelector('.yoro-support-verified');
     let privateComposerValue = null;
-    let quoteParameters = null, csrf = '', busy = false, pending = null, retryCount = 0, pendingQuestion = '', contextToken = '', contextPrivate = false, contextExpires = 0, verified = false, revoking = false, accessTimer, contextTimer, generation = 0;
+    let quoteParameters = null, csrf = '', busy = false, pending = null, retryCount = 0, pendingQuestion = '', pendingQuestionPrivate = false, contextToken = '', contextPrivate = false, contextExpires = 0, verified = false, accessExpires = 0, revoking = false, accessTimer, contextTimer, generation = 0;
     let capabilities = {content: true, products: true, quote: false, coupons: false, payments: false, orders: false};
     const endpoint = root.dataset.endpoint;
     const node = (tag, text = '', className = '') => { const el = document.createElement(tag); if (text) el.textContent = text; if (className) el.className = className; return el; };
@@ -114,18 +114,18 @@
     }
     function clearPrivate(keepQuestion = false) {
         clearPrivateComposer();
-        clearTimeout(accessTimer); clearTimeout(contextTimer); verified = false; verifiedBar.hidden = true;
+        clearTimeout(accessTimer); clearTimeout(contextTimer); verified = false; accessExpires = 0; verifiedBar.hidden = true;
         contextToken = ''; contextPrivate = false; contextExpires = 0; quoteParameters = null; pending = null; retry.hidden = true;
-        log.querySelectorAll('[data-private]').forEach(el => el.remove()); contextArea.replaceChildren(); if (!keepQuestion) pendingQuestion = '';
+        log.querySelectorAll('[data-private]').forEach(el => el.remove()); contextArea.replaceChildren(); if (!keepQuestion || pendingQuestionPrivate) { pendingQuestion = ''; pendingQuestionPrivate = false; }
     }
-    function invalidatePrivate() {
-        generation++; clearPrivate(); busy = false; send.disabled = false;
+    function invalidatePrivate(keepQuestion = false) {
+        generation++; clearPrivate(keepQuestion); busy = false; send.disabled = false;
     }
     function setVerification(state) {
         clearTimeout(accessTimer); const wasVerified = verified; verified = state.verified === true;
         if (!verified) { if (wasVerified || contextPrivate) invalidatePrivate(); else verifiedBar.hidden = true; return; }
         verifiedBar.hidden = false; verifiedBar.querySelector('[data-verified-label]').textContent = t('Email verified') + ' · ' + (state.email_hint || '');
-        const remaining = Date.parse(state.expires_at) - Date.now();
+        accessExpires = Date.parse(state.expires_at); const remaining = accessExpires - Date.now();
         if (!(remaining > 0)) { invalidatePrivate(); return; }
         accessTimer = setTimeout(() => { invalidatePrivate(); status.textContent = t('Private access ended. Verify again to view orders.'); }, Math.min(remaining, 2147483647));
     }
@@ -153,10 +153,11 @@
         });
     }
     function handleAnswer(result, message) {
+        if (result.private === true) requirePrivateAccess();
         status.textContent = '';
-        if (result.status === 'context') { pendingQuestion = message; pending = null; openFlow(result.context, true); return; }
+        if (result.status === 'context') { pendingQuestion = message; pendingQuestionPrivate = contextPrivate; pending = null; openFlow(result.context, true); return; }
         if (!result.answer || typeof result.answer.text !== 'string') throw new Error('unavailable');
-        const entry = append(result.answer.text, 'assistant', result.answer.sources, result.private === true); renderProducts(entry, result.answer.products); pending = null; pendingQuestion = ''; if (input.value.trim() === message) input.value = ''; privateComposerValue = null;
+        const entry = append(result.answer.text, 'assistant', result.answer.sources, result.private === true); renderProducts(entry, result.answer.products); pending = null; pendingQuestion = ''; pendingQuestionPrivate = false; if (input.value.trim() === message) input.value = ''; privateComposerValue = null;
     }
     function renderProducts(entry, products) {
         if (!Array.isArray(products)) return;
@@ -201,7 +202,7 @@
         form.addEventListener('submit', event => { event.preventDefault(); action(async () => { const state = await request('verification', {action: 'confirm', challenge_id: sent.challenge_id, code: code.value}); code.value = ''; setVerification(state); await after(); }); });
     }
     async function orders(page = 1) {
-        const result = await request('context', {kind: 'orders', page}); contextArea.replaceChildren(); const card = node('div', '', 'yoro-support-flow'); card.dataset.private = 'true'; card.append(node('h3', t('Choose an order')));
+        const result = await request('context', {kind: 'orders', page}); requirePrivateAccess(); contextArea.replaceChildren(); const card = node('div', '', 'yoro-support-flow'); card.dataset.private = 'true'; card.append(node('h3', t('Choose an order')));
         if (!result.orders.length) card.append(node('p', t('No orders match this verified email.')));
         result.orders.forEach(order => { const row = node('div', '', 'yoro-support-order'); row.append(node('strong', '#' + order.number), node('p', [order.date, order.status, order.total + ' ' + order.currency].join(' · ')), button('Select order', () => action(async () => {
             const selected = await request('context', {kind: 'order', params: {reference: order.reference}}); selectContext(selected); renderCard(selected.card); contextArea.append(button('Other orders', () => action(() => orders()))); contextArea.append(button('Ask about this order', () => sendMessage(t('What is the current status of this order?')))); const question = pendingQuestion, token = contextToken, ownGeneration = generation; if (question) setTimeout(() => { if (generation === ownGeneration && contextToken === token && pendingQuestion === question) sendMessage(question, true); }, 0);
@@ -209,6 +210,10 @@
         if (result.has_next) card.append(button('Next orders', () => action(() => orders(page + 1)))); contextArea.append(card);
     }
     function selectContext(result) {
+        if (result.private === true) requirePrivateAccess();
+        else if (verified || pendingQuestionPrivate) {
+            const parameters = quoteParameters; invalidatePrivate(true); quoteParameters = parameters;
+        }
         if (pending && pending.context_token !== result.context_token) { pending = null; retry.hidden = true; }
         if (contextPrivate && result.private !== true) clearPrivateComposer();
         contextToken = result.context_token; contextPrivate = result.private === true; contextExpires = Date.parse(result.expires_at);
@@ -217,13 +222,17 @@
     }
     function clearSelectedContext(keepQuestion = false) {
         generation++; clearTimeout(contextTimer); clearPrivateComposer();
-        contextToken = ''; contextPrivate = false; contextExpires = 0; quoteParameters = null; if (!keepQuestion) pendingQuestion = '';
+        contextToken = ''; contextPrivate = false; contextExpires = 0; quoteParameters = null; if (!keepQuestion) { pendingQuestion = ''; pendingQuestionPrivate = false; }
         contextArea.replaceChildren(); pending = null; retry.hidden = true; busy = false; send.disabled = false;
     }
     function expireContext() {
         clearSelectedContext(); status.textContent = t('Selected context expired. Refresh before asking again.');
     }
+    function requirePrivateAccess() {
+        if (!verified || !(accessExpires > Date.now())) { invalidatePrivate(true); throw {code: 'support_verification_required'}; }
+    }
     function requireCurrentContext() {
+        if (contextPrivate || pendingQuestionPrivate) requirePrivateAccess();
         if (contextToken && contextExpires <= Date.now()) { expireContext(); throw {code: 'support_context_invalid'}; }
     }
     function renderCard(card) {
