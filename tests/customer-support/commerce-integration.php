@@ -209,7 +209,17 @@ $order = wc_create_order(); $order->set_billing_email( 'buyer@example.test' ); $
 $other = wc_create_order(); $other->set_billing_email( 'other@example.test' ); $other->add_product( $p, 1 ); $other->save();
 $proof = [ 'purpose' => 'orders', 'email' => 'buyer@example.test', 'access_id' => 'synthetic-access', 'session_id' => 'synthetic-session', 'expires_at' => gmdate( 'c', time() + 900 ) ];
 $rows = valid_result( YoRo_Support_Commerce::orders( $proof ) ); verify( 1 === count( $rows['orders'] ), 'Native order search filters verified billing email.' );
-$reference = $rows['orders'][0]['reference']; verify( ! str_starts_with( $reference, $order->get_id() . '.' ), 'Order reference is opaque and encrypted.' );
+$reference = $rows['orders'][0]['reference'];
+
+$private_number = static fn( $number ) => 'Order for buyer@<b>example.test</b>';
+$private_status = static function ( $statuses ) { $statuses['wc-processing'] = 'Processing for BUYER@EXAMPLE.TEST'; return $statuses; };
+add_filter( 'woocommerce_order_number', $private_number ); add_filter( 'wc_order_statuses', $private_status );
+try {
+    $private_rows = valid_result( YoRo_Support_Commerce::orders( $proof ) );
+    verify( 'Order for [private email]' === $private_rows['orders'][0]['number'] && 'Processing for [private email]' === $private_rows['orders'][0]['status'], 'Verified picker labels apply the same normalized private identity projection as selected detail.' );
+    verify( false === stripos( wp_json_encode( $private_rows ), 'buyer@example.test' ), 'Verified picker DTO contains no raw authoritative email from native labels.' );
+} finally { remove_filter( 'woocommerce_order_number', $private_number ); remove_filter( 'wc_order_statuses', $private_status ); }
+ verify( ! str_starts_with( $reference, $order->get_id() . '.' ), 'Order reference is opaque and encrypted.' );
 $detail = valid_result( YoRo_Support_Commerce::order( $proof, $reference ) ); verify( 'order' === $detail['kind'] && $detail['data']['items'][0]['name'] === $p->get_name(), 'Native own order detail.' );
 
 $native_projection_cards = [];

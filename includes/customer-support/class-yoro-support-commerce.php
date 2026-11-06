@@ -223,9 +223,9 @@ class YoRo_Support_Commerce {
         $rows = [];
         foreach ( array_slice( $orders, 0, 10 ) as $order ) {
             if ( ! self::owns( $order, $authority ) ) { continue; }
-            $rows[] = [ 'reference' => self::order_reference( $order->get_id(), $authority ), 'number' => self::text( $order->get_order_number(), 60 ),
+            $rows[] = [ 'reference' => self::order_reference( $order->get_id(), $authority ), 'number' => self::private_text( $order->get_order_number(), 60, $authority['email'] ),
                 'date' => $order->get_date_created() ? $order->get_date_created()->date( 'Y-m-d' ) : '',
-                'status' => self::text( wc_get_order_status_name( $order->get_status() ), 80 ), 'total' => self::money( $order->get_total() ), 'currency' => $order->get_currency() ];
+                'status' => self::private_text( wc_get_order_status_name( $order->get_status() ), 80, $authority['email'] ), 'total' => self::money( $order->get_total() ), 'currency' => $order->get_currency() ];
         }
         return [ 'orders' => $rows, 'page' => $page, 'has_next' => count( $orders ) > 10 ];
     }
