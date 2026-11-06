@@ -43,8 +43,10 @@ let sessionNeedsRecovery = false;
 const recoveredSession = () => ({body: {csrf: 'synthetic-recovered-csrf', protocol: 2, capabilities: {content: true, products: true, quote: true, coupons: false, payments: true, orders: true}, verification: {verified: false}}});
 const calls = [], responses = [], timers = new Map(); let timerId = 0, uuid = 0;
 const flush = () => new Promise(resolve => setImmediate(resolve));
+let clockOffset = 0;
+class FixtureDate extends Date { static now() { return Date.now() + clockOffset; } }
 const sandbox = {document, navigator: {language: 'en'}, window: {location: {origin: 'https://fixture.invalid'}, matchMedia: () => ({matches: false, addEventListener(type, fn) { iconMotionChanged = fn; }}), confirm: () => true, addEventListener() {}},
-    crypto: {randomUUID: () => 'synthetic-turn-' + (++uuid)}, URL, AbortController, Date, Map, console,
+    crypto: {randomUUID: () => 'synthetic-turn-' + (++uuid)}, URL, AbortController, Date: FixtureDate, Map, console,
     setTimeout(fn, delay) { const id = ++timerId; timers.set(id, {fn, delay}); if (delay === 0) setImmediate(() => { if (timers.has(id)) { timers.delete(id); fn(); } }); return id; }, clearTimeout(id) { timers.delete(id); },
     fetch: async (url, options) => { const body = JSON.parse(options.body); calls.push({url, options, body}); const next = responses.shift(); assert.ok(next, 'Unexpected protocol request'); if (next.commit) { assert.ok(url.endsWith('/turn')); const held = r3Committed.get(body.turn_id); if (held) assert.deepEqual(held, body); else r3Committed.set(body.turn_id, JSON.parse(JSON.stringify(body))); } if (next.body?.code === 'support_session_inactive') sessionNeedsRecovery = true;
         if (url.endsWith('/session') && next.body?.csrf) sessionNeedsRecovery = false;
@@ -215,6 +217,24 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
             verify(calls.length === before + 1, 'Midphase HTTP denial creates no automatic inference or session admission');
             midphaseCases++;
         }
+    }
+    for (const route of ['timer', 'Submit', 'Retry', 'first-late-Submit']) {
+        await primePrivate(); input.value = 'Private composer at selected-context deadline ' + route;
+        let release; const wait = new Promise(resolve => { release = resolve; });
+        let inFlight;
+        if (route === 'timer') { responses.push({wait, body: {status: 'completed', private: true, answer: {text: 'LATE_CONTEXT_RESULT', sources: []}}}); inFlight = composer.event('submit'); await flush(); }
+        else if (route !== 'first-late-Submit') { responses.push({error: true}); await composer.event('submit'); }
+        const before = calls.length;
+        if (route === 'timer') { [...timers.values()].find(timer => timer.delay > 290000 && timer.delay <= 300000).fn(); await flush(); release(); await inFlight; }
+        else { clockOffset = 301000; try { await (route === 'Retry' ? retry : composer).event(route === 'Retry' ? 'click' : 'submit'); } finally { clockOffset = 0; } }
+        verify(input.value === '' && retry.hidden && !send.disabled && !bar.hidden && area.children.length === 0, 'Selected-context ' + route + ' expiry clears the owned composer but preserves the live verified grant');
+        verify(calls.length === before && !log.children.some(entry => entry.children.some(child => child.textContent === 'LATE_CONTEXT_RESULT')), 'Expired context dispatches no retry/public turn and a delayed response stays discarded');
+        await composer.event('submit'); verify(calls.length === before, 'Expired private composer cannot be submitted again as public');
+    }
+    await primePrivate(); {
+        input.value = 'Unrelated unsent draft at context expiry';
+        [...timers.values()].find(timer => timer.delay > 290000 && timer.delay <= 300000).fn(); await flush();
+        verify(input.value === 'Unrelated unsent draft at context expiry' && !bar.hidden, 'Context expiry preserves an unrelated unsent draft and the live grant');
     }
     for (const loss of ['end', 'expiry', 'denial']) {
         await primePrivate();

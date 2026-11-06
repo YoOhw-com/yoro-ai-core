@@ -108,9 +108,12 @@
         });
         log.append(entry); while (log.children.length > 24) log.firstElementChild.remove(); log.scrollTop = log.scrollHeight; return entry;
     }
-    function clearPrivate(keepQuestion = false) {
+    function clearPrivateComposer() {
         if (privateComposerValue !== null && input.value === privateComposerValue) input.value = '';
         privateComposerValue = null;
+    }
+    function clearPrivate(keepQuestion = false) {
+        clearPrivateComposer();
         clearTimeout(accessTimer); clearTimeout(contextTimer); verified = false; verifiedBar.hidden = true;
         contextToken = ''; contextPrivate = false; contextExpires = 0; quoteParameters = null; pending = null; retry.hidden = true;
         log.querySelectorAll('[data-private]').forEach(el => el.remove()); contextArea.replaceChildren(); if (!keepQuestion) pendingQuestion = '';
@@ -135,7 +138,8 @@
     async function sendMessage(message, fromResume = false) {
         if (busy) return;
         await action(async () => {
-            if (contextToken && contextExpires <= Date.now()) { contextToken = ''; throw {code: 'support_context_invalid'}; }
+            if (contextPrivate && input.value.trim() === message) privateComposerValue = input.value;
+            requireCurrentContext();
             if (pending && pending.message === message && pending.context_token === contextToken) {
                 if (retryCount >= 2) return;
                 retryCount++;
@@ -143,7 +147,6 @@
                 retry.hidden = !pending || retryCount >= 2;
                 return;
             }
-            if (contextPrivate && input.value.trim() === message) privateComposerValue = input.value;
             if (!fromResume) append(message, 'user', [], contextPrivate);
             pending = {turn_id: crypto.randomUUID(), message, context_token: contextToken}; retryCount = 0; retry.hidden = true; status.textContent = t('Thinking…');
             const result = await request('turn', pending); handleAnswer(result, message);
@@ -171,7 +174,7 @@
     }
     composer.addEventListener('submit', async event => { event.preventDefault(); const message = input.value.trim(); if (!message || message.length > 2000) return; await sendMessage(message); if (pending) retry.hidden = retryCount >= 2; });
     input.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); composer.requestSubmit(); } });
-    retry.addEventListener('click', () => action(async () => { if (!pending || retryCount >= 2) return; retryCount++; const result = await request('turn', pending); handleAnswer(result, pending.message); retry.hidden = !pending || retryCount >= 2; }));
+    retry.addEventListener('click', () => action(async () => { if (!pending || retryCount >= 2) return; requireCurrentContext(); retryCount++; const result = await request('turn', pending); handleAnswer(result, pending.message); retry.hidden = !pending || retryCount >= 2; }));
     root.querySelector('[data-reset]').addEventListener('click', () => { if (!window.confirm(t('New conversation? Current private access will end.'))) return; action(async () => { const result = await request('session', {reset: true}); csrf = result.csrf; invalidatePrivate(); log.replaceChildren(); input.value = ''; }); });
     root.querySelector('[data-end-private]').addEventListener('click', async () => {
         if (revoking) return; revoking = true; invalidatePrivate(); busy = true; send.disabled = true;
@@ -208,7 +211,16 @@
     function selectContext(result) {
         contextToken = result.context_token; contextPrivate = result.private === true; contextExpires = Date.parse(result.expires_at);
         clearTimeout(contextTimer); const token = contextToken;
-        contextTimer = setTimeout(() => { if (contextToken === token) { generation++; contextToken = ''; contextArea.replaceChildren(); pending = null; retry.hidden = true; busy = false; send.disabled = false; status.textContent = t('Selected context expired. Refresh before asking again.'); } }, Math.max(0, contextExpires - Date.now()));
+        contextTimer = setTimeout(() => { if (contextToken === token) expireContext(); }, Math.max(0, contextExpires - Date.now()));
+    }
+    function expireContext() {
+        generation++; clearTimeout(contextTimer); clearPrivateComposer();
+        contextToken = ''; contextPrivate = false; contextExpires = 0; quoteParameters = null; pendingQuestion = '';
+        contextArea.replaceChildren(); pending = null; retry.hidden = true; busy = false; send.disabled = false;
+        status.textContent = t('Selected context expired. Refresh before asking again.');
+    }
+    function requireCurrentContext() {
+        if (contextToken && contextExpires <= Date.now()) { expireContext(); throw {code: 'support_context_invalid'}; }
     }
     function renderCard(card) {
         contextArea.replaceChildren(); const box = node('div', '', 'yoro-support-card'); if (contextPrivate) box.dataset.private = 'true'; const data = card.data;

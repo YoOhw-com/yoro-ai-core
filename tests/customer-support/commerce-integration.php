@@ -219,7 +219,7 @@ foreach ( [ 100, 101 ] as $quantity ) {
     verify( $quantity === $large_detail['data']['items'][0]['quantity'] && 1 === count( $large_detail['data']['items'] ), 'Bounded historical order keeps the native line quantity, including more than the quote cap.' );
     $native_projection_cards[] = $large_detail;
 }
-foreach ( [ 'Gift for buyer@example.test', 'Gift for BUYER@EXAMPLE.TEST', 'Gift for buyer&#64;example.test' ] as $private_name ) {
+foreach ( [ 'Gift for buyer@example.test', 'Gift for BUYER@EXAMPLE.TEST', 'Gift for buyer&#64;example.test', 'Gift for buyer@<b>example.test</b>', 'Gift for buyer&#64;<b>example.test</b>', 'Gift for buyer@&lt;b&gt;example.test&lt;/b&gt;' ] as $private_name ) {
     $native_item->set_name( $private_name ); $native_item->save();
     $private_detail = valid_result( YoRo_Support_Commerce::order( $proof, $reference ) );
     verify( 'Gift for [private email]' === $private_detail['data']['items'][0]['name'] && false === stripos( wp_json_encode( $private_detail ), 'buyer@example.test' ), 'Private order projection removes only the authoritative billing email before hashing and truncation.' );
@@ -275,6 +275,13 @@ verify( 'valid' === valid_result( readonly_quote( $params + [ 'coupon' => '98765
 $virtual = source_product( 'Free virtual fixture', '0' ); $virtual->set_virtual( true ); $virtual->save();
 $virtual_params = $params; $virtual_params['items'] = [ [ 'product_id' => $virtual->get_id(), 'quantity' => 1 ] ];
 $free = valid_result( readonly_quote( $virtual_params, [] ) );
+
+verify( is_wp_error( readonly_quote( $virtual_params + [ 'shipping_rates' => [ 'flat_rate:' . $rate_id ] ], [] ) ), 'An explicit physical-package rate cannot survive a final virtual quote.' );
+foreach ( [ 1, 'missing-package' ] as $missing_package ) {
+    $extra_selection = $params + [ 'shipping_rates' => [ 0 => 'flat_rate:' . $rate_id, $missing_package => 'flat_rate:' . $rate_id ] ];
+    verify( is_wp_error( readonly_quote( $extra_selection, [] ) ), 'Explicit rate keys absent from final native packages fail closed.' );
+}
+
 verify( '0.00' === $free['data']['shipping'] && '0.00' === $free['data']['total'] && [] === $free['data']['payment_methods'], 'Native virtual zero-total cart needs neither shipping nor a payment gateway.' );
 $virtual->set_regular_price( '30' ); $virtual->save();
 verify( in_array( 'Bank transfer', valid_result( readonly_quote( $virtual_params, [] ) )['data']['payment_methods'], true ), 'Positive native total retains enabled payment gateway.' );
@@ -431,6 +438,52 @@ foreach ( [ [ $known[1] + 1, $known[2] ], [ $known[1], $known[2] + 1 ] ] as $bin
     add_filter( $known[0], 'wc_sanitize_coupon_code', $binding[0], $binding[1] );
     try { verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'A legitimate native callable with changed priority or arity is unsupported.' ); }
     finally { remove_filter( $known[0], 'wc_sanitize_coupon_code', $binding[0] ); add_filter( $known[0], 'wc_sanitize_coupon_code', $known[1], $known[2] ); }
+}
+valid_result( YoRo_Support_Commerce::profile() );
+
+$autoloads = 0;
+$sentinel = static function ( $class ) use ( &$autoloads ) { if ( 'SupportUnloadedVendor\\Mutator' === $class ) { ++$autoloads; } };
+spl_autoload_register( $sentinel );
+try {
+    foreach ( [ 'SupportUnloadedVendor\\Mutator::run', [ 'SupportUnloadedVendor\\Mutator', 'run' ] ] as $unknown_static ) {
+        add_action( 'woocommerce_before_get_rates_for_package', $unknown_static, 10, 0 );
+        try { verify( is_wp_error( YoRo_Support_Commerce::profile() ) && 0 === $autoloads, 'Static string and array callbacks are denied without autoload or invocation.' ); }
+        finally { remove_action( 'woocommerce_before_get_rates_for_package', $unknown_static, 10 ); }
+    }
+} finally { spl_autoload_unregister( $sentinel ); }
+$static_positive = null;
+foreach ( $GLOBALS['wp_filter'] as $hook => $value ) {
+    if ( 0 !== strpos( $hook, 'woocommerce_' ) ) { continue; }
+    foreach ( $value->callbacks as $priority => $callbacks ) { foreach ( $callbacks as $entry ) {
+        $callback = $entry['function'];
+        if ( is_array( $callback ) && is_string( $callback[0] ) && class_exists( $callback[0], false )
+            && ( new ReflectionMethod( $callback[0], $callback[1] ) )->isStatic() ) {
+            $static_positive = [ $hook, $priority, $entry ]; break 3;
+        }
+    } }
+}
+verify( is_array( $static_positive ), 'Actual native registry contains a loaded static callback positive.' );
+[ $hook, $priority, $entry ] = $static_positive;
+$static_string = implode( '::', $entry['function'] );
+remove_filter( $hook, $entry['function'], $priority ); add_filter( $hook, $static_string, $priority, $entry['accepted_args'] );
+try { valid_result( YoRo_Support_Commerce::profile() ); verify( true, 'A loaded native static string retains its exact legitimate registration.' ); }
+finally { remove_filter( $hook, $static_string, $priority ); add_filter( $hook, $entry['function'], $priority, $entry['accepted_args'] ); }
+$wp_bindings = [];
+foreach ( $GLOBALS['wp_filter'] as $hook => $value ) {
+    if ( 0 !== strpos( $hook, 'woocommerce_' ) ) { continue; }
+    foreach ( $value->callbacks as $priority => $callbacks ) { foreach ( $callbacks as $entry ) {
+        $callback = $entry['function'];
+        if ( 'intval' === $callback || ( is_string( $callback ) && in_array( $callback, [ 'sanitize_text_field', 'wp_kses_post', 'do_blocks', 'wptexturize', 'convert_smilies', 'convert_chars', 'wpautop', 'shortcode_unautop', 'prepend_attachment', 'do_shortcode', 'absint' ], true ) )
+            || ( is_array( $callback ) && $callback[0] instanceof WP_Embed && 'run_shortcode' === $callback[1] ) ) { $wp_bindings[] = [ $hook, $priority, $entry ]; }
+    } }
+}
+verify( count( $wp_bindings ) >= 14, 'Locked native WordPress helper registrations are present as positives.' );
+foreach ( $wp_bindings as [ $hook, $priority, $entry ] ) {
+    foreach ( [ [ $priority + 1, $entry['accepted_args'] ], [ $priority, 0 ] ] as $binding ) {
+        add_filter( $hook, $entry['function'], $binding[0], $binding[1] );
+        try { verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Known native WordPress helpers require exact priority and arity, without invoking an altered registration.' ); }
+        finally { remove_filter( $hook, $entry['function'], $binding[0] ); add_filter( $hook, $entry['function'], $priority, $entry['accepted_args'] ); }
+    }
 }
 valid_result( YoRo_Support_Commerce::profile() );
 

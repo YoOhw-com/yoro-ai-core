@@ -29,10 +29,14 @@ class YoRo_Support_Quote_Cart extends WC_Cart {
         $this->set_shipping_taxes( [] );
         $this->shipping_methods = [];
         $this->has_calculated_shipping = false;
-        if ( ! $this->needs_shipping() || ! $this->show_shipping() ) { return []; }
+        $chosen = WC()->session->get( 'chosen_shipping_methods', [] );
+        if ( ! $this->needs_shipping() || ! $this->show_shipping() ) {
+            if ( $chosen ) { throw new UnexpectedValueException( 'Shipping package changed.' ); }
+            return [];
+        }
         $this->has_calculated_shipping = true;
         $packages = $this->support_shipping->calculate_shipping( $this->get_shipping_packages() );
-        $chosen = WC()->session->get( 'chosen_shipping_methods', [] );
+        if ( array_diff_key( $chosen, $packages ) ) { throw new UnexpectedValueException( 'Shipping package changed.' ); }
         $counts = []; $previous = [];
         foreach ( $packages as $index => $package ) {
             if ( isset( $chosen[ $index ] ) && ! isset( $package['rates'][ $chosen[ $index ] ] ) ) { throw new UnexpectedValueException( 'Shipping selection changed.' ); }

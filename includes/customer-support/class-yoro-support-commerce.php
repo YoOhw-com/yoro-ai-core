@@ -27,7 +27,11 @@ class YoRo_Support_Commerce {
                             $reflection = new ReflectionMethod( $callback[0], $callback[1] );
                             $identity = ( is_object( $callback[0] ) ? get_class( $callback[0] ) : $callback[0] ) . '::' . $callback[1];
                         }
-                        elseif ( is_string( $callback ) && strpos( $callback, '::' ) !== false ) { $reflection = new ReflectionMethod( ...explode( '::', $callback, 2 ) ); $identity = $callback; }
+                        elseif ( is_string( $callback ) && strpos( $callback, '::' ) !== false ) {
+                            [ $class, $method ] = explode( '::', $callback, 2 );
+                            if ( ! class_exists( $class, false ) ) { return new WP_Error( 'support_checkout_unsupported', 'A checkout callback cannot be safely inspected.' ); }
+                            $reflection = new ReflectionMethod( $class, $method ); $identity = $callback;
+                        }
                         elseif ( is_object( $callback ) && ! $callback instanceof Closure ) { $reflection = new ReflectionMethod( $callback, '__invoke' ); $identity = get_class( $callback ) . '::__invoke'; }
                         else { $reflection = new ReflectionFunction( $callback ); $identity = $callback instanceof Closure ? 'closure:' . $reflection->getStartLine() . ':' . $reflection->getEndLine() : $callback; }
                         $file = $reflection->getFileName();
@@ -85,13 +89,15 @@ class YoRo_Support_Commerce {
             $file = realpath( $reflection->getFileName() ); $native = realpath( ABSPATH . WPINC . '/functions.php' );
             return 10 === $priority && 1 === $accepted_args && false !== $file && false !== $native && $file === $native;
         }
-        if ( 'woocommerce_stock_amount' === $hook && 'intval' === $callback ) { return true; }
+        if ( 'woocommerce_stock_amount' === $hook && 'intval' === $callback ) { return 10 === $priority && 1 === $accepted_args; }
         $known = [ 'woocommerce_shipping_rate_label' => [ 'sanitize_text_field' ], 'woocommerce_attribute_label' => [ 'wp_kses_post' ],
             'woocommerce_short_description' => [ 'do_blocks', 'wptexturize', 'convert_smilies', 'convert_chars', 'wpautop', 'shortcode_unautop', 'prepend_attachment', 'do_shortcode' ],
             'woocommerce_admin_settings_sanitize_option_woocommerce_notify_low_stock_amount' => [ 'absint' ],
             'woocommerce_admin_settings_sanitize_option_woocommerce_notify_no_stock_amount' => [ 'absint' ] ];
         $embed = 'woocommerce_short_description' === $hook && is_array( $callback ) && $callback[0] instanceof WP_Embed && 'run_shortcode' === $callback[1];
         if ( ! $embed && ( ! is_string( $callback ) || ! in_array( $callback, $known[ $hook ] ?? [], true ) ) ) { return false; }
+        $expected_priority = $embed ? 8 : ( 'woocommerce_attribute_label' === $hook ? 100 : ( 'do_blocks' === $callback ? 9 : ( 'do_shortcode' === $callback ? 11 : 10 ) ) );
+        if ( $priority !== $expected_priority || 1 !== $accepted_args ) { return false; }
         $reflection = $embed ? new ReflectionMethod( $callback[0], $callback[1] ) : new ReflectionFunction( $callback );
         return 0 === strpos( realpath( $reflection->getFileName() ), realpath( ABSPATH . WPINC ) . DIRECTORY_SEPARATOR );
     }
@@ -279,8 +285,8 @@ class YoRo_Support_Commerce {
     }
     private static function money( $value ) { return wc_format_decimal( $value, wc_get_price_decimals() ); }
     private static function private_text( $value, $max, $email ) {
-        $decoded = html_entity_decode( (string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-        return self::text( false === stripos( $decoded, $email ) ? $value : str_ireplace( $email, '[private email]', $decoded ), $max );
+        $text = wp_strip_all_tags( html_entity_decode( (string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+        return mb_substr( str_ireplace( $email, '[private email]', $text ), 0, $max );
     }
     private static function text( $value, $max ) { return mb_substr( wp_strip_all_tags( (string) $value ), 0, $max ); }
     private static function invalid() { return new WP_Error( 'support_context_invalid', 'The requested information is unavailable. Check your selection or verify again.' ); }
