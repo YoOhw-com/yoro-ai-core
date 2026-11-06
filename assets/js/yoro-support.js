@@ -109,7 +109,7 @@
         log.append(entry); while (log.children.length > 24) log.firstElementChild.remove(); log.scrollTop = log.scrollHeight; return entry;
     }
     function clearPrivateComposer() {
-        if (privateComposerValue !== null && input.value === privateComposerValue) input.value = '';
+        if (privateComposerValue !== null && input.value.trim() === privateComposerValue.trim()) input.value = '';
         privateComposerValue = null;
     }
     function clearPrivate(keepQuestion = false) {
@@ -154,7 +154,7 @@
     }
     function handleAnswer(result, message) {
         status.textContent = '';
-        if (result.status === 'context') { pendingQuestion = message; pending = null; openFlow(result.context); return; }
+        if (result.status === 'context') { pendingQuestion = message; pending = null; openFlow(result.context, true); return; }
         if (!result.answer || typeof result.answer.text !== 'string') throw new Error('unavailable');
         const entry = append(result.answer.text, 'assistant', result.answer.sources, result.private === true); renderProducts(entry, result.answer.products); pending = null; pendingQuestion = ''; if (input.value.trim() === message) input.value = ''; privateComposerValue = null;
     }
@@ -174,7 +174,7 @@
     }
     composer.addEventListener('submit', async event => { event.preventDefault(); const message = input.value.trim(); if (!message || message.length > 2000) return; await sendMessage(message); if (pending) retry.hidden = retryCount >= 2; });
     input.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); composer.requestSubmit(); } });
-    retry.addEventListener('click', () => action(async () => { if (!pending || retryCount >= 2) return; requireCurrentContext(); retryCount++; const result = await request('turn', pending); handleAnswer(result, pending.message); retry.hidden = !pending || retryCount >= 2; }));
+    retry.addEventListener('click', () => action(async () => { if (!pending || retryCount >= 2) return; requireCurrentContext(); if (pending.context_token !== contextToken) { pending = null; retry.hidden = true; status.textContent = t('Send a new message to continue.'); return; } retryCount++; const result = await request('turn', pending); handleAnswer(result, pending.message); retry.hidden = !pending || retryCount >= 2; }));
     root.querySelector('[data-reset]').addEventListener('click', () => { if (!window.confirm(t('New conversation? Current private access will end.'))) return; action(async () => { const result = await request('session', {reset: true}); csrf = result.csrf; invalidatePrivate(); log.replaceChildren(); input.value = ''; }); });
     root.querySelector('[data-end-private]').addEventListener('click', async () => {
         if (revoking) return; revoking = true; invalidatePrivate(); busy = true; send.disabled = true;
@@ -209,15 +209,19 @@
         if (result.has_next) card.append(button('Next orders', () => action(() => orders(page + 1)))); contextArea.append(card);
     }
     function selectContext(result) {
+        if (pending && pending.context_token !== result.context_token) { pending = null; retry.hidden = true; }
+        if (contextPrivate && result.private !== true) clearPrivateComposer();
         contextToken = result.context_token; contextPrivate = result.private === true; contextExpires = Date.parse(result.expires_at);
         clearTimeout(contextTimer); const token = contextToken;
         contextTimer = setTimeout(() => { if (contextToken === token) expireContext(); }, Math.max(0, contextExpires - Date.now()));
     }
-    function expireContext() {
+    function clearSelectedContext(keepQuestion = false) {
         generation++; clearTimeout(contextTimer); clearPrivateComposer();
-        contextToken = ''; contextPrivate = false; contextExpires = 0; quoteParameters = null; pendingQuestion = '';
+        contextToken = ''; contextPrivate = false; contextExpires = 0; quoteParameters = null; if (!keepQuestion) pendingQuestion = '';
         contextArea.replaceChildren(); pending = null; retry.hidden = true; busy = false; send.disabled = false;
-        status.textContent = t('Selected context expired. Refresh before asking again.');
+    }
+    function expireContext() {
+        clearSelectedContext(); status.textContent = t('Selected context expired. Refresh before asking again.');
     }
     function requireCurrentContext() {
         if (contextToken && contextExpires <= Date.now()) { expireContext(); throw {code: 'support_context_invalid'}; }
@@ -244,7 +248,8 @@
         }
         contextArea.append(box);
     }
-    function quoteForm(kind = 'quote') {
+    function quoteForm(kind = 'quote', keepQuestion = false) {
+        if (contextPrivate || privateComposerValue !== null) clearSelectedContext(keepQuestion);
         contextArea.replaceChildren(); contextToken = ''; contextPrivate = false;
         const box = node('div', '', 'yoro-support-flow'); box.append(node('h3', t('Estimate your purchase')));
         const searchForm = node('form'), search = field(searchForm, 'query', 'Search products', '', {maxlength: '120'}), submitSearch = node('button', t('Search')); submitSearch.type = 'submit'; searchForm.append(submitSearch);
@@ -257,9 +262,9 @@
         const calculate = node('button', t('Calculate estimate')); calculate.type = 'submit'; form.append(calculate);
         form.addEventListener('submit', event => { event.preventDefault(); action(async () => { if (!items.size) { throw {code: 'support_context_invalid'}; } const params = {items: [...items].map(([product_id, item]) => ({product_id, quantity: item.quantity})), destination: {country: country.value.toUpperCase(), state: state.value, postcode: postcode.value, city: city.value}, coupon: coupon.value}; quoteParameters = {kind, params}; const result = await request('context', {kind, params}); selectContext(result); renderCard(result.card); }); });
     }
-    function openFlow(purpose) {
+    function openFlow(purpose, keepQuestion = false) {
         if (purpose === 'orders') { if (!capabilities.orders) return; if (!verified) verificationForm(); else orders().catch(error => { if (error.code === 'support_verification_required') { clearPrivate(true); verificationForm(); } else status.textContent = errorText(error); }); }
-        else quoteForm({coupons: 'coupon', payments: 'payment'}[purpose] || 'quote');
+        else quoteForm({coupons: 'coupon', payments: 'payment'}[purpose] || 'quote', keepQuestion);
     }
     root.querySelectorAll('[data-starter]').forEach(el => el.addEventListener('click', () => {
         const key = el.dataset.starter;

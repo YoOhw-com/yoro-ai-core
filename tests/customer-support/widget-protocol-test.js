@@ -264,6 +264,52 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
         input.value = 'New unrelated edited draft'; responses.push({body: {verified: false}}); await end.event('click'); release(); await inFlight;
         verify(input.value === 'New unrelated edited draft', 'Definitive invalidation preserves a different draft typed during a private request');
     }
+    await primePrivate(); {
+        const message = 'Private submitted question with whitespace-only edit'; input.value = message;
+        responses.push({error: true}); await composer.event('submit');
+        input.value = '  ' + message + '  '; responses.push({body: {verified: false}}); await end.event('click');
+        verify(input.value === '' && retry.hidden && bar.hidden, 'Whitespace-only edits keep the same submitted private intent and are cleared on definitive loss');
+        const before = calls.length; await composer.event('submit');
+        verify(calls.length === before, 'Normalized private intent cannot be resent publicly after revocation');
+    }
+    await primePrivate(); {
+        input.value = 'Private pending question before public quote form'; responses.push({error: true}); await composer.event('submit');
+        const before = calls.length; await quote.event('click');
+        verify(input.value === '' && retry.hidden && !bar.hidden && area.querySelector('[name=query]'), 'Leaving private selection for the quote starter clears submitted private input/pending retry while retaining the live grant');
+        await composer.event('submit'); await retry.event('click');
+        verify(calls.length === before, 'An unselected public quote form cannot submit or Retry the abandoned private intent');
+    }
+    await primePrivate(); {
+        input.value = 'Private failed question before editing'; responses.push({error: true}); await composer.event('submit'); const old = calls.at(-1).body;
+        input.value = 'A different public draft'; await quote.event('click');
+        verify(input.value === 'A different public draft' && retry.hidden, 'Abandoning a private selection preserves an unrelated edited draft');
+        responses.push({body: {status: 'completed', answer: {text: 'Explicit different public answer', sources: []}}}); await composer.event('submit');
+        verify(calls.at(-1).body.message === 'A different public draft' && calls.at(-1).body.context_token === '' && calls.at(-1).body.turn_id !== old.turn_id, 'A deliberately submitted different public draft uses a fresh unselected intent');
+    }
+    async function privateQuoteForNewQuestion() {
+        await primePrivate(); const question = 'A new actual question requesting an estimate'; input.value = question;
+        responses.push({body: {status: 'context', context: 'quote'}}); await composer.event('submit');
+        area.querySelector('[name=query]').value = 'G031 quote choice';
+        responses.push({body: {products: [{id: 20, kind: 'simple', name: 'G031 quote choice', price: '40.00'}]}}); await area.querySelectorAll('form')[0].event('submit');
+        await area.querySelectorAll('button').find(button => button.textContent.startsWith('G031 quote choice')).event('click');
+        area.querySelector('[name=country]').value = 'US'; area.querySelector('[name=state]').value = 'CA'; area.querySelector('[name=postcode]').value = '94105';
+        responses.push({body: {context_token: 'synthetic-private-quote-flow', private: true, expires_at: new Date(Date.now() + 300000).toISOString(), card: quoteCard}}); await area.querySelectorAll('form')[1].event('submit');
+        return question;
+    }
+    {
+        const question = await privateQuoteForNewQuestion();
+        responses.push({body: {status: 'completed', private: true, answer: {text: 'Bound new quote question answer', sources: []}}});
+        await area.querySelectorAll('button').find(button => button.textContent === 'Explain this estimate').event('click');
+        verify(calls.at(-1).body.message === question && calls.at(-1).body.context_token === 'synthetic-private-quote-flow', 'A fresh successful context request keeps its real pending question until an explicit bound quote explanation');
+    }
+    {
+        await privateQuoteForNewQuestion(); const refresh = area.querySelectorAll('button').find(button => button.textContent === 'Refresh estimate');
+        input.value = 'Private in-flight quote followup'; let release; const wait = new Promise(resolve => { release = resolve; });
+        responses.push({wait, body: {status: 'completed', private: true, answer: {text: 'LATE_ABANDONED_QUOTE_ANSWER', sources: []}}}); const inFlight = composer.event('submit'); await flush(); const before = calls.length;
+        await refresh.event('click'); release(); await inFlight;
+        verify(input.value === '' && retry.hidden && !send.disabled && !bar.hidden && area.querySelector('[name=query]'), 'Direct Refresh estimate abandons an in-flight private selection even while the generic action busy guard is active');
+        verify(calls.length === before && !log.children.some(entry => entry.children.some(child => child.textContent === 'LATE_ABANDONED_QUOTE_ANSWER')), 'Late private quote response cannot restore abandoned pending input or expose its answer');
+    }
     const r3OriginalAssertions = checks, r3Cases = [], r3Failures = []; let r3Checks = 0;
     const r3Turns = () => calls.filter(call => call.url.endsWith('/turn'));
     const r3Check = (condition, message) => { r3Checks++; if (!condition) r3Failures.push(message); return condition; };
@@ -329,6 +375,8 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
         responses.push({body: {...selectedOrder, context_token: 'synthetic-R3-different-order-context'}});
         await area.querySelectorAll('button').find(button => button.textContent === 'Select order').event('click');
         const before = r3Turns().length;
+        await retry.event('click');
+        verify(retry.hidden && r3Turns().length === before && input.value === 'R3 same question with changed selected order', 'Changing private A to B clears only the stale Retry envelope; same-question draft is retained for a deliberate new Submit');
         responses.push({body: r3Completed('Synthetic changed-context answer.'), commit: true}); await composer.event('submit');
         const second = r3Turns().at(-1).body;
         r3Cases.push({case: 'changed-context-control', first, second, simulatedCommittedTurns: r3Committed.size - start});
