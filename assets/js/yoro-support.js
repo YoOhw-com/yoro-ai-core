@@ -59,6 +59,7 @@
     const input = composer.querySelector('textarea'), send = composer.querySelector('[type=submit]'), retry = root.querySelector('[data-retry]');
     const log = root.querySelector('[role=log]'), status = root.querySelector('[data-status]'), contextArea = root.querySelector('.yoro-support-context');
     const verifiedBar = root.querySelector('.yoro-support-verified');
+    let privateComposerValue = null;
     let quoteParameters = null, csrf = '', busy = false, pending = null, retryCount = 0, pendingQuestion = '', contextToken = '', contextPrivate = false, contextExpires = 0, verified = false, revoking = false, accessTimer, contextTimer, generation = 0;
     let capabilities = {content: true, products: true, quote: false, coupons: false, payments: false, orders: false};
     const endpoint = root.dataset.endpoint;
@@ -78,6 +79,7 @@
             if (!response.ok) {
                 const error = new Error('unavailable'); error.code = data.code || 'support_unavailable';
                 if (['support_session_inactive', 'support_verification_required', 'support_forbidden'].includes(error.code)) {
+                    if (error.code === 'support_session_inactive') csrf = '';
                     invalidatePrivate();
                 }
                 throw error;
@@ -107,6 +109,8 @@
         log.append(entry); while (log.children.length > 24) log.firstElementChild.remove(); log.scrollTop = log.scrollHeight; return entry;
     }
     function clearPrivate(keepQuestion = false) {
+        if (privateComposerValue !== null && input.value === privateComposerValue) input.value = '';
+        privateComposerValue = null;
         clearTimeout(accessTimer); clearTimeout(contextTimer); verified = false; verifiedBar.hidden = true;
         contextToken = ''; contextPrivate = false; contextExpires = 0; quoteParameters = null; pending = null; retry.hidden = true;
         log.querySelectorAll('[data-private]').forEach(el => el.remove()); contextArea.replaceChildren(); if (!keepQuestion) pendingQuestion = '';
@@ -139,6 +143,7 @@
                 retry.hidden = !pending || retryCount >= 2;
                 return;
             }
+            if (contextPrivate && input.value.trim() === message) privateComposerValue = input.value;
             if (!fromResume) append(message, 'user', [], contextPrivate);
             pending = {turn_id: crypto.randomUUID(), message, context_token: contextToken}; retryCount = 0; retry.hidden = true; status.textContent = t('Thinking…');
             const result = await request('turn', pending); handleAnswer(result, message);
@@ -148,7 +153,7 @@
         status.textContent = '';
         if (result.status === 'context') { pendingQuestion = message; pending = null; openFlow(result.context); return; }
         if (!result.answer || typeof result.answer.text !== 'string') throw new Error('unavailable');
-        const entry = append(result.answer.text, 'assistant', result.answer.sources, result.private === true); renderProducts(entry, result.answer.products); pending = null; pendingQuestion = ''; input.value = '';
+        const entry = append(result.answer.text, 'assistant', result.answer.sources, result.private === true); renderProducts(entry, result.answer.products); pending = null; pendingQuestion = ''; if (input.value.trim() === message) input.value = ''; privateComposerValue = null;
     }
     function renderProducts(entry, products) {
         if (!Array.isArray(products)) return;

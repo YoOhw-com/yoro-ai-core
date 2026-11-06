@@ -141,6 +141,30 @@ verify( '20.00' === $discounted['data']['discount'] && '209.00' === $discounted[
 $express = valid_result( readonly_quote( $params + [ 'shipping_rates' => [ 'flat_rate:' . $second_id ] ], [] ) );
 verify( ! in_array( 'Cash on delivery', $quote['data']['payment_methods'], true ) && in_array( 'Cash on delivery', $express['data']['payment_methods'], true ), 'Native COD eligibility follows selected shipping method.' );
 verify( '20.00' === $express['data']['shipping'] && '242.00' === $express['data']['total'], 'Native explicit alternate rate is context-bound.' );
+// Coupon-driven shipping must use the final native rate set, not a temporary pre-coupon default.
+$conditional_free = $zone->add_shipping_method( 'free_shipping' );
+update_option( 'woocommerce_free_shipping_' . $conditional_free . '_settings', [ 'title' => 'Coupon free shipping', 'requires' => 'coupon' ] );
+$shipping_coupon = new WC_Coupon(); $shipping_coupon->set_code( 'synthetic-free-shipping' ); $shipping_coupon->set_discount_type( 'fixed_cart' ); $shipping_coupon->set_amount( '0' ); $shipping_coupon->set_free_shipping( true ); $shipping_coupon->save();
+$original_hide = get_option( 'woocommerce_shipping_hide_rates_when_free', 'no' );
+try {
+    foreach ( [ 'no', 'yes' ] as $hide ) {
+        update_option( 'woocommerce_shipping_hide_rates_when_free', $hide );
+        $free_params = $params + [ 'coupon' => $shipping_coupon->get_code() ];
+        $free_quote = valid_result( readonly_quote( $free_params, [] ) );
+        $free_rate = 'free_shipping:' . $conditional_free;
+        verify( '0.00' === $free_quote['data']['shipping'] && '220.00' === $free_quote['data']['total'], 'Coupon free shipping has native zero shipping and exact taxed total, with paid rates hidden or visible.' );
+        verify( [ $free_rate ] === array_column( array_filter( $free_quote['data']['shipping_rates'], static fn( $rate ) => $rate['selected'] ), 'id' ), 'No explicit selection lets the native coupon-aware default select free shipping.' );
+        $explicit_free = valid_result( readonly_quote( $free_params + [ 'shipping_rates' => [ $free_rate ] ], [] ) );
+        verify( '0.00' === $explicit_free['data']['shipping'], 'Explicit free rate from a previous coupon quote survives the temporary pre-coupon calculation.' );
+        $explicit_paid = readonly_quote( $free_params + [ 'shipping_rates' => [ 'flat_rate:' . $second_id ] ], [] );
+        verify( 'yes' === $hide ? is_wp_error( $explicit_paid ) : ! is_wp_error( $explicit_paid ) && '20.00' === $explicit_paid['data']['shipping'], 'Valid explicit paid choice is retained; a rate removed by hide-paid fails closed.' );
+        $stale = readonly_quote( $params + [ 'shipping_rates' => [ $free_rate ] ], [] );
+        verify( is_wp_error( $stale ), 'A coupon-only explicit free rate cannot survive without the coupon.' );
+    }
+} finally {
+    update_option( 'woocommerce_shipping_hide_rates_when_free', $original_hide ); $zone->delete_shipping_method( $conditional_free ); $shipping_coupon->delete( true );
+}
+
 $needs_email = valid_result( readonly_quote( $params + [ 'coupon' => 'synthetic-email' ], [] ) );
 verify( 'verification_required' === $needs_email['data']['coupon']['state'] && '0.00' === $needs_email['data']['discount'], 'Unverified email restriction cannot be assumed.' );
 $email_coupon = valid_result( readonly_quote( $params + [ 'coupon' => 'synthetic-email' ], [ 'email' => 'buyer@example.test' ] ) );
@@ -187,6 +211,27 @@ $proof = [ 'purpose' => 'orders', 'email' => 'buyer@example.test', 'access_id' =
 $rows = valid_result( YoRo_Support_Commerce::orders( $proof ) ); verify( 1 === count( $rows['orders'] ), 'Native order search filters verified billing email.' );
 $reference = $rows['orders'][0]['reference']; verify( ! str_starts_with( $reference, $order->get_id() . '.' ), 'Order reference is opaque and encrypted.' );
 $detail = valid_result( YoRo_Support_Commerce::order( $proof, $reference ) ); verify( 'order' === $detail['kind'] && $detail['data']['items'][0]['name'] === $p->get_name(), 'Native own order detail.' );
+
+$native_projection_cards = [];
+foreach ( [ 100, 101 ] as $quantity ) {
+    $native_item = current( $order->get_items() ); $native_item->set_quantity( $quantity ); $native_item->save();
+    $large_detail = valid_result( YoRo_Support_Commerce::order( $proof, $reference ) );
+    verify( $quantity === $large_detail['data']['items'][0]['quantity'] && 1 === count( $large_detail['data']['items'] ), 'Bounded historical order keeps the native line quantity, including more than the quote cap.' );
+    $native_projection_cards[] = $large_detail;
+}
+foreach ( [ 'Gift for buyer@example.test', 'Gift for BUYER@EXAMPLE.TEST', 'Gift for buyer&#64;example.test' ] as $private_name ) {
+    $native_item->set_name( $private_name ); $native_item->save();
+    $private_detail = valid_result( YoRo_Support_Commerce::order( $proof, $reference ) );
+    verify( 'Gift for [private email]' === $private_detail['data']['items'][0]['name'] && false === stripos( wp_json_encode( $private_detail ), 'buyer@example.test' ), 'Private order projection removes only the authoritative billing email before hashing and truncation.' );
+    $native_projection_cards[] = $private_detail;
+}
+$native_item->set_name( 'Normal engraved product' ); $native_item->set_quantity( 1 ); $native_item->save();
+$normal_detail = valid_result( YoRo_Support_Commerce::order( $proof, $reference ) );
+verify( 'Normal engraved product' === $normal_detail['data']['items'][0]['name'], 'A normal private order product name is preserved.' );
+$native_projection_cards[] = $normal_detail;
+echo 'G031_NATIVE_ORDER_CARDS:', wp_json_encode( $native_projection_cards ), "\n";
+$native_item->set_name( $p->get_name() ); $native_item->save();
+
 verify( ! str_contains( wp_json_encode( $detail ), 'buyer@example.test' ) && ! isset( $detail['data']['billing_address'], $detail['data']['phone'], $detail['data']['internal_notes'] ), 'Only minimal private allowlist projected.' );
 
 $registered_user = wp_insert_user( [ 'user_login' => 'synthetic-buyer', 'user_pass' => wp_generate_password(), 'user_email' => 'buyer@example.test' ] );
@@ -364,6 +409,31 @@ add_filter( 'woocommerce_before_calculate_totals', '__return_false', 10, 1 );
 verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Same WordPress callback on an unrelated hook stays unsupported.' );
 remove_filter( 'woocommerce_before_calculate_totals', '__return_false', 10 );
 valid_result( YoRo_Support_Commerce::profile() );
+// Inspect misplaced native mutators without ever invoking a quote while they are registered.
+foreach ( [ 'wc_create_order', [ ( new ReflectionClass( 'WC_Cart' ) )->newInstanceWithoutConstructor(), 'empty_cart' ] ] as $misplaced ) {
+    $hook = 'woocommerce_before_get_rates_for_package'; $before_hook = did_action( $hook );
+    $before_orders = $GLOBALS['wpdb']->get_var( 'SELECT COUNT(*) FROM ' . $GLOBALS['wpdb']->posts . " WHERE post_type='shop_order'" );
+    add_action( $hook, $misplaced, 10, 0 );
+    try { verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Woo file ownership cannot authorize a function or method on an unsupported quote registration.' ); }
+    finally { remove_action( $hook, $misplaced, 10 ); }
+    verify( false === has_action( $hook, $misplaced ) && $before_hook === did_action( $hook ) && $before_orders === $GLOBALS['wpdb']->get_var( 'SELECT COUNT(*) FROM ' . $GLOBALS['wpdb']->posts . " WHERE post_type='shop_order'" ), 'Misplaced mutator is removed before any quote and no callback or order mutation occurred.' );
+}
+// Test a registration actually installed by the supported native package.
+$known = null;
+foreach ( $GLOBALS['wp_filter'] as $hook => $value ) {
+    if ( 0 !== strpos( $hook, 'woocommerce_' ) ) { continue; }
+    foreach ( $value->callbacks as $priority => $callbacks ) { foreach ( $callbacks as $entry ) {
+        if ( 'wc_sanitize_coupon_code' === $entry['function'] ) { $known = [ $hook, $priority, $entry['accepted_args'] ]; break 3; }
+    } }
+}
+verify( is_array( $known ), 'Native fixture supplies an actual known callback registration for binding tests.' );
+foreach ( [ [ $known[1] + 1, $known[2] ], [ $known[1], $known[2] + 1 ] ] as $binding ) {
+    add_filter( $known[0], 'wc_sanitize_coupon_code', $binding[0], $binding[1] );
+    try { verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'A legitimate native callable with changed priority or arity is unsupported.' ); }
+    finally { remove_filter( $known[0], 'wc_sanitize_coupon_code', $binding[0] ); add_filter( $known[0], 'wc_sanitize_coupon_code', $known[1], $known[2] ); }
+}
+valid_result( YoRo_Support_Commerce::profile() );
+
 $rest_quote = new WP_REST_Request( 'POST', '/yoro/v1/support/context' ); $rest_quote->set_body_params( [ 'kind' => 'quote', 'params' => $params ] );
 $rest_quote->set_header( 'Origin', home_url() ); $rest_quote->set_header( 'X-YoRo-Support-CSRF', YoRo_Support_Transport::csrf( $cookie ) );
 $rest_cart_before = [ WC()->cart, WC()->customer, WC()->session ];

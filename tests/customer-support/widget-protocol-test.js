@@ -39,12 +39,16 @@ let iconMotionChanged;
 const documentEvents = {};
 const document = {activeElement: null, documentElement: {lang: 'en'}, hidden: false, getElementById: id => id === 'yoro-support' ? root : null, createElement: tag => el(tag), addEventListener(name, callback) { (documentEvents[name] ||= []).push(callback); }, async event(name) { for (const callback of documentEvents[name] || []) callback(); await flush(); }};
 const r3Committed = new Map();
+let sessionNeedsRecovery = false;
+const recoveredSession = () => ({body: {csrf: 'synthetic-recovered-csrf', protocol: 2, capabilities: {content: true, products: true, quote: true, coupons: false, payments: true, orders: true}, verification: {verified: false}}});
 const calls = [], responses = [], timers = new Map(); let timerId = 0, uuid = 0;
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const sandbox = {document, navigator: {language: 'en'}, window: {location: {origin: 'https://fixture.invalid'}, matchMedia: () => ({matches: false, addEventListener(type, fn) { iconMotionChanged = fn; }}), confirm: () => true, addEventListener() {}},
     crypto: {randomUUID: () => 'synthetic-turn-' + (++uuid)}, URL, AbortController, Date, Map, console,
     setTimeout(fn, delay) { const id = ++timerId; timers.set(id, {fn, delay}); if (delay === 0) setImmediate(() => { if (timers.has(id)) { timers.delete(id); fn(); } }); return id; }, clearTimeout(id) { timers.delete(id); },
-    fetch: async (url, options) => { const body = JSON.parse(options.body); calls.push({url, options, body}); const next = responses.shift(); assert.ok(next, 'Unexpected protocol request'); if (next.commit) { assert.ok(url.endsWith('/turn')); const held = r3Committed.get(body.turn_id); if (held) assert.deepEqual(held, body); else r3Committed.set(body.turn_id, JSON.parse(JSON.stringify(body))); } if (next.error) throw new Error('Synthetic offline'); if (next.wait) await next.wait; return {ok: next.ok !== false, json: async () => next.body}; }};
+    fetch: async (url, options) => { const body = JSON.parse(options.body); calls.push({url, options, body}); const next = responses.shift(); assert.ok(next, 'Unexpected protocol request'); if (next.commit) { assert.ok(url.endsWith('/turn')); const held = r3Committed.get(body.turn_id); if (held) assert.deepEqual(held, body); else r3Committed.set(body.turn_id, JSON.parse(JSON.stringify(body))); } if (next.body?.code === 'support_session_inactive') sessionNeedsRecovery = true;
+        if (url.endsWith('/session') && next.body?.csrf) sessionNeedsRecovery = false;
+        if (next.error) throw new Error('Synthetic offline'); if (next.wait) await next.wait; return {ok: next.ok !== false, json: async () => next.body}; }};
 vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname, '../../assets/js/yoro-support.js'), 'utf8'), sandbox);
 let checks = 0; const verify = (condition, message) => { assert.ok(condition, message); checks++; };
 (async () => {
@@ -132,6 +136,7 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
     verify(area.querySelectorAll('p').some(item => item.textContent === 'No payment is required for this estimate.'), 'Zero native total renders no payment requirement distinctly from unavailable gateways');
     async function primePrivate() {
         responses.push({body: {verified: false}}); await end.event('click');
+        if (sessionNeedsRecovery) responses.push(recoveredSession());
         await orders.event('click');
         area.querySelector('[name=email]').value = 'buyer@example.test';
         responses.push({body: {challenge_id: 'synthetic-loss-challenge', email_hint: 'b***@example.test', resend_seconds: 60}}); await area.querySelector('form').event('submit');
@@ -148,8 +153,11 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
         const safeArea = code === 'support_verification_required' ? area.querySelector('[name=email]')?.value === '' && area.querySelectorAll('[data-private]').length === 0 : area.children.length === 0;
         verify(bar.hidden && log.querySelectorAll('[data-private]').length === 0 && safeArea && retry.hidden, 'Definitive ' + code + ' current-session denial clears private state; only a fresh public verification form may remain');
         verify(calls.length === before + 1, 'Definitive loss adds no automatic admission/email/inference request');
-        input.value = 'Fresh public request after denial'; responses.push({body: {status: 'completed', answer: {text: 'Synthetic public answer.', sources: []}}}); await composer.event('submit');
+        input.value = 'Fresh public request after denial';
+        if (code === 'support_session_inactive') responses.push(recoveredSession());
+        responses.push({body: {status: 'completed', answer: {text: 'Synthetic public answer.', sources: []}}}); await composer.event('submit');
         verify(calls.at(-1).body.context_token === '', 'A later explicit request cannot reuse the invalidated private token');
+        verify(code === 'support_session_inactive' ? calls.length === before + 3 && calls.at(-2).url.endsWith('/session') && calls.at(-1).options.headers['X-YoRo-Support-CSRF'] === 'synthetic-recovered-csrf' : calls.length === before + 2, 'Only an inactive session needs one fresh session on the next explicit request');
     }
     for (const loss of [{ok: false, body: {code: 'support_session_inactive'}}, {body: {verified: false, expires_at: null, email_hint: null}}, {reset: true}]) {
         await primePrivate(); let releaseOrder;
@@ -207,6 +215,34 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
             verify(calls.length === before + 1, 'Midphase HTTP denial creates no automatic inference or session admission');
             midphaseCases++;
         }
+    }
+    for (const loss of ['end', 'expiry', 'denial']) {
+        await primePrivate();
+        const submitted = 'Submitted private composer for ' + loss; input.value = submitted;
+        let release; const wait = new Promise(resolve => { release = resolve; });
+        responses.push(loss === 'denial' ? {ok: false, body: {code: 'support_forbidden'}} : {wait, body: {status: 'completed', private: true, answer: {text: 'STALE_PRIVATE_RESULT', sources: []}}});
+        const inFlight = composer.event('submit'); await flush();
+        if (loss === 'end') { responses.push({body: {verified: false}}); await end.event('click'); }
+        if (loss === 'expiry') { [...timers.values()].find(timer => timer.delay > 890000 && timer.delay <= 900000).fn(); await flush(); }
+        if (loss !== 'denial') release(); await inFlight;
+        verify(input.value === '' && retry.hidden && bar.hidden, 'Definitive ' + loss + ' clears the submitted private composer and retry authority');
+        verify(!log.children.some(entry => entry.children.some(child => child.textContent === 'STALE_PRIVATE_RESULT')), 'A late private response cannot restore the cleared submitted composer');
+        const before = calls.filter(call => call.url.endsWith('/turn')).length; await composer.event('submit');
+        verify(calls.filter(call => call.url.endsWith('/turn')).length === before, 'Cleared private text cannot be silently resubmitted publicly');
+    }
+    await primePrivate(); {
+        input.value = 'Private pending exact retry'; responses.push({error: true}); await composer.event('submit'); const original = calls.at(-1).body;
+        verify(input.value === original.message && !retry.hidden, 'Ambiguous private failure retains composer and retry');
+        responses.push({body: {status: 'completed', private: true, answer: {text: 'Recovered private answer', sources: []}}}); await retry.event('click');
+        verify(JSON.stringify(calls.at(-1).body) === JSON.stringify(original) && input.value === '', 'Private retry preserves exact UUID/input and clears only after acknowledgement');
+        input.value = 'Unrelated public draft'; responses.push({body: {verified: false}}); await end.event('click');
+        verify(input.value === 'Unrelated public draft', 'Ending private lookup preserves an unrelated public draft');
+    }
+    await primePrivate(); {
+        input.value = 'Private in-flight text'; let release; const wait = new Promise(resolve => { release = resolve; });
+        responses.push({wait, body: {status: 'completed', private: true, answer: {text: 'Discarded late answer', sources: []}}}); const inFlight = composer.event('submit'); await flush();
+        input.value = 'New unrelated edited draft'; responses.push({body: {verified: false}}); await end.event('click'); release(); await inFlight;
+        verify(input.value === 'New unrelated edited draft', 'Definitive invalidation preserves a different draft typed during a private request');
     }
     const r3OriginalAssertions = checks, r3Cases = [], r3Failures = []; let r3Checks = 0;
     const r3Turns = () => calls.filter(call => call.url.endsWith('/turn'));
