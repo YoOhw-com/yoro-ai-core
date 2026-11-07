@@ -162,6 +162,8 @@ class YoRo_Support_Facts {
 			&& 'publish' === $product->get_status() && 'hidden' !== $product->get_catalog_visibility() && $product->is_visible();
 	}
 	private static function price( $html ) {
+		// A plain DTO carries the current storefront price, not an unlabelled old/current pair.
+		$html = preg_replace( '/<del\b[^>]*>.*?<\/del\s*>/is', '', (string) $html );
 		// Native Woo price markup repeats the visible price in plain screen-reader spans.
 		// The support DTO is already plain text, so keep one copy of each displayed amount.
 		$html = preg_replace( '/<span\b(?=[^>]*\bclass\s*=\s*([\'"])\s*(?:[^\s\'"]+\s+)*screen-reader-text(?:\s+[^\'"]*)?\1)[^>]*>[^<]*<\/span\s*>/i', '', (string) $html );
