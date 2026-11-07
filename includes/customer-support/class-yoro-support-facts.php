@@ -151,7 +151,7 @@ class YoRo_Support_Facts {
 		}
 		return self::version( [ 'id' => 'product:' . $product->get_id(), 'type' => 'product', 'url' => $url,
 			'title' => self::plain( $product->get_name(), 200 ), 'text' => self::plain( $product->get_short_description(), 1000 ),
-			'product' => [ 'kind' => $product->get_type(), 'price' => self::plain( $product->get_price_html(), 80 ),
+			'product' => [ 'kind' => $product->get_type(), 'price' => self::price( $product->get_price_html() ),
 				'currency' => get_woocommerce_currency(), 'stock' => $product->get_stock_status(),
 				'options' => $options, 'parent_id' => $parent ? $parent->get_id() : null ] ] );
 	}
@@ -160,6 +160,12 @@ class YoRo_Support_Facts {
 		$post = get_post( $product->get_id() );
 		return $post && 'publish' === $post->post_status && '' === $post->post_password
 			&& 'publish' === $product->get_status() && 'hidden' !== $product->get_catalog_visibility() && $product->is_visible();
+	}
+	private static function price( $html ) {
+		// Native Woo price markup repeats the visible price in plain screen-reader spans.
+		// The support DTO is already plain text, so keep one copy of each displayed amount.
+		$html = preg_replace( '/<span\b(?=[^>]*\bclass\s*=\s*([\'"])\s*(?:[^\s\'"]+\s+)*screen-reader-text(?:\s+[^\'"]*)?\1)[^>]*>[^<]*<\/span\s*>/i', '', (string) $html );
+		return self::plain( $html, 80 );
 	}
 	private static function plain( $text, $limit ) {
 		$plain = html_entity_decode( wp_strip_all_tags( strip_shortcodes( (string) $text ) ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
