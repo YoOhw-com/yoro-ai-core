@@ -32,7 +32,7 @@ const area = el('div', 'yoro-support-context'), bar = el('div', 'yoro-support-ve
 const end = el('button'); end.dataset.endPrivate = ''; bar.append(label, end);
 const reset = el('button'); reset.dataset.reset = ''; const close = el('button'); close.dataset.close = '';
 const quote = el('button'); quote.dataset.starter = 'quote'; panel.append(quote);
-const orders = el('button'); orders.dataset.starter = 'orders'; panel.append(composer, log, status, area, bar, reset, close, orders); root.append(launch, panel);
+const orders = el('button'); orders.dataset.starter = 'orders'; const body = el('div', 'yoro-support-body'); body.append(log, area); panel.append(composer, body, status, bar, reset, close, orders); root.append(launch, panel);
 const iconHolder = el('span'), iconImage = el('img'), iconFallback = el('span');
 iconImage.dataset.supportIcon = ''; iconImage.dataset.static = '/fixed-static.svg'; iconImage.setAttribute('src', '/fixed-3-cycles.svg'); iconFallback.dataset.iconFallback = ''; iconFallback.hidden = true; iconHolder.append(iconImage, iconFallback); launch.append(iconHolder);
 let iconMotionChanged;

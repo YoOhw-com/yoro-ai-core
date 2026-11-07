@@ -57,7 +57,7 @@
     const t = text => vi ? (words[text] || text) : text;
     const panel = root.querySelector('section'), launch = root.querySelector('.yoro-support-launch'), composer = root.querySelector('.yoro-support-composer');
     const input = composer.querySelector('textarea'), send = composer.querySelector('[type=submit]'), retry = root.querySelector('[data-retry]');
-    const log = root.querySelector('[role=log]'), status = root.querySelector('[data-status]'), contextArea = root.querySelector('.yoro-support-context');
+    const body = root.querySelector('.yoro-support-body'), log = root.querySelector('[role=log]'), status = root.querySelector('[data-status]'), contextArea = root.querySelector('.yoro-support-context');
     const verifiedBar = root.querySelector('.yoro-support-verified');
     let privateComposerValue = null;
     let quoteParameters = null, csrf = '', busy = false, pending = null, retryCount = 0, pendingQuestion = '', pendingQuestionPrivate = false, contextToken = '', contextPrivate = false, contextExpires = 0, verified = false, accessExpires = 0, revoking = false, accessTimer, contextTimer, generation = 0;
@@ -106,7 +106,7 @@
                 const link = node('a', source.title || 'Source', 'yoro-support-source'); link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer'; entry.append(link);
             } catch (_) { /* Discard malformed source links. */ }
         });
-        log.append(entry); while (log.children.length > 24) log.firstElementChild.remove(); log.scrollTop = log.scrollHeight; return entry;
+        log.append(entry); while (log.children.length > 24) log.firstElementChild.remove(); body.scrollTop = body.scrollHeight; return entry;
     }
     function clearPrivateComposer() {
         if (privateComposerValue !== null && input.value.trim() === privateComposerValue.trim()) input.value = '';
@@ -157,7 +157,7 @@
         status.textContent = '';
         if (result.status === 'context') { pendingQuestion = message; pendingQuestionPrivate = contextPrivate; pending = null; openFlow(result.context, true); return; }
         if (!result.answer || typeof result.answer.text !== 'string') throw new Error('unavailable');
-        const entry = append(result.answer.text, 'assistant', result.answer.sources, result.private === true); renderProducts(entry, result.answer.products); pending = null; pendingQuestion = ''; pendingQuestionPrivate = false; if (input.value.trim() === message) input.value = ''; privateComposerValue = null;
+        const entry = append(result.answer.text, 'assistant', result.answer.sources, result.private === true); renderProducts(entry, result.answer.products); body.scrollTop = body.scrollHeight; pending = null; pendingQuestion = ''; pendingQuestionPrivate = false; if (input.value.trim() === message) input.value = ''; privateComposerValue = null;
     }
     function renderProducts(entry, products) {
         if (!Array.isArray(products)) return;
