@@ -6,14 +6,14 @@ This repository owns the WordPress connector and store-side runtime for YoRo.
 Read `AI_FIRST_ENGINEERING.md` before changing behavior; it is the primary
 component-local technical authority.
 
-- YoRo AI API owns conversation reasoning and canonical API or commerce
-  contracts.
+- The primary logical path is `ChatGPT/Codex -> YoRo API -> YoRo Core -> WordPress/WooCommerce`. YoRo AI API owns canonical operational semantics, action/capability identity, authority/Safety, orchestration, durable operation state and API/commerce contracts. AI hosts and retained Apps access API only; no direct connector bypass is permitted.
 - YoRo AI Core owns WordPress-local context and capability exposure, validation,
   permission and confirmation enforcement, execution, rendering, and structured
   result reporting.
 - Keep natural-language interpretation and conversation state out of the plugin.
   Do not introduce phrase-specific routing or redefine contracts owned by another
   repository.
+- Retained Apps/native chat and their API conversation/provider dependencies remain supported for compatibility. Chat-specific rules apply to those retained paths; an already-structured MCP request does not require a second inference merely for reinterpretation. Preserve shared policy, storage, audit and lifecycle services.
 
 ## Working rules
 
@@ -24,7 +24,7 @@ component-local technical authority.
 - Do not add dependencies or alter public contract semantics without explicit
   authority.
 - Run the focused affected tests and the applicable smoke/contract checks before
-  handing off a change.
+  handing off a change. Use [the existing verification navigation](AI_FIRST_ENGINEERING.md#verification-navigation) for standalone PHP/Node, disposable WordPress/WooCommerce, exact-pair and authorized host evidence.
 
 ## Local coordination overlay
 
