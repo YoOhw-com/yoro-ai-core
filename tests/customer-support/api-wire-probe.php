@@ -60,5 +60,19 @@ if ( 'answer' === $phase ) {
     if ( 'completed' !== $completed['status'] || 1 !== App\Models\CreditLedgerEntry::query()->where( 'entry_type', 'consume' )->count() ) { throw new RuntimeException( 'Actual API answer did not settle exactly once.' ); }
     $result += [ 'rejected_native_dto_mutations' => $rejected, 'validated_snapshot' => $validated, 'completed_response' => $completed, 'consumer_file' => ( new ReflectionClass( App\Services\CustomerSupport\SupportFacts::class ) )->getFileName(), 'fake_model_requests' => Illuminate\Support\Facades\Http::recorded()->count(), 'provider_requests' => 0, 'durable_consume_rows' => 1 ];
 } elseif ( 'settings' !== $phase ) { throw new RuntimeException( 'Unknown wire phase.' ); }
+$application_classes = [];
+foreach ( get_declared_classes() as $class ) {
+    if ( ! str_starts_with( $class, 'App\\' ) && ! str_starts_with( $class, 'Database\\Factories\\' ) ) { continue; }
+    $file = ( new ReflectionClass( $class ) )->getFileName();
+    if ( ! $file || ! str_starts_with( realpath( $file ), realpath( $api ) . '/' ) ) { throw new RuntimeException( 'Loaded application class escaped the selected API source: ' . $class ); }
+    $application_classes[$class] = [ 'path' => realpath( $file ), 'sha256' => hash_file( 'sha256', $file ) ];
+}
+foreach ( $loader->getClassMap() as $class => $file ) {
+    if ( str_starts_with( $class, 'App\\' ) && ! str_starts_with( $file, $api . '/' ) ) { throw new RuntimeException( 'Application classmap escaped the selected source.' ); }
+}
+if ( $loader->getPrefixesPsr4()['App\\'] !== [ $api . '/app' ] || realpath( $app->basePath() ) !== realpath( $api )
+    || realpath( config_path() ) !== realpath( $api . '/config' ) || realpath( database_path() ) !== realpath( $api . '/database' ) ) { throw new RuntimeException( 'Selected API bootstrap/config/database/PSR4 root drift.' ); }
+$result['loaded_application_classes'] = $application_classes;
+$result['bootstrap_roots'] = [ 'base' => $app->basePath(), 'config' => config_path(), 'database' => database_path(), 'routes' => $api . '/routes' ];
 Illuminate\Support\Facades\DB::disconnect();
 echo json_encode( $result, JSON_THROW_ON_ERROR );
