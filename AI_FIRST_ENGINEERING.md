@@ -85,6 +85,34 @@ For the affected behavior, preserve the following boundaries and existing requir
 
 ## Verification Navigation
 
-Choose the smallest affected set using the existing test entry points: standalone PHP contracts in [`tests/unit/`](tests/unit/) (for example `php tests/unit/api-endpoint-resolver-test.php`) and standalone renderer contracts such as `node tests/smoke/result-renderer-confirmation-contract.js`. The existing [smoke workflow](.github/workflows/smoke.yml) defines the disposable WordPress and WordPress/WooCommerce installations, PHP `wp eval-file` smoke population and Node smoke population; do not point that setup at a retained Local Sites installation or database.
+Choose the smallest affected set using the existing test entry points: standalone PHP contracts in [`tests/unit/`](tests/unit/) (for example `php tests/unit/api-endpoint-resolver-test.php`) and standalone renderer contracts such as `node tests/smoke/result-renderer-confirmation-contract.js`. The [Core Quick Gate](.github/workflows/smoke.yml) runs standalone PHP contracts and its disposable plain WordPress population. WordPress/WooCommerce, Node smoke and exact API/Core verification use the API owner's direct local `exact-pair` command described below; do not point disposable setup at a retained Local Sites installation or database.
 
 Preserve applicable required hosted checks and exact API/Core pair proof through the existing [API pairing guidance](https://github.com/YoOhw-com/yoro-ai-api/blob/5da7303a8a2d0b9ab59a1946b4be1df81508fd0a/docs/ci-api-core-pairing.md) and [verification workflow](https://github.com/YoOhw-com/yoro-ai-api/blob/5da7303a8a2d0b9ab59a1946b4be1df81508fd0a/docs/development-testing-workflow.md). These are baseline navigation references, not current candidate/pair certificates or operational authority. Select platform concerns from the approved outcome and actual dependencies; preserve matching WordPress/WooCommerce/MySQL semantics for local SQL/locking/concurrency and use separately authorized exact host/deployed evidence for runtime claims. Standalone tests, fakes and control-plane observations do not attest that runtime. Reuse unaffected proof only with its complete relevant input key, freshness and cleanup intact, reporting reuse truthfully. Documentation-only link/scope/consistency checks add no runtime proof and waive no applicable mandatory check.
+
+## Local-first source verification (YR-0233)
+
+The intended hosted Core Quick Gate retains genuine standalone and plain
+WordPress/MySQL work. It does not claim API FULL, WooCommerce or exact-pair
+success. Native WordPress 7.1/WooCommerce 11.0.1/MySQL 8.4 semantics, full PHP/Node
+smoke populations, shared canonical fixtures and exact clean API/Core heads are
+verified by the API owner's direct `exact-pair` local command documented in its
+[testing workflow](https://github.com/YoOhw-com/yoro-ai-api/blob/main/docs/development-testing-workflow.md).
+Use explicit installed binaries and owned disposable resources; record actual
+PHP/Node versions. A local Core Node version is not Cloud Node 24 attestation.
+
+The old latest-main canary/App token and release wrapper are retired, while their
+historical runs/manifests/hashes remain immutable. Local package owner procedure
+uses deterministic `git archive --format=zip --prefix=yoro-ai-core/ EXACT_SHA`
+twice, byte comparison, export-member inventory and exact artifact/source hashes.
+No upload/distribution/release follows automatically. `.github` and tests are
+export-ignored, so consumer scans inspect the tracked tree.
+
+Current `Plain WordPress Smoke` ruleset protection stays effective until separate
+Human cutover; do not rename a quick result to impersonate that context or claim
+old-head evidence. Source completion, merge, supported adoption and operational
+activation are separate. Reuse only complete-key fresh PASS/cleanup evidence,
+WAIT for an equivalent active run, refresh affected proof after changes/findings
+and reuse one valid fresh independent cumulative review. Actual Cloud/provider
+operations require separate finite rights and remain UNKNOWN here. Observe the
+next five natural outcomes in existing Issue/PR/Result evidence without a new
+telemetry service or completion gate.
