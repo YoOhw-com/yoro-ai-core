@@ -21,6 +21,7 @@ if ( ( $argv[4] ?? '' ) !== 'worker' ) {
 $loader->setPsr4( 'App\\', [ $api . '/app' ] );
 $loader->setPsr4( 'Database\\Factories\\', [ $api . '/database/factories' ] );
 foreach ( $loader->getClassMap() as $class => $path ) {
+    $path = realpath( $path ) ?: $path;
     if ( str_starts_with( $path, $dependencies . '/app/' ) || str_starts_with( $path, $dependencies . '/database/' ) ) {
         $loader->addClassMap( [ $class => $api . substr( $path, strlen( $dependencies ) ) ] );
     }
