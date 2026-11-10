@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 // Supported WooCommerce 11.2.1 registrations from the isolated native/full-Core fixture.
 // Bind the hook, priority, arity, defining native file and callable together. File ownership alone is insufficient.
-return [
+$registrations = [
     [ 'woocommerce_account_add-payment-method_endpoint', 10, 1, 'includes/wc-template-functions.php', 'woocommerce_account_add_payment_method' ],
     [ 'woocommerce_account_content', 5, 1, 'includes/wc-template-functions.php', 'woocommerce_output_all_notices' ],
     [ 'woocommerce_account_content', 10, 1, 'includes/wc-template-functions.php', 'woocommerce_account_content' ],
@@ -752,3 +752,22 @@ return [
     [ 'woocommerce_widget_shopping_cart_buttons', 20, 1, 'includes/wc-template-functions.php', 'woocommerce_widget_shopping_cart_proceed_to_checkout' ],
     [ 'woocommerce_widget_shopping_cart_total', 10, 1, 'includes/wc-template-functions.php', 'woocommerce_widget_shopping_cart_subtotal' ],
 ];
+
+if ( ! defined( 'WC_VERSION' ) || '11.0.1' !== WC_VERSION ) { return $registrations; }
+
+// Current fixed-profile tuples replace only the same hook/callable's historical variants.
+$current = [
+    [ 'woocommerce_product_set_stock_status', 10, 1, 'includes/class-wc-brands.php', 'WC_Brands::recount_after_stock_change' ],
+    [ 'woocommerce_get_sections_advanced', 10, 1, 'src/Internal/Api/Settings.php', 'Automattic\\WooCommerce\\Internal\\Api\\Settings::add_section' ],
+    [ 'woocommerce_get_settings_advanced', 10, 2, 'src/Internal/Api/Settings.php', 'Automattic\\WooCommerce\\Internal\\Api\\Settings::add_settings' ],
+    [ 'woocommerce_feature_enabled_changed', 10, 2, 'src/Internal/Features/FeaturesController.php', 'Automattic\\WooCommerce\\Internal\\Features\\FeaturesController::flag_abandoned_cart_recovery_enabled_notice' ],
+    [ 'woocommerce_settings_advanced', 1, 1, 'src/Internal/Features/FeaturesController.php', 'Automattic\\WooCommerce\\Internal\\Features\\FeaturesController::maybe_render_abandoned_cart_recovery_enabled_notice' ],
+    [ 'woocommerce_admin_settings_sanitize_option_woocommerce_graphql_endpoint_url', 10, 3, 'src/Internal/Api/Settings.php', 'Automattic\\WooCommerce\\Internal\\Api\\Settings::sanitize_endpoint_url' ],
+    [ 'woocommerce_graphql_opcache_cleanup', 10, 1, 'src/Internal/Api/OpcacheFileExpiry.php', 'Automattic\\WooCommerce\\Internal\\Api\\OpcacheFileExpiry::handle_cleanup_action' ],
+    [ 'woocommerce_admin_email_report_download_link', 10, 3, 'src/Admin/Schedulers/SchedulerTraits.php', 'Automattic\\WooCommerce\\Admin\\ReportExporter::do_action_or_reschedule' ],
+    [ 'woocommerce_update_options_products_inventory', 10, 1, 'includes/class-wc-brands.php', 'WC_Brands::recount_all_brands' ],
+];
+
+$identities = array_fill_keys( array_map( static fn( $entry ) => $entry[0] . '|' . $entry[4], $current ), true );
+$registrations = array_values( array_filter( $registrations, static fn( $entry ) => ! isset( $identities[ $entry[0] . '|' . $entry[4] ] ) ) );
+return array_merge( $registrations, $current );

@@ -33,7 +33,10 @@ function readonly_quote( array $params, array $authority ) {
     $actions = array_map( 'did_action', array_keys( $persistence_hooks ) );
     $generation = get_option( '_yoro_complete_report_generation_v2' );
     $mutation = get_option( '_yoro_complete_report_mutation_v2' );
+    $native_hooks = $GLOBALS['g049_native_hooks'] ?? [];
+    $native_before = array_map( static fn( $hook ) => [ did_action( $hook ), did_filter( $hook ) ], $native_hooks );
     $result = YoRo_Support_Commerce::quote( $params, $authority );
+    verify( $native_before === array_map( static fn( $hook ) => [ did_action( $hook ), did_filter( $hook ) ], $native_hooks ), 'Read-only quote never invokes any of the nine newly characterized native stock/admin/settings/cron/report hooks.' );
     if ( $report_hooks ?? [] ) {
         verify( $actions === array_map( 'did_action', array_keys( $persistence_hooks ) ), 'Read-only quote invokes no report or subscription persistence hook.' );
         verify( $generation === get_option( '_yoro_complete_report_generation_v2' ) && $mutation === get_option( '_yoro_complete_report_mutation_v2' ), 'Read-only quote does not invalidate report generations.' );
@@ -71,6 +74,41 @@ if ( $full_core ) {
     verify( 13 === count( $report_hooks ), 'All thirteen full Core report Woo callbacks remain registered.' );
     verify( 5 === count( $subscription_hooks ), 'All five full Core subscription persistence callbacks remain registered.' );
     $before_profile = array_map( 'did_action', array_keys( array_merge( $report_hooks, $subscription_hooks ) ) );
+    valid_result( YoRo_Support_Commerce::profile() );
+    $g049_bindings = [
+        [ 'woocommerce_product_set_stock_status', 10, 1, 'includes/class-wc-brands.php', 'WC_Brands::recount_after_stock_change' ],
+        [ 'woocommerce_get_sections_advanced', 10, 1, 'src/Internal/Api/Settings.php', 'Automattic\\WooCommerce\\Internal\\Api\\Settings::add_section' ],
+        [ 'woocommerce_get_settings_advanced', 10, 2, 'src/Internal/Api/Settings.php', 'Automattic\\WooCommerce\\Internal\\Api\\Settings::add_settings' ],
+        [ 'woocommerce_feature_enabled_changed', 10, 2, 'src/Internal/Features/FeaturesController.php', 'Automattic\\WooCommerce\\Internal\\Features\\FeaturesController::flag_abandoned_cart_recovery_enabled_notice' ],
+        [ 'woocommerce_settings_advanced', 1, 1, 'src/Internal/Features/FeaturesController.php', 'Automattic\\WooCommerce\\Internal\\Features\\FeaturesController::maybe_render_abandoned_cart_recovery_enabled_notice' ],
+        [ 'woocommerce_admin_settings_sanitize_option_woocommerce_graphql_endpoint_url', 10, 3, 'src/Internal/Api/Settings.php', 'Automattic\\WooCommerce\\Internal\\Api\\Settings::sanitize_endpoint_url' ],
+        [ 'woocommerce_graphql_opcache_cleanup', 10, 1, 'src/Internal/Api/OpcacheFileExpiry.php', 'Automattic\\WooCommerce\\Internal\\Api\\OpcacheFileExpiry::handle_cleanup_action' ],
+        [ 'woocommerce_admin_email_report_download_link', 10, 3, 'src/Admin/Schedulers/SchedulerTraits.php', 'Automattic\\WooCommerce\\Admin\\ReportExporter::do_action_or_reschedule' ],
+        [ 'woocommerce_update_options_products_inventory', 10, 1, 'includes/class-wc-brands.php', 'WC_Brands::recount_all_brands' ],
+    ];
+    $GLOBALS['g049_native_hooks'] = array_column( $g049_bindings, 0 );
+    foreach ( $g049_bindings as [ $hook, $priority, $arity, $file, $identity ] ) {
+        $matched = [];
+        foreach ( $GLOBALS['wp_filter'][ $hook ]->callbacks[ $priority ] ?? [] as $entry ) {
+            $callback = $entry['function'];
+            if ( ! is_array( $callback ) ) { continue; }
+            $actual = ( is_object( $callback[0] ) ? get_class( $callback[0] ) : $callback[0] ) . '::' . $callback[1];
+            if ( $actual === $identity && $entry['accepted_args'] === $arity ) { $matched[] = $callback; }
+        }
+        verify( 1 === count( $matched ), 'Each fixed11.0.1 native callback is actually registered with exact identity and arity.' );
+        $callback = $matched[0];
+        verify( realpath( ( new ReflectionMethod( $callback[0], $callback[1] ) )->getFileName() ) === realpath( dirname( WC_PLUGIN_FILE ) . '/' . $file ), 'Each characterized callable has the exact defining native file.' );
+        foreach ( [ 'foreign', 'priority', 'arity' ] as $mutation ) {
+            $effects = 0;
+            $changed = 'foreign' === $mutation ? static function() use ( &$effects ) { ++$effects; } : $callback;
+            $changed_priority = 'priority' === $mutation ? $priority + 1 : $priority;
+            $changed_arity = 'arity' === $mutation ? $arity + 1 : $arity;
+            remove_filter( $hook, $callback, $priority );
+            add_filter( $hook, $changed, $changed_priority, $changed_arity );
+            try { verify( is_wp_error( YoRo_Support_Commerce::profile() ) && 0 === $effects, 'Changed fixed11.0.1 callback identity/priority/arity is denied without invocation.' ); }
+            finally { remove_filter( $hook, $changed, $changed_priority ); add_filter( $hook, $callback, $priority, $arity ); }
+        }
+    }
     valid_result( YoRo_Support_Commerce::profile() );
     verify( $before_profile === array_map( 'did_action', array_keys( array_merge( $report_hooks, $subscription_hooks ) ) ), 'Profile inspection never invokes report or subscription callbacks.' );
     $report = reset( $report_hooks )[0];
@@ -308,6 +346,14 @@ $second_id = $zone->add_shipping_method( 'flat_rate' ); update_option( 'woocomme
 
 $free_zone = new WC_Shipping_Zone(); $free_zone->set_zone_name( 'Synthetic free UK' ); $free_zone->add_location( 'GB', 'country' ); $free_zone->save();
 $free_id = $free_zone->add_shipping_method( 'free_shipping' ); update_option( 'woocommerce_free_shipping_' . $free_id . '_settings', [ 'title' => 'Free native shipping', 'requires' => '' ] );
+$native_free_zone = WC_Shipping_Zones::get_zone_matching_package( [ 'destination' => $bad['destination'] ] );
+verify( $free_id > 0 && $native_free_zone->get_id() === $free_zone->get_id() && isset( WC()->countries->get_shipping_countries()['GB'] ), 'The actual native engine recognizes the newly configured UK zone and allowed shipping country before estimating.' );
+// Native method-count caching uses a second-granularity shipping version. Keep same-request
+// fixture setup deterministic without changing the production fail-closed native guard.
+set_transient( 'wc_shipping_method_count', [ 'version' => WC_Cache_Helper::get_transient_version( 'shipping' ), 'legacy' => 0, 'enabled' => 0, 'disabled' => 0 ], DAY_IN_SECONDS );
+verify( is_wp_error( readonly_quote( $bad, [] ) ), 'A native cached zero-method state remains unavailable rather than inventing free shipping.' );
+delete_transient( 'wc_shipping_method_count' );
+verify( wc_get_shipping_method_count( true ) > 0, 'Owned fixture configuration is visible to the native method-count oracle after cache invalidation.' );
 $free_shipping = valid_result( readonly_quote( $bad, [] ) );
 verify( '0.00' === $free_shipping['data']['shipping'] && ! empty( $free_shipping['data']['shipping_rates'] ), 'An actual native free-shipping rate can truthfully cost zero.' );
 
@@ -487,13 +533,29 @@ foreach ( $GLOBALS['wp_filter'] as $hook => $value ) {
             || ( is_array( $callback ) && $callback[0] instanceof WP_Embed && 'run_shortcode' === $callback[1] ) ) { $wp_bindings[] = [ $hook, $priority, $entry ]; }
     } }
 }
-verify( count( $wp_bindings ) >= 14, 'Locked native WordPress helper registrations are present as positives.' );
+verify( count( $wp_bindings ) === 13, 'The fixed native frontend helper inventory: ' . wp_json_encode( array_map( static fn( $binding ) => [ $binding[0], $binding[1], $binding[2]['accepted_args'], is_array( $binding[2]['function'] ) ? get_class( $binding[2]['function'][0] ) . '::' . $binding[2]['function'][1] : $binding[2]['function'] ], $wp_bindings ) ) );
 foreach ( $wp_bindings as [ $hook, $priority, $entry ] ) {
     foreach ( [ [ $priority + 1, $entry['accepted_args'] ], [ $priority, 0 ] ] as $binding ) {
         add_filter( $hook, $entry['function'], $binding[0], $binding[1] );
         try { verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Known native WordPress helpers require exact priority and arity, without invoking an altered registration.' ); }
         finally { remove_filter( $hook, $entry['function'], $binding[0] ); add_filter( $hook, $entry['function'], $priority, $entry['accepted_args'] ); }
     }
+}
+// OptionSanitizer.php registers no-stock absint natively in Woo 11.0.1. Only low-stock is an admin-only guard fixture.
+// This fixture is removed before the actual native REST quote below.
+foreach ( [ 'woocommerce_admin_settings_sanitize_option_woocommerce_notify_low_stock_amount' ] as $helper_hook ) {
+    verify( false === has_filter( $helper_hook, 'absint' ), 'The native frontend does not impersonate an admin settings registration.' );
+    add_filter( $helper_hook, 'absint', 10, 1 );
+    try {
+        valid_result( YoRo_Support_Commerce::profile() );
+        verify( true, 'An explicit admin-only native absint guard fixture is recognized at its exact registration.' );
+        foreach ( [ [ 11, 1 ], [ 10, 0 ] ] as [ $priority, $arity ] ) {
+            remove_filter( $helper_hook, 'absint', 10 );
+            add_filter( $helper_hook, 'absint', $priority, $arity );
+            try { verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Admin-only helper fixture still rejects changed priority/arity without invoking it.' ); }
+            finally { remove_filter( $helper_hook, 'absint', $priority ); add_filter( $helper_hook, 'absint', 10, 1 ); }
+        }
+    } finally { remove_filter( $helper_hook, 'absint', 10 ); }
 }
 valid_result( YoRo_Support_Commerce::profile() );
 

@@ -13,14 +13,16 @@ Native estimates use temporary Woo cart/customer/session objects, guest identity
 Run existing standalone PHP facts/security/session tests, `node --check` for both assets, and `node tests/customer-support/widget-protocol-test.js` for the unit DOM transport test. The latter is not browser rendering or visual acceptance. Run real disposable WP/Woo/MySQL engines with:
 
 ```text
-python3 -I -B -S tests/customer-support/run-query-integration.py --wordpress-source <existing WP package> --woocommerce-source <existing WC package> --mysql-base <existing MySQL8 package> --php <PHP8.4> --suite all
+python3 -I -B -S tests/customer-support/run-query-integration.py --wordpress-source <existing WP package> --woocommerce-source <existing WC package> --mysql-base <existing MySQL8 package> --php <PHP8.5> --suite all
 ```
+
+The selected source-test profile is WordPress 7.1, WooCommerce 11.0.1, PHP 8.5 and owned MySQL 8.4. The native callback profile adds nine exact hook/priority/arity/file/callable tuples for Woo 11.0.1 while retaining the historical 11.2.1 table. Tests characterize 13 actually loaded WordPress helper bindings (including the native no-stock sanitizer); the separate low-stock admin guard fixture is removed before native REST quoting. Native quote/effect assertions do not depend on that fixture.
 
 The runner copies code only, excludes site config/uploads/data, initializes socket-only networking-disabled MySQL, seeds synthetic fixtures and removes its owned DB/copies. Native SQL tracing rejects any estimate write to commerce/session tables. Tests cover native sums/taxes/rates/coupons/COD, variations/visibility, encrypted order references/ownership and current API-authorized context revalidation. They do not install on yoplay8 or prove actual model understanding, inbox delivery or production-plugin compatibility.
 
-`php tests/customer-support/render-widget.php` and `php tests/customer-support/render-settings.php` emit standalone source fixtures with synthetic transport/sample data. Human can open these locally. Browser screenshot/keyboard evidence is a separate required step; source generation/unit DOM assertions do not replace it. The attempted file URL browser navigation was denied; no alternate serving/surface workaround is authorized.
+`php tests/customer-support/render-widget.php` and `php tests/customer-support/render-settings.php` emit standalone source fixtures with synthetic transport/sample data. Human can open these locally. Browser screenshot/keyboard evidence is a separate required step; source generation/unit DOM assertions do not replace it. An owned loopback server may serve these source fixtures under the current Contract. Actual browser interaction with synthetic transport proves that fixture layer only; installed native coupling, real inbox delivery and Human visual acknowledgement remain separate evidence.
 
-Before CI, hand over exact API/Core source identities, tests/findings/remaining evidence, migration/rollback/budget and UI fixtures for Human approval. No push, PR, GitHub Actions, runtime install, deployment or governance adoption is implied. Exactly one shared credit per completed AI answer remains unchanged; static controls/previews cost zero and no site quota is introduced. Source-first evidence leaves actual provider/inbox/yoplay8/browser checks pending.
+The approved G049 source/CI gate requires final exact API/Core identities, tests/findings/remaining evidence and fresh independent cumulative review before push/hosted checks. Runtime installation, deployment, merge and governance adoption retain their own Human gates. Exactly one shared credit per completed AI answer remains unchanged; static controls/previews cost zero and no site quota is introduced. Source-test evidence leaves actual provider, real inbox, installed runtime and Human visual acceptance pending.
 
 ### Appearance defaults and local preview
 

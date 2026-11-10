@@ -94,7 +94,8 @@ foreach ( [ 'faq' => $faq, 'toc' => $toc ] as $kind => $id ) {
 $snapshot = YoRo_Support_Facts::snapshot( $settings, $queries['product'] );
 verify( 'product:' . $dark->get_id() === $snapshot['sources'][0]['id'], 'Named product outranks incidental prose/numeric terms and selected FAQ, beyond the first 100 catalog rows.' );
 $fact = array_values( array_filter( $snapshot['sources'], static fn( $source ) => 'product:' . $dark->get_id() === $source['id'] ) )[0];
-verify( str_contains( $fact['product']['price'], '62' ) && str_contains( $fact['product']['price'], '90' ) && 'instock' === $fact['product']['stock'], 'Current storefront sale, regular price and stock come from real Woo persistence.' );
+verify( '90' === wc_get_product( $dark->get_id() )->get_regular_price() && '62' === wc_get_product( $dark->get_id() )->get_price(), 'Native persistence retains the distinct regular and current sale prices.' );
+verify( str_contains( $fact['product']['price'], '62' ) && ! str_contains( $fact['product']['price'], '90' ) && 'instock' === $fact['product']['stock'], 'The public DTO carries the current storefront sale price and stock without an unlabeled old/current pair.' );
 verify( ! in_array( 'product:' . $hidden->get_id(), ids( $snapshot ), true ) && ! in_array( 'product:' . $draft->get_id(), ids( $snapshot ), true ), 'Hidden and draft products cannot become facts.' );
 $comparison = YoRo_Support_Facts::snapshot( $settings, 'Compare Dark Ground and Skyler prices and current stock.' );
 verify( in_array( 'product:' . $dark->get_id(), ids( $comparison ), true ) && in_array( 'product:' . $skyler->get_id(), ids( $comparison ), true ), 'OR retrieval finds distinct products without requiring both names in one record.' );
