@@ -32,6 +32,7 @@ class YoRo_Support_Context {
 	}
 
 	public static function create( array $settings, array $session, $kind, array $params ) {
+		if ( ! is_string( $kind ) ) { return self::invalid(); }
 		$purpose = [ 'order' => 'orders', 'quote' => 'quote', 'coupon' => 'coupons', 'payment' => 'payments' ][ $kind ] ?? '';
 		if ( ! $purpose || ! self::capabilities( $settings )[ $purpose ] ) { return self::invalid(); }
 		$proof = self::authorize( $session, $purpose );
