@@ -21,8 +21,12 @@ parser.add_argument("--wordpress-source", required=True)
 parser.add_argument("--woocommerce-source", required=True)
 parser.add_argument("--mysql-base", required=True)
 parser.add_argument("--php", required=True)
-parser.add_argument("--suite", choices=("query", "commerce", "full-commerce", "all"), default="query")
+parser.add_argument("--suite", choices=("query", "commerce", "full-commerce", "all", "wire"), default="query")
+parser.add_argument("--wire-fixture", help="Exact owned source roots and Woo mode for the wire suite")
 args = parser.parse_args()
+wire = json.loads(Path(args.wire_fixture).read_text()) if args.suite == "wire" and args.wire_fixture else None
+if args.suite == "wire" and (not isinstance(wire, dict) or not isinstance(wire.get("woo"), bool)):
+    raise RuntimeError("Wire suite requires an explicit owned fixture")
 for package in (args.wordpress_source, args.woocommerce_source, args.mysql_base, args.php):
     if Path(package).is_symlink():
         raise RuntimeError("Package inputs must not be symbolic links")
@@ -143,14 +147,16 @@ with tempfile.TemporaryDirectory(prefix=".disposable-query-", dir=tests) as temp
         os.chmod(wp / "wp-config.php", 0o600)
         bootstrap = root / "install.php"
         bootstrap.write_text("<?php\ndefine('WP_INSTALLING', true);\nfunction wp_mail(...$args) { return true; }\nrequire $argv[1].'/wp-load.php';\nrequire ABSPATH.'wp-admin/includes/upgrade.php';\nwp_install('Disposable support fixture', 'synthetic-owner', 'nobody@example.invalid', false, '', 'synthetic-only-password');\nupdate_option('active_plugins', ['woocommerce/woocommerce.php']);\nrequire $argv[1].'/wp-content/plugins/woocommerce/woocommerce.php';\nWC_Install::install();\n")
+        if args.suite == "wire" and not wire["woo"]:
+            bootstrap.write_text(bootstrap.read_text() + "update_option('active_plugins', []);\n")
         run([php, str(bootstrap), str(wp)])
         if args.suite == "full-commerce":
             activation = root / "activate-core.php"
             activation.write_text("<?php\nfunction wp_mail(...$args) { return true; }\nrequire $argv[1].'/wp-load.php';\nif ('yoro_support_disposable' !== DB_NAME || 'https://support-fixture.invalid' !== home_url() || ! DISABLE_WP_CRON) { throw new RuntimeException('Disposable fixture required.'); }\nupdate_option('active_plugins', ['woocommerce/woocommerce.php', 'yoro-ai-core/yoro-ai-core.php']);\n")
             run([php, str(activation), str(wp)])
         for suite in (["query", "commerce"] if args.suite == "all" else [args.suite]):
-            filename = "facts-query-integration.php" if suite == "query" else "commerce-integration.php"
-            output = run([php, str(tests / filename), str(wp), suite])
+            filename = "wire-integration.php" if suite == "wire" else ("facts-query-integration.php" if suite == "query" else "commerce-integration.php")
+            output = run([php, str(tests / filename), str(wp), args.wire_fixture if suite == "wire" else suite])
             print(output.strip())
     finally:
         if process is not None and process.poll() is None:
