@@ -31,3 +31,10 @@ component-local technical authority.
 A locally generated `AGENTS.override.md` may add machine-specific coordination
 guidance. It is untracked, must not be committed, does not replace this file, and
 does not supersede `AI_FIRST_ENGINEERING.md` or executable component authority.
+
+The intended hosted source surface is one genuine Core Quick Gate; exact pair,
+WordPress/WooCommerce/MySQL, full PHP/Node smoke and package proofs use the local
+API owner verifier and explicit clean roots/heads. Preserve actual native
+semantics, immutable historical provenance and current live required contexts
+until separately authorized cutover. Source guidance does not authorize merge,
+settings adoption, runtime/Cloud effects or activation.
