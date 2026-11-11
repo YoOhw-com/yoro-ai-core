@@ -150,7 +150,9 @@ class YoRo_Support_Commerce {
         $original = [ WC()->cart, WC()->customer, WC()->session ];
         global $current_user;
         $original_user = $current_user;
-        $deny_http = static function () { return new WP_Error( 'support_no_outbound', 'External checkout calls are unavailable.' ); };
+        // A returned WP_Error can be replaced by a later HTTP filter. Abort the
+        // quote instead, so its catch/finally restores the visitor's context.
+        $deny_http = static function () { throw new RuntimeException( 'support_no_outbound' ); };
         $memory = new class extends WC_Session {};
         $rates = $params['shipping_rates'] ?? [];
         if ( ! is_array( $rates ) || count( $rates ) > 10 || count( array_filter( $rates, 'is_string' ) ) !== count( $rates ) ) { return self::invalid(); }

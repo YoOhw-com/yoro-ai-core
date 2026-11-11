@@ -170,6 +170,36 @@ $original = [ WC()->cart, WC()->customer, WC()->session ];
 $before = [ 'stock' => wc_get_product( $p->get_id() )->get_stock_quantity(), 'coupon' => $coupon->get_usage_count(), 'session_rows' => $GLOBALS['wpdb']->get_var( 'SELECT COUNT(*) FROM ' . $GLOBALS['wpdb']->prefix . 'woocommerce_sessions' ), 'mail' => $GLOBALS['support_mail_effects'], 'order_rows' => $GLOBALS['wpdb']->get_var( 'SELECT COUNT(*) FROM ' . $GLOBALS['wpdb']->posts . " WHERE post_type='shop_order'" ) ];
 $profile = YoRo_Support_Commerce::profile(); valid_result( $profile );
 $quote = valid_result( readonly_quote( $params, [] ) );
+// Non-Woo option callbacks are outside the checkout profile inventory. An HTTP
+// attempt inside native totals must still abort before later filters can reopen it.
+$http_probe_attempts = 0; $http_later_filter_calls = 0;
+$http_reopen = static function () use ( &$http_later_filter_calls ) { ++$http_later_filter_calls; return false; };
+$http_fixture = static function () { return [ 'response' => [ 'code' => 200 ], 'body' => '', 'headers' => [] ]; };
+$http_probe = static function ( $value ) use ( &$http_probe_attempts ) {
+    if ( WC()->cart instanceof YoRo_Support_Quote_Cart ) {
+        ++$http_probe_attempts;
+        wp_remote_get( 'https://quote-outbound-fixture.invalid/' );
+    }
+    return $value;
+};
+$original_quote_user = $GLOBALS['current_user'];
+add_filter( 'pre_http_request', $http_reopen, 10 );
+add_filter( 'pre_http_request', $http_fixture, PHP_INT_MAX ); // No actual network, even on regression.
+add_filter( 'option_woocommerce_calc_taxes', $http_probe );
+try {
+    valid_result( YoRo_Support_Commerce::profile() );
+    $blocked_quote = readonly_quote( $params, [] );
+    verify( is_wp_error( $blocked_quote ) && 'support_quote_unavailable' === $blocked_quote->get_error_code(), 'An outbound attempt aborts the quote with its supported unavailable result.' );
+    verify( 1 === $http_probe_attempts && 0 === $http_later_filter_calls, 'The HTTP guard throws before any later filter can reopen the request.' );
+    verify( $original === [ WC()->cart, WC()->customer, WC()->session ] && $original_quote_user === $GLOBALS['current_user'], 'An aborted quote restores cart/customer/session and current user identities.' );
+    verify( 10 === has_filter( 'pre_http_request', $http_reopen ) && PHP_INT_MAX === has_filter( 'pre_http_request', $http_fixture ), 'An aborted quote preserves foreign HTTP filters.' );
+    verify( ! isset( $GLOBALS['wp_filter']['pre_http_request']->callbacks[ PHP_INT_MIN ] ), 'The task HTTP guard is removed after an aborted quote.' );
+} finally {
+    remove_filter( 'option_woocommerce_calc_taxes', $http_probe );
+    remove_filter( 'pre_http_request', $http_reopen, 10 );
+    remove_filter( 'pre_http_request', $http_fixture, PHP_INT_MAX );
+}
+valid_result( readonly_quote( $params, [] ) );
 verify( '200.00' === $quote['data']['subtotal'], 'Native cart subtotal.' );
 verify( '10.00' === $quote['data']['shipping'], 'Native shipping engine selected Standard.' );
 verify( '21.00' === $quote['data']['tax'] && '231.00' === $quote['data']['total'], 'Native cart totals includes product/shipping taxes.' );
