@@ -33,10 +33,11 @@ function readonly_quote( array $params, array $authority ) {
     $actions = array_map( 'did_action', array_keys( $persistence_hooks ) );
     $generation = get_option( '_yoro_complete_report_generation_v2' );
     $mutation = get_option( '_yoro_complete_report_mutation_v2' );
-    $native_hooks = $GLOBALS['g049_native_hooks'] ?? [];
+    $native_hooks = array_merge( $GLOBALS['g049_native_hooks'] ?? [], [ 'woocommerce_get_note_from_db',
+        'woocommerce_updated_product_stock', 'woocommerce_updated_product_sales', 'woocommerce_prevent_automatic_wizard_redirect' ] );
     $native_before = array_map( static fn( $hook ) => [ did_action( $hook ), did_filter( $hook ) ], $native_hooks );
     $result = YoRo_Support_Commerce::quote( $params, $authority );
-    verify( $native_before === array_map( static fn( $hook ) => [ did_action( $hook ), did_filter( $hook ) ], $native_hooks ), 'Read-only quote never invokes any of the nine newly characterized native stock/admin/settings/cron/report hooks.' );
+    verify( $native_before === array_map( static fn( $hook ) => [ did_action( $hook ), did_filter( $hook ) ], $native_hooks ), 'Read-only quote never invokes the characterized native stock/admin/settings/cron/report hooks.' );
     if ( $report_hooks ?? [] ) {
         verify( $actions === array_map( 'did_action', array_keys( $persistence_hooks ) ), 'Read-only quote invokes no report or subscription persistence hook.' );
         verify( $generation === get_option( '_yoro_complete_report_generation_v2' ) && $mutation === get_option( '_yoro_complete_report_mutation_v2' ), 'Read-only quote does not invalidate report generations.' );
@@ -524,6 +525,44 @@ foreach ( [ [ $known[1] + 1, $known[2] ], [ $known[1], $known[2] + 1 ] ] as $bin
     add_filter( $known[0], 'wc_sanitize_coupon_code', $binding[0], $binding[1] );
     try { verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'A legitimate native callable with changed priority or arity is unsupported.' ); }
     finally { remove_filter( $known[0], 'wc_sanitize_coupon_code', $binding[0] ); add_filter( $known[0], 'wc_sanitize_coupon_code', $known[1], $known[2] ); }
+}
+valid_result( YoRo_Support_Commerce::profile() );
+
+$g055_cache = ( new ReflectionClass( 'Automattic\\WooCommerce\\Internal\\Caches\\ProductCacheController' ) )->newInstanceWithoutConstructor();
+$g055_cache_callback = [ $g055_cache, 'invalidate_product_cache' ];
+foreach ( [ 'woocommerce_updated_product_stock', 'woocommerce_updated_product_sales' ] as $g055_hook ) {
+    $g055_original = isset( $GLOBALS['wp_filter'][ $g055_hook ] ) ? clone $GLOBALS['wp_filter'][ $g055_hook ] : null;
+    $g055_before = [ did_action( $g055_hook ), did_filter( $g055_hook ) ];
+    add_action( $g055_hook, $g055_cache_callback, 10, 1 );
+    try {
+        valid_result( YoRo_Support_Commerce::profile() );
+        verify( $g055_before === [ did_action( $g055_hook ), did_filter( $g055_hook ) ], 'Actual native product-cache registration is inspected without invocation.' );
+        foreach ( [ [ 11, 1 ], [ 10, 2 ] ] as [ $priority, $arity ] ) {
+            add_action( $g055_hook, $g055_cache_callback, $priority, $arity );
+            try { verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Native product-cache callable with changed priority or arity is denied.' ); }
+            finally { remove_action( $g055_hook, $g055_cache_callback, $priority ); add_action( $g055_hook, $g055_cache_callback, 10, 1 ); }
+        }
+    } finally {
+        if ( null === $g055_original ) { unset( $GLOBALS['wp_filter'][ $g055_hook ] ); } else { $GLOBALS['wp_filter'][ $g055_hook ] = $g055_original; }
+    }
+}
+$g055_wizard = 'woocommerce_prevent_automatic_wizard_redirect';
+$g055_original = isset( $GLOBALS['wp_filter'][ $g055_wizard ] ) ? clone $GLOBALS['wp_filter'][ $g055_wizard ] : null;
+add_filter( $g055_wizard, '__return_true', 10, 1 );
+try {
+    valid_result( YoRo_Support_Commerce::profile() );
+    verify( realpath( ( new ReflectionFunction( '__return_true' ) )->getFileName() ) === realpath( ABSPATH . WPINC . '/functions.php' ), 'Wizard constant is the actual WordPress native function.' );
+    foreach ( [ [ 11, 1 ], [ 10, 2 ] ] as [ $priority, $arity ] ) {
+        add_filter( $g055_wizard, '__return_true', $priority, $arity );
+        try { verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Wizard constant with changed priority or arity is denied.' ); }
+        finally { remove_filter( $g055_wizard, '__return_true', $priority ); add_filter( $g055_wizard, '__return_true', 10, 1 ); }
+    }
+    $g055_foreign = static fn( $value ) => $value;
+    add_filter( $g055_wizard, $g055_foreign, 10, 1 );
+    try { verify( is_wp_error( YoRo_Support_Commerce::profile() ), 'Foreign wizard callback remains unsupported.' ); }
+    finally { remove_filter( $g055_wizard, $g055_foreign, 10 ); }
+} finally {
+    if ( null === $g055_original ) { unset( $GLOBALS['wp_filter'][ $g055_wizard ] ); } else { $GLOBALS['wp_filter'][ $g055_wizard ] = $g055_original; }
 }
 valid_result( YoRo_Support_Commerce::profile() );
 

@@ -18,6 +18,7 @@ class YoRo_Support_Commerce {
                     try {
                         $callback = $entry['function'];
                         if ( self::native_wordpress_callback( $name, $callback, $priority, $entry['accepted_args'] ?? null ) ) { continue; }
+                        if ( self::lazy_native_note_callback( $name, $callback, $priority, $entry['accepted_args'] ?? null ) ) { continue; }
                         if ( in_array( $name, [ 'woocommerce_rest_shop_order_refund_trashable', 'woocommerce_rest_shop_order_refund_object_trashable' ], true ) ) { return new WP_Error( 'support_checkout_unsupported', 'The native refund guard registration is unsupported.' ); }
                         if ( self::report_mutation_callback( $name, $priority, $entry ) ) { continue; }
                         if ( self::subscription_mutation_callback( $name, $priority, $entry ) ) { continue; }
@@ -49,6 +50,14 @@ class YoRo_Support_Commerce {
             }
         }
         return true;
+    }
+
+    /** This exact native admin-note registration is dormant in quotes; never autoload it to inspect it. */
+    private static function lazy_native_note_callback( $hook, $callback, $priority, $accepted_args ) {
+        return 'woocommerce_get_note_from_db' === $hook && 10 === $priority && 1 === $accepted_args
+            && ! class_exists( 'WC_Notes_Run_Db_Update', false )
+            && ( [ 'WC_Notes_Run_Db_Update', 'maybe_update_notice' ] === $callback
+                || 'WC_Notes_Run_Db_Update::maybe_update_notice' === $callback );
     }
 
     /** Core subscription invalidation runs only on persistence, never quote hooks. */
@@ -83,6 +92,11 @@ class YoRo_Support_Commerce {
 
     /** Exact helpers registered by WooCommerce itself; arbitrary WP callbacks stay unsupported. */
     private static function native_wordpress_callback( $hook, $callback, $priority, $accepted_args ) {
+        if ( 'woocommerce_prevent_automatic_wizard_redirect' === $hook && '__return_true' === $callback ) {
+            $reflection = new ReflectionFunction( $callback );
+            $file = realpath( $reflection->getFileName() ); $native = realpath( ABSPATH . WPINC . '/functions.php' );
+            return 10 === $priority && 1 === $accepted_args && false !== $file && false !== $native && $file === $native;
+        }
         if ( in_array( $hook, [ 'woocommerce_rest_shop_order_refund_trashable', 'woocommerce_rest_shop_order_refund_object_trashable' ], true )
             && '__return_false' === $callback ) {
             $reflection = new ReflectionFunction( $callback );

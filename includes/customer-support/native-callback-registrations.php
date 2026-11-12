@@ -2,7 +2,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-// Supported WooCommerce 11.2.1 registrations from the isolated native/full-Core fixture.
+// Supported WooCommerce 11.2.1 registrations, plus characterized 11.2.2 product-cache hooks.
 // Bind the hook, priority, arity, defining native file and callable together. File ownership alone is insufficient.
 $registrations = [
     [ 'woocommerce_account_add-payment-method_endpoint', 10, 1, 'includes/wc-template-functions.php', 'woocommerce_account_add_payment_method' ],
@@ -742,6 +742,8 @@ $registrations = [
     [ 'woocommerce_updated', 10, 1, 'includes/class-woocommerce.php', 'WooCommerce::add_woocommerce_inbox_variant' ],
     [ 'woocommerce_updated', 10, 1, 'includes/class-woocommerce.php', 'WooCommerce::add_woocommerce_remote_variant' ],
     [ 'woocommerce_updated', 20, 1, 'includes/class-wc-install.php', 'WC_Install::enable_email_improvements_for_existing_merchants' ],
+    [ 'woocommerce_updated_product_sales', 10, 1, 'src/Internal/Caches/ProductCacheController.php', 'Automattic\\WooCommerce\\Internal\\Caches\\ProductCacheController::invalidate_product_cache' ],
+    [ 'woocommerce_updated_product_stock', 10, 1, 'src/Internal/Caches/ProductCacheController.php', 'Automattic\\WooCommerce\\Internal\\Caches\\ProductCacheController::invalidate_product_cache' ],
     [ 'woocommerce_valid_order_statuses_for_payment', 999, 1, 'src/Blocks/Domain/Services/DraftOrders.php', 'Automattic\\WooCommerce\\Blocks\\Domain\\Services\\DraftOrders::append_draft_order_post_status' ],
     [ 'woocommerce_valid_order_statuses_for_payment_complete', 999, 1, 'src/Blocks/Domain/Services/DraftOrders.php', 'Automattic\\WooCommerce\\Blocks\\Domain\\Services\\DraftOrders::append_draft_order_post_status' ],
     [ 'woocommerce_variable_add_to_cart', 30, 1, 'includes/wc-template-functions.php', 'woocommerce_variable_add_to_cart' ],
