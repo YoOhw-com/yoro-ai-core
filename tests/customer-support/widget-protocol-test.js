@@ -102,6 +102,10 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
     input.value = 'A question that still needs context'; responses.push({body: {status: 'context', context: 'orders'}}, {body: emptyOrders}, {body: {status: 'context', context: 'orders'}}, {body: emptyOrders});
     await composer.event('submit'); await flush(); await flush();
     verify(calls.filter(call => call.url.endsWith('/turn')).length === beforeRepeatedContext + 2 && responses.length === 0, 'A second model context response cannot automatically loop into more UUIDs or provider turns');
+    const beforeNewIntent = calls.filter(call => call.url.endsWith('/turn')).length;
+    input.value = 'A new explicit order question'; responses.push({body: {status: 'context', context: 'orders'}}, {body: emptyOrders}, {body: {status: 'completed', private: true, answer: {text: 'A current no-match answer.', sources: []}}});
+    await composer.event('submit'); await flush();
+    verify(calls.filter(call => call.url.endsWith('/turn')).length === beforeNewIntent + 2, 'A later explicit visitor intent gets its own single automatic resume allowance');
     const beforeEmptyExpiry = calls.filter(call => call.url.endsWith('/turn')).length;
     input.value = 'Pending empty lookup'; responses.push({body: {status: 'context', context: 'orders'}}, {body: emptyOrders});
     await composer.listeners.submit[0]({preventDefault() {}});

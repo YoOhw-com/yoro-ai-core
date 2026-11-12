@@ -135,7 +135,7 @@
         catch (error) { if (error.code === 'support_request_superseded') return; if (error.code === 'support_verification_required') { clearPrivate(true); verificationForm(); } else { status.textContent = errorText(error); } if (pending) retry.hidden = retryCount >= 2; }
         finally { if (ownGeneration === generation) { busy = false; send.disabled = false; } }
     }
-    async function sendMessage(message, fromResume = false) {
+    async function sendMessage(message, fromResume = false, automaticResume = false) {
         if (busy) return;
         await action(async () => {
             if (contextPrivate && input.value.trim() === message) privateComposerValue = input.value;
@@ -147,7 +147,8 @@
                 retry.hidden = !pending || retryCount >= 2;
                 return;
             }
-            if (!fromResume) { resumeAttempted = false; append(message, 'user', [], contextPrivate); }
+            if (!automaticResume) resumeAttempted = false;
+            if (!fromResume) append(message, 'user', [], contextPrivate);
             pending = {turn_id: crypto.randomUUID(), message, context_token: contextToken}; retryCount = 0; retry.hidden = true; status.textContent = t('Thinking…');
             const result = await request('turn', pending); handleAnswer(result, message);
         });
@@ -218,7 +219,7 @@
         const question = pendingQuestion, token = contextToken, ownGeneration = generation;
         if (question && !resumeAttempted) setTimeout(() => {
             if (generation === ownGeneration && contextToken === token && pendingQuestion === question && !resumeAttempted) {
-                resumeAttempted = true; sendMessage(question, true);
+                resumeAttempted = true; sendMessage(question, true, true);
             }
         }, 0);
     }
