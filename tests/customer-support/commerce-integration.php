@@ -439,6 +439,42 @@ verify( $authorization_calls === 2, 'Each selected context reauthorizes at API; 
 $decoded_context = YoRo_Support_Transport::open( $selected['context_token'], 'context' );
 verify( ! isset( $decoded_context['credential'] ) && isset( $decoded_context['credential_binding'] ) && [] === YoRo_Support_Transport::open( $selected['context_token'] ), 'Context is purpose-separated and contains no reusable session credential.' );
 $authorization_access = 'synthetic-new-access'; $authorization_email = 'buyer@example.test';
+// An empty lookup remains an authorized order context, never a synthetic order.
+$authorization_email = 'no-orders@example.test';
+$none = valid_result( YoRo_Support_Context::orders( $settings, $session, 1 ) );
+verify( [] === $none['orders'] && false === $none['has_next'] && $none['selection']['private'], 'First-page empty lookup supplies a private selected context without an AI call.' );
+$none_selection = $none['selection'];
+verify( [ 'lookup_status' => 'no_matches' ] === $none_selection['card']['data'], 'Empty lookup has only its strict tag, no invented order ID, money or customer field.' );
+$none_snapshot = valid_result( YoRo_Support_Context::snapshot( $settings, $session, '', null, $none_selection['context_token'] ) );
+verify( $none_snapshot['cards'][0] === $none_selection['card'] && 'order' === $none_snapshot['context']['kind'], 'Fresh empty lookup reproduces a stable card under the same private context.' );
+verify( ! isset( valid_result( YoRo_Support_Context::orders( $settings, $session, 2 ) )['selection'] ), 'An empty later page cannot assert no matching orders.' );
+verify( is_wp_error( YoRo_Support_Context::create( $settings, $session, 'order', [ 'lookup_status' => 'no_matches' ] ) ), 'Browser cannot submit an empty-lookup assertion through order selection.' );
+$none_held = YoRo_Support_Transport::open( $none_selection['context_token'], 'context' );
+foreach ( [ [ 'lookup_status' => 'no_matches', 'reference' => '' ], [ 'lookup_status' => true ], [] ] as $bad_params ) {
+    $tampered = $none_held; $tampered['params'] = $bad_params;
+    verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, YoRo_Support_Transport::seal( $tampered, 'context' ) ) ), 'Missing/mixed/forged empty tag fails closed even in a server-sealed fixture.' );
+}
+foreach ( [ [ 'session_id', 'foreign-session' ], [ 'credential', 'foreign-credential' ] ] as [ $field, $value ] ) {
+    $foreign_none = $session; $foreign_none[ $field ] = $value;
+    verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $foreign_none, '', null, $none_selection['context_token'] ) ), 'Empty context is bound to its original session and credential.' );
+}
+$none_settings = $settings; $none_settings['revision']++;
+verify( is_wp_error( YoRo_Support_Context::snapshot( $none_settings, $session, '', null, $none_selection['context_token'] ) ), 'Policy movement fences the empty context.' );
+$none_settings = $settings; $none_settings['preferences']['features']['orders'] = false;
+verify( is_wp_error( YoRo_Support_Context::snapshot( $none_settings, $session, '', null, $none_selection['context_token'] ) ), 'Disabled orders fences the empty context.' );
+$expired_none = $none_held; $expired_none['expires'] = time() - 1;
+verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, YoRo_Support_Transport::seal( $expired_none, 'context' ) ) ), 'Expired empty context cannot replay.' );
+$authorization_access = 'different-access';
+verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, $none_selection['context_token'] ) ), 'Current access generation must still match for the empty context.' );
+$authorization_access = 'synthetic-new-access'; $authorization_revoked = true;
+verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, $none_selection['context_token'] ) ), 'Revocation fences an empty context before private facts return.' );
+$authorization_revoked = false;
+$new_match = wc_create_order(); $new_match->set_billing_email( $authorization_email ); $new_match->save();
+verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, $none_selection['context_token'] ) ), 'A newly matching native order invalidates the previous empty snapshot.' );
+verify( ! isset( valid_result( YoRo_Support_Context::orders( $settings, $session, 1 ) )['selection'] ), 'A nonempty first page never supplies the empty context.' );
+verify( ! isset( valid_result( YoRo_Support_Context::orders( $settings, $session, 2 ) )['selection'] ), 'Empty pagination after a real matching order is not a no-match fact.' );
+$new_match->delete( true );
+$authorization_email = 'buyer@example.test';
 verify( is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, $selected['context_token'] ) ), 'A public null-access context cannot silently upgrade after verification.' );
 $private_selected = valid_result( YoRo_Support_Context::create( $settings, $session, 'quote', $params ) );
 verify( $private_selected['private'] && ! is_wp_error( YoRo_Support_Context::snapshot( $settings, $session, '', null, $private_selected['context_token'] ) ), 'A freshly selected context retains the exact new live private binding.' );

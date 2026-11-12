@@ -189,10 +189,8 @@ class YoRo_Customer_Support {
 			}, array_filter( $results['sources'], static function ( $source ) { return 'product' === $source['type']; } ) ) ) ] );
 		}
 		if ( 'orders' === $kind ) {
-			$proof = YoRo_Support_Context::authorize( $session, 'orders' );
-			if ( is_wp_error( $proof ) ) { return $proof; }
 			$page = $request->get_param( 'page' ) ?? 1;
-			$result = YoRo_Support_Commerce::orders( $proof, $page );
+			$result = YoRo_Support_Context::orders( $settings, $session, $page );
 		} else {
 			$params = $request->get_param( 'params' );
 			if ( ! is_array( $params ) ) { return self::unavailable(); }

@@ -246,6 +246,12 @@ class YoRo_Support_Commerce {
         return [ 'orders' => $rows, 'page' => $page, 'has_next' => count( $orders ) > 10 ];
     }
 
+    public static function empty_order_lookup( array $authority ) {
+        $lookup = self::orders( $authority, 1 );
+        if ( is_wp_error( $lookup ) || [] !== $lookup['orders'] || $lookup['has_next'] ) { return self::invalid(); }
+        return self::card( 'order', [ 'lookup_status' => 'no_matches' ], 'Current verified order lookup' );
+    }
+
     public static function order( array $authority, $reference ) {
         if ( ! self::verified( $authority ) || ! is_string( $reference ) || strlen( $reference ) > 2000 ) { return self::invalid(); }
         $held = YoRo_Support_Transport::open( $reference, 'order' );

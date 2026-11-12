@@ -203,11 +203,20 @@
     }
     async function orders(page = 1) {
         const result = await request('context', {kind: 'orders', page}); requirePrivateAccess(); contextArea.replaceChildren(); const card = node('div', '', 'yoro-support-flow'); card.dataset.private = 'true'; card.append(node('h3', t('Choose an order')));
-        if (!result.orders.length) card.append(node('p', t('No orders match this verified email.')));
+        if (!result.orders.length) {
+            card.append(node('p', t('No orders match this verified email.')));
+            if (page === 1 && !result.has_next && result.selection) {
+                selectContext(result.selection); resumePendingQuestion();
+            }
+        }
         result.orders.forEach(order => { const row = node('div', '', 'yoro-support-order'); row.append(node('strong', '#' + order.number), node('p', [order.date, order.status, order.total + ' ' + order.currency].join(' · ')), button('Select order', () => action(async () => {
-            const selected = await request('context', {kind: 'order', params: {reference: order.reference}}); selectContext(selected); renderCard(selected.card); contextArea.append(button('Other orders', () => action(() => orders()))); contextArea.append(button('Ask about this order', () => sendMessage(t('What is the current status of this order?')))); const question = pendingQuestion, token = contextToken, ownGeneration = generation; if (question) setTimeout(() => { if (generation === ownGeneration && contextToken === token && pendingQuestion === question) sendMessage(question, true); }, 0);
+            const selected = await request('context', {kind: 'order', params: {reference: order.reference}}); selectContext(selected); renderCard(selected.card); contextArea.append(button('Other orders', () => action(() => orders()))); contextArea.append(button('Ask about this order', () => sendMessage(t('What is the current status of this order?')))); resumePendingQuestion();
         }))); card.append(row); });
         if (result.has_next) card.append(button('Next orders', () => action(() => orders(page + 1)))); contextArea.append(card);
+    }
+    function resumePendingQuestion() {
+        const question = pendingQuestion, token = contextToken, ownGeneration = generation;
+        if (question) setTimeout(() => { if (generation === ownGeneration && contextToken === token && pendingQuestion === question) sendMessage(question, true); }, 0);
     }
     function selectContext(result) {
         if (result.private === true) requirePrivateAccess();
@@ -238,7 +247,9 @@
     function renderCard(card) {
         contextArea.replaceChildren(); const box = node('div', '', 'yoro-support-card'); if (contextPrivate) box.dataset.private = 'true'; const data = card.data;
         box.append(node('h3', card.title));
-        if (card.kind === 'order') {
+        if (card.kind === 'order' && data.lookup_status === 'no_matches') {
+            box.append(node('p', t('No orders match this verified email.')));
+        } else if (card.kind === 'order') {
             box.append(node('p', data.status + ' · ' + data.payment));
             data.items.forEach(item => box.append(node('p', item.name + ' × ' + item.quantity + ' · ' + item.total + ' ' + data.currency)));
             box.append(node('strong', data.total + ' ' + data.currency), node('p', t('Recorded refund') + ': ' + data.refund), node('h4', t('Recorded tracking')));

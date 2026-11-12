@@ -31,6 +31,22 @@ class YoRo_Support_Context {
 		return $proof;
 	}
 
+	public static function orders( array $settings, array $session, $page = 1 ) {
+		if ( ! self::capabilities( $settings )['orders'] ) { return self::invalid(); }
+		$proof = self::authorize( $session, 'orders' );
+		if ( is_wp_error( $proof ) ) { return $proof; }
+		$result = YoRo_Support_Commerce::orders( $proof, $page );
+		if ( is_wp_error( $result ) || 1 !== $page || [] !== $result['orders'] || $result['has_next'] ) { return $result; }
+		$card = YoRo_Support_Commerce::empty_order_lookup( $proof );
+		if ( is_wp_error( $card ) ) { return $card; }
+		$params = [ 'lookup_status' => 'no_matches' ];
+		$expires = min( time() + 300, (int) $session['expires'], strtotime( $proof['expires_at'] ) );
+		$context = [ 'kind' => 'order', 'access_id' => $proof['access_id'],
+			'reference' => hash( 'sha256', wp_json_encode( $params ) ), 'expires_at' => gmdate( 'c', $expires ) ];
+		$selected = self::selected( $settings, $session, $context, $params, $card, $expires );
+		return is_wp_error( $selected ) ? $selected : $result + [ 'selection' => $selected ];
+	}
+
 	public static function create( array $settings, array $session, $kind, array $params ) {
 		if ( ! is_string( $kind ) ) { return self::invalid(); }
 		$purpose = [ 'order' => 'orders', 'quote' => 'quote', 'coupon' => 'coupons', 'payment' => 'payments' ][ $kind ] ?? '';
@@ -51,6 +67,10 @@ class YoRo_Support_Context {
 			$card = YoRo_Support_Commerce::quote( $params, $proof );
 		}
 		if ( is_wp_error( $card ) ) { return $card; }
+		return self::selected( $settings, $session, $context, $params, $card, $expires );
+	}
+
+	private static function selected( array $settings, array $session, array $context, array $params, array $card, $expires ) {
 		$card = self::project( $card, $settings );
 		$token = YoRo_Support_Transport::seal( [ 'session_id' => $session['session_id'], 'credential_binding' => YoRo_Support_Transport::binding( $session['credential'] ), 'revision' => $session['revision'], 'expires' => $expires, 'context' => $context, 'params' => $params ], 'context' );
 		if ( '' === $token ) { return self::invalid(); }
@@ -91,7 +111,9 @@ class YoRo_Support_Context {
 		$proof = self::authorize( $session, $purpose, $held['context']['access_id'] ?? null );
 		if ( is_wp_error( $proof ) ) { return $proof; }
 		if ( ( $held['context']['access_id'] ?? null ) !== ( $proof['access_id'] ?? null ) ) { return self::invalid(); }
-		$card = 'order' === $kind ? YoRo_Support_Commerce::order( $proof, $held['params']['reference'] ?? null ) : YoRo_Support_Commerce::quote( $held['params'], $proof );
+		$card = 'order' === $kind
+			? ( [ 'lookup_status' => 'no_matches' ] === $held['params'] ? YoRo_Support_Commerce::empty_order_lookup( $proof ) : YoRo_Support_Commerce::order( $proof, $held['params']['reference'] ?? null ) )
+			: YoRo_Support_Commerce::quote( $held['params'], $proof );
 		if ( is_wp_error( $card ) ) { return $card; }
 		$card = self::project( $card, $settings );
 		$snapshot['sources'] = array_slice( $snapshot['sources'], 0, 19 );

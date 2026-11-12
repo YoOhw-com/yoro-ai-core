@@ -89,6 +89,21 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
     await area.querySelectorAll('button').find(button => button.textContent === 'Select order').event('click');
     verify(calls.filter(call => call.url.endsWith('/turn')).length === beforeResume + 1 && calls.at(-1).body.message === 'Where is my delivery?', 'Only a real pending customer question automatically resumes once');
 
+    const noneSelection = {context_token: 'synthetic-empty-order-context', private: true, expires_at: new Date(Date.now() + 300000).toISOString(), card: {kind: 'order', title: 'Current verified order lookup', data: {lookup_status: 'no_matches'}}};
+    const emptyOrders = {orders: [], page: 1, has_next: false, selection: noneSelection};
+    const beforeEmpty = calls.filter(call => call.url.endsWith('/turn')).length;
+    responses.push({body: emptyOrders}); await orders.event('click');
+    verify(calls.filter(call => call.url.endsWith('/turn')).length === beforeEmpty, 'Form-first empty lookup remains zero AI');
+    input.value = 'Do I have any orders?'; responses.push({body: {status: 'completed', private: true, answer: {text: 'No orders match this lookup.', sources: []}}}); await composer.event('submit');
+    verify(calls.at(-1).body.context_token === noneSelection.context_token && calls.filter(call => call.url.endsWith('/turn')).length === beforeEmpty + 1, 'Explicit no-order question carries the authorized empty context in one turn');
+    input.value = 'Please check my orders again'; responses.push({body: {status: 'context', context: 'orders'}}, {body: emptyOrders}, {body: {status: 'completed', private: true, answer: {text: 'No matching orders now.', sources: []}}}); await composer.event('submit'); await flush();
+    verify(calls.filter(call => call.url.endsWith('/turn')).length === beforeEmpty + 3 && calls.at(-1).body.context_token === noneSelection.context_token && calls.at(-1).body.message === 'Please check my orders again', 'A real pending question resumes once after an empty selection, preserving its question and private context');
+    const beforeEmptyExpiry = calls.filter(call => call.url.endsWith('/turn')).length;
+    input.value = 'Pending empty lookup'; responses.push({body: {status: 'context', context: 'orders'}}, {body: emptyOrders});
+    await composer.listeners.submit[0]({preventDefault() {}});
+    [...timers.values()].find(timer => timer.delay >= 290000 && timer.delay <= 300000).fn(); await flush();
+    verify(calls.filter(call => call.url.endsWith('/turn')).length === beforeEmptyExpiry + 1, 'Expiring the empty context before scheduled resume prevents the extra turn');
+
     input.value = 'Question awaiting a different order'; responses.push({body: {status: 'context', context: 'orders'}}, {body: orderList}); await composer.event('submit');
     const beforeExpiredResume = calls.filter(call => call.url.endsWith('/turn')).length; responses.push({body: selectedOrder});
     await area.querySelectorAll('button').find(button => button.textContent === 'Select order').listeners.click[0]();
