@@ -98,6 +98,10 @@ let checks = 0; const verify = (condition, message) => { assert.ok(condition, me
     verify(calls.at(-1).body.context_token === noneSelection.context_token && calls.filter(call => call.url.endsWith('/turn')).length === beforeEmpty + 1, 'Explicit no-order question carries the authorized empty context in one turn');
     input.value = 'Please check my orders again'; responses.push({body: {status: 'context', context: 'orders'}}, {body: emptyOrders}, {body: {status: 'completed', private: true, answer: {text: 'No matching orders now.', sources: []}}}); await composer.event('submit'); await flush();
     verify(calls.filter(call => call.url.endsWith('/turn')).length === beforeEmpty + 3 && calls.at(-1).body.context_token === noneSelection.context_token && calls.at(-1).body.message === 'Please check my orders again', 'A real pending question resumes once after an empty selection, preserving its question and private context');
+    const beforeRepeatedContext = calls.filter(call => call.url.endsWith('/turn')).length;
+    input.value = 'A question that still needs context'; responses.push({body: {status: 'context', context: 'orders'}}, {body: emptyOrders}, {body: {status: 'context', context: 'orders'}}, {body: emptyOrders});
+    await composer.event('submit'); await flush(); await flush();
+    verify(calls.filter(call => call.url.endsWith('/turn')).length === beforeRepeatedContext + 2 && responses.length === 0, 'A second model context response cannot automatically loop into more UUIDs or provider turns');
     const beforeEmptyExpiry = calls.filter(call => call.url.endsWith('/turn')).length;
     input.value = 'Pending empty lookup'; responses.push({body: {status: 'context', context: 'orders'}}, {body: emptyOrders});
     await composer.listeners.submit[0]({preventDefault() {}});

@@ -60,7 +60,7 @@
     const body = root.querySelector('.yoro-support-body'), log = root.querySelector('[role=log]'), status = root.querySelector('[data-status]'), contextArea = root.querySelector('.yoro-support-context');
     const verifiedBar = root.querySelector('.yoro-support-verified');
     let privateComposerValue = null;
-    let quoteParameters = null, csrf = '', busy = false, pending = null, retryCount = 0, pendingQuestion = '', pendingQuestionPrivate = false, contextToken = '', contextPrivate = false, contextExpires = 0, verified = false, accessExpires = 0, revoking = false, accessTimer, contextTimer, generation = 0;
+    let quoteParameters = null, csrf = '', busy = false, pending = null, retryCount = 0, pendingQuestion = '', pendingQuestionPrivate = false, resumeAttempted = false, contextToken = '', contextPrivate = false, contextExpires = 0, verified = false, accessExpires = 0, revoking = false, accessTimer, contextTimer, generation = 0;
     let capabilities = {content: true, products: true, quote: false, coupons: false, payments: false, orders: false};
     const endpoint = root.dataset.endpoint;
     const node = (tag, text = '', className = '') => { const el = document.createElement(tag); if (text) el.textContent = text; if (className) el.className = className; return el; };
@@ -147,7 +147,7 @@
                 retry.hidden = !pending || retryCount >= 2;
                 return;
             }
-            if (!fromResume) append(message, 'user', [], contextPrivate);
+            if (!fromResume) { resumeAttempted = false; append(message, 'user', [], contextPrivate); }
             pending = {turn_id: crypto.randomUUID(), message, context_token: contextToken}; retryCount = 0; retry.hidden = true; status.textContent = t('Thinking…');
             const result = await request('turn', pending); handleAnswer(result, message);
         });
@@ -216,7 +216,11 @@
     }
     function resumePendingQuestion() {
         const question = pendingQuestion, token = contextToken, ownGeneration = generation;
-        if (question) setTimeout(() => { if (generation === ownGeneration && contextToken === token && pendingQuestion === question) sendMessage(question, true); }, 0);
+        if (question && !resumeAttempted) setTimeout(() => {
+            if (generation === ownGeneration && contextToken === token && pendingQuestion === question && !resumeAttempted) {
+                resumeAttempted = true; sendMessage(question, true);
+            }
+        }, 0);
     }
     function selectContext(result) {
         if (result.private === true) requirePrivateAccess();
