@@ -804,6 +804,23 @@ $registrations = [
     [ 'woocommerce_admin_payment_gateway_connection_return', 10, 1, 'src/Admin/Features/PaymentGatewaySuggestions/PaymentGatewaysController.php', 'Automattic\\WooCommerce\\Admin\\Features\\PaymentGatewaySuggestions\\PaymentGatewaysController::handle_successfull_connection' ],
     [ 'woocommerce_update_options_site-visibility', 10, 1, 'src/Admin/Features/LaunchYourStore.php', 'Automattic\\WooCommerce\\Admin\\Features\\LaunchYourStore::save_site_visibility_options' ],
     [ 'woocommerce_tracks_event_properties', 10, 2, 'src/Admin/Features/LaunchYourStore.php', 'Automattic\\WooCommerce\\Admin\\Features\\LaunchYourStore::append_coming_soon_global_tracks' ],
+    // Native tracking consent adds these exact dormant persistence/settings bindings in guest REST requests.
+    [ 'woocommerce_order_status_changed', 10, 3, 'includes/tracks/events/class-wc-orders-tracking.php', 'WC_Orders_Tracking::track_order_status_change' ],
+    [ 'woocommerce_helper_connected', 10, 1, 'includes/tracks/events/class-wc-extensions-tracking.php', 'WC_Extensions_Tracking::track_helper_connection_complete' ],
+    [ 'woocommerce_helper_connect_start', 10, 1, 'includes/tracks/events/class-wc-extensions-tracking.php', 'WC_Extensions_Tracking::track_helper_connection_start' ],
+    [ 'woocommerce_helper_denied', 10, 1, 'includes/tracks/events/class-wc-extensions-tracking.php', 'WC_Extensions_Tracking::track_helper_connection_cancelled' ],
+    [ 'woocommerce_helper_disconnected', 10, 1, 'includes/tracks/events/class-wc-extensions-tracking.php', 'WC_Extensions_Tracking::track_helper_disconnected' ],
+    [ 'woocommerce_helper_subscriptions_refresh', 10, 1, 'includes/tracks/events/class-wc-extensions-tracking.php', 'WC_Extensions_Tracking::track_helper_subscriptions_refresh' ],
+    [ 'woocommerce_addon_installed', 10, 2, 'includes/tracks/events/class-wc-extensions-tracking.php', 'WC_Extensions_Tracking::track_addon_install' ],
+    [ 'woocommerce_page_wc-addons_connection_error', 10, 1, 'includes/tracks/events/class-wc-extensions-tracking.php', 'WC_Extensions_Tracking::track_extensions_page_connection_error' ],
+    [ 'woocommerce_process_shop_order_meta', 10, 1, 'includes/tracks/events/class-wc-orders-tracking.php', 'WC_Orders_Tracking::track_created_date_change' ],
+    [ 'woocommerce_process_shop_order_meta', 51, 1, 'includes/tracks/events/class-wc-orders-tracking.php', 'WC_Orders_Tracking::track_order_action' ],
+    [ 'woocommerce_settings_page_init', 10, 1, 'includes/tracks/events/class-wc-settings-tracking.php', 'WC_Settings_Tracking::track_settings_page_view' ],
+    [ 'woocommerce_update_option', 10, 1, 'includes/tracks/events/class-wc-settings-tracking.php', 'WC_Settings_Tracking::add_option_to_list' ],
+    [ 'woocommerce_update_non_option_setting', 10, 1, 'includes/tracks/events/class-wc-settings-tracking.php', 'WC_Settings_Tracking::add_option_to_list_and_track_setting_change' ],
+    [ 'woocommerce_update_options', 10, 1, 'includes/tracks/events/class-wc-settings-tracking.php', 'WC_Settings_Tracking::send_settings_change_event' ],
+    [ 'woocommerce_admin_order_data_after_order_details', 10, 1, 'includes/tracks/events/class-wc-order-tracking.php', 'WC_Order_Tracking::track_order_viewed' ],
+    [ 'woocommerce_coupon_updated_props', 10, 2, 'includes/tracks/events/class-wc-coupon-tracking.php', 'WC_Coupon_Tracking::track_coupon_updated' ],
 ];
 
 if ( ! defined( 'WC_VERSION' ) || '11.0.1' !== WC_VERSION ) { return $registrations; }
