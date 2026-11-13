@@ -38,18 +38,21 @@ class YoRo_Support_Facts {
 					if ( $count >= 10 ) { break; }
 				}
 				foreach ( $parents as $id ) {
-					if ( $count < 10 && $candidates < 100 ) {
+					if ( $candidates < 100 ) {
 						$children = wc_get_products( [ 'type' => 'variation', 'parent' => (int) $id, 'status' => 'publish', 'limit' => 100 - $candidates,
 							'orderby' => 'ID', 'order' => 'ASC', 'return' => 'ids' ] );
 						foreach ( $children as $child ) {
 							if ( ++$candidates > 100 ) { break; }
 							$variation = self::product( $child );
-							if ( $variation ) { $sources[] = $variation; ++$count; }
-							if ( $count >= 10 ) { break; }
+							if ( $variation ) { $sources[] = $variation; }
 						}
 					}
-					if ( $count >= 10 ) { break; }
 				}
+				// Select parents first for comparisons; inspect real variants within the
+				// existing candidate budget before ranking the ten product facts.
+				$products = array_values( array_filter( $sources, static fn( $source ) => 'product' === $source['type'] ) );
+				$sources = array_values( array_filter( $sources, static fn( $source ) => 'content' === $source['type'] ) );
+				$sources = array_merge( $sources, array_slice( self::rank( $products, $terms ), 0, 10 ) );
 			}
 			$sources = self::rank( $sources, $terms );
 		}
