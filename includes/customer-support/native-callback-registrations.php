@@ -2,7 +2,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-// Supported WooCommerce 11.2.1 registrations, plus characterized 11.2.2 product-cache and REST/email hooks.
+// Supported WooCommerce 11.2.1 registrations, plus characterized 11.2.2 product-cache and REST/email/tax settings hooks.
 // Bind the hook, priority, arity, defining native file and callable together. File ownership alone is insufficient.
 $registrations = [
     [ 'woocommerce_account_add-payment-method_endpoint', 10, 1, 'includes/wc-template-functions.php', 'woocommerce_account_add_payment_method' ],
@@ -766,6 +766,10 @@ $registrations = [
     [ 'woocommerce_settings-email_customer_fulfillment_created', 10, 1, 'includes/class-wc-register-wp-admin-settings.php', 'WC_Register_WP_Admin_Settings::register_email_settings' ],
     [ 'woocommerce_settings-email_customer_fulfillment_updated', 10, 1, 'includes/class-wc-register-wp-admin-settings.php', 'WC_Register_WP_Admin_Settings::register_email_settings' ],
     [ 'woocommerce_settings-email_customer_fulfillment_deleted', 10, 1, 'includes/class-wc-register-wp-admin-settings.php', 'WC_Register_WP_Admin_Settings::register_email_settings' ],
+    // Tax settings are registered only when native tax calculation is enabled; profile inspection never emits these hooks.
+    [ 'woocommerce_sections_tax', 10, 1, 'includes/admin/settings/class-wc-settings-page.php', 'WC_Settings_Tax::output_sections' ],
+    [ 'woocommerce_settings_tax', 10, 1, 'includes/admin/settings/class-wc-settings-tax.php', 'WC_Settings_Tax::output' ],
+    [ 'woocommerce_settings_save_tax', 10, 1, 'includes/admin/settings/class-wc-settings-tax.php', 'WC_Settings_Tax::save' ],
 ];
 
 if ( ! defined( 'WC_VERSION' ) || '11.0.1' !== WC_VERSION ) { return $registrations; }

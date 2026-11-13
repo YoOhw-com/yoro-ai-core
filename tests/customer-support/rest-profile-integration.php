@@ -29,7 +29,8 @@ if ( ! defined( 'REST_REQUEST' ) ) { define( 'REST_REQUEST', true ); }
 rest_get_server();
 $events = [];
 foreach ( array_keys( $GLOBALS['wp_filter'] ) as $name ) {
-    if ( false !== strpos( $name, 'fulfillment' ) || 'woocommerce_settings-email_customer_refunded_order' === $name ) { $events[ $name ] = did_action( $name ); }
+    if ( false !== strpos( $name, 'fulfillment' ) || 'woocommerce_settings-email_customer_refunded_order' === $name
+        || in_array( $name, [ 'woocommerce_sections_tax', 'woocommerce_settings_tax', 'woocommerce_settings_save_tax' ], true ) ) { $events[ $name ] = did_action( $name ); }
 }
 check_rest_profile( true === YoRo_Support_Commerce::profile(), 'Real REST/email registrations preserve the native supported profile.' );
 $foreign = static fn( $value ) => $value;
@@ -48,7 +49,7 @@ add_filter( $hook, $entry['function'], 10, 2 );
 check_rest_profile( is_wp_error( YoRo_Support_Commerce::profile() ), 'Same native callable with a different arity remains unsupported.' );
 add_filter( $hook, $entry['function'], 10, 1 );
 check_rest_profile( true === YoRo_Support_Commerce::profile(), 'Exact native registration restores support.' );
-check_rest_profile( $events === array_map( 'did_action', array_combine( array_keys( $events ), array_keys( $events ) ) ), 'Profile inspection invokes no fulfillment/email/settings event.' );
+check_rest_profile( $events === array_map( 'did_action', array_combine( array_keys( $events ), array_keys( $events ) ) ), 'Profile inspection invokes no fulfillment/email/tax/settings event.' );
 foreach ( array_slice( $GLOBALS['wpdb']->queries, $queries_before ) as $query ) {
     if ( preg_match( '/^\s*(INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP)\b/i', $query[0] ) ) { throw new RuntimeException( 'REST registration/profile attempted a database write.' ); }
 }
