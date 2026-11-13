@@ -714,6 +714,16 @@ verify( ! empty( $legacy_card['products'] ) && '' === $legacy_card['products'][0
 
 
 if ( $full_core ) {
+    // A fresh request observes native email registrations from the persisted fulfillment feature flag.
+    $pipes = [];
+    $process = proc_open( [ PHP_BINARY, __DIR__ . '/rest-profile-integration.php', $root ], [ 0 => [ 'pipe', 'r' ], 1 => [ 'pipe', 'w' ], 2 => [ 'pipe', 'w' ] ], $pipes );
+    if ( ! is_resource( $process ) ) { throw new RuntimeException( 'Fresh REST profile process required.' ); }
+    fclose( $pipes[0] );
+    $output = stream_get_contents( $pipes[1] ); $errors = stream_get_contents( $pipes[2] );
+    fclose( $pipes[1] ); fclose( $pipes[2] );
+    $exit = proc_close( $process );
+    $rest_profile = json_decode( $output, true );
+    verify( 0 === $exit && '' === $errors && is_array( $rest_profile ) && 'passed' === ( $rest_profile['result'] ?? '' ) && 9 === ( $rest_profile['assertions'] ?? 0 ), 'Fresh full Core REST profile and exact foreign/priority/arity guards pass with no provider or mail effects.' );
     foreach ( $report_hooks as $hook => $binding ) { verify( has_action( $hook, $binding[0] ) === $binding[1], 'Full report hooks remain registered after all quote and security cases.' ); }
     foreach ( $subscription_hooks as $hook => $binding ) { verify( has_action( $hook, $binding[0] ) === $binding[1], 'Full subscription hooks remain registered after all quote and security cases.' ); }
 }

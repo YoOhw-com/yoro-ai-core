@@ -2,7 +2,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
-// Supported WooCommerce 11.2.1 registrations, plus characterized 11.2.2 product-cache hooks.
+// Supported WooCommerce 11.2.1 registrations, plus characterized 11.2.2 product-cache and REST/email hooks.
 // Bind the hook, priority, arity, defining native file and callable together. File ownership alone is insufficient.
 $registrations = [
     [ 'woocommerce_account_add-payment-method_endpoint', 10, 1, 'includes/wc-template-functions.php', 'woocommerce_account_add_payment_method' ],
@@ -753,6 +753,19 @@ $registrations = [
     [ 'woocommerce_widget_shopping_cart_buttons', 10, 1, 'includes/wc-template-functions.php', 'woocommerce_widget_shopping_cart_button_view_cart' ],
     [ 'woocommerce_widget_shopping_cart_buttons', 20, 1, 'includes/wc-template-functions.php', 'woocommerce_widget_shopping_cart_proceed_to_checkout' ],
     [ 'woocommerce_widget_shopping_cart_total', 10, 1, 'includes/wc-template-functions.php', 'woocommerce_widget_shopping_cart_subtotal' ],
+    // Native REST bootstrap with fulfillments enabled registers these dormant email/settings callbacks.
+    [ 'woocommerce_update_options_email_customer_fulfillment_created', 10, 1, 'includes/emails/class-wc-email.php', 'WC_Email_Customer_Fulfillment_Created::process_admin_options' ],
+    [ 'woocommerce_update_options_email_customer_fulfillment_updated', 10, 1, 'includes/emails/class-wc-email.php', 'WC_Email_Customer_Fulfillment_Updated::process_admin_options' ],
+    [ 'woocommerce_update_options_email_customer_fulfillment_deleted', 10, 1, 'includes/emails/class-wc-email.php', 'WC_Email_Customer_Fulfillment_Deleted::process_admin_options' ],
+    [ 'woocommerce_fulfillment_created_notification', 10, 3, 'includes/emails/class-wc-email-customer-fulfillment-created.php', 'WC_Email_Customer_Fulfillment_Created::trigger' ],
+    [ 'woocommerce_fulfillment_updated_notification', 10, 4, 'includes/emails/class-wc-email-customer-fulfillment-updated.php', 'WC_Email_Customer_Fulfillment_Updated::trigger' ],
+    [ 'woocommerce_fulfillment_deleted_notification', 10, 3, 'includes/emails/class-wc-email-customer-fulfillment-deleted.php', 'WC_Email_Customer_Fulfillment_Deleted::trigger' ],
+    [ 'woocommerce_email_fulfillment_details', 10, 5, 'includes/class-wc-emails.php', 'WC_Emails::fulfillment_details' ],
+    [ 'woocommerce_email_fulfillment_meta', 30, 4, 'includes/class-wc-emails.php', 'WC_Emails::fulfillment_meta' ],
+    [ 'woocommerce_settings-email_customer_refunded_order', 10, 1, 'includes/class-wc-register-wp-admin-settings.php', 'WC_Register_WP_Admin_Settings::register_email_settings' ],
+    [ 'woocommerce_settings-email_customer_fulfillment_created', 10, 1, 'includes/class-wc-register-wp-admin-settings.php', 'WC_Register_WP_Admin_Settings::register_email_settings' ],
+    [ 'woocommerce_settings-email_customer_fulfillment_updated', 10, 1, 'includes/class-wc-register-wp-admin-settings.php', 'WC_Register_WP_Admin_Settings::register_email_settings' ],
+    [ 'woocommerce_settings-email_customer_fulfillment_deleted', 10, 1, 'includes/class-wc-register-wp-admin-settings.php', 'WC_Register_WP_Admin_Settings::register_email_settings' ],
 ];
 
 if ( ! defined( 'WC_VERSION' ) || '11.0.1' !== WC_VERSION ) { return $registrations; }
