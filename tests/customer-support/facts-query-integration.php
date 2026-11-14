@@ -94,7 +94,8 @@ foreach ( [ 'faq' => $faq, 'toc' => $toc ] as $kind => $id ) {
 $snapshot = YoRo_Support_Facts::snapshot( $settings, $queries['product'] );
 verify( 'product:' . $dark->get_id() === $snapshot['sources'][0]['id'], 'Named product outranks incidental prose/numeric terms and selected FAQ, beyond the first 100 catalog rows.' );
 $fact = array_values( array_filter( $snapshot['sources'], static fn( $source ) => 'product:' . $dark->get_id() === $source['id'] ) )[0];
-verify( str_contains( $fact['product']['price'], '62' ) && str_contains( $fact['product']['price'], '90' ) && 'instock' === $fact['product']['stock'], 'Current storefront sale, regular price and stock come from real Woo persistence.' );
+verify( '90' === wc_get_product( $dark->get_id() )->get_regular_price() && '62' === wc_get_product( $dark->get_id() )->get_price(), 'Native persistence retains the distinct regular and current sale prices.' );
+verify( str_contains( $fact['product']['price'], '62' ) && ! str_contains( $fact['product']['price'], '90' ) && 'instock' === $fact['product']['stock'], 'The public DTO carries the current storefront sale price and stock without an unlabeled old/current pair.' );
 verify( ! in_array( 'product:' . $hidden->get_id(), ids( $snapshot ), true ) && ! in_array( 'product:' . $draft->get_id(), ids( $snapshot ), true ), 'Hidden and draft products cannot become facts.' );
 $comparison = YoRo_Support_Facts::snapshot( $settings, 'Compare Dark Ground and Skyler prices and current stock.' );
 verify( in_array( 'product:' . $dark->get_id(), ids( $comparison ), true ) && in_array( 'product:' . $skyler->get_id(), ids( $comparison ), true ), 'OR retrieval finds distinct products without requiring both names in one record.' );
@@ -105,6 +106,32 @@ verify( '' === $wpdb->last_error && count( $escaped['sources'] ) <= 20, 'Visitor
 $jupiter = YoRo_Support_Facts::snapshot( $settings, 'Jupiter Dust White' );
 foreach ( [ $parent->get_id(), ...$variations ] as $id ) { verify( in_array( 'product:' . $id, ids( $jupiter ), true ), 'Only real public variant/parent facts are projected.' ); }
 verify( 3 === count( array_filter( $jupiter['sources'], static fn( $source ) => 'product' === $source['type'] ) ), 'No invented Dust White variant is constructed from option combinations.' );
+
+// A natural question also matches incidental catalog prose. Ten parent facts must
+// not consume every result slot before a strongly matching parent's real variants.
+for ( $i = 0; $i < 10; ++$i ) { product( 'Incidental catalog reference ' . $i, [ 'description' => 'Store size, price, stock and status reference.' ] ); }
+$shirt = new WC_Product_Variable();
+$shirt->set_name( 'YR0217 Field Shirt V1' ); $shirt->set_sku( 'YR0217-G056-SHIRT-V1' ); $shirt->set_status( 'publish' );
+$size = new WC_Product_Attribute();
+$size->set_name( 'Size' ); $size->set_options( [ 'S', 'L' ] ); $size->set_visible( true ); $size->set_variation( true );
+$shirt->set_attributes( [ $size ] ); $shirt->save();
+$shirt_variations = [];
+foreach ( [ 's' => '30', 'l' => '40' ] as $value => $price ) {
+	$variation = new WC_Product_Variation();
+	$variation->set_parent_id( $shirt->get_id() ); $variation->set_status( 'publish' );
+	$variation->set_attributes( [ 'size' => $value ] ); $variation->set_sku( 'YR0217-G056-SHIRT-V1-' . strtoupper( $value ) );
+	$variation->set_regular_price( $price ); $variation->save(); $shirt_variations[ $value ] = $variation;
+}
+$large = $shirt_variations['l'];
+$large->set_sale_price( '32' ); $large->set_manage_stock( true ); $large->set_backorders( 'yes' );
+$large->set_stock_quantity( 0 ); $large->set_stock_status( 'onbackorder' ); $large->save();
+WC_Product_Variable::sync( $shirt->get_id() );
+$large_fact = YoRo_Support_Facts::product( $large->get_id() );
+verify( str_contains( $large_fact['product']['price'], '32' ) && 'onbackorder' === $large_fact['product']['stock'], 'Native sale/backorder variation facts exist before retrieval.' );
+$variation_query = 'What are the current price and stock status of YR0217 Field Shirt V1 in size L, SKU YR0217-G056-SHIRT-V1-L?';
+$variation_snapshot = YoRo_Support_Facts::snapshot( $settings, $variation_query );
+verify( in_array( 'product:' . $large->get_id(), ids( $variation_snapshot ), true ), 'Relevant current variation survives ten matching parent products in a natural question.' );
+verify( count( array_filter( $variation_snapshot['sources'], static fn( $source ) => 'product' === $source['type'] ) ) <= 10, 'Variation expansion preserves the public product projection cap.' );
 
 $changed = YoRo_Support_Facts::content( $faq, $settings );
 wp_update_post( [ 'ID' => $faq, 'post_content' => 'Updated public FAQ' ] );
@@ -129,5 +156,5 @@ foreach ( $candidate_queries as $entry ) {
 	verify( str_contains( $entry[0], "post_type = 'product' AND post_status = 'publish' AND post_password = ''" ), 'Candidate SQL is a fixed public-only product projection.' );
 }
 echo wp_json_encode( [ 'result' => 'passed', 'assertions' => $assertions, 'wordpress' => $wp_version, 'woocommerce' => WC_VERSION,
-	'catalog_rows' => 118, 'approved_contents' => count( $selected ), 'candidate_queries' => count( $candidate_queries ),
+	'catalog_rows' => 131, 'approved_contents' => count( $selected ), 'candidate_queries' => count( $candidate_queries ),
 	'original_failures_reproduced' => 3, 'provider_requests' => 0, 'database' => 'fresh-disposable-socket-only' ] ), "\n";

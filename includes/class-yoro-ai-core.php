@@ -20,6 +20,8 @@ class YoRo_AI_Core {
 		self::include_rest();
 		require_once YORO_AI_CORE_PATH . 'includes/customer-support/class-yoro-support-facts.php';
 		require_once YORO_AI_CORE_PATH . 'includes/customer-support/class-yoro-support-transport.php';
+		require_once YORO_AI_CORE_PATH . 'includes/customer-support/class-yoro-support-commerce.php';
+		require_once YORO_AI_CORE_PATH . 'includes/customer-support/class-yoro-support-context.php';
 		require_once YORO_AI_CORE_PATH . 'includes/customer-support/class-yoro-customer-support.php';
 
 		if ( is_admin() ) {

@@ -21,7 +21,12 @@ parser.add_argument("--wordpress-source", required=True)
 parser.add_argument("--woocommerce-source", required=True)
 parser.add_argument("--mysql-base", required=True)
 parser.add_argument("--php", required=True)
+parser.add_argument("--suite", choices=("query", "commerce", "full-commerce", "all", "wire"), default="query")
+parser.add_argument("--wire-fixture", help="Exact owned source roots and Woo mode for the wire suite")
 args = parser.parse_args()
+wire = json.loads(Path(args.wire_fixture).read_text()) if args.suite == "wire" and args.wire_fixture else None
+if args.suite == "wire" and (not isinstance(wire, dict) or not isinstance(wire.get("woo"), bool)):
+    raise RuntimeError("Wire suite requires an explicit owned fixture")
 for package in (args.wordpress_source, args.woocommerce_source, args.mysql_base, args.php):
     if Path(package).is_symlink():
         raise RuntimeError("Package inputs must not be symbolic links")
@@ -75,12 +80,33 @@ with tempfile.TemporaryDirectory(prefix=".disposable-query-", dir=tests) as temp
         copy_package(wp_source / directory, wp / directory)
     source_directory = os.open(wp_source, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        for name in ("wp-load.php", "wp-settings.php"):
+        for name in ("wp-load.php", "wp-settings.php", "index.php"):
             copy_file(source_directory, name, wp / name)
     finally:
         os.close(source_directory)
     (wp / "wp-content/plugins").mkdir(parents=True, mode=0o700)
     copy_package(woo_source, wp / "wp-content/plugins/woocommerce")
+    if args.suite == "full-commerce":
+        component = tests.parent.parent
+        destination = wp / "wp-content/plugins/yoro-ai-core"
+        destination.mkdir(mode=0o700)
+        paths = subprocess.check_output(["/usr/bin/git", "ls-files", "-z"], cwd=component).split(b"\0")
+        for raw in paths:
+            if not raw:
+                continue
+            relative = Path(os.fsdecode(raw))
+            if relative.is_absolute() or ".." in relative.parts:
+                raise RuntimeError("Unsafe component package path")
+            source = component / relative
+            if not stat.S_ISREG(source.lstat().st_mode) or source.is_symlink():
+                raise RuntimeError("Component package must contain regular tracked files")
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            descriptor = os.open(source.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                copy_file(descriptor, source.name, target)
+            finally:
+                os.close(descriptor)
     (wp / ".support-disposable").write_text("YR-0214-disposable-wordpress")
     socket = str(Path(socket_directory) / "mysql.sock")
     datadir = root / "mysql"
@@ -93,7 +119,7 @@ with tempfile.TemporaryDirectory(prefix=".disposable-query-", dir=tests) as temp
     def run(command, **kwargs):
         result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=180, **kwargs)
         if result.returncode:
-            raise RuntimeError(result.stderr[-4000:] or result.stdout[-4000:])
+            raise RuntimeError(result.stderr[-2000:] + result.stdout[-5000:])
         return result.stdout
 
     try:
@@ -120,10 +146,18 @@ with tempfile.TemporaryDirectory(prefix=".disposable-query-", dir=tests) as temp
         (wp / "wp-config.php").write_text(configuration)
         os.chmod(wp / "wp-config.php", 0o600)
         bootstrap = root / "install.php"
-        bootstrap.write_text("<?php\ndefine('WP_INSTALLING', true);\nfunction wp_mail(...$args) { return true; }\nrequire $argv[1].'/wp-load.php';\nrequire ABSPATH.'wp-admin/includes/upgrade.php';\nwp_install('Disposable support fixture', 'synthetic-owner', 'nobody@example.invalid', false, '', 'synthetic-only-password');\nupdate_option('active_plugins', ['woocommerce/woocommerce.php']);\n")
+        bootstrap.write_text("<?php\ndefine('WP_INSTALLING', true);\nfunction wp_mail(...$args) { return true; }\nrequire $argv[1].'/wp-load.php';\nrequire ABSPATH.'wp-admin/includes/upgrade.php';\nwp_install('Disposable support fixture', 'synthetic-owner', 'nobody@example.invalid', false, '', 'synthetic-only-password');\nupdate_option('active_plugins', ['woocommerce/woocommerce.php']);\nrequire $argv[1].'/wp-content/plugins/woocommerce/woocommerce.php';\nWC_Install::install();\n")
+        if args.suite == "wire" and not wire["woo"]:
+            bootstrap.write_text(bootstrap.read_text() + "update_option('active_plugins', []);\n")
         run([php, str(bootstrap), str(wp)])
-        output = run([php, str(tests / "facts-query-integration.php"), str(wp)])
-        print(output.strip())
+        if args.suite == "full-commerce":
+            activation = root / "activate-core.php"
+            activation.write_text("<?php\nfunction wp_mail(...$args) { return true; }\nrequire $argv[1].'/wp-load.php';\nif ('yoro_support_disposable' !== DB_NAME || 'https://support-fixture.invalid' !== home_url() || ! DISABLE_WP_CRON) { throw new RuntimeException('Disposable fixture required.'); }\nupdate_option('active_plugins', ['woocommerce/woocommerce.php', 'yoro-ai-core/yoro-ai-core.php']);\n")
+            run([php, str(activation), str(wp)])
+        for suite in (["query", "commerce"] if args.suite == "all" else [args.suite]):
+            filename = "wire-integration.php" if suite == "wire" else ("facts-query-integration.php" if suite == "query" else "commerce-integration.php")
+            output = run([php, str(tests / filename), str(wp), args.wire_fixture if suite == "wire" else suite])
+            print(output.strip())
     finally:
         if process is not None and process.poll() is None:
             process.terminate()

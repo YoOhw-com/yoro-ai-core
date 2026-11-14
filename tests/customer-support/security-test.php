@@ -13,13 +13,13 @@ function get_current_blog_id(){return 1;}
 function get_option($name,$default=null){return $GLOBALS['settings'];}
 function wp_strip_all_tags($value){return strip_tags($value);}
 function is_wp_error($value){return $value instanceof WP_Error;}
-function wp_remote_request($url,$args){$GLOBALS['requests'][]=[$url,$args];return ['code'=>200,'body'=>'{"success":true}'];}
+function wp_remote_request($url,$args){$GLOBALS['requests'][]=[$url,$args];return ['code'=>200,'body'=>$GLOBALS['response_body']??'{"success":true}'];}
 function wp_remote_retrieve_response_code($response){return $response['code'];}
 function wp_remote_retrieve_body($response){return $response['body'];}
 class WP_Error{public function __construct(public $code,public $message,public $data=[]){}}
 class YoRo_AI_Settings{public static function get_ai_api_site_key(){return $GLOBALS['sitekey'];}public static function get_ai_api_url(){return 'https://api.example.test/api/v1';}}
 class YoRo_WordPress_Actor{public static function assertion($key){return 'synthetic-operator-assertion';}}
-class SyntheticRequest{public function __construct(public array $headers=[]){ }public function get_header($name){return $this->headers[$name]??'';}}
+class SyntheticRequest{public function __construct(public array $headers=[],public array $params=[]){ }public function get_param($name){return $this->params[$name]??null;}public function get_params(){return $this->params;}public function get_header($name){return $this->headers[$name]??'';}}
 require dirname(__DIR__,2).'/includes/ai/clients/class-yoro-ai-api-endpoint-resolver.php';
 require dirname(__DIR__,2).'/includes/customer-support/class-yoro-support-transport.php';
 require dirname(__DIR__,2).'/includes/customer-support/class-yoro-customer-support.php';
@@ -46,8 +46,27 @@ $safe=YoRo_Customer_Support::safe_answer(['text'=>'<script>x</script>plain','sou
 check($safe['text']==='xplain'&&count($safe['sources'])===1&&$safe['sources'][0]['url']==='https://public-store.test/faq','Safe text and citations resolved only from current server facts.');
 $js=file_get_contents(dirname(__DIR__,2).'/assets/js/yoro-support.js');
 check(!str_contains($js,'innerHTML')&&!str_contains($js,'localStorage')&&!str_contains($js,'sessionStorage')&&!str_contains($js,'indexedDB'),'No HTML injection or persistent browser transcript.');
-check(str_contains($js,'crypto.randomUUID()')&&str_contains($js,'retryCount < 2'),'Stable UUID and finite explicit retries.');
-$php=file_get_contents(dirname(__DIR__,2).'/includes/customer-support/class-yoro-customer-support.php');
+check(str_contains($js,'crypto.randomUUID()')&&(str_contains($js,'retryCount < 2') || str_contains($js,'retryCount >= 2')),'Stable UUID and finite explicit retries.');
+$php=file_get_contents(dirname(__DIR__,2).'/includes/customer-support/class-yoro-customer-support.php').file_get_contents(dirname(__DIR__,2).'/includes/customer-support/class-yoro-support-admin.php');
 check(str_contains($php,"'httponly' => true")&&str_contains($php,"'secure' => true")&&str_contains($php,"'samesite' => 'Strict'"),'Secure HttpOnly SameSite cookie flags.');
 check(str_contains($php,"current_user_can( 'manage_options' )")&&str_contains($php,"current_user_can( 'yoro_manage_connection' )")&&str_contains($php,"check_admin_referer( 'yoro_support_settings' )"),'Settings require both current capabilities and CSRF.');
+// Exercise the public guest context callback with the same-origin/session/CSRF gates intact.
+$GLOBALS['settings']['protocol']=2;
+$GLOBALS['response_body']='{"protocol":2}';
+$_COOKIE['__Host-yoro_support_1']=$cookie;
+foreach ([[], ['unexpected'=>'kind'], true, 42, null] as $kind) {
+    $GLOBALS['requests']=[];
+    check(is_wp_error(YoRo_Support_Context::create($GLOBALS['settings'],$session,$kind,[])), 'Malformed direct context kind fails closed.');
+    check($GLOBALS['requests']===[], 'Malformed kind performs no direct authorization or commerce HTTP.');
+    $request=new SyntheticRequest(['Origin'=>'https://public-store.test','X-YoRo-Support-CSRF'=>YoRo_Support_Transport::csrf($cookie)],['kind'=>$kind,'params'=>[]]);
+    check(YoRo_Customer_Support::permission($request)===true, 'Malformed-kind fixture retains valid same-origin guest permission.');
+    $result=YoRo_Customer_Support::context($request);
+    check(is_wp_error($result)&&$result->code==='support_context_invalid', 'Malformed public context kind returns the closed DTO error without a PHP exception.');
+    check(count($GLOBALS['requests'])===1&&$GLOBALS['requests'][0][1]['method']==='GET'&&str_ends_with($GLOBALS['requests'][0][0],'/sessions/current'), 'Only required fake session validation occurs; no context authorization, commerce or provider call.');
+}
+$GLOBALS['requests']=[];
+check(is_wp_error(YoRo_Support_Context::create($GLOBALS['settings'],$session,'quote',[]))&&$GLOBALS['requests']===[], 'Valid string kind retains Woo-off capability denial.');
+$GLOBALS['settings']['protocol']=1;
+$request=new SyntheticRequest(['Origin'=>'https://public-store.test','X-YoRo-Support-CSRF'=>YoRo_Support_Transport::csrf($cookie)],['kind'=>[],'params'=>[]]);
+check(is_wp_error(YoRo_Customer_Support::context($request))&&$GLOBALS['requests']===[], 'V1 public context remains disabled without HTTP.');
 echo json_encode(['result'=>'passed','assertions'=>$count],JSON_THROW_ON_ERROR),"\n";

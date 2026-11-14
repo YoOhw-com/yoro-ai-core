@@ -90,6 +90,16 @@ if ($woo) {
     $product = YoRo_Support_Facts::product(20);
     check($product['product']['price'] === '100.000 ₫' && $product['product']['currency'] === 'VND', 'Public storefront formatted price/currency.');
     check(!str_contains(json_encode($product), 'SECRET'), 'Private fields excluded before model.');
+    foreach ([
+        ['<span class="woocommerce-Price-amount amount"><bdi>₫170,000.00</bdi></span> <span aria-hidden="true">&ndash;</span> <span class="woocommerce-Price-amount amount"><bdi>₫180,000.00</bdi></span><span class="screen-reader-text">Price range: ₫170,000.00 through ₫180,000.00</span>', '₫170,000.00 – ₫180,000.00'],
+        ['<del aria-hidden="true"><span>₫150,000.00</span></del> <span class="screen-reader-text">Original price was: ₫150,000.00.</span><ins aria-hidden="true"><span>₫110,000.00</span></ins><span class="screen-reader-text">Current price is: ₫110,000.00.</span>', '₫110,000.00'],
+        ["<span>100.000&nbsp;₫</span><span data-price='description' class='screen-reader-text'>Giá hiện tại: 100.000 ₫.</span>", "100.000\u{00A0}₫"],
+    ] as [$markup, $expected]) {
+        $GLOBALS['products'][20] = new SyntheticProduct(20, ['price_html'=>$markup]);
+        $price = YoRo_Support_Facts::product(20)['product'];
+        check($price['price'] === $expected && $price['currency'] === 'VND', 'Native current simple/sale/range prices survive without old-price ambiguity or duplicate accessible descriptions.');
+    }
+
     foreach ([['status'=>'draft'], ['visibility'=>'hidden'], ['visible'=>false], ['purchasable'=>false], ['price'=>''], ['type'=>'grouped'], ['stock'=>'onpreorder'], ['stock'=>'unknown'], ['url'=>'https://other.test/p']] as $mutation) {
         $GLOBALS['products'][20] = new SyntheticProduct(20, $mutation);
         check(YoRo_Support_Facts::product(20) === null, 'Invalid/hidden/unpurchasable product omitted.');

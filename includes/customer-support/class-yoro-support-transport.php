@@ -25,7 +25,11 @@ class YoRo_Support_Transport {
 			}
 		}
 		if ( is_wp_error( $response ) || wp_remote_retrieve_response_code( $response ) < 200 || wp_remote_retrieve_response_code( $response ) >= 300 ) {
-			return new WP_Error( 'support_unavailable', 'Support is unavailable. Please retry later or use the site contact details.' );
+			$value = is_wp_error( $response ) ? [] : json_decode( wp_remote_retrieve_body( $response ), true );
+			$known = [ 'support_verification_required', 'support_verification_invalid', 'support_verification_retry', 'support_verification_unavailable', 'support_capability_unavailable', 'support_context_invalid' ];
+			$code = in_array( $value['code'] ?? '', $known, true ) ? $value['code'] : 'support_unavailable';
+			$status = is_wp_error( $response ) ? 503 : wp_remote_retrieve_response_code( $response );
+			return new WP_Error( $code, 'Support is unavailable. Please retry later or use the site contact details.', [ 'status' => $status ] );
 		}
 		$value = json_decode( wp_remote_retrieve_body( $response ), true );
 		return is_array( $value ) ? $value : new WP_Error( 'support_unavailable', 'Support is unavailable.' );
@@ -37,19 +41,28 @@ class YoRo_Support_Transport {
 		return hash_hmac( 'sha256', $ip, hash_hmac( 'sha256', gmdate( 'Y-m-d' ), wp_salt( 'auth' ) ) );
 	}
 
-	public static function seal( array $value ) {
+	public static function seal( array $value, $purpose = 'session' ) {
+		if ( ! in_array( $purpose, [ 'session', 'context', 'order' ], true ) ) { return ''; }
 		$iv = random_bytes( 12 ); $tag = '';
-		$cipher = openssl_encrypt( wp_json_encode( $value ), 'aes-256-gcm', self::key(), OPENSSL_RAW_DATA, $iv, $tag, home_url() );
+		$cipher = openssl_encrypt( wp_json_encode( $value ), 'aes-256-gcm', self::key(), OPENSSL_RAW_DATA, $iv, $tag, home_url() . '|' . $purpose );
 		return false === $cipher ? '' : rtrim( strtr( base64_encode( $iv . $tag . $cipher ), '+/', '-_' ), '=' );
 	}
-	public static function open( $value ) {
+	public static function open( $value, $purpose = 'session' ) {
+		if ( ! in_array( $purpose, [ 'session', 'context', 'order' ], true ) ) { return []; }
 		$raw = base64_decode( strtr( (string) $value, '-_', '+/' ), true );
 		if ( false === $raw || strlen( $raw ) < 29 || strlen( $raw ) > 4096 ) { return []; }
-		$text = openssl_decrypt( substr( $raw, 28 ), 'aes-256-gcm', self::key(), OPENSSL_RAW_DATA, substr( $raw, 0, 12 ), substr( $raw, 12, 16 ), home_url() );
-		$session = is_string( $text ) ? json_decode( $text, true ) : null;
-		return is_array( $session ) && is_string( $session['session_id'] ?? null ) && is_string( $session['credential'] ?? null )
-			&& (int) ( $session['expires'] ?? 0 ) > time() ? $session : [];
+		$text = openssl_decrypt( substr( $raw, 28 ), 'aes-256-gcm', self::key(), OPENSSL_RAW_DATA, substr( $raw, 0, 12 ), substr( $raw, 12, 16 ), home_url() . '|' . $purpose );
+		if ( false === $text && 'session' === $purpose ) {
+			$text = openssl_decrypt( substr( $raw, 28 ), 'aes-256-gcm', self::key(), OPENSSL_RAW_DATA, substr( $raw, 0, 12 ), substr( $raw, 12, 16 ), home_url() );
+		}
+		$held = is_string( $text ) ? json_decode( $text, true ) : null;
+		if ( ! is_array( $held ) || ! is_string( $held['session_id'] ?? null ) || ! is_int( $held['expires'] ?? null ) || $held['expires'] <= time() ) { return []; }
+		if ( 'session' === $purpose && ( array_diff( array_keys( $held ), [ 'session_id', 'credential', 'revision', 'protocol', 'expires' ] )
+			|| ! is_string( $held['credential'] ?? null ) || '' === $held['credential'] || ! is_int( $held['revision'] ?? null )
+			|| ( isset( $held['protocol'] ) && ! in_array( $held['protocol'], [ 1, 2 ], true ) ) ) ) { return []; }
+		return $held;
 	}
+	public static function binding( $credential ) { return hash_hmac( 'sha256', (string) $credential, self::key() ); }
 	public static function csrf( $cookie ) { return hash_hmac( 'sha256', (string) $cookie, self::key() ); }
 	private static function key() { return hash( 'sha256', wp_salt( 'secure_auth' ) . '|' . home_url() . '|' . YoRo_AI_Settings::get_ai_api_site_key(), true ); }
 }
